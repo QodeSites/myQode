@@ -2,6 +2,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useClient } from "@/contexts/ClientContext";
+import { Button } from "@/components/ui/button";
 
 interface Doc {
   title: string;
@@ -64,7 +65,7 @@ export default function AccountDocumentsPage() {
   }, [selectedClientCode, clientLoading]);
 
   return (
-    <main className="p-4 md:p-6">
+    <main className="p-4 md:p-6 bg-card">
       <header className="mb-6">
         <h1 className="text-2xl font-semibold text-balance">Account Documents</h1>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -113,7 +114,7 @@ export default function AccountDocumentsPage() {
                     }`}
                     aria-label={`${d.title} - ${d.disabled ? "not available" : "click to view"}`}
                   >
-                    [click here]
+                    <Button>Click Here</Button>
                   </Link>
                 </div>
               </li>

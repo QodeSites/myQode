@@ -12,14 +12,18 @@ export default async function TrustLayout({ children }: { children: React.ReactN
 
   return (
     <div className="min-h-screen">
-      <ClientProvider>
-
-        <QodeHeader />
-        <div className="mx-auto flex  gap-6 py-6">
-          <QodeSidebar />
-          <main className=" max-w-7xl flex-1 rounded-lg bg-card p-6 card-shadow">{children}</main>
+          <ClientProvider>
+            <QodeHeader />
+            <div className="flex gap-4 py-6">
+              <QodeSidebar />
+    
+              <main className="w-full flex justify-center align-center ">
+                <div className="w-[90%] rounded-lg bg-card p-6 card-shadow">{children}
+                </div>
+              </main>
+            </div>
+          </ClientProvider>
+    
         </div>
-      </ClientProvider>
-    </div>
   )
 }

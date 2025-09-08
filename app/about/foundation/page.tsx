@@ -1,132 +1,139 @@
-import React from 'react'
+import React from "react";
 
-const page = () => {
-    return (
-        <div className="min-h-screen">
-            {/* Header */}
-            <div className="bg-primary text-white py-3 px-6">
-                <div className="max-w-4xl mx-auto text-center">
-                    <h1 className="text-lg font-serif font-bold">Note from Fund Managers</h1>
-                </div>
-            </div>
-
-            {/* Content Section */}
-            <div className="py-8">
-                {/* Rishabh Nahar Section */}
-                <div className="grid md:grid-cols-3 mb-14 items-center ">
-                    {/* Image */}
-                    <div className="md:col-span-1">
-                        <div className="aspect-square bg-muted rounded-lg overflow-hidden max-w-[250px] ">
-                            <img
-                                src="/fund-manager/Rishabh.jpg"
-                                alt="Rishabh Nahar"
-                                className="w-full h-full object-cover"
-                            />
-                        </div>
-                    </div>
-
-                    {/* Text Content */}
-                    <div className="md:col-span-2 space-y-4">
-                        <div>
-                            <h2 className="text-xl font-serif font-bold text-foreground mb-1">Rishabh Nahar</h2>
-                            <p className="text-sm text-primary font-medium mb-3">Fund Manager</p>
-                        </div>
-
-                        <div className="text-muted-foreground leading-relaxed text-sm space-y-3">
-                            <p>
-                                Investing, to me, has always been about process. Markets are unpredictable in the short run,
-                                but data, when studied carefully, reveals patterns that can guide us with discipline. At Qode,
-                                our approach is rooted in systematic models that help us identify opportunities objectively,
-                                free from bias or noise.
-                            </p>
-
-                            <p>
-                                But models alone are not enough — they must be applied with judgment, constant review, and a
-                                deep respect for risk. That's why we combine quantitative insights with robust portfolio
-                                construction, always seeking to maximize outcomes while protecting against drawdowns.
-                            </p>
-
-                            <p>
-                                My goal is simple: to give investors confidence that every decision we take is grounded in
-                                evidence, tested rigorously, and aligned with the long-term compounding of their wealth.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Gaurav Didwania Section */}
-                <div className="grid md:grid-cols-3 mb-14  items-center">
-                    {/* Text Content */}
-                    <div className="md:col-span-2 space-y-4 md:order-1">
-                        <div>
-                            <h2 className="text-xl font-serif font-bold text-foreground mb-1">Gaurav Didwania</h2>
-                            <p className="text-sm text-primary font-medium mb-3">Fund Manager</p>
-                        </div>
-
-                        <div className="text-muted-foreground leading-relaxed text-sm space-y-3">
-                            <p>
-                                Over the last 15+ years in Indian markets, I've seen cycles of euphoria and panic, trends
-                                that come and go, and businesses that either endure or fade. What I've learned is that wealth
-                                creation doesn't come from chasing momentum alone — it comes from conviction in the right
-                                businesses and the patience to stay invested through volatility.
-                            </p>
-
-                            <p>
-                                At Qode, I focus on marrying deep fundamental research with a long-term mindset. We look
-                                beyond stock prices to understand management quality, competitive advantage, financial
-                                strength, and industry dynamics. When we invest, we do so with clarity on why the company
-                                can grow stronger over time.
-                            </p>
-
-                            <p>
-                                For me, Qode is about trust and transparency — ensuring our investors not only achieve
-                                returns, but also understand the rationale behind every decision. That understanding builds
-                                confidence, and confidence is what allows compounding to work its magic.
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Image */}
-                    <div className="md:col-span-1 justify-self-end md:order-2">
-                        <div className="aspect-square bg-muted rounded-lg overflow-hidden max-w-[250px] ">
-                            <img
-                                src="/fund-manager/Gaurav.jpg"
-                                alt="Gaurav Didwania"
-                                className="w-full h-full object-cover"
-                            />
-                        </div>
-                    </div>
-                </div>
-
-                {/* Mission and Vision Section */}
-                <div className="grid md:grid-cols-2 gap-4">
-                    {/* Mission */}
-                    <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-                        <div className="bg-primary text-white py-3 px-6">
-                            <h2 className="text-md font-serif font-bold text-center">Mission</h2>
-                        </div>
-                        <div className="p-4">
-                            <p className="text-sm text-muted-foreground leading-relaxed">
-                                To support investors with data-driven, high-quality investment solutions that deliver superior returns.
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Vision */}
-                    <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-                        <div className="bg-primary text-white py-3 px-6">
-                            <h2 className="text-md font-serif font-bold text-center">Vision</h2>
-                        </div>
-                        <div className="p-4">
-                            <p className="text-sm text-muted-foreground leading-relaxed">
-                                To transform investment management with innovation, creating lasting value for our investors.
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    )
+function PageHeader() {
+  return (
+    <header className="bg-primary text-primary-foreground">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6">
+        <h1 className="text-2xl sm:text-3xl font-serif font-bold text-center tracking-tight">
+          Note from Fund Managers
+        </h1>
+      </div>
+    </header>
+  );
 }
 
-export default page
+function Portrait({ src, alt }: { src: string; alt: string }) {
+  return (
+    <div className="relative w-full max-w-[300px] aspect-square rounded-2xl overflow-hidden shadow bg-muted">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={src} alt={alt} className="absolute inset-0 w-full h-full object-cover" />
+    </div>
+  );
+}
+
+function FundManagerDisplay({
+  name,
+  role,
+  img,
+  paragraphs,
+  reverse = false,
+}: {
+  name: string;
+  role: string;
+  img: string;
+  paragraphs: string[];
+  reverse?: boolean;
+}) {
+  return (
+    <section
+      className={`grid items-center md:gap-4 gap-4 ${
+        reverse ? "md:grid-cols-[1.1fr_0.9fr]" : "md:grid-cols-[0.9fr_1.1fr]"
+      }`}
+    >
+      {!reverse ? (
+        <div className="md:order-1 flex justify-center md:justify-start">
+          <Portrait src={img} alt={name} />
+        </div>
+      ) : (
+        <div className="md:order-2 flex justify-center md:justify-end">
+          <Portrait src={img} alt={name} />
+        </div>
+      )}
+
+      <div className={reverse ? "md:order-1" : "md:order-2"}>
+        <div className="space-y-2">
+          <h2 className="text-xl sm:text-2xl font-serif font-bold text-foreground">{name}</h2>
+          <p className="text-sm sm:text-base text-primary font-semibold">{role}</p>
+        </div>
+        <div className="mt-3 space-y-2 text-sm sm:text-base leading-snug text-muted-foreground font-sans">
+          {paragraphs.map((p, i) => (
+            <p key={i}>{p}</p>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PillHeader({ title }: { title: string }) {
+  return (
+    <div className="w-full bg-primary text-primary-foreground py-3 px-6">
+      <h3 className="text-base sm:text-lg font-serif font-bold text-center">{title}</h3>
+    </div>
+  );
+}
+
+function InfoCard({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="bg-card text-card-foreground rounded-2xl overflow-hidden shadow-sm border border-border">
+      <PillHeader title={title} />
+      <div className="p-5 sm:p-6">
+        <div className="text-sm sm:text-base leading-snug text-muted-foreground font-sans">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function MissionVision() {
+  return (
+    <section className="grid md:grid-cols-2 gap-6">
+      <InfoCard title="Mission">
+        To support investors with data-driven, high-quality investment solutions that deliver superior
+        risk-adjusted returns.
+      </InfoCard>
+      <InfoCard title="Vision">
+        To transform investment management with innovation and discipline, creating lasting value for our
+        investors.
+      </InfoCard>
+    </section>
+  );
+}
+
+export default function Page() {
+  return (
+    <main className="min-h-screen bg-background text-foreground">
+      <PageHeader />
+
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 space-y-12">
+        <FundManagerDisplay
+          name="Rishabh Nahar"
+          role="Fund Manager"
+          img="/fund-manager/Rishabh.jpg"
+          paragraphs={[
+            "Investing, to me, has always been about process. Markets are unpredictable in the short run, but data, when studied carefully, reveals patterns that can guide us with discipline.",
+            "At Qode, our approach is rooted in systematic models that help us identify opportunities objectively, free from bias or noise.",
+            "But models alone are not enough — they must be applied with judgment, constant review, and a deep respect for risk. That's why we combine quantitative insights with robust portfolio construction, always seeking to maximize outcomes while protecting against drawdowns.",
+            "My goal is simple: to give investors confidence that every decision we take is grounded in evidence, tested rigorously, and aligned with the long-term compounding of their wealth.",
+          ]}
+        />
+
+        <hr className="border-border" />
+
+        <FundManagerDisplay
+          reverse
+          name="Gaurav Didwania"
+          role="Fund Manager"
+          img="/fund-manager/Gaurav.jpg"
+          paragraphs={[
+            "Over the last 15+ years in Indian markets, I've seen cycles of euphoria and panic, trends that come and go, and businesses that either endure or fade.",
+            "What I've learned is that wealth creation doesn't come from chasing momentum alone — it comes from conviction in the right businesses and the patience to stay invested through volatility.",
+            "At Qode, I focus on marrying deep fundamental research with a long-term mindset. We look beyond stock prices to understand management quality, competitive advantage, financial strength, and industry dynamics.",
+            "For me, Qode is about trust and transparency — ensuring our investors not only achieve returns, but also understand the rationale behind every decision. That understanding builds confidence, and confidence is what allows compounding to work its magic.",
+          ]}
+        />
+
+        <MissionVision />
+      </div>
+    </main>
+  );
+}

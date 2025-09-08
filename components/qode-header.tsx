@@ -102,7 +102,7 @@ export default function QodeHeader() {
           <button
             onClick={logout}
             disabled={isPending}
-            className="rounded-md border px-3 py-2 text-sm text-foreground disabled:opacity-50"
+            className="hover:bg-destructive rounded-md border px-3 py-2 text-sm text-foreground disabled:opacity-50"
           >
             {isPending ? 'Logging out...' : 'Logout'}
           </button>

@@ -31,8 +31,8 @@ function NavLink({ href, children, icon }: { href: string; children: React.React
     <Link
       href={href}
       className={cn(
-        "flex items-center gap-2 rounded-md px-3 py-2 text-sm",
-        active ? "bg-primary text-white" : "",
+        "flex items-center gap-2 rounded-md px-3 py-2 text-sm text-secondary",
+        active ? "bg-background text-primary" : "",
       )}
     >
       {icon}
@@ -66,7 +66,7 @@ export default function QodeSidebar() {
   }, [pathname])
 
   return (
-    <aside className="w-full max-w-[260px] shrink-0 border-r bg-sidebar p-4">
+    <aside className="w-full max-w-[340px] shrink-0 border-r bg-sidebar p-4 h-full rounded-2xl ml-2 opacity-80">
       <nav className="flex flex-col gap-1">
         <NavLink href="/dashboard" icon={<Home className="h-4 w-4" />}>
           Home
