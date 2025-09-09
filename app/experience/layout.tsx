@@ -14,11 +14,11 @@ export default async function ExperienceLayout({ children }: { children: React.R
     <div className="min-h-screen">
           <ClientProvider>
             <QodeHeader />
-            <div className="flex gap-4 py-6">
+            <div className="flex gap-0 py-6">
               <QodeSidebar />
     
               <main className="w-full flex justify-center align-center ">
-                <div className="w-[90%] rounded-lg bg-card p-6 card-shadow">{children}
+                <div className="w-[80%] rounded-lg bg-card p-6 card-shadow">{children}
                 </div>
               </main>
             </div>

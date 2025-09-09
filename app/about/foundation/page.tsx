@@ -41,11 +41,11 @@ function FundManagerDisplay({
       }`}
     >
       {!reverse ? (
-        <div className="md:order-1 flex justify-center md:justify-start">
+        <div className="md:order-1 flex justify-center md:justify-center">
           <Portrait src={img} alt={name} />
         </div>
       ) : (
-        <div className="md:order-2 flex justify-center md:justify-end">
+        <div className="md:order-2 flex justify-center md:justify-center">
           <Portrait src={img} alt={name} />
         </div>
       )}

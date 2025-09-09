@@ -11,14 +11,14 @@ export default async function AboutUsLayout({ children }: { children: React.Reac
   if (!isAuthed) redirect("/login")
 
   return (
-    <div className="min-h-screen">
+    <div className="">
       <ClientProvider>
         <QodeHeader />
-        <div className="flex gap-4 py-6">
+        <div className="flex gap-0 py-6">
           <QodeSidebar />
 
           <main className="w-full flex justify-center align-center ">
-            <div className="w-[90%] rounded-lg bg-card p-6 card-shadow">{children}
+            <div className=" rounded-lg bg-card p-6 card-shadow ml-2 mr-2">{children}
             </div>
           </main>
         </div>

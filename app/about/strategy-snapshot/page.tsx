@@ -2,10 +2,6 @@
 import type React from "react"
 import { useState } from "react"
 
-// export const metadata = {
-//   title: "Strategy Snapshot • Qode",
-// }
-
 type Section = {
   title: string
   items: string[]
@@ -13,13 +9,17 @@ type Section = {
   videoNote?: string
   videoUrl?: string
   previewUrl?: string
+  color: string
+  accent: string
 }
 
 const SECTIONS: Section[] = [
   {
     title: "Qode All Weather (QAW)",
+    color: "#008455",
+    accent: "#001E13",
     description:
-      "Qode All Weather (QAW) is a multi-asset portfolio crafted to deliver consistent long-term performance without timing the markets. This robust framework ensures strong probability of outperforming large cap indices over longer horizons. It’s designed for investors seeking equity-like growth, but with greater stability and peace of mind, making it an ideal choice for long-term capital compounding without active monitoring or market timing.",
+      "Qode All Weather (QAW) is a multi-asset portfolio crafted to deliver consistent long-term performance without timing the markets. This robust framework ensures strong probability of outperforming large cap indices over longer horizons.",
     items: ["Large cap Alpha", "Highest Sharpe", "Smarter Asset Mix", "Downside Cushion"],
     videoNote: "Watch video from Fund Manager",
     videoUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ",
@@ -27,8 +27,10 @@ const SECTIONS: Section[] = [
   },
   {
     title: "Qode Tactical Fund (QTF)",
+    color: "#550e0e",
+    accent: "#360404",
     description:
-      "Qode Tactical Fund harnesses the power of momentum, systematically allocating to the strongest market trends while avoiding laggards. This allows the strategy to capture upside faster and deliver higher long-term returns compared to traditional approaches. And the objective is not just to capture upside, but to enter at points where downside is already cushioned.",
+      "Qode Tactical Fund harnesses the power of momentum, systematically allocating to the strongest market trends while avoiding laggards. This allows the strategy to capture upside faster and deliver higher long-term returns.",
     items: ["Momentum Driven", "Tactical Rebalance", "Regime Switch", "Hedge Overlay"],
     videoNote: "Watch video from Fund Manager",
     videoUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ",
@@ -36,6 +38,8 @@ const SECTIONS: Section[] = [
   },
   {
     title: "Qode Growth Fund (QGF)",
+    color: "#0b3452",
+    accent: "#051E31",
     description:
       "Qode Growth Fund (QGF) is a factor-based small-cap strategy designed to outperform over long periods. The strategy identifies fundamentally strong, high-growth businesses using a disciplined quantitative model.",
     items: ["Quantitative Strategy", "Small cap focused", "Multifactor Model", "Growth Investing"],
@@ -45,8 +49,10 @@ const SECTIONS: Section[] = [
   },
   {
     title: "Qode Future Horizons (QFH)",
+    color: "#A78C11",
+    accent: "#554602",
     description:
-      "Qode Future Horizons (QFH) targets high-growth, under-researched small and micro-cap companies with limited institutional coverage. The strategy seeks asymmetric payoffs, accepting higher volatility and drawdowns in pursuit of outsized long-term gains. Best suited for investors with high risk tolerance and a long investment horizon.",
+      "Qode Future Horizons (QFH) targets high-growth, under-researched small and micro-cap companies with limited institutional coverage. The strategy seeks asymmetric payoffs, accepting higher volatility and drawdowns.",
     items: ["Quantamental", "Multi-bagger", "Concentrated", "Uncharted"],
     videoNote: "Watch video from Fund Manager",
     videoUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ",
@@ -54,10 +60,20 @@ const SECTIONS: Section[] = [
   },
 ]
 
-function Pill({ children }: { children: React.ReactNode }) {
+function Pill({ children, color }: { children: React.ReactNode; color: string }) {
   return (
-    <div className="rounded-md border border-border bg-secondary px-4 py-6 text-center font-semibold text-primary">
-      {children}
+    <div 
+      className="group relative overflow-hidden rounded-xl border-2 bg-white/80 px-6 py-4 text-center font-medium text-gray-800 shadow-sm transition-all duration-300 hover:scale-105 hover:shadow-lg backdrop-blur-sm"
+      style={{ 
+        borderColor: color,
+        background: `linear-gradient(135deg, white 0%, ${color}08 100%)`
+      }}
+    >
+      <div 
+        className="absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-10"
+        style={{ backgroundColor: color }}
+      />
+      <span className="relative z-10">{children}</span>
     </div>
   )
 }
@@ -73,17 +89,17 @@ function VideoModal({
 }) {
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
-      <div className="relative w-full max-w-2xl rounded-lg bg-background shadow-lg">
-        {/* Close button */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+      <div className="relative w-full max-w-4xl mx-4 rounded-2xl bg-white shadow-2xl overflow-hidden">
         <button
           onClick={onClose}
-          className="absolute right-2 top-2 rounded-full bg-primary px-2 py-1 text-white"
+          className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-black/20 text-white backdrop-blur-sm transition-colors hover:bg-black/40"
           aria-label="Close video"
         >
-          ✕
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
         </button>
-        {/* Video iframe */}
         <div className="aspect-video w-full">
           <iframe
             width="100%"
@@ -92,7 +108,7 @@ function VideoModal({
             title="Fund manager video"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
             allowFullScreen
-            className="rounded-lg"
+            className="h-full w-full"
           />
         </div>
       </div>
@@ -107,59 +123,121 @@ function StrategySection({
   videoNote,
   videoUrl,
   previewUrl,
+  color,
+  accent,
   onVideoClick,
-}: Section & { onVideoClick: (url: string) => void }) {
+  index,
+}: Section & { onVideoClick: (url: string) => void; index: number }) {
+  const isEven = index % 2 === 0
+
   return (
-    <section className="mb-8">
-      {/* dark green title bar */}
-      <div className="mb-2 rounded-sm bg-primary px-4 py-2">
-        <h2 className="text-sm font-bold tracking-wide text-white">{title}</h2>
-      </div>
-
-      {/* description */}
-      {description && (
-        <p className="mb-4 text-sm leading-relaxed text-muted-foreground">{description}</p>
-      )}
-
-      {/* content: left grid of tiles + right video preview */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        <div className="md:col-span-2">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            {items.map((label, i) => (
-              <Pill key={`${title}-${i}`}>{label}</Pill>
-            ))}
-          </div>
+    <section className="mb-16 last:mb-0">
+      <div 
+        className="relative overflow-hidden rounded-3xl shadow-2xl"
+        style={{
+          background: `linear-gradient(to right, ${color} 0%, ${accent} 100%)`
+        }}
+      >
+        {/* Background Pattern */}
+        <div className="absolute inset-0 opacity-10">
+          <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <pattern id={`pattern-${index}`} x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+                <circle cx="20" cy="20" r="2" fill="white" opacity="0.3" />
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill={`url(#pattern-${index})`} />
+          </svg>
         </div>
 
-        <button
-          onClick={() => onVideoClick(videoUrl || "")}
-          className="group relative max-h-40 overflow-hidden rounded-md border border-border bg-card text-left"
-          aria-label={`Play ${title} video`}
-        >
-          {previewUrl ? (
-            <>
-              <img
-                src={previewUrl}
-                alt={`${title} preview`}
-                className="h-full w-full object-cover transition group-hover:scale-105"
+        <div className="relative z-10 p-8">
+          {/* Header */}
+          <div className="mb-8">
+            <div className="flex items-center gap-4 mb-4">
+              <div 
+                className="h-2 w-16 rounded-full"
+                style={{ backgroundColor: 'white' }}
               />
-              {/* Overlay */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 text-white opacity-0 transition group-hover:opacity-100">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-12 w-12 fill-current"
-                  viewBox="0 0 24 24"
-                  aria-hidden="true"
-                >
-                  <path d="M8 5v14l11-7z" />
-                </svg>
-                <span className="mt-2 text-sm">{videoNote}</span>
+              <h2 className="text-2xl font-bold text-white tracking-tight">{title}</h2>
+            </div>
+            {description && (
+              <p className="text-white/90 text-lg leading-relaxed max-w-4xl">
+                {description}
+              </p>
+            )}
+          </div>
+
+          {/* Content Grid */}
+          <div className={`grid gap-8 ${isEven ? 'lg:grid-cols-5' : 'lg:grid-cols-5'}`}>
+            <div className={`${isEven ? 'lg:col-span-3 lg:order-1' : 'lg:col-span-3 lg:order-2'}`}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {items.map((label, i) => (
+                  <Pill key={`${title}-${i}`} color={color}>
+                    {label}
+                  </Pill>
+                ))}
               </div>
-            </>
-          ) : (
-            <div className="p-4 text-sm text-card-foreground">{videoNote}</div>
-          )}
-        </button>
+            </div>
+
+            <div className={`${isEven ? 'lg:col-span-2 lg:order-2' : 'lg:col-span-2 lg:order-1'}`}>
+              <button
+                onClick={() => onVideoClick(videoUrl || "")}
+                className="group relative h-48 w-full overflow-hidden rounded-2xl border-4 border-white/20 bg-white/10 backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:border-white/40 hover:shadow-xl"
+                aria-label={`Play ${title} video`}
+              >
+                {previewUrl ? (
+                  <>
+                    <img
+                      src={previewUrl}
+                      alt={`${title} preview`}
+                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                    <div className="absolute inset-0 flex flex-col items-center justify-center text-white opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                      <div className="rounded-full bg-white/20 p-4 backdrop-blur-sm">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-8 w-8 fill-current"
+                          viewBox="0 0 24 24"
+                          aria-hidden="true"
+                        >
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
+                      <span className="mt-3 text-sm font-medium">{videoNote}</span>
+                    </div>
+                    {/* Always visible play icon */}
+                    <div className="absolute bottom-4 right-4 rounded-full bg-white/20 p-2 backdrop-blur-sm">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4 fill-current text-white"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                      >
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex h-full items-center justify-center">
+                    <div className="text-center">
+                      <div className="mb-4 rounded-full bg-white/20 p-4 backdrop-blur-sm">
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-8 w-8 fill-current text-white"
+                          viewBox="0 0 24 24"
+                        >
+                          <path d="M8 5v14l11-7z" />
+                        </svg>
+                      </div>
+                      <span className="text-sm font-medium text-white">{videoNote}</span>
+                    </div>
+                  </div>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
   )
@@ -175,17 +253,26 @@ export default function StrategySnapshotPage() {
   }
 
   return (
-    <main className="space-y-6">
-      <header className="mb-2">
-        <h1 className="text-pretty text-xl font-bold text-foreground">Strategy Snapshot</h1>
-        <p className="text-sm text-muted-foreground">
-          A quick glance at Qode’s investment strategies and their core pillars.
+    <main className="space-y-8">
+      <header className="text-center mb-12">
+        <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
+          Strategy Snapshot
+        </h1>
+        <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+          Discover Qode's investment strategies and their core pillars designed for different risk profiles and investment horizons.
         </p>
       </header>
 
-      {SECTIONS.map((s) => (
-        <StrategySection key={s.title} {...s} onVideoClick={openVideo} />
-      ))}
+      <div className="space-y-8 grid grid-cols-2 gap-4">
+        {SECTIONS.map((section, index) => (
+          <StrategySection 
+            key={section.title} 
+            {...section} 
+            index={index}
+            onVideoClick={openVideo} 
+          />
+        ))}
+      </div>
 
       <VideoModal
         open={modalOpen}

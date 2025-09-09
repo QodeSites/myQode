@@ -1,3 +1,4 @@
+"use client"
 import { FeedbackDialog } from "@/components/feedback-dialog"
 import { TestimonialDialog } from "@/components/testimonial-dialog"
 

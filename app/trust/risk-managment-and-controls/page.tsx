@@ -1,4 +1,5 @@
 import { PdfDialog } from "@/components/pdf-dialog";
+import { Button } from "@/components/ui/button";
 import Link from "next/link"
 
 const dialogByTitle: Record<string, { title: string; pdfSrc?: string; imageSrc?: string }> = {
@@ -87,7 +88,7 @@ export default function PoliciesPage() {
                           className="text-sm font-medium text-primary underline underline-offset-4"
                           aria-label={`Open ${p.title}`}
                         >
-                          [click here]
+                          <Button className="bg-primary">Click here</Button>
                         </button>
                       }
                     />
@@ -97,7 +98,7 @@ export default function PoliciesPage() {
                       className="text-sm font-medium text-primary underline underline-offset-4"
                       aria-label={`${p.title} policy link`}
                     >
-                      [click here]
+                      <Button className="bg-primary">Click here</Button>
                     </Link>
                   )}
                 </div>

@@ -1,3 +1,8 @@
+"use client"
+import { useLayoutEffect, useRef, useState } from "react"
+import { Plus, X } from "lucide-react"
+import { AnimatePresence, motion } from "framer-motion"
+
 type QA = { q: string; a: string }
 type Section = { title: string; items: QA[] }
 
@@ -159,41 +164,101 @@ const glossary: { term: string; def: string }[] = [
   },
 ]
 
+/** Collapsible with animated height (0 -> contentHeight) */
+function Collapse({
+  open,
+  children,
+}: {
+  open: boolean
+  children: React.ReactNode
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [h, setH] = useState(0)
+
+  useLayoutEffect(() => {
+    if (ref.current) setH(ref.current.scrollHeight)
+  }, [children, open])
+
+  return (
+    <AnimatePresence initial={false}>
+      {open && (
+        <motion.div
+          key="collapse"
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: h, opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.22, ease: "easeOut" }}
+          className="overflow-hidden"
+        >
+          <div ref={ref}>{children}</div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
 export default function FAQsGlossaryPage() {
+  // track open item per section
+  const [openIdx, setOpenIdx] = useState<Record<string, number | null>>({})
+
+  const toggle = (sec: string, i: number) =>
+    setOpenIdx((p) => ({ ...p, [sec]: p[sec] === i ? null : i }))
+
   return (
     <main className="p-4 md:p-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-balance">FAQs & Glossary</h1>
+        <h1 className="text-2xl font-semibold text-balance">FAQs &amp; Glossary</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Answers to common questions and definitions of terms used in our updates and reports.
         </p>
       </header>
 
-      <div className="space-y-6">
+      <div className="space-y-10">
         {sections.map((section) => (
-          <section key={section.title} className="rounded-md border bg-card">
-            <div className="p-4 border-b">
-              <h2 className="font-semibold">{section.title}</h2>
+          <section key={section.title}>
+            <div className="px-1 md:px-0 mb-3">
+              <h2 className="font-semibold text-xl">{section.title}</h2>
             </div>
-            <div className="divide-y">
-              {section.items.map((item, i) => (
-                <div key={i} className="p-4">
-                  <dt className="font-semibold">{item.q}</dt>
-                  <dd className="mt-1 text-sm text-muted-foreground">{item.a}</dd>
-                </div>
-              ))}
+
+            {/* No row-height forcing; neighbors won't stretch */}
+            <div className="grid gap-4 md:grid-cols-2">
+              {section.items.map((item, i) => {
+                const isOpen = openIdx[section.title] === i
+                return (
+                  <div key={i} className={`rounded-xl border bg-card ${isOpen && "border-[#008455]"}`}>
+                    <button
+                      type="button"
+                      aria-expanded={isOpen}
+                      onClick={() => toggle(section.title, i)}
+                      className="w-full p-4 flex items-start justify-between gap-4 text-left"
+                    >
+                      <span className={`font-medium text-md leading-snug ${isOpen && "text-[#008455]"}`}>{item.q}</span>
+                      <span className="shrink-0 rounded-full border size-6 grid place-items-center text-emerald-700 border-emerald-200">
+                        {isOpen ? <X className="size-4" /> : <Plus className="size-4" />}
+                      </span>
+                    </button>
+
+                    {/* Accordion answer inside the card with height animation */}
+                    <Collapse open={isOpen}>
+                      <div className="px-4 pb-4 -mt-1">
+                        <p className="text-sm text-muted-foreground">{item.a}</p>
+                      </div>
+                    </Collapse>
+                  </div>
+                )
+              })}
             </div>
           </section>
         ))}
 
-        <section className="rounded-md border bg-card">
-          <div className="p-4 border-b">
-            <h2 className="font-semibold">Glossary</h2>
+        <section>
+          <div className="px-1 md:px-0 mb-3">
+            <h2 className="font-semibold text-2xl">Glossary</h2>
           </div>
-          <div className="divide-y">
+          <div className="grid gap-4 md:grid-cols-2">
             {glossary.map((g) => (
-              <div key={g.term} className="p-4">
-                <dt className="font-semibold">{g.term}</dt>
+              <div key={g.term} className="rounded-xl border bg-card p-4">
+                <dt className="font-medium">{g.term}</dt>
                 <dd className="mt-1 text-sm text-muted-foreground">{g.def}</dd>
               </div>
             ))}
