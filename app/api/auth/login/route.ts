@@ -21,8 +21,8 @@ export async function POST(request: NextRequest) {
 
     // Query database for user with matching email
     const result = await query(
-      'SELECT clientid, clientcode FROM pms_clients_master WHERE email = $1',
-      [email]
+      'SELECT clientid, clientcode FROM pms_clients_master WHERE email = $1 and password= $2',
+      [email, password]
     )
 
     if (result.rows.length === 0) {
@@ -35,7 +35,10 @@ export async function POST(request: NextRequest) {
     // For demo purposes, any password works
     // In production, add password validation here:
     // const user = result.rows[0]
-    // const isValidPassword = await bcrypt.compare(password, user.password)
+    // let isValidPassword = false;
+    // if (user.password === password) {
+    //   isValidPassword = true;
+    // }
     // if (!isValidPassword) {
     //   return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
     // }
