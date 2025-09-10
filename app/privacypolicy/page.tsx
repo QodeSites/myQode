@@ -10,7 +10,7 @@ const PrivacyPolicy: React.FC = () => {
       <ClientProvider>
         <QodeHeader />
         <div className="flex min-h-lvh gap-2 py-6 mt-16 p-6">
-          <div className="w-64 shrink-0">
+          <div className="w-74 shrink-0">
             <QodeSidebar />
           </div>
 

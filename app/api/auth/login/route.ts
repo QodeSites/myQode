@@ -10,13 +10,6 @@ interface ClientData {
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password } = await request.json()
-      if(email === "test@gmail.com" && password === "test@123"){
-        return NextResponse.json({
-        success: true,
-        message: 'Login successful',
-      })
-    }
 
     if (!email || !password) {
       return NextResponse.json(
