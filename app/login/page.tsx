@@ -26,12 +26,14 @@ export default function LoginPage() {
       })
 
       const data = await response.json()
+      console.log(response,"=====================response")
 
       if (!response.ok) {
         throw new Error(data.error || 'Login failed')
       }
 
       // Redirect to dashboard on success
+      console.log(response,"=====================redirect")
       router.push('/dashboard')
       
     } catch (error) {

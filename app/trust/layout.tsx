@@ -13,19 +13,19 @@ export default async function Layout({ children }: { children: React.ReactNode }
 
   return (
     <div className="min-h-screen">
-      <ClientProvider>
-        <QodeHeader />
-        <div className="flex min-h-lvh justify-center content-center gap-2 py-6">
-          <QodeSidebar />
-
-          <main className="w-[80%] flex">
-            <div className="w-full h-fit mr-2 ml-2  rounded-lg bg-card p-6 card-shadow">{children}
+          <ClientProvider>
+            <QodeHeader />
+            <div className="flex min-h-lvh justify-center content-center gap-2 mt-16 p-6 overflow-y-auto">
+              <QodeSidebar />
+    
+              <main className="w-[80%] flex">
+                <div className="w-full h-fit mr-2 ml-2 rounded-lg bg-card p-6 card-shadow">{children}
+                </div>
+              </main>
             </div>
-          </main>
+            <QodeFooter />
+          </ClientProvider>
+    
         </div>
-        <QodeFooter />
-      </ClientProvider>
-
-    </div>
   )
 }

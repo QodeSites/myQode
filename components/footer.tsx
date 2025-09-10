@@ -4,7 +4,7 @@ import Link from "next/link";
 
 export default function QodeFooter() {
   return (
-    <footer className="fixed bottom-0 left-0 w-full flex flex-row px-20 py-4 border-t-2 z-10">
+    <footer className="fixed bottom-0 left-0 w-full flex flex-row px-20 py-4 border-t-2 z-10 bg-background">
       <div>
         <span>© 2025 Qode. All rights reserved.</span>
       </div>
