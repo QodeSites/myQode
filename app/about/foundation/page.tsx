@@ -78,7 +78,7 @@ function InfoCard({ title, children }: { title: string; children: React.ReactNod
     <div className="bg-card text-card-foreground rounded-2xl overflow-hidden shadow-sm border border-border">
       <PillHeader title={title} />
       <div className="p-5 sm:p-6">
-        <div className="text-sm sm:text-base leading-snug text-muted-foreground font-sans">{children}</div>
+        <div className="text-sm sm:text-base text-muted-foreground font-sans">{children}</div>
       </div>
     </div>
   );
