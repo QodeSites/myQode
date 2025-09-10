@@ -15,11 +15,11 @@ export default async function Layout({ children }: { children: React.ReactNode }
     <div className="min-h-screen">
           <ClientProvider>
             <QodeHeader />
-            <div className="flex min-h-lvh justify-center content-center gap-2 py-6">
+            <div className="flex min-h-lvh justify-center content-center gap-2 mt-16 p-6 overflow-y-auto">
               <QodeSidebar />
     
               <main className="w-[80%] flex">
-                <div className="w-full h-fit mr-2 ml-2  rounded-lg bg-card p-6 card-shadow">{children}
+                <div className="w-full h-fit mr-2 ml-2 rounded-lg bg-card p-6 card-shadow">{children}
                 </div>
               </main>
             </div>

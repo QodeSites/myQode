@@ -6,34 +6,46 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useClient } from "@/contexts/ClientContext";
 
+
+// Updated InfoCard Component
+function InfoCard({
+  title,
+  children,
+  action,
+  icon: Icon, // Add optional icon prop
+}: {
+  title: string;
+  children: React.ReactNode;
+  action?: React.ReactNode;
+  icon?: React.ComponentType<{ className?: string }>;
+}) {
+  return (
+    <section className="group rounded-lg border border-border bg-card p-6 shadow-sm transition-all hover:shadow-md">
+      <div className="flex items-center gap-3 mb-4">
+        {Icon && <Icon className="h-6 w-6 text-primary" aria-hidden="true" />}
+        <h3 className="text-lg font-bold text-foreground">{title}</h3>
+      </div>
+      <div className="space-y-3 text-sm text-muted-foreground">
+        {children}
+      </div>
+      {action && (
+        <div className="mt-4 flex justify-center">
+          <div className="transition-transform group-hover:scale-105">
+            {action}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+// SectionHeader (unchanged, included for completeness)
 function SectionHeader({ children }: { children: React.ReactNode }) {
   return (
     <div className="my-5 rounded-sm bg-primary px-4 py-2 text-center text-sm font-bold tracking-wide text-white">
       {children}
     </div>
-  )
-}
-
-function InfoCard({
-  title,
-  children,
-  action,
-}: {
-  title: string
-  children: React.ReactNode
-  action?: React.ReactNode
-}) {
-  return (
-    <section className="rounded-md border border-border bg-card p-4">
-      <h3 className="mb-2 text-center text-sm font-bold text-foreground whitespace-pre-line">
-        {title}
-      </h3>
-      <div className="text-sm leading-relaxed text-card-foreground space-y-2 text-center">
-        {children}
-      </div>
-      {action && <div className="mt-3 flex justify-center">{action}</div>}
-    </section>
-  )
+  );
 }
 
 async function sendEmail(emailData: {
@@ -319,7 +331,7 @@ function AddFundsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onClose} />
+      <div className="absolute inset-0 bg-background/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-2xl bg-card rounded-lg shadow-2xl overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h3 className="text-lg font-semibold text-foreground">Add Funds / Create SIP</h3>
@@ -332,7 +344,7 @@ function AddFundsModal({
           </button>
         </div>
         <div className="p-4">
-          <div className="text-center mb-[20px]">
+          <div className="text-center hidden mb-[20px]">
             <div className="flex items-center justify-center mb-[10px]">
               <IndianRupee className="sm:w-[40px] sm:h-[40px] text-primary mr-[5px]" />
               <h1 className="sm:text-[28px] text-primary font-heading text-[24px]">Invest With Qode</h1>
@@ -343,9 +355,9 @@ function AddFundsModal({
             </div>
           </div>
 
-          <div className="bg-white rounded-t-lg shadow p-[15px] border-b">
+          <div className="p-[15px]">
             <div className="flex justify-center">
-              <div className="flex bg-lightBeige rounded p-[3px]">
+              <div className="flex rounded p-[3px]">
                 <button
                   onClick={() => setActiveTab('oneTime')}
                   className={`px-[20px] py-[10px] text-[14px] font-semibold rounded transition-all font-body ${activeTab === 'oneTime'
@@ -364,11 +376,8 @@ function AddFundsModal({
                   onMouseLeave={() => setShowTooltip(false)}
                 >
                   <button
-                    onClick={() => SIP_ENABLED && setActiveTab('sip')}
-                    disabled={!SIP_ENABLED}
-                    className={`px-[20px] py-[10px] text-[14px] font-semibold rounded transition-all font-body ${!SIP_ENABLED
-                      ? 'text-darkGray bg-lightGray cursor-not-allowed opacity-60'
-                      : activeTab === 'sip'
+                    onClick={() => setActiveTab('sip')}
+                    className={`px-[20px] py-[10px] text-[14px] font-semibold rounded transition-all font-body ${activeTab === 'sip'
                         ? 'bg-primary text-white shadow'
                         : 'text-brown hover:bg-beige'
                       }`}
@@ -376,30 +385,16 @@ function AddFundsModal({
                     <div className="flex items-center">
                       <TrendingUp className="w-[18px] h-[18px] mr-[5px]" />
                       SIP Setup
-                      {!SIP_ENABLED && (
-                        <span className="ml-[8px] px-[8px] py-[2px] bg-beige text-brown text-[10px] rounded-full font-body">
-                          Coming Soon
-                        </span>
-                      )}
                     </div>
                   </button>
-                  {showTooltip && (
-                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 mt-[8px] bg-brown text-white text-[12px] font-body px-[12px] py-[6px] rounded-lg shadow-lg z-10 whitespace-nowrap">
-                      {SIP_ENABLED
-                        ? 'Setup recurring investments'
-                        : 'Coming soon'
-                      }
-                      <div className="absolute -top-[6px] left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-b-[6px] border-l-transparent border-r-transparent border-b-brown" />
-                    </div>
-                  )}
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="bg-white rounded-b-lg shadow p-[20px]">
+          <div className="text-primary rounded-b-lg">
             <form ref={formRef} className="space-y-[15px]">
-              <div className="p-[12px] rounded-lg shadow-sm border border-lightGray">
+              <div className="p-[12px] rounded-sm border border-lightGray">
                 <label className="block text-[16px] font-semibold text-text-secondary mb-[5px] font-body">Nuvama Code</label>
                 <select
                   name="nuvamaCode"
@@ -425,7 +420,7 @@ function AddFundsModal({
               </div>
 
               {accountDetails && (
-                <div className="p-[12px] bg-lightBeige rounded-lg shadow-sm border-2 border-beige">
+                <div className="p-[12px]  rounded-sm border-2 border-beige">
                   <div className="flex items-center mb-[10px]">
                     <CheckCircle className="w-[16px] h-[16px] text-primary mr-[5px]" />
                     <h3 className="text-[16px] font-semibold text-brown font-body">Verified Account Details</h3>
@@ -438,7 +433,7 @@ function AddFundsModal({
                 </div>
               )}
 
-              <div className="p-[12px] rounded-lg shadow-sm border border-lightGray">
+              <div className="p-[12px] rounded-sm border border-lightGray">
                 <label className="block text-[16px] font-semibold text-text-secondary mb-[5px] font-body">
                   {activeTab === 'sip' ? 'SIP Amount (₹)' : 'Payment Amount (₹)'}
                 </label>
@@ -458,7 +453,7 @@ function AddFundsModal({
 
               {activeTab === 'sip' && (
                 <>
-                  <div className="p-[12px] rounded-lg shadow-sm border border-lightGray">
+                  <div className="p-[12px] rounded-sm border border-lightGray">
                     <label className="block text-[16px] font-semibold text-text-secondary mb-[5px] font-body">Frequency</label>
                     <select
                       name="frequency"
@@ -475,7 +470,7 @@ function AddFundsModal({
                   </div>
 
                   <div className="grid grid-cols-2 gap-[15px]">
-                    <div className="p-[12px] rounded-lg shadow-sm border border-lightGray">
+                    <div className="p-[12px] rounded-sm border border-lightGray">
                       <label className="block text-[16px] font-semibold text-text-secondary mb-[5px] font-body">Start Date</label>
                       <input
                         type="date"
@@ -489,7 +484,7 @@ function AddFundsModal({
                       {errors.startDate && <p className="mt-[5px] text-[12px] text-brown font-body">{errors.startDate}</p>}
                     </div>
 
-                    <div className="p-[12px] rounded-lg shadow-sm border border-lightGray">
+                    <div className="p-[12px] rounded-sm border border-lightGray">
                       <label className="block text-[16px] font-semibold text-text-secondary mb-[5px] font-body">
                         {sipData.frequency === 'custom' ? 'Total Installments' : 'End Date (Optional)'}
                       </label>
@@ -519,7 +514,7 @@ function AddFundsModal({
                     </div>
                   </div>
 
-                  <div className="p-[12px] bg-lightBeige rounded-lg border border-beige">
+                  <div className="p-[12px] rounded-sm border border-beige">
                     <div className="flex items-center mb-[10px]">
                       <Calendar className="w-[16px] h-[16px] text-primary mr-[5px]" />
                       <h3 className="text-[16px] font-semibold text-brown font-heading">SIP Summary</h3>
@@ -545,7 +540,7 @@ function AddFundsModal({
                 <button
                   onClick={handlePayment}
                   disabled={loading || !formData.amount || !formData.nuvamaCode || Object.keys(errors).some(key => errors[key])}
-                  className={`p-[12px] text-[14px] font-semibold text-white bg-primary rounded-lg shadow font-body transition-all ${loading || !formData.amount || !formData.nuvamaCode || Object.keys(errors).some(key => errors[key])
+                  className={`p-[12px] text-[14px] font-semibold text-white bg-primary rounded-sm shadow font-body transition-all ${loading || !formData.amount || !formData.nuvamaCode || Object.keys(errors).some(key => errors[key])
                     ? 'bg-darkGray cursor-not-allowed opacity-50'
                     : 'hover:bg-brown'
                     }`}
@@ -562,7 +557,7 @@ function AddFundsModal({
               </div>
 
               {paymentStatus && (
-                <div className="p-[12px] bg-lightBeige rounded-lg border border-beige">
+                <div className="p-[12px]  rounded-sm border border-beige">
                   <div className="flex items-center">
                     <Info className="w-[16px] h-[16px] text-brown mr-[5px]" />
                     <p className="text-[14px] text-brown font-body">{paymentStatus}</p>
@@ -739,7 +734,7 @@ function SwitchReallocationModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onClose} />
+      <div className="absolute inset-0 bg-background/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-md max-h-[90vh] bg-card rounded-lg shadow-2xl overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h3 className="text-lg font-semibold text-foreground">Request Switch/Reallocation</h3>
@@ -755,7 +750,7 @@ function SwitchReallocationModal({
                 name="nuvama-code"
                 value={formData.nuvamaCode}
                 onChange={(e) => setFormData({ ...formData, nuvamaCode: e.target.value })}
-                className="w-full p-3 border border-border rounded-md bg-background text-foreground focus:ring-2 focus:ring-primary focus:border-primary"
+                className="w-full p-3 border border-border rounded-md text-foreground focus:ring-2 focus:ring-primary focus:border-primary"
                 required
               >
                 {clients.map((client) => (
@@ -782,7 +777,7 @@ function SwitchReallocationModal({
                 name="switch-to"
                 value={formData.switchTo}
                 onChange={(e) => setFormData({ ...formData, switchTo: e.target.value })}
-                className="w-full p-3 border border-border rounded-md bg-background text-foreground focus:ring-2 focus:ring-primary focus:border-primary"
+                className="w-full p-3 border border-border rounded-md text-foreground focus:ring-2 focus:ring-primary focus:border-primary"
                 required
               >
                 <option value="">Select Strategy</option>
@@ -799,7 +794,7 @@ function SwitchReallocationModal({
                 type="text"
                 value={formData.amount}
                 onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                className="w-full p-3 border border-border rounded-md bg-background text-foreground focus:ring-2 focus:ring-primary focus:border-primary"
+                className="w-full p-3 border border-border rounded-md text-foreground focus:ring-2 focus:ring-primary focus:border-primary"
                 placeholder="Enter amount (e.g. All, 30 lakhs, etc.)"
                 required
               />
@@ -811,7 +806,7 @@ function SwitchReallocationModal({
                 value={formData.reason}
                 onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
                 rows={3}
-                className="w-full p-3 border border-border rounded-md bg-background text-foreground resize-none focus:ring-2 focus:ring-primary focus:border-primary"
+                className="w-full p-3 border border-border rounded-md text-foreground resize-none focus:ring-2 focus:ring-primary focus:border-primary"
                 placeholder="Please provide reason for switching..."
                 required
               />
@@ -823,7 +818,7 @@ function SwitchReallocationModal({
                 value={formData.additionalNotes}
                 onChange={(e) => setFormData({ ...formData, additionalNotes: e.target.value })}
                 rows={2}
-                className="w-full p-3 border border-border rounded-md bg-background text-foreground resize-none focus:ring-2 focus:ring-primary focus:border-primary"
+                className="w-full p-3 border border-border rounded-md text-foreground resize-none focus:ring-2 focus:ring-primary focus:border-primary"
                 placeholder="Any additional notes..."
               />
             </div>
@@ -1018,7 +1013,7 @@ function WithdrawalModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black bg-opacity-50" onClick={onClose} />
+      <div className="absolute inset-0 bg-background/60 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-md max-h-[90vh] bg-card rounded-lg shadow-2xl overflow-y-auto">
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h3 className="text-lg font-semibold text-foreground">Submit Withdrawal Request</h3>
@@ -1034,7 +1029,7 @@ function WithdrawalModal({
                 name="nuvama-code"
                 value={formData.nuvamaCode}
                 onChange={(e) => setFormData({ ...formData, nuvamaCode: e.target.value })}
-                className="w-full p-3 border border-border rounded-md bg-background text-foreground focus:ring-2 focus:ring-primary focus:border-primary"
+                className="w-full p-3 border border-border rounded-md text-foreground focus:ring-2 focus:ring-primary focus:border-primary"
                 required
               >
                 {clients.map((client) => (
@@ -1052,7 +1047,7 @@ function WithdrawalModal({
                 type="text"
                 value={formData.amount}
                 onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
-                className="w-full p-3 border border-border rounded-md bg-background text-foreground focus:ring-2 focus:ring-primary focus:border-primary"
+                className="w-full p-3 border border-border rounded-md text-foreground focus:ring-2 focus:ring-primary focus:border-primary"
                 placeholder="Enter amount (e.g. All, 30 lakhs, etc.)"
                 required
               />
@@ -1064,7 +1059,7 @@ function WithdrawalModal({
                 value={formData.additionalNotes}
                 onChange={(e) => setFormData({ ...formData, additionalNotes: e.target.value })}
                 rows={3}
-                className="w-full p-3 border border-border rounded-md bg-background text-foreground resize-none focus:ring-2 focus:ring-primary focus:border-primary"
+                className="w-full p-3 border border-border rounded-md text-foreground resize-none focus:ring-2 focus:ring-primary focus:border-primary"
                 placeholder="Any additional notes..."
               />
             </div>
@@ -1110,6 +1105,7 @@ function WithdrawalModal({
   );
 }
 
+
 export default function InvestmentActionsPage() {
   const [isAddFundsModalOpen, setIsAddFundsModalOpen] = useState(false);
   const [isSwitchModalOpen, setIsSwitchModalOpen] = useState(false);
@@ -1118,10 +1114,10 @@ export default function InvestmentActionsPage() {
 
   if (loading) {
     return (
-      <main className="space-y-6">
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-300 rounded w-64 mb-2"></div>
-          <div className="h-4 bg-gray-300 rounded w-96"></div>
+      <main className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <Loader className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading your account details...</p>
         </div>
       </main>
     );
@@ -1129,104 +1125,165 @@ export default function InvestmentActionsPage() {
 
   if (clients.length === 0) {
     return (
-      <main className="space-y-6">
-        <header className="mb-2">
-          <h1 className="text-pretty text-xl font-bold text-foreground">
-            Investment Actions
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            No client accounts found. Please contact support.
+      <main className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-background">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-foreground mb-2">Investment Actions</h1>
+          <p className="text-sm text-muted-foreground max-w-md">
+            No client accounts found. Please contact{" "}
+            <a href="mailto:support@qodeinvest.com" className="text-primary hover:underline">
+              support@qodeinvest.com
+            </a>{" "}
+            to set up your account.
           </p>
-        </header>
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="space-y-6">
-      <header className="mb-2">
-        <h1 className="text-pretty text-xl font-bold text-foreground">
-          Investment Actions
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          The portal enables investors to seamlessly manage their portfolios, from allocating new capital to adjusting investment strategies and withdrawing funds. All key actions can be initiated in a secure, efficient, and compliant manner.
-          {selectedClientCode && (
-            <span className="ml-2 text-primary font-medium">
-              Current Account: {selectedClientCode}
-            </span>
-          )}
-        </p>
+    <main className="mx-auto max-w-7xl py-8 px-2">
+      {/* Header Section */}
+      <header className="mb-8">
+        <div className="flex flex-col items-center sm:flex-row sm:justify-between sm:items-end">
+          <div>
+            <h1 className="text-3xl font-bold text-foreground tracking-tight">
+              Manage Your Investments
+            </h1>
+            <p className="mt-2 text-base text-muted-foreground max-w-2xl">
+              Seamlessly manage your portfolio with Qode. Add funds, switch strategies, or withdraw capital securely and efficiently.
+              {selectedClientCode && (
+                <span className="ml-2 font-medium text-primary">
+                  Account: {selectedClientCode}
+                </span>
+              )}
+            </p>
+          </div>
+          <div className="mt-4 sm:mt-0">
+            <Button
+              onClick={() => setIsAddFundsModalOpen(true)}
+              className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
+              aria-label="Quick Add Funds"
+            >
+              Quick Add Funds
+            </Button>
+          </div>
+        </div>
       </header>
 
-      <SectionHeader>Add Funds / Create SIP</SectionHeader>
-      <InfoCard
-        title="Top-ups & SIPs"
-        action={
-          <Button
-            onClick={() => setIsAddFundsModalOpen(true)}
-            className="inline-flex items-center justify-center rounded-md border border-border bg-primary text-white px-4 py-2 text-sm font-medium"
-            aria-label="Add Funds or Create SIP"
-          >
-            Add Funds / Create SIP
-          </Button>
-        }
-      >
-        <p>Add to your investment anytime with a top-up.</p>
-        <p>
-          Set up a <span className="font-semibold">Systematic Investment Plan (SIP)</span> for
-          disciplined, periodic investing.
-        </p>
-        <p>
-          <span className="font-semibold">Timeline:</span> Executed once funds reflect
-          in the PMS bank account (T+1).
-        </p>
-      </InfoCard>
+      {/* Actions Grid */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        {/* Add Funds / SIP Card */}
+        <InfoCard
+          title="Add Funds or SIP"
+          icon={CreditCard}
+          action={
+            <Button
+              onClick={() => setIsAddFundsModalOpen(true)}
+              className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
+              aria-label="Add Funds or Create SIP"
+            >
+              Add Funds / SIP
+            </Button>
+          }
+        >
+          <div className="flex items-start gap-2">
+            <span className="mt-1 text-primary" aria-hidden="true">
+              •
+            </span>
+            <p>Top up your investment anytime with a one-time payment.</p>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="mt-1 text-primary" aria-hidden="true">
+              •
+            </span>
+            <p>
+              Set up a <span className="font-semibold">Systematic Investment Plan (SIP)</span> for disciplined, periodic investing.
+            </p>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="mt-1 text-primary" aria-hidden="true">
+              •
+            </span>
+            <p>
+              <span className="font-semibold">Timeline:</span> Executed T+1 after funds reflect in the PMS bank account.
+            </p>
+          </div>
+        </InfoCard>
 
-      <SectionHeader>Switch Strategy / Reallocation</SectionHeader>
-      <InfoCard
-        title="Strategy Flexibility"
-        action={
-          <Button
-            onClick={() => setIsSwitchModalOpen(true)}
-            className="inline-flex items-center justify-center rounded-md border border-border bg-primary text-white px-4 py-2 text-sm font-medium"
-            aria-label="Request Switch or Reallocation"
-          >
-            Request Switch/Reallocation
-          </Button>
-        }
-      >
-        <p>
-          Move investments between Qode strategies to better align with your
-          goals.
-        </p>
-        <p>Changes typically executed during the next rebalancing window.</p>
-        <p>
-          <span className="font-semibold">Timeline:</span> As per rebalancing
-          schedule.
-        </p>
-      </InfoCard>
+        {/* Switch Strategy Card */}
+        <InfoCard
+          title="Switch Strategy"
+          icon={TrendingUp}
+          action={
+            <Button
+              onClick={() => setIsSwitchModalOpen(true)}
+              className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
+              aria-label="Request Switch or Reallocation"
+            >
+              Switch/Reallocate
+            </Button>
+          }
+        >
+          <div className="flex items-start gap-2">
+            <span className="mt-1 text-primary" aria-hidden="true">
+              •
+            </span>
+            <p>Move investments between Qode strategies to align with your goals.</p>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="mt-1 text-primary" aria-hidden="true">
+              •
+            </span>
+            <p>Adjust your portfolio to adapt to changing market conditions.</p>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="mt-1 text-primary" aria-hidden="true">
+              •
+            </span>
+            <p>
+              <span className="font-semibold">Timeline:</span> Processed during the next rebalancing window.
+            </p>
+          </div>
+        </InfoCard>
 
-      <SectionHeader>Withdrawal / Redemption</SectionHeader>
-      <InfoCard
-        title="Access Your Capital"
-        action={
-          <Button
-            onClick={() => setIsWithdrawalModalOpen(true)}
-            className="inline-flex items-center justify-center rounded-md border border-border bg-primary text-white px-4 py-2 text-sm font-medium"
-            aria-label="Submit Withdrawal Request"
-          >
-            Submit Withdrawal Request
-          </Button>
-        }
-      >
-        <p>Submit a withdrawal request at your convenience.</p>
-        <p>Proceeds are credited directly to your registered bank account.</p>
-        <p>
-          <span className="font-semibold">Timeline:</span> Standard T+10 days as
-          per PMS guidelines.
-        </p>
-      </InfoCard>
+        {/* Withdrawal Card */}
+        <InfoCard
+          title="Withdraw Funds"
+          icon={Calendar}
+          action={
+            <Button
+              onClick={() => setIsWithdrawalModalOpen(true)}
+              className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
+              aria-label="Submit Withdrawal Request"
+            >
+              Withdraw Funds
+            </Button>
+          }
+        >
+          <div className="flex items-start gap-2">
+            <span className="mt-1 text-primary" aria-hidden="true">
+              •
+            </span>
+            <p>Request withdrawals at your convenience.</p>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="mt-1 text-primary" aria-hidden="true">
+              •
+            </span>
+            <p>Proceeds credited directly to your registered bank account.</p>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="mt-1 text-primary" aria-hidden="true">
+              •
+            </span>
+            <p>
+              <span className="font-semibold">Timeline:</span> Standard T+10 days per PMS guidelines.
+            </p>
+          </div>
+        </InfoCard>
+      </div>
 
+      {/* Modals */}
       <AddFundsModal
         isOpen={isAddFundsModalOpen}
         onClose={() => setIsAddFundsModalOpen(false)}
@@ -1234,7 +1291,6 @@ export default function InvestmentActionsPage() {
         selectedClientId={selectedClientId}
         clients={clients}
       />
-
       <SwitchReallocationModal
         isOpen={isSwitchModalOpen}
         onClose={() => setIsSwitchModalOpen(false)}
@@ -1242,7 +1298,6 @@ export default function InvestmentActionsPage() {
         selectedClientId={selectedClientId}
         clients={clients}
       />
-
       <WithdrawalModal
         isOpen={isWithdrawalModalOpen}
         onClose={() => setIsWithdrawalModalOpen(false)}

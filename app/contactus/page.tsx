@@ -92,7 +92,6 @@ export default async function Page() {
                                         width="100%"
                                         height="100%"
                                         style={{ border: 0, minHeight: "300px" }}
-                                        allowFullScreen=""
                                         loading="lazy"
                                         title="Qode Location"
                                     ></iframe>
