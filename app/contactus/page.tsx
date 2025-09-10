@@ -11,10 +11,13 @@ export default async function Page() {
         <div className="min-h-screen">
             <ClientProvider>
                 <QodeHeader />
-                <div className="flex min-h-lvh gap-2 py-6">
-                    <QodeSidebar />
+                <div className="flex min-h-lvh gap-2 py-6 mt-16 p-6">
+                    <div className="w-64 shrink-0">
+                        <QodeSidebar />
+                    </div>
 
-                    <main className="w-[80%] flex">
+                    {/* Main content grows to fill remaining space */}
+                    <main className="flex-1 overflow-y-auto">
                         <div className="w-full h-fit rounded-lg bg-card px-10 py-20 card-shadow flex flex-col content-center text-center gap-3">
                             <div className="flex flex-col md:flex-row gap-8">
                                 <div className="md:w-1/2">
@@ -31,7 +34,7 @@ export default async function Page() {
                                                 <div>India</div>
                                             </div>
 
-                                        
+
 
                                             {/* Investor Relations */}
                                             <div className="mb-4">

@@ -13,19 +13,29 @@ export default async function Layout({ children }: { children: React.ReactNode }
 
   return (
     <div className="min-h-screen">
-          <ClientProvider>
-            <QodeHeader />
-            <div className="flex min-h-lvh justify-center content-center gap-2 mt-16 p-6 overflow-y-auto">
+      <ClientProvider>
+        <QodeHeader />
+
+        {/* Content area under the header */}
+        <div className="mt-16 p-6">
+          {/* Sidebar + Main side-by-side */}
+          <div className="flex min-h-[calc(100vh-8rem)] gap-4 items-start">
+            {/* Ensure sidebar doesn't shrink and has a fixed width, even if QodeSidebar itself has styles */}
+            <div className="w-64 shrink-0">
               <QodeSidebar />
-    
-              <main className="w-[80%] flex">
-                <div className="w-full h-fit mr-2 ml-2 rounded-lg bg-card p-6 card-shadow">{children}
-                </div>
-              </main>
             </div>
-            <QodeFooter />
-          </ClientProvider>
-    
+
+            {/* Main content grows to fill remaining space */}
+            <main className="flex-1 overflow-y-auto">
+              <div className="w-full h-fit rounded-lg bg-card p-6 card-shadow">
+                {children}
+              </div>
+            </main>
+          </div>
         </div>
+
+        <QodeFooter />
+      </ClientProvider>
+    </div>
   )
 }

@@ -9,9 +9,13 @@ const TermsnConditions: React.FC = () => {
     <div className="min-h-screen">
       <ClientProvider>
         <QodeHeader />
-        <div className="flex min-h-lvh gap-2 py-6">
-          <QodeSidebar />
-          <main className="w-[80%] flex">
+        <div className="flex min-h-lvh gap-2 py-6 mt-16 p-6 overflow-y-auto">
+          <div className="w-64 shrink-0">
+            <QodeSidebar />
+          </div>
+
+          {/* Main content grows to fill remaining space */}
+          <main className="flex-1 overflow-y-auto">
             <div className="w-full h-fit rounded-lg bg-card px-10 py-20 card-shadow flex flex-col content-center text-center">
               <div>
                 <title>Terms & Conditions - Qode</title>
