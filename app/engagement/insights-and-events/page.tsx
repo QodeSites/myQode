@@ -319,7 +319,7 @@ export default function InsightsArchivePage() {
   };
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-4">
+    <main className="mx-auto w-full">
       {/* Market Notes */}
       <SectionBar title="Market Notes" />
       <div className="rounded-sm border border-border bg-secondary p-4 leading-relaxed text-foreground">

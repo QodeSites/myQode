@@ -63,17 +63,13 @@ const SECTIONS: Section[] = [
 function Pill({ children, color }: { children: React.ReactNode; color: string }) {
   return (
     <div 
-      className="group relative overflow-hidden rounded-xl border-2 bg-white/80 px-6 py-4 text-center font-medium text-gray-800 shadow-sm transition-all duration-300 hover:scale-105 hover:shadow-lg backdrop-blur-sm"
+      className="flex justify-center align-center group relative overflow-hidden rounded-xl border-2 bg-white/80 px-6 py-4 text-center font-medium text-gray-800 shadow-sm transition-all duration-300 hover:scale-105 hover:shadow-lg backdrop-blur-sm"
       style={{ 
         borderColor: color,
         background: `linear-gradient(135deg, white 0%, ${color}08 100%)`
       }}
     >
-      <div 
-        className="absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-10"
-        style={{ backgroundColor: color }}
-      />
-      <span className="relative z-10">{children}</span>
+      <span className="flex text-sm justify-center items-center relative z-10">{children}</span>
     </div>
   )
 }
@@ -131,15 +127,15 @@ function StrategySection({
   const isEven = index % 2 === 0
 
   return (
-    <section className="mb-16 last:mb-0">
+    <section className="h-full">
       <div 
-        className="relative overflow-hidden rounded-3xl shadow-2xl"
+        className="relative h-full overflow-hidden rounded-3xl shadow-2xl"
         style={{
           background: `linear-gradient(to right, ${color} 0%, ${accent} 100%)`
         }}
       >
         {/* Background Pattern */}
-        <div className="absolute inset-0 opacity-10">
+        <div className="absolute h-full inset-0 opacity-10">
           <svg width="100%" height="100%" xmlns="http://www.w3.org/2000/svg">
             <defs>
               <pattern id={`pattern-${index}`} x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
@@ -150,7 +146,7 @@ function StrategySection({
           </svg>
         </div>
 
-        <div className="relative z-10 p-8">
+        <div className="relative h-full z-10 p-8">
           {/* Header */}
           <div className="mb-8">
             <div className="flex items-center gap-4 mb-4">
@@ -161,7 +157,7 @@ function StrategySection({
               <h2 className="text-2xl font-bold text-white tracking-tight">{title}</h2>
             </div>
             {description && (
-              <p className="text-white/90 text-lg leading-relaxed max-w-4xl">
+              <p className="text-white/90 text-md leading-relaxed max-w-4xl">
                 {description}
               </p>
             )}
@@ -255,7 +251,7 @@ export default function StrategySnapshotPage() {
   return (
     <main className="space-y-8">
       <header className="text-center mb-12">
-        <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent">
+        <h1 className="text-4xl font-bold mb-5">
           Strategy Snapshot
         </h1>
         <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">

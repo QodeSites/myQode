@@ -14,11 +14,11 @@ export default async function EngagementLayout({ children }: { children: React.R
     <div className="min-h-screen">
           <ClientProvider>
             <QodeHeader />
-            <div className="flex gap-0 py-6">
+            <div className="flex justify-center content-center gap-2 py-6">
               <QodeSidebar />
     
-              <main className="w-full flex justify-center align-center ">
-                <div className="w-[80%] rounded-lg bg-card p-6 card-shadow">{children}
+              <main className="w-[80%] flex">
+                <div className="w-full mr-2 ml-2  rounded-lg bg-card p-6 card-shadow">{children}
                 </div>
               </main>
             </div>

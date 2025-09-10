@@ -66,7 +66,7 @@ export default function QodeSidebar() {
   }, [pathname])
 
   return (
-    <aside className="w-[20%] shrink-0 border-r bg-sidebar p-4 h-full rounded-2xl ml-2 opacity-80">
+    <aside className="w-[20%] lg:w-[15%] shrink-0 border-r bg-sidebar p-4 h-full rounded-2xl ml-2 opacity-80">
       <nav className="flex flex-col gap-1">
         <NavLink href="/dashboard" icon={<Home className="h-4 w-4" />}>
           Home

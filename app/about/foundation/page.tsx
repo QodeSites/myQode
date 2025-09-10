@@ -104,7 +104,7 @@ export default function Page() {
     <main className="min-h-screen bg-background text-foreground">
       <PageHeader />
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-10 space-y-12">
+      <div className="mx-auto px-4 sm:px-6 py-10 space-y-12">
         <FundManagerDisplay
           name="Rishabh Nahar"
           role="Fund Manager"

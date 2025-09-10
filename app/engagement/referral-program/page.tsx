@@ -281,7 +281,7 @@ export default function ReferAnInvestorPage() {
   }
 
   return (
-    <main className="w-full max-w-4xl space-y-6 p-4 md:p-6">
+    <main className="w-full space-y-6 p-4 md:p-6">
       <header className="space-y-2">
         <h1 className="text-pretty text-xl font-bold text-foreground">
           Refer an Investor
