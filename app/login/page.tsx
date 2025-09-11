@@ -45,7 +45,7 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center p-6">
+    <main className="min-h-screen flex items-center bg-background justify-center p-6">
       <div className="w-full max-w-md rounded-lg border bg-card p-6 card-shadow">
         <div className="mb-6">
           <h1 className="font-serif text-3xl text-primary font-bold text-center tracking-tight">myQode</h1>

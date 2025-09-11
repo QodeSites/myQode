@@ -64,9 +64,9 @@ export default function QodeHeader() {
       <div className="w-full border-b bg-secondary px-6 py-4">
         <div className="mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="font-serif text-3xl font-bold text-primary leading-none">
+            <h1 className="font-serif text-3xl font-bold text-primary leading-none">
               <sub className="text-sm">my</sub>Qode
-            </span>
+            </h1>
           </div>
           <div className="flex items-center gap-4">
             <DropdownMenu>

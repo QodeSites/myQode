@@ -234,7 +234,7 @@ export default function Page() {
                   <Button
                     key={c.clientid}
                     size="sm"
-                    variant={selectedClientCode === c.clientcode ? "default" : "outline"}
+                    variant={selectedClientCode === c.clientcode ? "default" : "outline"}npm r
                     className={`${selectedClientCode === c.clientcode ? "bg-primary" : "bg-secondary text-primary border-1"} other-class`}
                     onClick={() => setSelectedClient(c.clientcode)}
                   >

@@ -1,29 +1,26 @@
-/* replace tokens with Qode palette + map fonts to Lato/Playfair */
+/* Qode Tailwind theme: fonts + tokens wired to next/font variables */
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Dark variant helper */
 @custom-variant dark (&:is(.dark *));
 
-/* Qode brand tokens */
+/* ---------------------------
+   Brand Tokens (LIGHT)
+----------------------------*/
 :root {
-  /* Palette (5 colors total):
-     - Primary (logo-green): #02422B
-     - Background: #EFECD3
-     - Foreground: #002017
-     - Accent/Gold (primary-foreground): #DABD38
-     - Muted/Secondary: #37584F
-  */
+  /* Palette */
   --background: #efecd3;
   --foreground: #002017;
 
-  --card: #F7F5E9;
+  --card: #f7f5e9;
   --card-foreground: #37584f;
 
-  --popover: #F7F5E9;
+  --popover: #f7f5e9;
   --popover-foreground: #002017;
 
-  --primary: #02422b; /* logo-green */
-  --primary-foreground: #dabd38; /* gold accent */
+  --primary: #02422b;                /* logo-green */
+  --primary-foreground: #dabd38;     /* gold accent */
 
   --secondary: #efecd3;
   --secondary-foreground: #02422b;
@@ -43,7 +40,7 @@
 
   --radius: 0.75rem;
 
-  /* Sidebar helpers (optional) */
+  /* Sidebar helpers */
   --sidebar: #02422b;
   --sidebar-foreground: #002017;
   --sidebar-primary: #f7f4e4;
@@ -54,19 +51,21 @@
   --sidebar-ring: #02422b;
 }
 
-/* Minimal dark support keeping brand intent */
+/* ---------------------------
+   Brand Tokens (DARK)
+----------------------------*/
 .dark {
   --background: #0e1512;
   --foreground: #f3f5f4;
 
-  --card: #F7F5E9;
+  --card: #1a201d;                   /* better contrast on dark */
   --card-foreground: #f3f5f4;
 
   --popover: #0e1512;
   --popover-foreground: #f3f5f4;
 
   --primary: #02422b;
-  --primary-foreground: #02422b;
+  --primary-foreground: #dabd38;     /* keep gold accent for contrast */
 
   --secondary: #1a201d;
   --secondary-foreground: #f3f5f4;
@@ -94,12 +93,16 @@
   --sidebar-ring: #dabd38;
 }
 
+/* ---------------------------
+   Tailwind Theme Map
+----------------------------*/
 @theme inline {
-  /* map Tailwind font aliases */
+  /* Map Tailwind font aliases to next/font vars (set in <html> class) */
   --font-sans: var(--font-lato);
   --font-mono: var(--font-lato);
   --font-serif: var(--font-playfair);
 
+  /* Color tokens */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -119,11 +122,14 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+
+  /* Radius scale */
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
 
+  /* Sidebar colors */
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -134,27 +140,60 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+/* ---------------------------
+   Base Layer
+----------------------------*/
 @layer base {
+  /* Keep borders/ring tokens globally; avoid heavy outlines on everything */
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
   }
 
-  @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Lato:wght@300;400;700&display=swap');
+  /* IMPORTANT: fonts come from next/font.
+     RootLayout must include:
+     <html className={`${lato.variable} ${playfair.variable}`}> */
+  /* Remove Google Fonts @import to prevent duplicate loads */
 
   body {
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
-    font-family: 'Lato', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-lato), -apple-system, BlinkMacSystemFont, "Segoe UI",
+                 Roboto, "Helvetica Neue", Arial, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
   }
 
-  h1, h2, h3, h4, h5, h6 {
-    font-family: 'Playfair Display', serif;
+  /* Headings & sub-headings in Playfair */
+  h1, h2, h3, h4, h5, h6,
+  .heading, .subheading, .card-title, .section-title {
+    font-family: var(--font-playfair), ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: -0.01em;
   }
+
+  /* Sensible default sizes for hierarchy (tweak as needed) */
+  h1, .heading-1 { font-size: clamp(2rem, 1.6rem + 1.2vw, 3rem); }
+  h2, .heading-2 { font-size: clamp(1.5rem, 1.2rem + 0.9vw, 2.25rem); }
+  h3, .heading-3 { font-size: clamp(1.25rem, 1.05rem + 0.6vw, 1.75rem); }
+  .subheading   { font-weight: 500; opacity: 0.95; }
 }
 
-/* Utility: soft card shadow */
+/* ---------------------------
+   Utilities
+----------------------------*/
+
+/* Soft card shadow */
 .card-shadow {
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* Optional: tighter focus style using ring token */
+.focus-ring {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: var(--radius);
 }

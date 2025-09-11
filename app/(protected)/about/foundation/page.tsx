@@ -101,7 +101,7 @@ function MissionVision() {
 
 export default function Page() {
   return (
-    <main className="min-h-screen bg-background text-foreground">
+    <main className="min-h-screen text-foreground">
       <PageHeader />
 
       <div className="mx-auto px-4 sm:px-6 py-10 space-y-12">
