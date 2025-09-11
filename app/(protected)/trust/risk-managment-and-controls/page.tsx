@@ -73,7 +73,7 @@ export default function PoliciesPage() {
               <li key={p.title} className="p-4">
                 <div className="flex flex-col items-start justify-between gap-3 md:flex-row md:items-center">
                   <div className="max-w-3xl">
-                    <h3 className="font-semibold">{p.title}</h3>
+                    <h3 className="text-pretty text-xl font-bold text-foreground flex items-center gap-2">{p.title}</h3>
                     <p className="mt-1 text-sm text-muted-foreground">{p.description}</p>
                   </div>
 

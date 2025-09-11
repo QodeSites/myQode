@@ -7,12 +7,11 @@ import { useToast } from "@/hooks/use-toast";
 import { useClient } from "@/contexts/ClientContext";
 
 
-// Updated InfoCard Component
 function InfoCard({
   title,
   children,
   action,
-  icon: Icon, // Add optional icon prop
+  icon: Icon,
 }: {
   title: string;
   children: React.ReactNode;
@@ -20,12 +19,12 @@ function InfoCard({
   icon?: React.ComponentType<{ className?: string }>;
 }) {
   return (
-    <section className="group rounded-lg border border-border bg-card p-6 shadow-sm transition-all hover:shadow-md">
+    <section className="group rounded-lg border border-border bg-card p-6 shadow-sm transition-all hover:shadow-md flex flex-col min-h-[200px]">
       <div className="flex items-center gap-3 mb-4">
         {Icon && <Icon className="h-6 w-6 text-primary" aria-hidden="true" />}
         <h3 className="text-lg font-bold text-foreground">{title}</h3>
       </div>
-      <div className="space-y-3 text-sm text-muted-foreground">
+      <div className="space-y-3 text-sm text-muted-foreground flex-grow">
         {children}
       </div>
       {action && (
@@ -1143,15 +1142,15 @@ export default function InvestmentActionsPage() {
   }
 
   return (
-    <main className="mx-auto max-w-7xl py-8 px-2">
+    <main className="mx-auto py-8 px-2">
       {/* Header Section */}
       <header className="mb-8">
         <div className="flex flex-col items-center sm:flex-row sm:justify-between sm:items-end">
           <div>
-            <h1 className="text-3xl font-bold text-foreground tracking-tight">
+            <h1 className="text-pretty text-xl font-bold text-foreground flex items-center gap-2">
               Manage Your Investments
             </h1>
-            <p className="mt-2 text-base text-muted-foreground max-w-2xl">
+            <p className="text-sm text-muted-foreground">
               Seamlessly manage your portfolio with Qode. Add funds, switch strategies, or withdraw capital securely and efficiently.
               {selectedClientCode && (
                 <span className="ml-2 font-medium text-primary">
@@ -1159,15 +1158,6 @@ export default function InvestmentActionsPage() {
                 </span>
               )}
             </p>
-          </div>
-          <div className="mt-4 sm:mt-0">
-            <Button
-              onClick={() => setIsAddFundsModalOpen(true)}
-              className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
-              aria-label="Quick Add Funds"
-            >
-              Quick Add Funds
-            </Button>
           </div>
         </div>
       </header>

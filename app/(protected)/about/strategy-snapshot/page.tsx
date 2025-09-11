@@ -69,7 +69,7 @@ function Pill({ children, color }: { children: React.ReactNode; color: string })
         background: `linear-gradient(135deg, white 0%, ${color}08 100%)`
       }}
     >
-      <span className="flex text-sm justify-center items-center relative z-10">{children}</span>
+      <span className="flex text-sm justify-center items-center relative z-8">{children}</span>
     </div>
   )
 }
@@ -85,11 +85,11 @@ function VideoModal({
 }) {
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+    <div className="fixed inset-0 z-5 flex items-center justify-center bg-black/70 backdrop-blur-sm">
       <div className="relative w-full max-w-4xl mx-4 rounded-2xl bg-white shadow-2xl overflow-hidden">
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-black/20 text-white backdrop-blur-sm transition-colors hover:bg-black/40"
+          className="absolute right-4 top-4 z-8 flex h-10 w-10 items-center justify-center rounded-full bg-black/20 text-white backdrop-blur-sm transition-colors hover:bg-black/40"
           aria-label="Close video"
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -146,7 +146,7 @@ function StrategySection({
           </svg>
         </div>
 
-        <div className="relative h-full z-10 p-8">
+        <div className="relative h-full z-8 p-8">
           {/* Header */}
           <div className="mb-8">
             <div className="flex items-center gap-4 mb-4">
@@ -250,16 +250,16 @@ export default function StrategySnapshotPage() {
 
   return (
     <main className="space-y-8">
-      <header className="text-center mb-12">
-        <h1 className="text-4xl font-bold mb-5">
+      <header className="mb-6">
+        <h1 className="text-pretty text-xl font-bold text-foreground flex items-center gap-2">
           Strategy Snapshot
         </h1>
-        <p className="text-lg text-muted-foreground max-w-2xl mx-auto leading-relaxed">
+        <p className="text-sm text-muted-foreground">
           Discover Qode's investment strategies and their core pillars designed for different risk profiles and investment horizons.
         </p>
       </header>
 
-      <div className="space-y-8 grid grid-cols-2 gap-4">
+      <div className="space-y-8 grid grid-cols-1 lg:grid-cols-2 gap-4">
         {SECTIONS.map((section, index) => (
           <StrategySection 
             key={section.title} 

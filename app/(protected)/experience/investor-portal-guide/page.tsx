@@ -54,7 +54,7 @@ export default function ReportingPortalPage() {
   return (
     <main className="space-y-6">
       <header className="mb-2">
-        <h1 className="text-pretty text-xl font-bold text-foreground">Reporting Portal</h1>
+        <h1 className="text-pretty text-xl font-bold text-foreground flex items-center gap-2">Reporting Portal</h1>
         <p className="text-sm text-muted-foreground">
           The Reporting Portal provides secure, round-the-clock access to all portfolio information in a single, organized platform. Designed with institutional standards of accuracy, compliance, and security, it enables investors to monitor, analyse, and reconcile their holdings with confidence
         </p>

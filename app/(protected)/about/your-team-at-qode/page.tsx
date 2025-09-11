@@ -38,7 +38,6 @@ function Modal({ isOpen, onClose, title, children }: {
 function Banner() {
   return (
     <div className="mb-6 rounded-sm bg-primary px-4 py-2 text-center text-sm font-semibold text-white flex items-center justify-center gap-2">
-      <Users className="h-4 w-4" />
       We believe investing is a partnership. Here are the people and channels dedicated to supporting you.
     </div>
   )
@@ -363,7 +362,6 @@ const handleDiscussionSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
       <main className="space-y-6">
         <header className="mb-2">
           <h1 className="text-pretty text-xl font-bold text-foreground flex items-center gap-2">
-            <Users className="h-6 w-6 text-primary" />
             Your Team at Qode
           </h1>
           <p className="text-sm text-muted-foreground">
@@ -378,7 +376,6 @@ const handleDiscussionSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     <main className="space-y-6">
       <header className="mb-2">
         <h1 className="text-pretty text-xl font-bold text-foreground flex items-center gap-2">
-          <Users className="h-6 w-6 text-primary" />
           Your Team at Qode
         </h1>
         <p className="text-sm text-muted-foreground">

@@ -207,8 +207,8 @@ export default function FAQsGlossaryPage() {
   return (
     <main className="p-4 md:p-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-balance">FAQs &amp; Glossary</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <h1 className="text-pretty text-xl font-bold text-foreground flex items-center gap-2">FAQs &amp; Glossary</h1>
+        <p className="text-sm text-muted-foreground">
           Answers to common questions and definitions of terms used in our updates and reports.
         </p>
       </header>
@@ -216,8 +216,8 @@ export default function FAQsGlossaryPage() {
       <div className="space-y-10">
         {sections.map((section) => (
           <section key={section.title}>
-            <div className="px-1 md:px-0 mb-3">
-              <h2 className="font-semibold text-xl">{section.title}</h2>
+            <div className="px-1 md:px-0 mb-2">
+              <h2 className="text-pretty text-xl font-bold text-foreground flex items-center gap-2">{section.title}</h2>
             </div>
 
             {/* No row-height forcing; neighbors won't stretch */}

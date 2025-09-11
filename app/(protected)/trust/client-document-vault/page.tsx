@@ -149,10 +149,10 @@ export default function AccountDocumentsPage() {
   return (
     <main className="p-4 md:p-6">
       <header className="mb-6">
-        <h1 className="text-2xl font-semibold text-balance">
+        <h1 className="text-pretty text-xl font-bold text-foreground flex items-center gap-2">
           Account Documents
         </h1>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="text-sm text-muted-foreground">
           Access important documents related to your Qode PMS account.
         </p>
       </header>
@@ -206,7 +206,7 @@ export default function AccountDocumentsPage() {
                           ) : (
                             <ChevronRight className="h-4 w-4" />
                           )}
-                          <h3 className="font-semibold">{section.title}</h3>
+                          <h3 className="text-pretty text-xl font-bold text-foreground flex items-center gap-2">{section.title}</h3>
                           {section.files.length > 0 && (
                             <span className="text-xs bg-muted px-2 py-1 rounded-full">
                               {section.files.length}{" "}
