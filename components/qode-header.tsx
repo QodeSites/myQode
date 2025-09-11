@@ -80,7 +80,7 @@ export default function QodeHeader({ setSidebarOpen }: HeaderProps) {
                 </span>
                 <ChevronDown className="size-4 text-muted-foreground shrink-0" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-56">
+              <DropdownMenuContent align="end" className="min-w-56 z-20000">
                 <DropdownMenuLabel className="text-sm text-muted-foreground">
                   Accounts ({clients.length})
                 </DropdownMenuLabel>
