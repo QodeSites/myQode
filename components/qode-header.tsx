@@ -53,7 +53,7 @@ export default function QodeHeader({ setSidebarOpen }: HeaderProps) {
   }
 
   return (
-    <header className="w-full fixed top-0 left-0 right-0 z-10">
+    <header className="w-full fixed top-0 left-0 right-0 z-1000">
       <div className="w-full border-b bg-secondary px-4 sm:px-6 md:px-8 py-4">
         <div className="mx-auto flex flex-wrap items-center justify-between gap-6">
           {/* Mobile menu button */}
