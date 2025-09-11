@@ -2,12 +2,74 @@
 import React, { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 
+/* Small helper: per-letter staggered reveal (wave) */
+function LetterReveal({
+  text,
+  className = "",
+  delay = 0.15, // initial delay before the wave starts
+  stagger = 0.045, // time between letters
+  rise = 14, // how much each letter lifts on reveal
+}: {
+  text: string;
+  className?: string;
+  delay?: number;
+  stagger?: number;
+  rise?: number;
+}) {
+  const prefersReduced = useReducedMotion();
+
+  if (prefersReduced) {
+    return <span className={className}>{text}</span>;
+  }
+
+  const container = {
+    hidden: { opacity: 1 }, // keep container visible; we animate letters
+    visible: {
+      opacity: 1,
+      transition: {
+        delayChildren: delay,
+        staggerChildren: stagger,
+        ease: "easeOut",
+      },
+    },
+  };
+
+  const letter = {
+    hidden: { y: rise, opacity: 0 },
+    visible: {
+      y: 0,
+      opacity: 1,
+      transition: { duration: 0.8, ease: [0.22, 1, 0.36, 1] },
+    },
+  };
+
+  // Preserve spaces with nbsp so layout doesn’t collapse
+  const chars = Array.from(text).map((ch) => (ch === " " ? "\u00A0" : ch));
+
+  return (
+    <motion.span
+      className={`inline-flex select-none ${className}`}
+      variants={container}
+      initial="hidden"
+      animate="visible"
+      aria-label={text}
+      role="heading"
+    >
+      {chars.map((ch, i) => (
+        <motion.span key={`${ch}-${i}`} variants={letter} className="inline-block will-change-transform">
+          {ch}
+        </motion.span>
+      ))}
+    </motion.span>
+  );
+}
+
 /* =========================
    Fullscreen, calming loader
-   - Elegant fade-in brand
-   - Subtle breathing subtitle
+   - Brand: letter-by-letter wave reveal
+   - Subtitle: gentle breathing
    - Shimmer progress bar
-   - Smooth slide-up exit (with soft fade)
+   - Smooth slide-up exit
    - Honors prefers-reduced-motion
    ========================= */
 function FullscreenLoader({
@@ -21,7 +83,6 @@ function FullscreenLoader({
 
   return (
     <motion.div
-      // Enter stable; exit slides up + fades out
       initial={{ y: 0, opacity: 1 }}
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: "-100%", opacity: 0.98 }}
@@ -35,25 +96,16 @@ function FullscreenLoader({
       <div className="pointer-events-none absolute inset-0 [background:linear-gradient(180deg,transparent,theme(colors.background)_60%)]" />
 
       <div className="relative flex flex-col items-center px-6">
-        {/* Brand: calm fade + lift */}
-        <motion.h1
-          className="text-5xl sm:text-6xl font-extrabold tracking-tight text-primary"
-          initial={{ opacity: 0, y: 18 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.9, ease: "easeOut" }}
-        >
-          {brand}
-        </motion.h1>
+        {/* Brand: wave reveal per letter */}
+        <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tight text-primary">
+          <LetterReveal text={brand} delay={0.1} stagger={0.05} rise={16} />
+        </h1>
 
         {/* Subtitle: breathing opacity (reduced-motion = static) */}
         <motion.div
           className="mt-4 text-sm sm:text-base text-card-foreground"
           initial={prefersReduced ? { opacity: 1 } : { opacity: 0.6 }}
-          animate={
-            prefersReduced
-              ? { opacity: 1 }
-              : { opacity: [0.6, 1, 0.6] }
-          }
+          animate={prefersReduced ? { opacity: 1 } : { opacity: [0.6, 1, 0.6] }}
           transition={prefersReduced ? {} : { repeat: Infinity, duration: 2.4, ease: "easeInOut" }}
         >
           {subtitle}
@@ -65,7 +117,7 @@ function FullscreenLoader({
             className="block h-full w-1/3 bg-primary/60"
             initial={{ x: "-100%" }}
             animate={{ x: ["-100%", "150%"] }}
-            transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+            transition={{ duration: 2.6, repeat: Infinity, ease: "easeInOut" }}
           />
         </div>
       </div>
@@ -75,7 +127,6 @@ function FullscreenLoader({
 
 /* =========================
    Example page using loader
-   Replace the sections with your actual content
    ========================= */
 export default function DashboardHome() {
   const [loading, setLoading] = useState(true);
@@ -88,7 +139,6 @@ export default function DashboardHome() {
 
   return (
     <>
-      {/* AnimatePresence ensures smooth unmount (slide-up) */}
       <AnimatePresence mode="wait">
         {loading && <FullscreenLoader brand="myQode" subtitle="Preparing your dashboard…" />}
       </AnimatePresence>
