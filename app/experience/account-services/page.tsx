@@ -126,6 +126,7 @@ function AddFundsModal({
     startDate: '',
     endDate: '',
     totalInstallments: '',
+    amount:''
   });
   const [errors, setErrors] = useState({
     nuvamaCode: '',
@@ -299,6 +300,7 @@ function AddFundsModal({
         startDate: '',
         endDate: '',
         totalInstallments: '',
+        amount:''
       });
       setErrors({
         nuvamaCode: '',
