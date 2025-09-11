@@ -251,20 +251,12 @@ export default function QodeSidebar({ open = false, onClose }: QodeSidebarProps)
         {/* Drawer panel */}
         <aside
           className={cn(
-            "absolute left-0 top-0 h-full w-72 max-w-[85vw] translate-x-0 rounded-r-2xl border-r bg-sidebar p-4 shadow-xl transition-transform",
+            "absolute left-0 top-0 h-full w-72 max-w-[85vw] translate-x-0 rounded-r-2xl border-r bg-sidebar mt-16 p-4 shadow-xl transition-transform",
             open ? "translate-x-0" : "-translate-x-full"
           )}
           role="dialog"
           aria-modal="true"
         >
-          <button
-            onClick={onClose}
-            className="mb-2 inline-flex items-center gap-2  bg-background rounded-md border px-2 py-1 text-sm"
-            aria-label="Close sidebar"
-          >
-            <X className="h-4 w-4" />
-            Close
-          </button>
           {SidebarContent}
         </aside>
       </div>

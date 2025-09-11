@@ -225,7 +225,7 @@ export default function FAQsGlossaryPage() {
               {section.items.map((item, i) => {
                 const isOpen = openIdx[section.title] === i
                 return (
-                  <div key={i} className={`rounded-xl border bg-card ${isOpen && "border-[#008455]"}`}>
+                  <div key={i} className={`rounded-xl h-fit border bg-card ${isOpen && "border-[#008455]"}`}>
                     <button
                       type="button"
                       aria-expanded={isOpen}

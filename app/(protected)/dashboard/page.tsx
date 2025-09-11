@@ -1,6 +1,88 @@
-export default function DashboardHome() {
+"use client";
+import { useEffect, useState } from "react";
+import { motion } from "framer-motion";
+
+
+function TypingText({ text, speed = 80 }: { text: string; speed?: number }) {
+  const [idx, setIdx] = useState(0);
+
+  useEffect(() => {
+    if (idx >= text.length) return;
+    const t = setTimeout(() => setIdx((i) => i + 1), speed);
+    return () => clearTimeout(t);
+  }, [idx, speed, text.length]);
+
   return (
-    <div className="space-y-8">
+    <div className="flex items-center">
+      <h1 className="whitespace-pre text-6xl font-extrabold tracking-tight text-primary">
+        {text.slice(0, idx)}
+      </h1>
+      {/* Blinking caret */}
+      <h1 className="ml-1 h-[1.4em] w-[0.08em] bg-primary caret-blink" />
+      {/* caret styles */}
+      <style jsx>{`
+        @keyframes caretBlink {
+          0%,
+          49% {
+            opacity: 1;
+          }
+          50%,
+          100% {
+            opacity: 0;
+          }
+        }
+        .caret-blink {
+          animation: caretBlink 1s step-end infinite;
+        }
+      `}</style>
+    </div>
+  );
+}
+export default function DashboardHome() {
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Simulate loading delay (e.g., fetch, auth, etc.)
+    const timer = setTimeout(() => setLoading(false), 1500);
+    return () => clearTimeout(timer);
+  }, []);
+
+
+
+
+
+  // --- your existing component ---
+  if (loading) {
+    return (
+      <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-background">
+        {/* Slide-up + fade-in container */}
+        <motion.div
+          initial={{ y: 40, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ type: "spring", stiffness: 140, damping: 16 }}
+          className="flex flex-col items-center"
+        >
+          <TypingText text="myQode" speed={70} />
+
+          {/* Optional subtle upscroll float while loading */}
+          <motion.div
+            className="mt-6 text-sm text-card-foreground"
+            initial={{ y: 0 }}
+            animate={{ y: [-2, 2, -2] }}
+            transition={{ repeat: Infinity, duration: 2.2, ease: "easeInOut" }}
+          >
+            Preparing your dashboard…
+          </motion.div>
+
+          {/* Minimal spinner */}
+          <div className="mt-4 h-10 w-10 animate-spin rounded-full border-4 border-primary/30 border-t-primary" />
+        </motion.div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8 p-6">
       <section className="prose prose-sm max-w-none">
         <h2 className="text-xl font-bold text-foreground">Who We Are</h2>
         <p className="text-card-foreground">
@@ -40,5 +122,5 @@ export default function DashboardHome() {
         </p>
       </section>
     </div>
-  )
+  );
 }
