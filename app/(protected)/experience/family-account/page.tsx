@@ -97,8 +97,8 @@ export default function Page() {
   };
 
   return (
-    <main className="mx-auto space-y-8 px-4 pb-12 pt-2 md:px-6 lg:px-8">
-      <header className="mb-4">
+    <main className="space-y-6">
+      <header className="mb-2">
         <h1 className="text-pretty text-xl font-bold text-foreground flex items-center gap-2">
           Family Account
         </h1>

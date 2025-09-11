@@ -1142,9 +1142,9 @@ export default function InvestmentActionsPage() {
   }
 
   return (
-    <main className="mx-auto py-8 px-2">
+    <main className="space-y-6">
       {/* Header Section */}
-      <header className="mb-8">
+      <header className="mb-2">
         <div className="flex flex-col items-center sm:flex-row sm:justify-between sm:items-end">
           <div>
             <h1 className="text-pretty text-xl font-bold text-foreground flex items-center gap-2">
