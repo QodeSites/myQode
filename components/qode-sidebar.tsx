@@ -122,6 +122,11 @@ export default function QodeSidebar() {
                   </NavLink>
                 </li>
                 <li>
+                  <NavLink href="/experience/family-account" icon={<Users className="h-4 w-4" />}>
+                    Family Account
+                  </NavLink>
+                </li>
+                <li>
                   <NavLink href="/experience/service-cadence" icon={<Clock className="h-4 w-4" />}>
                     Service Cadence
                   </NavLink>

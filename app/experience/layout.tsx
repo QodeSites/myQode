@@ -27,7 +27,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
 
             {/* Main content grows to fill remaining space */}
             <main className="flex-1 overflow-y-auto">
-              <div className="w-full h-fit rounded-lg bg-card p-6 card-shadow">
+              <div className="w-full h-fit rounded-lg bg-card p-6">
                 {children}
               </div>
             </main>
