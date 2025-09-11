@@ -1,16 +1,19 @@
+// app/login/page.tsx
 'use client'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Eye, EyeOff } from 'lucide-react'
+import { useClient } from '@/contexts/ClientContext'
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
-  const [showPassword, setShowPassword] = useState(false) // State for password visibility
+  const [showPassword, setShowPassword] = useState(false)
   const router = useRouter()
+  const { refresh } = useClient() // Get refresh function from context
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -24,21 +27,25 @@ export default function LoginPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ email, password }),
+        credentials: 'include', // Ensure cookies are sent
       })
 
       const data = await response.json()
-      console.log(response, "=====================response")
+      console.log('Login response:', response.status, data) // Debug log
 
       if (!response.ok) {
         throw new Error(data.error || 'Login failed')
       }
 
-      // Redirect to dashboard on success
-      console.log(response, "=====================redirect")
+      // Refresh client data before redirecting
+      console.log('Triggering client data refresh')
+      await refresh() // Fetch client data
+      console.log('Redirecting to dashboard')
       router.push('/dashboard')
       
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Login failed')
+      console.error('Login error:', error)
     } finally {
       setIsLoading(false)
     }

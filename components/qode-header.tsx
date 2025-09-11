@@ -18,11 +18,6 @@ export default function QodeHeader({ setSidebarOpen }: HeaderProps) {
   const [isPending, startTransition] = useTransition()
   const { clients, selectedClientCode, setSelectedClient, loading } = useClient()
 
-  useEffect(() => {
-    if (!loading && clients.length > 0 && !selectedClientCode) {
-      setSelectedClient(clients[0].clientcode)
-    }
-  }, [clients, selectedClientCode, setSelectedClient, loading])
 
   async function logout() {
     startTransition(async () => {
