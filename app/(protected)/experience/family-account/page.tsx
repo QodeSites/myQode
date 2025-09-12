@@ -307,9 +307,9 @@ export default function FamilyAccountsSection() {
             <p><strong>Client Code:</strong> ${selectedClientCode}</p>
             <p><strong>Client ID:</strong> ${selectedClientId}</p>
             <p><strong>User Email (fallback):</strong> ${fallbackEmail}</p>
+            <p><strong>Message:</strong></p>
+            <p>${message.replace(/\n/g, "<br/>")}</p>
           </div>
-          <p><strong>Message:</strong></p>
-          <p>${message.replace(/\n/g, "<br/>")}</p>
         </div>
       </div></body></html>`;
 
