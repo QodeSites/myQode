@@ -40,11 +40,14 @@ export default function LoginPage() {
 
       const data = await response.json()
       console.log('Login response:', response.status, data)
+      console.log('Login response:', response.status, data)
 
       if (!response.ok) throw new Error(data.error || 'Login failed')
 
       console.log('Triggering client data refresh')
+      console.log('Triggering client data refresh')
       await refresh()
+      console.log('Redirecting to dashboard')
       console.log('Redirecting to dashboard')
       router.push('/dashboard')
     } catch (err) {
@@ -109,19 +112,19 @@ export default function LoginPage() {
             </div>
           )}
 
-          <div className="grid">
-            <label htmlFor="username" className="text-sm text-muted-foreground">
-              Email or Account ID
+          <div className="grid gap-2">
+            <label htmlFor="username" className="text-sm font-medium">
+              Email or Client ID
             </label>
             <input
               id="username"
               name="username"
               type="text" // Changed to text to allow clientid
-              required
+              
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="h-10 rounded-md border bg-background px-3 text-sm outline-none ring-0 focus:border-ring"
-              placeholder="Enter your Email or Account ID"
+              placeholder="you@example.com or client ID"
               disabled={isLoading}
               autoComplete="email"
             />

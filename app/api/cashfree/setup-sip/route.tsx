@@ -245,24 +245,34 @@ export async function POST(request: NextRequest) {
       UTIB: 'AXIS',
     };
 
-    const ifscPrefix = ifsc_code ? ifsc_code.substring(0, 4) : '';
-    const customerBankCode = bankCodeMapping[ifscPrefix] || 'HDFC';
+    const ifscPrefix = accountDetails.ifsc_code ? accountDetails.ifsc_code.substring(0, 4) : '';
+    const customerBankCode = bankCodeMapping[ifscPrefix] || 'ICIC'; // Default to ICICI for testing
 
-    // Format dates properly with timezone
-    const formatDateWithTimezone = (date: Date): string => {
-      const istOffset = 5.5 * 60 * 60 * 1000; // 5.5 hours in milliseconds
-      const istDate = new Date(date.getTime() + istOffset);
-      return istDate.toISOString().replace('Z', '+05:30');
+    // Step 1: Create Plan
+    const planRequest = {
+      plan_id,
+      plan_name: `SIP_${nuvama_code}_${Date.now()}`,
+      plan_type: 'PERIODIC',
+      plan_currency: 'INR',
+      amount: parseFloat(order_amount.toString()), // Changed from plan_max_amount
+      plan_max_amount: parseFloat(order_amount.toString()) * 100, // Kept for backward compatibility
+      intervalType, // Added for periodic plan
+      plan_interval_type: 'MONTH', // Added to specify number of intervals
+      plan_note: sanitizeDescription(`SIP_Plan_for_${accountDetails.client_name}_${sip_details.frequency}`), // Sanitized description
     };
 
-    // Set proper start date (if it's today, set it to tomorrow to avoid same-day issues)
-    const now = new Date();
-    const minStartDate = new Date(now.getTime() + 24 * 60 * 60 * 1000); // Tomorrow
-    const actualStartDate = startDate > minStartDate ? startDate : minStartDate;
 
-    // Set end date (default to 10 years from start if not provided)
-    const actualEndDate = endDate || new Date(actualStartDate.getTime() + 10 * 365 * 24 * 60 * 60 * 1000);
+    console.log('Creating plan with request:', JSON.stringify(planRequest, null, 2));
+    // Validate plan request
+    if (!planRequest.amount || !planRequest.intervalType) {
+      throw new Error('Plan request missing required fields: amount or intervalType');
+    }
 
+    console.log('Plan Request:', JSON.stringify(planRequest, null, 2));
+    const planResponse = await createPlan(planRequest);
+    console.log('Plan Created:', planResponse);
+
+    // Step 2: Create Subscription
     const baseReturn = order_meta.return_url || `${request.nextUrl.origin}/payment-result`;
 
     // Create Subscription Request
@@ -279,15 +289,17 @@ export async function POST(request: NextRequest) {
         customer_bank_account_type: 'SAVINGS',
       },
       plan_details: {
-        plan_name: `SIP_${nuvama_code}_${Date.now()}`,
+        plan_id: planRequest.plan_id,
+        plan_name: planRequest.plan_name,
         plan_type: 'PERIODIC',
-        plan_amount: parseFloat(order_amount.toString()),
-        plan_max_amount: parseFloat(order_amount.toString()) * 100,
-        plan_max_cycles: sip_details.total_installments || 120,
-        plan_intervals: intervals,
-        plan_currency: 'INR',
-        plan_interval_type: intervalType,
-        plan_note: sanitizeDescription(`SIP_Plan_${sip_details.frequency}_${parseFloat(order_amount.toString()).toFixed(2)}`),
+        plan_currency: planRequest.plan_currency,
+        plan_recurring_amount: planRequest.amount,
+        plan_intervals: planIntervals,
+        plan_interval_type: planRequest.plan_interval_type,
+        plan_note: planRequest.plan_note,
+        plan_max_amount: planRequest.amount * 100, // Kept for backward compatibility
+        plan_status: 'ACTIVE',
+        plan_amount: planRequest.amount,
       },
       authorization_details: {
         authorization_amount: parseFloat(order_amount.toString()) * 100,
