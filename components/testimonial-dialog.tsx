@@ -83,7 +83,7 @@ export function TestimonialDialog({
     if (!formData.story || !formData.nuvamaCode) {
       toast({
         title: "Error",
-        description: "Please provide your testimonial story and Nuvama Code.",
+        description: "Please provide your testimonial story and Account ID.",
         variant: "destructive",
       })
       return
@@ -120,7 +120,7 @@ export function TestimonialDialog({
             <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
             <div class="info-box">
               <h3 style="margin-top: 0;">Testimonial Details:</h3>
-              <p><strong>Nuvama Code:</strong> ${formData.nuvamaCode}</p>
+              <p><strong>Account ID:</strong> ${formData.nuvamaCode}</p>
               <p><strong>Client ID:</strong> ${clientId}</p>
               <p><strong>User Email:</strong> ${userEmail}</p>
               <p><strong>Your testimonial story:</strong> ${formData.story.replace(/\n/g, '<br>')}</p>
