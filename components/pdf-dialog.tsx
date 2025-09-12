@@ -42,14 +42,14 @@ export function PdfDialog({ title, trigger, pdfSrc, imageSrc }: PdfDialogProps) 
 
         <div className="flex justify-end gap-2">
           {pdfSrc && (
-            <Button  asChild variant="secondary">
+            <Button  asChild className="bg-primary">
               <a href={pdfSrc} target="_blank" rel="noopener noreferrer">
                 Open in new tab
               </a>
             </Button>
           )}
           {(pdfSrc || imageSrc) && (
-            <Button asChild>
+            <Button asChild className="bg-primary">
               <a href={pdfSrc || imageSrc!} download>
                 Download
               </a>
