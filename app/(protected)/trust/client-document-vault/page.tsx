@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useClient } from "@/contexts/ClientContext";
 import { ChevronDown, ChevronRight, FileText, Loader2 } from "lucide-react";
@@ -21,6 +21,7 @@ interface DocSection {
   loading: boolean;
   expanded: boolean;
   disabled: boolean;
+  hasError?: boolean;
 }
 
 const DOC_TEMPLATES = [
@@ -29,7 +30,7 @@ const DOC_TEMPLATES = [
     title: "PMS Agreement",
     folderName: "PMS Agreement",
     description: "Your official agreement with Qode, executed at onboarding.",
-    expanded: true, // Only this section is open initially
+    expanded: true,
   },
   {
     id: "account-opening-docs",
@@ -49,41 +50,33 @@ const DOC_TEMPLATES = [
 
 export default function AccountDocumentsPage() {
   const { selectedClientId, clientLoading } = useClient();
-  const [docSections, setDocSections] = useState<DocSection[]>([]);
-
-  // Initialize doc sections and fetch files
-  useEffect(() => {
-    const initialSections = DOC_TEMPLATES.map((template) => ({
+  const [docSections, setDocSections] = useState<DocSection[]>(() =>
+    // Initialize once with empty files
+    DOC_TEMPLATES.map((template) => ({
       ...template,
       files: [],
       loading: false,
-      disabled: clientLoading || !selectedClientId,
-    }));
-    setDocSections(initialSections);
-
-    // Fetch files for all sections if selectedClientId is available
-    if (selectedClientId && !clientLoading) {
-      initialSections.forEach((section) => {
-        if (!section.disabled) {
-          fetchFolderFiles(section.id, section.folderName);
-        }
-      });
-    }
-  }, [selectedClientId, clientLoading]);
+      disabled: true,
+      hasError: false,
+    }))
+  );
+  const [fetchedClientIds, setFetchedClientIds] = useState<Set<string>>(new Set());
 
   // Function to fetch files for a specific folder
-  const fetchFolderFiles = async (sectionId: string, folderName: string) => {
-    if (!selectedClientId) return;
+  const fetchFolderFiles = useCallback(async (sectionId: string, folderName: string, clientId: string) => {
+    if (!clientId) return;
 
-    // Set loading state
+    // Set loading state and clear error
     setDocSections((prev) =>
       prev.map((section) =>
-        section.id === sectionId ? { ...section, loading: true } : section
+        section.id === sectionId 
+          ? { ...section, loading: true, hasError: false } 
+          : section
       )
     );
 
     try {
-      const folderUrl = `https://vault.qodeinvest.com/client-documents/ClientList/${selectedClientId}/${encodeURIComponent(
+      const folderUrl = `https://vault.qodeinvest.com/client-documents/ClientList/${clientId}/${encodeURIComponent(
         folderName
       )}`;
 
@@ -107,7 +100,8 @@ export default function AccountDocumentsPage() {
           text &&
           !href.includes("../") &&
           !href.endsWith("/") &&
-          text.includes(".")
+          text.includes(".") &&
+          text !== ".gitkeep"
         ) {
           const fileName = decodeURIComponent(text);
           const fileUrl = `${folderUrl}/${encodeURIComponent(fileName)}`;
@@ -115,35 +109,75 @@ export default function AccountDocumentsPage() {
         }
       });
 
+      // Successfully fetched - update files and clear error
       setDocSections((prev) =>
         prev.map((section) =>
           section.id === sectionId
-            ? { ...section, files, loading: false }
+            ? { ...section, files, loading: false, hasError: false }
             : section
         )
       );
     } catch (error) {
       console.error("Error fetching folder files:", error);
+      
+      // On error, keep existing files and set error flag
       setDocSections((prev) =>
         prev.map((section) =>
           section.id === sectionId
-            ? { ...section, files: [], loading: false }
+            ? { 
+                ...section, 
+                loading: false, 
+                hasError: true 
+                // Keep existing files - don't modify files array
+              }
             : section
         )
       );
     }
-  };
+  }, []);
+
+  // Update disabled state when client loading or selection changes
+  useEffect(() => {
+    setDocSections((prev) =>
+      prev.map((section) => ({
+        ...section,
+        disabled: clientLoading || !selectedClientId,
+      }))
+    );
+  }, [clientLoading, selectedClientId]);
+
+  // Fetch files when a new client is selected
+  useEffect(() => {
+    if (
+      selectedClientId &&
+      !clientLoading &&
+      !fetchedClientIds.has(selectedClientId)
+    ) {
+      // Mark this client as being fetched
+      setFetchedClientIds(prev => new Set([...prev, selectedClientId]));
+      
+      // Fetch files for all sections
+      docSections.forEach((section) => {
+        fetchFolderFiles(section.id, section.folderName, selectedClientId);
+      });
+    }
+  }, [selectedClientId, clientLoading, fetchedClientIds, fetchFolderFiles, docSections]);
 
   const toggleSection = (sectionId: string) => {
     const section = docSections.find((s) => s.id === sectionId);
     if (!section || section.disabled) return;
 
-    // Toggle expanded state
     setDocSections((prev) =>
       prev.map((s) =>
         s.id === sectionId ? { ...s, expanded: !s.expanded } : s
       )
     );
+  };
+
+  const retryFetch = (sectionId: string, folderName: string) => {
+    if (selectedClientId) {
+      fetchFolderFiles(sectionId, folderName, selectedClientId);
+    }
   };
 
   return (
@@ -217,6 +251,11 @@ export default function AccountDocumentsPage() {
                       </div>
                       <p className="mt-1 text-sm text-muted-foreground ml-6">
                         {section.description}
+                        {section.hasError && (
+                          <span className="text-destructive ml-2">
+                            {/* (Failed to refresh - showing cached files) */}
+                          </span>
+                        )}
                       </p>
                     </div>
                     <div className="text-sm font-medium">
@@ -225,12 +264,24 @@ export default function AccountDocumentsPage() {
                           Not available
                         </span>
                       ) : (
-                        <Button
-                          onClick={() => toggleSection(section.id)}
-                          className="bg-primary"
-                        >
-                          {section.expanded ? "Collapse" : "View Files"}
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          {/* {section.hasError && (
+                            <Button
+                              onClick={() => retryFetch(section.id, section.folderName)}
+                              variant="outline"
+                              size="sm"
+                              disabled={section.loading}
+                            >
+                              Retry
+                            </Button>
+                          )} */}
+                          <Button
+                            onClick={() => toggleSection(section.id)}
+                            className="bg-primary"
+                          >
+                            {section.expanded ? "Collapse" : "View Files"}
+                          </Button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -250,7 +301,10 @@ export default function AccountDocumentsPage() {
                       </div>
                     ) : section.files.length === 0 ? (
                       <div className="p-4 text-center text-sm text-muted-foreground">
-                        No files found in this section.
+                        {section.hasError 
+                          ? "Failed to load files. Please try again."
+                          : "No files found in this section."
+                        }
                       </div>
                     ) : (
                       <ul className="divide-y divide-border/50">
