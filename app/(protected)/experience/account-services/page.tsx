@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useClient } from "@/contexts/ClientContext";
 
+
 /* ---------------------------
    Reusable Modal Component
 ---------------------------- */
@@ -24,8 +25,8 @@ function ModalShell({
     size === "lg"
       ? "sm:max-w-xl md:max-w-2xl lg:max-w-3xl"
       : size === "sm"
-      ? "sm:max-w-sm md:max-w-md"
-      : "sm:max-w-md md:max-w-lg";
+        ? "sm:max-w-sm md:max-w-md"
+        : "sm:max-w-md md:max-w-lg";
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-3 sm:p-4">
@@ -49,9 +50,6 @@ function ModalShell({
   );
 }
 
-/* ---------------------------
-   Small UI Helpers
----------------------------- */
 function InfoCard({
   title,
   children,
@@ -150,18 +148,21 @@ function AddFundsModal({
   const [activeTab, setActiveTab] = useState<"oneTime" | "sip">("oneTime");
   const [loading, setLoading] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState("");
+  const [showTooltip, setShowTooltip] = useState(false);
   const [accountDetails, setAccountDetails] = useState<{
     client_name: string;
     account_number_masked: string;
+    account_number: string;
     ifsc_code: string;
+    cashfree_bank_code: string;
   } | null>(null);
   const [formData, setFormData] = useState({ nuvamaCode: selectedClientCode || "QAW0001", amount: "" });
   const [sipData, setSipData] = useState({
-    frequency: "monthly",
-    startDate: "",
-    endDate: "",
-    totalInstallments: "",
-    amount: "",
+    frequency: 'monthly',
+    startDate: '',
+    endDate: '',
+    totalInstallments: '',
+    amount: ''
   });
   const [errors, setErrors] = useState({
     nuvamaCode: "",
@@ -172,6 +173,13 @@ function AddFundsModal({
   });
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
+  const SIP_ENABLED = true; // Set to true to enable SIP functionality
+
+  const [userData] = useState({
+    email: 'user@example.com',
+    phone: '9999999999',
+    name: 'John Doe'
+  });
 
   useEffect(() => {
     setFormData((p) => ({ ...p, nuvamaCode: selectedClientCode || "QAW0001" }));
@@ -179,20 +187,61 @@ function AddFundsModal({
 
   useEffect(() => {
     if (formData.nuvamaCode) {
-      const t = setTimeout(() => {
-        setAccountDetails({
-          client_name: "John Doe",
-          account_number_masked: "XXXX-XXXX-1234",
-          ifsc_code: "ABCD0001234",
-        });
-      }, 400);
-      return () => clearTimeout(t);
+      const fetchBankDetails = async () => {
+        try {
+          const response = await fetch(`/api/bank-details?nuvama_code=${encodeURIComponent(formData.nuvamaCode)}`, {
+            method: 'GET',
+            credentials: 'include',
+          });
+          console.log('Bank details API response status:', response.status);
+          if (response.ok) {
+            const data = await response.json();
+            console.log('Bank details fetched:', data);
+            if (data.bankDetails && data.bankDetails.length > 0) {
+              const bankDetail = data.bankDetails[0];
+              setAccountDetails({
+                client_name: bankDetail.client_name || 'Unknown Client',
+                account_number_masked: bankDetail.account_number ? `XXXX-XXXX-${bankDetail.account_number.slice(-4)}` : 'N/A',
+                account_number: bankDetail.account_number || '',
+                ifsc_code: bankDetail.ifsc_code || 'N/A',
+                cashfree_bank_code: bankDetail.cashfree_bank_code || 'CASHFREE',
+              });
+            } else {
+              setAccountDetails(null);
+              toast({
+                title: 'Error',
+                description: 'No bank details found for the selected Nuvama Code.',
+                variant: 'destructive',
+              });
+            }
+          } else {
+            console.error('Failed to fetch bank details:', response.status, response.statusText);
+            setAccountDetails(null);
+            toast({
+              title: 'Error',
+              description: 'Failed to fetch bank details. Please try again.',
+              variant: 'destructive',
+            });
+          }
+        } catch (error) {
+          console.error('Error fetching bank details:', error);
+          setAccountDetails(null);
+          toast({
+            title: 'Error',
+            description: 'An error occurred while fetching bank details.',
+            variant: 'destructive',
+          });
+        }
+      };
+      fetchBankDetails();
+    } else {
+      setAccountDetails(null);
     }
   }, [formData.nuvamaCode]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    if (["frequency", "startDate", "endDate", "totalInstallments", "amount"].includes(name)) {
+    if (["frequency", "startDate", "endDate", "totalInstallments"].includes(name)) {
       setSipData((prev) => ({ ...prev, [name]: value }));
       validateField(name, value);
     } else {
@@ -221,11 +270,7 @@ function AddFundsModal({
     });
   };
 
-  const getTomorrowDate = () => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    return d.toISOString().split("T")[0];
-  };
+
 
   const renderPaymentDetail = (label: string, value: string, color: string) => (
     <div>
@@ -234,75 +279,394 @@ function AddFundsModal({
     </div>
   );
 
-  const handlePayment = async () => {
-    if (!formData.nuvamaCode || !formData.amount) {
-      toast({ title: "Error", description: "Please fill in all required fields.", variant: "destructive" });
-      return;
-    }
-    if (activeTab === "sip" && (!sipData.startDate || (sipData.frequency === "custom" && !sipData.totalInstallments))) {
-      toast({ title: "Error", description: "Please fill in all required SIP fields.", variant: "destructive" });
-      return;
-    }
+  const getTomorrowDate = () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().split('T')[0];
+  };
 
+  const initiateCashfreePayment = async (orderToken: string, orderId: string) => {
     setLoading(true);
-    setPaymentStatus("");
-    const userEmail = "user@example.com";
-
-    const emailHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
-      <style>body{font-family:Lato,Arial,sans-serif;line-height:1.6;color:#002017;background-color:#EFECD3}
-      .container{max-width:600px;margin:0 auto;padding:20px}.header{background:#02422B;padding:20px;border-radius:8px;margin-bottom:20px;text-align:center}
-      .content{background:#FFFFFF;padding:20px;border:1px solid #37584F;border-radius:8px}.info-box{background:#EFECD3;padding:15px;border-left:4px solid #DABD38;margin:15px 0}
-      h1{font-family:'Playfair Display',Georgia,serif;color:#DABD38}h3{font-family:'Playfair Display',Georgia,serif;color:#37584F}</style>
-      </head><body><div class="container"><div class="header">
-      <h1 style="margin:0;">${activeTab === "sip" ? "SIP Setup Request" : "Payment Request"}</h1></div>
-      <div class="content"><p><strong>Request Type:</strong> ${activeTab === "sip" ? "SIP Setup" : "One-Time Payment"}</p>
-      <p><strong>Submitted via:</strong> Qode Investor Portal</p><p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
-      <div class="info-box"><h3 style="margin-top:0;">Request Details:</h3>
-      <p><strong>Nuvama Code:</strong> ${formData.nuvamaCode}</p>
-      <p><strong>Client ID:</strong> ${selectedClientId}</p>
-      <p><strong>User Email:</strong> ${userEmail}</p>
-      <p><strong>Amount:</strong> ₹${formData.amount}</p>
-      ${
-        activeTab === "sip"
-          ? `<p><strong>Frequency:</strong> ${sipData.frequency}</p>
-             <p><strong>Start Date:</strong> ${sipData.startDate ? new Date(sipData.startDate).toLocaleDateString() : "N/A"}</p>
-             ${sipData.endDate ? `<p><strong>End Date:</strong> ${new Date(sipData.endDate).toLocaleDateString()}</p>` : ""}
-             ${sipData.totalInstallments ? `<p><strong>Total Installments:</strong> ${sipData.totalInstallments}</p>` : ""}`
-          : ""
-      }
-      </div><p style="margin-top:20px;font-size:14px;color:#37584F;">This message was sent from the Qode investor portal. Please review and process the request.</p>
-      </div></div></body></html>`;
-
     try {
-      await sendEmail({
-        to: "sanket.shinde@qodeinvest.com",
-        subject: `New ${activeTab === "sip" ? "SIP Setup" : "Payment"} Request from ${formData.nuvamaCode}`,
-        html: emailHtml,
-        from: "investor.relations@qodeinvest.com",
-        fromName: "Qode Investor Relations",
+      if (!window.Cashfree) {
+        toast({
+          title: "Loading",
+          description: "Loading payment SDK...",
+        });
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://sdk.cashfree.com/js/v3/cashfree.js';
+          const timeout = setTimeout(() => {
+            toast({
+              title: "Error",
+              description: "Payment SDK load timeout",
+              variant: "destructive",
+            });
+            reject(new Error('SDK timeout'));
+          }, 10000);
+          script.onload = () => { clearTimeout(timeout); setTimeout(resolve, 500); };
+          script.onerror = () => {
+            clearTimeout(timeout);
+            toast({
+              title: "Error",
+              description: "Failed to load payment SDK",
+              variant: "destructive",
+            });
+            reject(new Error('SDK load failed'));
+          };
+          document.head.appendChild(script);
+        });
+      }
+
+      const cashfree = window.Cashfree({
+        mode: process.env.NEXT_PUBLIC_CASHFREE_ENV === 'production' ? 'production' : 'sandbox'
       });
 
-      setPaymentStatus(activeTab === "sip" ? "SIP setup successfully!" : "Payment processed successfully!");
-      toast({
-        title: "Success",
-        description: activeTab === "sip" ? "Your SIP has been set up successfully." : "Your payment has been processed successfully.",
+      return new Promise((resolve, reject) => {
+        const paymentTimeout = setTimeout(() => {
+          toast({
+            title: "Error",
+            description: `${activeTab === 'sip' ? 'SIP setup' : 'Payment'} timed out`,
+            variant: "destructive",
+          });
+          reject(new Error('Payment timeout'));
+        }, 300000);
+
+        cashfree.checkout({
+          paymentSessionId: orderToken,
+          redirectTarget: '_self',
+          onSuccess: (result) => {
+            clearTimeout(paymentTimeout);
+            setPaymentStatus('Payment completed successfully!');
+            toast({
+              title: "Payment Successful",
+              description: `Your payment of ₹${formData.amount} has been processed successfully.`,
+            });
+            setFormData({
+              nuvamaCode: selectedClientCode || 'QAW0001',
+              amount: '',
+            });
+            setErrors({
+              nuvamaCode: '',
+              amount: '',
+              startDate: '',
+              endDate: '',
+              totalInstallments: '',
+            });
+            setTimeout(() => {
+              setPaymentStatus('');
+              onClose();
+            }, 3000);
+            resolve(result);
+          },
+          onError: (error) => {
+            clearTimeout(paymentTimeout);
+            setPaymentStatus('Payment failed. Please try again.');
+            toast({
+              title: "Payment Failed",
+              description: error.message || "Payment could not be processed. Please try again.",
+              variant: "destructive",
+            });
+            reject(error);
+          },
+          onClose: () => {
+            clearTimeout(paymentTimeout);
+            setPaymentStatus('Payment cancelled by user.');
+            toast({
+              title: "Payment Cancelled",
+              description: "Payment was cancelled by the user.",
+              variant: "destructive",
+            });
+            reject(new Error('Payment cancelled'));
+          }
+        }).catch((err) => {
+          clearTimeout(paymentTimeout);
+          toast({
+            title: "Error",
+            description: `Payment failed: ${err.message}`,
+            variant: "destructive",
+          });
+          reject(err);
+        });
       });
-      setFormData({ nuvamaCode: selectedClientCode || "QAW0001", amount: "" });
-      setSipData({ frequency: "monthly", startDate: "", endDate: "", totalInstallments: "", amount: "" });
-      setErrors({ nuvamaCode: "", amount: "", startDate: "", endDate: "", totalInstallments: "" });
-      formRef.current?.reset();
-      setTimeout(() => {
-        setPaymentStatus("");
-        onClose();
-      }, 2000);
     } catch (error) {
-      console.error("Payment error:", error);
-      setPaymentStatus("Failed to process payment. Please try again.");
-      toast({ title: "Error", description: "Failed to process payment. Please try again or contact support.", variant: "destructive" });
+      toast({
+        title: "Error",
+        description: `Initialization failed: ${error.message}`,
+        variant: "destructive",
+      });
+      throw error;
     } finally {
       setLoading(false);
     }
   };
+
+  // Updated handlePayment function for SIP integration
+  const handlePayment = async () => {
+    if (!formData.nuvamaCode || !formData.amount) {
+      toast({
+        title: "Error",
+        description: "Please fill in all required fields.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!accountDetails) {
+      toast({
+        title: "Error",
+        description: "Bank details not loaded. Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (activeTab === 'sip' && (!sipData.startDate || (sipData.frequency === 'custom' && !sipData.totalInstallments))) {
+      toast({
+        title: "Error",
+        description: "Please fill in all required SIP fields.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLoading(true);
+    setPaymentStatus('');
+
+    try {
+      if (activeTab === 'sip') {
+        // Call the SIP API instead of sending email
+        const sipPayload = {
+          order_amount: parseFloat(formData.amount),
+          nuvama_code: formData.nuvamaCode,
+          sip_details: {
+            frequency: sipData.frequency,
+            start_date: sipData.startDate,
+            end_date: sipData.endDate || undefined,
+            total_installments: sipData.totalInstallments ? parseInt(sipData.totalInstallments) : undefined
+          },
+          order_meta: {
+            return_url: `${window.location.origin}/payment/sip-success`
+          }
+        };
+
+        console.log('Sending SIP payload:', sipPayload);
+
+        const response = await fetch('/api/cashfree/setup-sip', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify(sipPayload),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error('SIP API Error Response:', errorData);
+          throw new Error(errorData.message || 'Failed to create SIP order');
+        }
+
+        const sipOrderData = await response.json();
+        console.log('SIP Order created successfully:', sipOrderData);
+
+        // Validate the response structure
+        if (!sipOrderData.success || !sipOrderData.data.subscription_session_id) {
+          console.error('Missing subscription_session_id in sipOrderData:', sipOrderData);
+          throw new Error('Subscription session ID is missing in the response');
+        }
+
+        // Always use Cashfree SDK for better control and error handling
+        await initiateCashfreeSubscription(
+          sipOrderData.data.subscription_session_id,
+          sipOrderData.data.subscription_id
+        );
+
+      } else {
+        // Existing one-time payment logic remains the same
+        const orderPayload = {
+          amount: parseFloat(formData.amount),
+          currency: 'INR',
+          customer_name: accountDetails.client_name,
+          customer_email: userData.email,
+          customer_phone: userData.phone,
+          nuvama_code: formData.nuvamaCode,
+          client_id: selectedClientId,
+          order_type: 'one_time' as const,
+          return_url: `${window.location.origin}/payment/success`,
+          account_number: accountDetails.account_number,
+          ifsc_code: accountDetails.ifsc_code,
+          cashfree_bank_code: accountDetails.cashfree_bank_code
+        };
+
+        console.log('Sending order payload:', orderPayload);
+
+        const response = await fetch('/api/cashfree/create-order', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          credentials: 'include',
+          body: JSON.stringify(orderPayload),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          console.error('API Error Response:', errorData);
+          throw new Error(errorData.error || 'Failed to create payment order');
+        }
+
+        const orderData = await response.json();
+        console.log('Order created successfully:', orderData);
+
+        if (!orderData.payment_session_id) {
+          console.error('Missing payment_session_id in orderData:', orderData);
+          throw new Error('Payment session ID is missing in the response');
+        }
+
+        await initiateCashfreePayment(orderData.payment_session_id, orderData.order_id);
+      }
+    } catch (error) {
+      console.error('Payment error:', error);
+      setPaymentStatus('Failed to process payment. Please try again.');
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "An unexpected error occurred. Please try again or contact support.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Add this new function for handling SIP subscription payments
+  const initiateCashfreeSubscription = async (subscriptionSessionId: string, subscriptionId: string) => {
+    setLoading(true);
+    try {
+      if (!window.Cashfree) {
+        toast({
+          title: "Loading",
+          description: "Loading payment SDK...",
+        });
+        await new Promise((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://sdk.cashfree.com/js/v3/cashfree.js';
+          const timeout = setTimeout(() => {
+            toast({
+              title: "Error",
+              description: "Payment SDK load timeout",
+              variant: "destructive",
+            });
+            reject(new Error('SDK timeout'));
+          }, 10000);
+          script.onload = () => { clearTimeout(timeout); setTimeout(resolve, 500); };
+          script.onerror = () => {
+            clearTimeout(timeout);
+            toast({
+              title: "Error",
+              description: "Failed to load payment SDK",
+              variant: "destructive",
+            });
+            reject(new Error('SDK load failed'));
+          };
+          document.head.appendChild(script);
+        });
+      }
+
+      const cashfree = window.Cashfree({
+        mode: process.env.NEXT_PUBLIC_CASHFREE_ENV === 'production' ? 'production' : 'sandbox'
+      });
+
+      return new Promise((resolve, reject) => {
+        const paymentTimeout = setTimeout(() => {
+          toast({
+            title: "Error",
+            description: "SIP setup timed out",
+            variant: "destructive",
+          });
+          reject(new Error('SIP setup timeout'));
+        }, 300000);
+
+        // Use subscription checkout instead of regular checkout
+        cashfree.checkout({
+          paymentSessionId: subscriptionSessionId,
+          redirectTarget: '_self',
+          onSuccess: (result) => {
+            clearTimeout(paymentTimeout);
+            setPaymentStatus('SIP setup completed successfully!');
+            toast({
+              title: "SIP Setup Successful",
+              description: `Your SIP of ₹${formData.amount} has been set up successfully.`,
+            });
+
+            // Reset form
+            setFormData({
+              nuvamaCode: selectedClientCode || 'QAW0001',
+              amount: '',
+            });
+            setSipData({
+              frequency: 'monthly',
+              startDate: '',
+              endDate: '',
+              totalInstallments: '',
+              amount: ''
+            });
+            setErrors({
+              nuvamaCode: '',
+              amount: '',
+              startDate: '',
+              endDate: '',
+              totalInstallments: '',
+            });
+
+            setTimeout(() => {
+              setPaymentStatus('');
+              onClose();
+            }, 3000);
+            resolve(result);
+          },
+          onError: (error) => {
+            clearTimeout(paymentTimeout);
+            setPaymentStatus('SIP setup failed. Please try again.');
+            toast({
+              title: "SIP Setup Failed",
+              description: error.message || "SIP setup could not be processed. Please try again.",
+              variant: "destructive",
+            });
+            reject(error);
+          },
+          onClose: () => {
+            clearTimeout(paymentTimeout);
+            setPaymentStatus('SIP setup cancelled by user.');
+            toast({
+              title: "SIP Setup Cancelled",
+              description: "SIP setup was cancelled by the user.",
+              variant: "destructive",
+            });
+            reject(new Error('SIP setup cancelled'));
+          }
+        }).catch((err) => {
+          clearTimeout(paymentTimeout);
+          toast({
+            title: "Error",
+            description: `SIP setup failed: ${err.message}`,
+            variant: "destructive",
+          });
+          reject(err);
+        });
+      });
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: `SIP initialization failed: ${error.message}`,
+        variant: "destructive",
+      });
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
 
   if (!isOpen) return null;
 
@@ -321,30 +685,37 @@ function AddFundsModal({
 
       <div className="p-[15px]">
         <div className="flex justify-center">
-          <div className="flex rounded p-[3px] bg-background">
+          <div className="flex rounded p-[3px]">
             <button
-              onClick={() => setActiveTab("oneTime")}
-              className={`px-[20px] py-[10px] text-[14px] font-semibold rounded transition-all font-body ${
-                activeTab === "oneTime" ? "bg-primary text-white shadow" : "text-brown hover:bg-beige"
-              }`}
+              onClick={() => setActiveTab('oneTime')}
+              className={`px-[20px] py-[10px] text-[14px] font-semibold rounded transition-all font-body ${activeTab === 'oneTime'
+                ? 'bg-primary text-white shadow'
+                : 'text-brown hover:bg-beige'
+                }`}
             >
               <div className="flex items-center">
                 <CreditCard className="w-[18px] h-[18px] mr-[5px]" />
                 One-Time Payment
               </div>
             </button>
-
-            <button
-              onClick={() => setActiveTab("sip")}
-              className={`px-[20px] py-[10px] text-[14px] font-semibold rounded transition-all font-body ${
-                activeTab === "sip" ? "bg-primary text-white shadow" : "text-brown hover:bg-beige"
-              }`}
+            <div
+              className="relative"
+              onMouseEnter={() => setShowTooltip(true)}
+              onMouseLeave={() => setShowTooltip(false)}
             >
-              <div className="flex items-center">
-                <TrendingUp className="w-[18px] h-[18px] mr-[5px]" />
-                SIP Setup
-              </div>
-            </button>
+              <button
+                onClick={() => setActiveTab('sip')}
+                className={`px-[20px] py-[10px] text-[14px] font-semibold rounded transition-all font-body ${activeTab === 'sip'
+                  ? 'bg-primary text-white shadow'
+                  : 'text-brown hover:bg-beige'
+                  }`}
+              >
+                <div className="flex items-center">
+                  <TrendingUp className="w-[18px] h-[18px] mr-[5px]" />
+                  SIP Setup
+                </div>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -356,9 +727,8 @@ function AddFundsModal({
             name="nuvamaCode"
             value={formData.nuvamaCode}
             onChange={handleInputChange}
-            className={`w-full p-[12px] border-2 rounded text-[14px] font-body ${
-              errors.nuvamaCode ? "border-brown" : "border-lightGray focus:border-primary"
-            } focus:outline-none transition-all`}
+            className={`w-full p-[12px] border-2 rounded text-[14px] font-body ${errors.nuvamaCode ? "border-brown" : "border-lightGray focus:border-primary"
+              } focus:outline-none transition-all`}
             required
           >
             {clients.length > 0 ? (
@@ -382,9 +752,9 @@ function AddFundsModal({
               <h3 className="text-[16px] font-semibold text-brown font-body">Verified Account Details</h3>
             </div>
             <div className="grid grid-cols-2 gap-[10px] text-[14px]">
-              {renderPaymentDetail("Client Name", accountDetails.client_name, "brown")}
-              {renderPaymentDetail("Account Number", accountDetails.account_number_masked, "brown")}
-              {renderPaymentDetail("IFSC Code", accountDetails.ifsc_code, "brown")}
+              {renderPaymentDetail('Client Name', accountDetails.client_name, 'brown')}
+              {renderPaymentDetail('Account Number', accountDetails.account_number_masked, 'brown')}
+              {renderPaymentDetail('IFSC Code', accountDetails.ifsc_code, 'brown')}
             </div>
           </div>
         )}
@@ -399,9 +769,8 @@ function AddFundsModal({
             value={formData.amount}
             onChange={handleInputChange}
             min="100"
-            className={`w-full p-[12px] text-[14px] font-semibold border-2 rounded font-body ${
-              errors.amount ? "border-brown" : "border-lightGray focus:border-primary"
-            } focus:outline-none transition-all`}
+            className={`w-full p-[12px] text-[14px] font-semibold border-2 rounded font-body ${errors.amount ? "border-brown" : "border-lightGray focus:border-primary"
+              } focus:outline-none transition-all`}
             placeholder="Enter amount (e.g., 1000.00)"
             required
           />
@@ -436,9 +805,8 @@ function AddFundsModal({
                   value={sipData.startDate}
                   onChange={handleInputChange}
                   min={getTomorrowDate()}
-                  className={`w-full p-[12px] border-2 rounded text-[14px] font-body ${
-                    errors.startDate ? "border-brown" : "border-lightGray focus:border-primary"
-                  } focus:outline-none transition-all`}
+                  className={`w-full p-[12px] border-2 rounded text-[14px] font-body ${errors.startDate ? "border-brown" : "border-lightGray focus:border-primary"
+                    } focus:outline-none transition-all`}
                   required
                 />
                 {errors.startDate && <p className="mt-[5px] text-[12px] text-brown font-body">{errors.startDate}</p>}
@@ -455,9 +823,8 @@ function AddFundsModal({
                     value={sipData.totalInstallments}
                     onChange={handleInputChange}
                     min="1"
-                    className={`w-full p-[12px] border-2 rounded text-[14px] font-body ${
-                      errors.totalInstallments ? "border-brown" : "border-lightGray focus:border-primary"
-                    } focus:outline-none transition-all`}
+                    className={`w-full p-[12px] border-2 rounded text-[14px] font-body ${errors.totalInstallments ? "border-brown" : "border-lightGray focus:border-primary"
+                      } focus:outline-none transition-all`}
                     placeholder="e.g., 12"
                     required
                   />
@@ -468,9 +835,8 @@ function AddFundsModal({
                     value={sipData.endDate}
                     onChange={handleInputChange}
                     min={sipData.startDate}
-                    className={`w-full p-[12px] border-2 rounded text-[14px] font-body ${
-                      errors.endDate ? "border-brown" : "border-lightGray focus:border-primary"
-                    } focus:outline-none transition-all`}
+                    className={`w-full p-[12px] border-2 rounded text-[14px] font-body ${errors.endDate ? "border-brown" : "border-lightGray focus:border-primary"
+                      } focus:outline-none transition-all`}
                   />
                 )}
                 {errors.totalInstallments && (
@@ -486,14 +852,15 @@ function AddFundsModal({
                 <h3 className="text-[16px] font-semibold text-brown font-heading">SIP Summary</h3>
               </div>
               <div className="text-[14px] text-brown font-body">
-                {sipData.amount && sipData.frequency ? (
+                {formData.amount && sipData.frequency && (
                   <p>
-                    ₹{sipData.amount} will be deducted {sipData.frequency}
+                    ₹{formData.amount} will be deducted {sipData.frequency}
                     {sipData.startDate && ` starting from ${new Date(sipData.startDate).toLocaleDateString()}`}
                     {sipData.endDate && ` until ${new Date(sipData.endDate).toLocaleDateString()}`}
                     {sipData.totalInstallments && ` for ${sipData.totalInstallments} installments`}
                   </p>
-                ) : (
+                )}
+                {!formData.amount && !sipData.frequency && (
                   <p>Please fill in the SIP details to see the summary.</p>
                 )}
               </div>
@@ -503,24 +870,21 @@ function AddFundsModal({
 
         <div className="flex justify-center">
           <button
-            onClick={handlePayment}
             type="button"
-            disabled={loading || !formData.amount || !formData.nuvamaCode || Object.values(errors).some(Boolean)}
-            className={`p-[12px] text-[14px] font-semibold text-white bg-primary rounded-sm shadow font-body transition-all ${
-              loading || !formData.amount || !formData.nuvamaCode || Object.values(errors).some(Boolean)
-                ? "bg-darkGray cursor-not-allowed opacity-50"
-                : "hover:bg-brown"
-            }`}
+            onClick={handlePayment}
+            disabled={loading || !formData.amount || !formData.nuvamaCode || !accountDetails || Object.values(errors).some(error => error)}
+            className={`p-[12px] text-[14px] font-semibold text-white bg-primary rounded-sm shadow font-body transition-all ${loading || !formData.amount || !formData.nuvamaCode || !accountDetails || Object.values(errors).some(error => error)
+              ? 'bg-darkGray cursor-not-allowed opacity-50'
+              : 'hover:bg-brown'
+              }`}
           >
             {loading ? (
-              <span className="flex items-center">
+              <div className="flex items-center">
                 <Loader className="animate-spin h-[16px] w-[16px] mr-[5px]" />
-                {activeTab === "sip" ? "Setting up SIP..." : "Processing Payment..."}
-              </span>
-            ) : activeTab === "sip" ? (
-              "Setup SIP"
+                {activeTab === 'sip' ? 'Setting up SIP...' : 'Processing Payment...'}
+              </div>
             ) : (
-              "Pay Now"
+              activeTab === 'sip' ? 'Setup SIP' : 'Pay Now'
             )}
           </button>
         </div>
@@ -534,13 +898,12 @@ function AddFundsModal({
           </div>
         )}
       </form>
+
     </ModalShell>
   );
 }
 
-/* ---------------------------
-   Switch / Reallocation Modal
----------------------------- */
+
 function SwitchReallocationModal({
   isOpen,
   onClose,
@@ -973,6 +1336,9 @@ function WithdrawalModal({
     </ModalShell>
   );
 }
+
+
+
 
 /* ---------------------------
    Main Page

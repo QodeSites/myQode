@@ -6,8 +6,8 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 function LetterReveal({
   text,
   className = "",
-  delay = 0.15, // initial delay before the wave starts
-  stagger = 0.045, // time between letters
+  delay = 0.5, // initial delay before the wave starts
+  stagger = 5.245, // time between letters
   rise = 14, // how much each letter lifts on reveal
 }: {
   text: string;
@@ -98,7 +98,7 @@ function FullscreenLoader({
       <div className="relative flex flex-col items-center px-6">
         {/* Brand: wave reveal per letter */}
         <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tight text-primary">
-          <LetterReveal text={brand} delay={0.1} stagger={0.05} rise={16} />
+          <LetterReveal text={brand} delay={0.1} stagger={0.25} rise={16} />
         </h1>
 
         {/* Subtitle: breathing opacity (reduced-motion = static) */}

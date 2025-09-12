@@ -12,12 +12,21 @@ import { ChevronDown, Menu, MenuIcon, Sidebar } from "lucide-react"
 import { useClient } from "@/contexts/ClientContext"
 import { Button } from "./ui/button"
 
+
+type FamilyAccount = {
+  clientid: string
+  clientcode: string
+  holderName: string
+  relation: string
+  status: string
+}
+
 type HeaderProps = { setSidebarOpen: (open: boolean) => void }
 
 export default function QodeHeader({ setSidebarOpen }: HeaderProps) {
   const [isPending, startTransition] = useTransition()
   const { clients, selectedClientCode, setSelectedClient, loading } = useClient()
-
+  console.log(clients)
 
   async function logout() {
     startTransition(async () => {

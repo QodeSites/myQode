@@ -21,6 +21,11 @@ export default function LoginPage() {
     setError('')
 
     try {
+      // Clear any existing client selection data before login
+      localStorage.removeItem('selectedClientCode')
+      localStorage.removeItem('selectedClientId')
+      console.log('Cleared existing client data from localStorage')
+
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
