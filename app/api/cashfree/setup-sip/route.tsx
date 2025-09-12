@@ -270,6 +270,8 @@ export async function POST(request: NextRequest) {
       plan_note: sanitizeDescription(`SIP_Plan_for_${accountDetails.client_name}_${sip_details.frequency}`), // Sanitized description
     };
 
+
+    console.log('Creating plan with request:', JSON.stringify(planRequest, null, 2));
     // Validate plan request
     if (!planRequest.amount || !planRequest.intervalType) {
       throw new Error('Plan request missing required fields: amount or intervalType');
@@ -294,9 +296,17 @@ export async function POST(request: NextRequest) {
         customer_bank_account_type: 'SAVINGS',
       },
       plan_details: {
-        plan_id: planResponse.plan_id,
-        plan_name: planResponse.plan_name,
+        plan_id: planRequest.plan_id,
+        plan_name: planRequest.plan_name,
         plan_type: 'PERIODIC',
+        plan_currency: planRequest.plan_currency,
+        plan_recurring_amount: planRequest.amount,
+        plan_intervals: planIntervals,
+        plan_interval_type: planRequest.plan_interval_type,
+        plan_note: planRequest.plan_note,
+        plan_max_amount: planRequest.amount * 100, // Kept for backward compatibility
+        plan_status: 'ACTIVE',
+        plan_amount: planRequest.amount,
       },
       authorization_details: {
         authorization_amount: parseFloat(order_amount.toString()),

@@ -2,6 +2,11 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 
+interface ClientData {
+  clientid: string;
+  clientcode: string;
+}
+
 export async function GET() {
   try {
     const cookieStore = cookies();
@@ -12,12 +17,13 @@ export async function GET() {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    let clients = [];
+    let clients: ClientData[] = [];
     if (clientsCookie?.value) {
       try {
         clients = JSON.parse(clientsCookie.value);
       } catch (error) {
         console.error('Error parsing clients cookie:', error);
+        return NextResponse.json({ error: 'Invalid client data in session' }, { status: 400 });
       }
     }
 
@@ -26,7 +32,7 @@ export async function GET() {
     }
 
     // Get full info of all clients stored in cookie
-    const clientCodes = clients.map((c: any) => c.clientcode);
+    const clientCodes = clients.map((c) => c.clientcode);
     const result = await query(
       `SELECT id, clientid, clientname, clientcode, clienttype, accounttype, account_open_date, 
               inceptiondate, mobile, email, address1, address2, city, pincode, state, pannumber, 
@@ -40,25 +46,20 @@ export async function GET() {
 
     const allClientDetails = result.rows;
 
-    // Find head of family or designate the single client as head
-    let headClient = allClientDetails.find((c) => c.head_of_family === true);
-
-    // If no head of family is found or there's only one client, treat the first client as the head
-    if (!headClient) {
-      headClient = allClientDetails[0]; // Use the first client as the head
-    }
-
-    if (!headClient) {
+    if (!allClientDetails.length) {
       return NextResponse.json({
         success: true,
-        clients: allClientDetails,
+        clients: [],
         family: [],
         message: 'No client data available',
       });
     }
 
+    // Find head of family or designate the first client as head
+    let headClient = allClientDetails.find((c) => c.head_of_family === true) || allClientDetails[0];
+
     const groupId = headClient.groupid;
-    const headOfFamilyEmail = headClient.email; // Get head of family email
+    const headOfFamilyEmail = headClient.email;
 
     // Fetch all family members by group ID with complete data
     const familyResult = await query(
@@ -94,7 +95,7 @@ export async function GET() {
       ownername: member.ownername,
       groupid: member.groupid,
       groupname: member.groupname,
-      groupemailid: headOfFamilyEmail, // Use head of family email for all members
+      groupemailid: headOfFamilyEmail,
       schemeid: member.schemeid,
       schemename: member.schemename,
       advisorname: member.advisorname,
@@ -106,12 +107,11 @@ export async function GET() {
       first_holder_gender: member.first_holder_gender,
       created_at: member.created_at,
       updated_at: member.updated_at,
-      head_of_family: member.id === headClient.id, // Ensure headClient is marked as head
-      // Computed fields for convenience
+      head_of_family: member.id === headClient.id,
       holderName: `${member.firstname} ${member.middlename ?? ''} ${member.lastname}`.trim(),
       fullName: `${member.salutation || ''} ${member.firstname} ${member.middlename ?? ''} ${member.lastname}`.trim(),
       relation: member.id === headClient.id ? 'Primary' : 'Family Member',
-      status: 'Active', // You can enhance this based on your business logic
+      status: 'Active',
     }));
 
     return NextResponse.json({
@@ -120,7 +120,7 @@ export async function GET() {
       family: familyMembers,
       familyCount: familyMembers.length,
       headOfFamily: headClient,
-      groupEmailId: headOfFamilyEmail, // Also return it separately for easy access
+      groupEmailId: headOfFamilyEmail,
     });
 
   } catch (error) {

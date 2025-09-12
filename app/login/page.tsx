@@ -1,4 +1,3 @@
-// app/login/page.tsx
 'use client'
 
 import { useState } from 'react'
@@ -7,13 +6,13 @@ import { Eye, EyeOff } from 'lucide-react'
 import { useClient } from '@/contexts/ClientContext'
 
 export default function LoginPage() {
-  const [email, setEmail] = useState('')
+  const [username, setUsername] = useState('') // Changed from email to username
   const [password, setPassword] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const router = useRouter()
-  const { refresh } = useClient() // Get refresh function from context
+  const { refresh } = useClient()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -21,7 +20,6 @@ export default function LoginPage() {
     setError('')
 
     try {
-      // Clear any existing client selection data before login
       localStorage.removeItem('selectedClientCode')
       localStorage.removeItem('selectedClientId')
       console.log('Cleared existing client data from localStorage')
@@ -31,20 +29,19 @@ export default function LoginPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ email, password }),
-        credentials: 'include', // Ensure cookies are sent
+        body: JSON.stringify({ username, password }), // Send username instead of email
+        credentials: 'include',
       })
 
       const data = await response.json()
-      console.log('Login response:', response.status, data) // Debug log
+      console.log('Login response:', response.status, data)
 
       if (!response.ok) {
         throw new Error(data.error || 'Login failed')
       }
 
-      // Refresh client data before redirecting
       console.log('Triggering client data refresh')
-      await refresh() // Fetch client data
+      await refresh()
       console.log('Redirecting to dashboard')
       router.push('/dashboard')
       
@@ -72,18 +69,18 @@ export default function LoginPage() {
           )}
           
           <div className="grid gap-2">
-            <label htmlFor="email" className="text-sm font-medium">
-              Email
+            <label htmlFor="username" className="text-sm font-medium">
+              Email or Client ID
             </label>
             <input
-              id="email"
-              name="email"
-              type="email"
+              id="username"
+              name="username"
+              type="text" // Changed to text to allow clientid
               required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               className="h-10 rounded-md border bg-background px-3 text-sm outline-none ring-0 focus:border-ring"
-              placeholder="you@example.com"
+              placeholder="you@example.com or client ID"
               disabled={isLoading}
             />
           </div>

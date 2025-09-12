@@ -1,4 +1,3 @@
-// app/api/auth/login/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { cookies } from 'next/headers'
@@ -10,40 +9,45 @@ interface ClientData {
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password } = await request.json()
+    const { username, password } = await request.json()
 
-    if (!email || !password) {
+    if (!username || !password) {
       return NextResponse.json(
-        { error: 'Email and password are required' },
+        { error: 'Username and password are required' },
         { status: 400 }
       )
     }
 
-    // Query database for user with matching email
-    const result = await query(
-      'SELECT clientid, clientcode FROM pms_clients_master WHERE email = $1 and password= $2',
-      [email, password]
+    // Step 1: Find the initial matching record(s) to get the email or groupid
+    const initialResult = await query(
+      'SELECT clientid, clientcode, email, groupid FROM pms_clients_master WHERE email = $1 OR clientcode = $1 AND password = $2',
+      [username, password]
     )
 
-    if (result.rows.length === 0) {
+    if (initialResult.rows.length === 0) {
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
       )
     }
 
-    // For demo purposes, any password works
-    // In production, add password validation here:
-    // const user = result.rows[0]
-    // let isValidPassword = false;
-    // if (user.password === password) {
-    //   isValidPassword = true;
-    // }
-    // if (!isValidPassword) {
-    //   return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
-    // }
+    // Step 2: Get the groupid or email from the first matching record
+    const { groupid, email } = initialResult.rows[0]
 
-    // Get all client records for this email (user can have multiple clients)
+    // Step 3: Fetch all client records associated with the same groupid or email
+    const result = await query(
+      'SELECT clientid, clientcode FROM pms_clients_master WHERE groupid = $1 OR email = $2',
+      [groupid, email]
+    )
+
+    if (result.rows.length === 0) {
+      return NextResponse.json(
+        { error: 'No client data found' },
+        { status: 404 }
+      )
+    }
+
+    // Map client data for the cookie
     const clientData: ClientData[] = result.rows.map(row => ({
       clientid: row.clientid,
       clientcode: row.clientcode
