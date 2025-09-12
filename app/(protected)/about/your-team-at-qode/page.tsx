@@ -92,10 +92,10 @@ async function sendEmail(emailData: {
     const contentType = response.headers.get('content-type');
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('API response not OK:', { 
-        status: response.status, 
-        statusText: response.statusText, 
-        body: errorText 
+      console.error('API response not OK:', {
+        status: response.status,
+        statusText: response.statusText,
+        body: errorText
       });
       throw new Error(`Failed to send email: ${response.status} ${response.statusText}`);
     }
@@ -124,36 +124,36 @@ export default function YourTeamAtQodePage() {
   const { toast } = useToast()
   const strategyFormRef = useRef<HTMLFormElement>(null)
   const discussionFormRef = useRef<HTMLFormElement>(null)
-  
+
   // Get selected client data from context
   const { selectedClientCode, selectedClientId, clients, loading } = useClient()
 
-// Updated handleStrategySubmit function
-const handleStrategySubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-  e.preventDefault();
-  const form = new FormData(e.currentTarget);
-  const formData = {
-    nuvamaCode: form.get("nuvama-code")?.toString() || selectedClientCode,
-    question: strategyQuestion,
-  };
+  // Updated handleStrategySubmit function
+  const handleStrategySubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    const formData = {
+      nuvamaCode: form.get("nuvama-code")?.toString() || selectedClientCode,
+      question: strategyQuestion,
+    };
 
-  // Validate required fields
-  if (!formData.question || !formData.nuvamaCode) {
-    toast({
-      title: "Error",
-      description: "Please provide a Nuvama Code and your question.",
-      variant: "destructive",
-    });
-    return;
-  }
+    // Validate required fields
+    if (!formData.question || !formData.nuvamaCode) {
+      toast({
+        title: "Error",
+        description: "Please provide a Nuvama Code and your question.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-  setIsSubmitting(true);
-  setSubmitStatus('idle');
+    setIsSubmitting(true);
+    setSubmitStatus('idle');
 
-  const userEmail = "user@example.com"; // Replace with actual session logic
+    const userEmail = "user@example.com"; // Replace with actual session logic
 
-  try {
-    const emailHtml = `
+    try {
+      const emailHtml = `
       <!DOCTYPE html>
       <html>
       <head>
@@ -193,75 +193,75 @@ const handleStrategySubmit = async (e: React.FormEvent<HTMLFormElement>) => {
       </html>
     `;
 
-    // FIXED: Properly structure the API call
-    await sendEmail({
-      to: 'sanket.shinde@qodeinvest.com',
-      subject: `New Strategy Question from ${formData.nuvamaCode}`,
-      html: emailHtml,
-      from: 'investor.relations@qodeinvest.com',
-      fromName: 'Qode Investor Relations',
-      // Required fields for database storage
-      inquiry_type: 'strategy',
-      nuvama_code: formData.nuvamaCode,
-      client_id: selectedClientId,
-      user_email: userEmail,
-      // Inquiry-specific data
-      question: formData.question,
-      priority: 'normal'
-    });
+      // FIXED: Properly structure the API call
+      await sendEmail({
+        to: 'sanket.shinde@qodeinvest.com',
+        subject: `New Strategy Question from ${formData.nuvamaCode}`,
+        html: emailHtml,
+        from: 'investor.relations@qodeinvest.com',
+        fromName: 'Qode Investor Relations',
+        // Required fields for database storage
+        inquiry_type: 'strategy',
+        nuvama_code: formData.nuvamaCode,
+        client_id: selectedClientId,
+        user_email: userEmail,
+        // Inquiry-specific data
+        question: formData.question,
+        priority: 'normal'
+      });
 
-    setSubmitStatus('success');
-    toast({
-      title: "Thank you!",
-      description: "Your strategy question has been submitted successfully.",
-    });
-    setStrategyQuestion('');
-    if (strategyFormRef.current) {
-      strategyFormRef.current.reset();
+      setSubmitStatus('success');
+      toast({
+        title: "Thank you!",
+        description: "Your strategy question has been submitted successfully.",
+      });
+      setStrategyQuestion('');
+      if (strategyFormRef.current) {
+        strategyFormRef.current.reset();
+      }
+      setTimeout(() => {
+        setIsStrategyModalOpen(false);
+        setSubmitStatus('idle');
+      }, 2000);
+    } catch (error) {
+      console.error('Strategy submission error:', error);
+      setSubmitStatus('error');
+      toast({
+        title: "Error",
+        description: "Failed to send your question. Please try again or contact us directly.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
     }
-    setTimeout(() => {
-      setIsStrategyModalOpen(false);
-      setSubmitStatus('idle');
-    }, 2000);
-  } catch (error) {
-    console.error('Strategy submission error:', error);
-    setSubmitStatus('error');
-    toast({
-      title: "Error",
-      description: "Failed to send your question. Please try again or contact us directly.",
-      variant: "destructive",
-    });
-  } finally {
-    setIsSubmitting(false);
-  }
-};
-
-// Updated handleDiscussionSubmit function
-const handleDiscussionSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-  e.preventDefault();
-  const form = new FormData(e.currentTarget);
-  const formData = {
-    nuvamaCode: form.get("nuvama-code")?.toString() || selectedClientCode,
-    topic: discussionTopic,
   };
 
-  // Validate required fields
-  if (!formData.topic || !formData.nuvamaCode) {
-    toast({
-      title: "Error",
-      description: "Please provide a Nuvama Code and your discussion topic.",
-      variant: "destructive",
-    });
-    return;
-  }
+  // Updated handleDiscussionSubmit function
+  const handleDiscussionSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = new FormData(e.currentTarget);
+    const formData = {
+      nuvamaCode: form.get("nuvama-code")?.toString() || selectedClientCode,
+      topic: discussionTopic,
+    };
 
-  setIsSubmitting(true);
-  setSubmitStatus('idle');
+    // Validate required fields
+    if (!formData.topic || !formData.nuvamaCode) {
+      toast({
+        title: "Error",
+        description: "Please provide a Nuvama Code and your discussion topic.",
+        variant: "destructive",
+      });
+      return;
+    }
 
-  const userEmail = "user@example.com"; // Replace with actual session logic
+    setIsSubmitting(true);
+    setSubmitStatus('idle');
 
-  try {
-    const emailHtml = `
+    const userEmail = "user@example.com"; // Replace with actual session logic
+
+    try {
+      const emailHtml = `
       <!DOCTYPE html>
       <html>
       <head>
@@ -301,48 +301,48 @@ const handleDiscussionSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
       </html>
     `;
 
-    // FIXED: Properly structure the API call
-    await sendEmail({
-      to: 'sanket.shinde@qodeinvest.com',
-      subject: `New Call Discussion Topic from ${formData.nuvamaCode}`,
-      html: emailHtml,
-      from: 'investor.relations@qodeinvest.com',
-      fromName: 'Qode Investor Relations',
-      // Required fields for database storage
-      inquiry_type: 'discussion',
-      nuvama_code: formData.nuvamaCode,
-      client_id: selectedClientId,
-      user_email: userEmail,
-      // Inquiry-specific data
-      topic: formData.topic,
-      priority: 'normal'
-    });
+      // FIXED: Properly structure the API call
+      await sendEmail({
+        to: 'sanket.shinde@qodeinvest.com',
+        subject: `New Call Discussion Topic from ${formData.nuvamaCode}`,
+        html: emailHtml,
+        from: 'investor.relations@qodeinvest.com',
+        fromName: 'Qode Investor Relations',
+        // Required fields for database storage
+        inquiry_type: 'discussion',
+        nuvama_code: formData.nuvamaCode,
+        client_id: selectedClientId,
+        user_email: userEmail,
+        // Inquiry-specific data
+        topic: formData.topic,
+        priority: 'normal'
+      });
 
-    setSubmitStatus('success');
-    toast({
-      title: "Thank you!",
-      description: "Your discussion topic has been submitted successfully.",
-    });
-    setDiscussionTopic('');
-    if (discussionFormRef.current) {
-      discussionFormRef.current.reset();
+      setSubmitStatus('success');
+      toast({
+        title: "Thank you!",
+        description: "Your discussion topic has been submitted successfully.",
+      });
+      setDiscussionTopic('');
+      if (discussionFormRef.current) {
+        discussionFormRef.current.reset();
+      }
+      setTimeout(() => {
+        setIsDiscussionModalOpen(false);
+        setSubmitStatus('idle');
+      }, 2000);
+    } catch (error) {
+      console.error('Discussion submission error:', error);
+      setSubmitStatus('error');
+      toast({
+        title: "Error",
+        description: "Failed to send your topic. Please try again or contact us directly.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
     }
-    setTimeout(() => {
-      setIsDiscussionModalOpen(false);
-      setSubmitStatus('idle');
-    }, 2000);
-  } catch (error) {
-    console.error('Discussion submission error:', error);
-    setSubmitStatus('error');
-    toast({
-      title: "Error",
-      description: "Failed to send your topic. Please try again or contact us directly.",
-      variant: "destructive",
-    });
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+  };
 
   // Show loading state if context is still loading
   if (loading) {
@@ -532,7 +532,7 @@ const handleDiscussionSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
               required
             />
           </div>
-          
+
           {submitStatus === 'error' && (
             <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded text-sm">
               Failed to send your question. Please try again or contact us directly.

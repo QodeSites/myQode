@@ -366,7 +366,7 @@ export default function FamilyAccountsSection() {
             </SelectContent>
           </Select>
           <Button className="bg-primary" onClick={() => setModalOpen(true)}>
-            Send Request
+            Raise Request
           </Button>
         </div>
       </div>
