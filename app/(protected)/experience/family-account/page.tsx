@@ -48,11 +48,21 @@ async function sendEmail(payload: {
   html: string;
   from?: string;
   fromName?: string;
+  inquiry_type?: string;
+  nuvama_code?: string;
+  client_id?: string;
+  user_email?: string;
 }) {
   const res = await fetch("/api/send-email", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      ...payload,
+      inquiry_type: payload.inquiry_type || "family_mapping",
+      nuvama_code: payload.nuvama_code,
+      client_id: payload.client_id,
+      user_email: payload.user_email,
+    }),
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -273,72 +283,77 @@ export default function FamilyAccountsSection() {
   /* =========================
      Handle Submit (Modal with only textarea)
      ========================= */
-  const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    const message = (fd.get("message")?.toString() || "").trim();
+const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
+  e.preventDefault();
+  const fd = new FormData(e.currentTarget);
+  const message = (fd.get("message")?.toString() || "").trim();
 
-    if (!selectedClientCode || !selectedClientId) {
-      toast({
-        title: "Missing account",
-        description: "No account is selected. Please select an account and try again.",
-        variant: "destructive",
-      });
-      return;
-    }
-    if (!message) {
-      toast({ title: "Message required", description: "Please write your request.", variant: "destructive" });
-      return;
-    }
+  if (!selectedClientCode || !selectedClientId) {
+    toast({
+      title: "Missing account",
+      description: "No account is selected. Please select an account and try again.",
+      variant: "destructive",
+    });
+    return;
+  }
+  if (!message) {
+    toast({ title: "Message required", description: "Please write your request.", variant: "destructive" });
+    return;
+  }
 
-    setIsSubmitting(true);
+  setIsSubmitting(true);
 
-    const subject = `Family Mapping / Account Request — ${selectedClientCode}`;
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
-      <style>body{font-family:Lato,Arial,sans-serif;line-height:1.6;color:#002017;background-color:#EFECD3}
-      .container{max-width:600px;margin:0 auto;padding:20px}.header{background:#02422B;padding:16px;border-radius:8px;margin-bottom:16px;text-align:center}
-      .content{background:#FFFFFF;padding:16px;border:1px solid #37584F;border-radius:8px}.info{background:#EFECD3;padding:12px;border-left:4px solid #DABD38;margin:12px 0}
-      h1{font-family:'Playfair Display',Georgia,serif;color:#DABD38;font-size:20px;margin:0}</style>
-      </head><body><div class="container">
-        <div class="header"><h1>Family Mapping / Account Request</h1></div>
-        <div class="content">
-          <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
-          <div class="info">
-            <p><strong>Client Code:</strong> ${selectedClientCode}</p>
-            <p><strong>Client ID:</strong> ${selectedClientId}</p>
-            <p><strong>User Email (fallback):</strong> ${fallbackEmail}</p>
-            <p><strong>Message:</strong></p>
-            <p>${message.replace(/\n/g, "<br/>")}</p>
-          </div>
+  const subject = `Family Mapping / Account Request — ${selectedClientCode}`;
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+    <style>body{font-family:Lato,Arial,sans-serif;line-height:1.6;color:#002017;background-color:#EFECD3}
+    .container{max-width:600px;margin:0 auto;padding:20px}.header{background:#02422B;padding:16px;border-radius:8px;margin-bottom:16px;text-align:center}
+    .content{background:#FFFFFF;padding:16px;border:1px solid #37584F;border-radius:8px}.info{background:#EFECD3;padding:12px;border-left:4px solid #DABD38;margin:12px 0}
+    h1{font-family:'Playfair Display',Georgia,serif;color:#DABD38;font-size:20px;margin:0}</style>
+    </head><body><div class="container">
+      <div class="header"><h1>Family Mapping / Account Request</h1></div>
+      <div class="content">
+        <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+        <div class="info">
+          <p><strong>Client Code:</strong> ${selectedClientCode}</p>
+          <p><strong>Client ID:</strong> ${selectedClientId}</p>
+          <p><strong>User Email (fallback):</strong> ${fallbackEmail}</p>
+          <p><strong>Message:</strong></p>
+          <p>${message.replace(/\n/g, "<br/>")}</p>
         </div>
-      </div></body></html>`;
+      </div>
+    </div></body></html>`;
 
-    try {
-      await sendEmail({
-        to: "sanket.shinde@qodeinvest.com",
-        subject,
-        html,
-        from: "investor.relations@qodeinvest.com",
-        fromName: "Qode Investor Portal",
-      });
+  try {
+    await sendEmail({
+      to: "sanket.shinde@qodeinvest.com",
+      subject,
+      html,
+      from: "investor.relations@qodeinvest.com",
+      fromName: "Qode Investor Portal",
+      inquiry_type: "raised_request",
+      nuvama_code: selectedClientCode,
+      client_id: selectedClientId,
+      user_email: fallbackEmail,
+      message, // Add message to the payload for storage in the data column
+    });
 
-      toast({
-        title: "Request sent",
-        description: "Your message has been emailed to our team. We’ll get back to you soon.",
-      });
-      formRef.current?.reset();
-      setModalOpen(false);
-    } catch (err) {
-      console.error("Email send error:", err);
-      toast({
-        title: "Failed to send",
-        description: "Could not send your request. Please try again or contact us directly.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    toast({
+      title: "Request sent",
+      description: "Your message has been emailed to our team. We’ll get back to you soon.",
+    });
+    formRef.current?.reset();
+    setModalOpen(false);
+  } catch (err) {
+    console.error("Email send error:", err);
+    toast({
+      title: "Failed to send",
+      description: "Could not send your request. Please try again or contact us directly.",
+      variant: "destructive",
+    });
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
   return (
     <section className="space-y-4 w-full">

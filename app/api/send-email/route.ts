@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Validate inquiry_type
-      const validInquiryTypes = ['strategy', 'discussion', 'switch', 'withdrawal', 'feedback', 'testimonial'];
+      const validInquiryTypes = ['strategy', 'discussion', 'switch', 'withdrawal', 'feedback', 'testimonial', 'raised_request'];
       if (!validInquiryTypes.includes(inquiry_type)) {
         return NextResponse.json(
           { error: `Invalid inquiry_type. Must be one of: ${validInquiryTypes.join(', ')}` },
