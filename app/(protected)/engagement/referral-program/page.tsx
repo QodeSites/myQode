@@ -168,7 +168,7 @@ export default function ReferAnInvestorPage() {
     if (!formDataSubmit.name || !formDataSubmit.email || !formDataSubmit.phone || !formDataSubmit.nuvamaCode) {
       toast({
         title: "Error",
-        description: "Please fill in all required fields, including Name, Email, Phone, and Nuvama Code.",
+        description: "Please fill in all required fields, including Name, Email, Phone, and Account ID.",
         variant: "destructive",
       })
       return
@@ -205,7 +205,7 @@ export default function ReferAnInvestorPage() {
             <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
             <div class="info-box">
               <h3 style="margin-top: 0;">Referral Details:</h3>
-              <p><strong>Nuvama Code:</strong> ${formDataSubmit.nuvamaCode}</p>
+              <p><strong>Account ID:</strong> ${formDataSubmit.nuvamaCode}</p>
               <p><strong>Client ID:</strong> ${selectedClientId}</p>
               <p><strong>Referring User Email:</strong> ${userEmail}</p>
               <p><strong>Referred investor name:</strong> ${formDataSubmit.name}</p>
@@ -346,7 +346,7 @@ export default function ReferAnInvestorPage() {
         <form ref={formRef} className="space-y-4" onSubmit={handleSubmit}>
           <div>
             <label htmlFor="nuvama-code" className="block text-sm font-medium text-foreground mb-2">
-              Nuvama Code *
+              Account ID *
             </label>
             <select
               id="nuvama-code"

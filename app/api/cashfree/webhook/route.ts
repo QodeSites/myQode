@@ -125,7 +125,7 @@ async function sendPaymentNotificationEmail(webhookData: CashfreeWebhookPayload)
             <p><strong>Customer:</strong> ${webhookData.customer_details.customer_name}</p>
             <p><strong>Email:</strong> ${webhookData.customer_details.customer_email}</p>
             <p><strong>Phone:</strong> ${webhookData.customer_details.customer_phone}</p>
-            ${orderTags?.nuvama_code ? `<p><strong>Nuvama Code:</strong> ${orderTags.nuvama_code}</p>` : ''}
+            ${orderTags?.nuvama_code ? `<p><strong>Account ID:</strong> ${orderTags.nuvama_code}</p>` : ''}
             ${orderTags?.client_id ? `<p><strong>Client ID:</strong> ${orderTags.client_id}</p>` : ''}
             ${orderTags?.order_type ? `<p><strong>Order Type:</strong> ${orderTags.order_type}</p>` : ''}
             ${webhookData.payment.bank_reference ? `<p><strong>Bank Reference:</strong> ${webhookData.payment.bank_reference}</p>` : ''}

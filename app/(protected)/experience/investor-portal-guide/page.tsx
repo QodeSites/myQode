@@ -14,7 +14,8 @@ function Banner() {
 
 function LinkBox() {
   return (
-    <div className="flex justify-center">
+    <div className="flex flex-col items-center gap-3 justify-center">
+      <div>
       <a
         href="https://eclientreporting.nuvamaassetservices.com/wealthspectrum/app/"
         aria-label="Open reporting portal link"
@@ -23,6 +24,10 @@ function LinkBox() {
       >
         Wealth Spectrum
       </a>
+      </div>
+      <div>
+      <p className="text-sm italic">[Your WealthSpectrum login can be either your Account ID or your registered Email ID.]</p>
+      </div>
     </div>
   )
 }

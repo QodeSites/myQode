@@ -141,7 +141,7 @@ export default function YourTeamAtQodePage() {
     if (!formData.question || !formData.nuvamaCode) {
       toast({
         title: "Error",
-        description: "Please provide a Nuvama Code and your question.",
+        description: "Please provide a Account ID and your question.",
         variant: "destructive",
       });
       return;
@@ -179,7 +179,7 @@ export default function YourTeamAtQodePage() {
             <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
             <div class="question-box">
               <h3 style="margin-top: 0;">Investor Question:</h3>
-              <p><strong>Nuvama Code:</strong> ${formData.nuvamaCode}</p>
+              <p><strong>Account ID:</strong> ${formData.nuvamaCode}</p>
               <p><strong>Client ID:</strong> ${selectedClientId}</p>
               <p><strong>User Email:</strong> ${userEmail}</p>
               <p><strong>Question:</strong> ${formData.question.replace(/\n/g, '<br>')}</p>
@@ -249,7 +249,7 @@ export default function YourTeamAtQodePage() {
     if (!formData.topic || !formData.nuvamaCode) {
       toast({
         title: "Error",
-        description: "Please provide a Nuvama Code and your discussion topic.",
+        description: "Please provide a Account ID and your discussion topic.",
         variant: "destructive",
       });
       return;
@@ -287,7 +287,7 @@ export default function YourTeamAtQodePage() {
             <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
             <div class="topic-box">
               <h3 style="margin-top: 0;">Discussion Topic:</h3>
-              <p><strong>Nuvama Code:</strong> ${formData.nuvamaCode}</p>
+              <p><strong>Account ID:</strong> ${formData.nuvamaCode}</p>
               <p><strong>Client ID:</strong> ${selectedClientId}</p>
               <p><strong>User Email:</strong> ${userEmail}</p>
               <p><strong>Topic:</strong> ${formData.topic.replace(/\n/g, '<br>')}</p>
@@ -498,7 +498,7 @@ export default function YourTeamAtQodePage() {
         <form ref={strategyFormRef} onSubmit={handleStrategySubmit} className="space-y-4">
           <div>
             <label htmlFor="nuvama-code" className="block text-sm font-medium text-foreground mb-2">
-              Nuvama Code
+              Account ID
             </label>
             <select
               id="nuvama-code"
@@ -576,7 +576,7 @@ export default function YourTeamAtQodePage() {
         <form ref={discussionFormRef} onSubmit={handleDiscussionSubmit} className="space-y-4">
           <div>
             <label htmlFor="nuvama-code" className="block text-sm font-medium text-foreground mb-2">
-              Nuvama Code
+              Account ID
             </label>
             <select
               id="nuvama-code"

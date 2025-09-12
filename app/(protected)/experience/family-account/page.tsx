@@ -365,9 +365,7 @@ export default function FamilyAccountsSection() {
               <SelectItem value="Dormant">Dormant</SelectItem>
             </SelectContent>
           </Select>
-          <Button className="bg-primary" onClick={() => setModalOpen(true)}>
-            Raise Request
-          </Button>
+
         </div>
       </div>
 
@@ -376,7 +374,7 @@ export default function FamilyAccountsSection() {
       ) : sortedGroupEntries.length === 0 ? (
         <Card>
           <CardContent className="text-center py-8">
-            <div className="text-muted-foreground">No family members found</div>
+            <p className="text-sm text-muted-foreground"></p>
           </CardContent>
         </Card>
       ) : (
@@ -492,24 +490,6 @@ export default function FamilyAccountsSection() {
                                                     <div className="text-muted-foreground">Email</div>
                                                     <div className="font-medium truncate">{account.email || 'N/A'}</div>
                                                   </div>
-                                                  {account.mobile && (
-                                                    <div>
-                                                      <div className="text-muted-foreground">Mobile</div>
-                                                      <div className="font-medium">{account.mobile}</div>
-                                                    </div>
-                                                  )}
-                                                  {account.pannumber && (
-                                                    <div>
-                                                      <div className="text-muted-foreground">PAN</div>
-                                                      <div className="font-medium">{account.pannumber}</div>
-                                                    </div>
-                                                  )}
-                                                  {(account.city || account.state) && (
-                                                    <div className="md:col-span-2">
-                                                      <div className="text-muted-foreground">Location</div>
-                                                      <div className="font-medium">{[account.city, account.state].filter(Boolean).join(', ')}</div>
-                                                    </div>
-                                                  )}
                                                 </div>
                                               </div>
                                             )}
@@ -545,6 +525,12 @@ export default function FamilyAccountsSection() {
         </ul>
       </div>
 
+      <div>
+        <Button className="bg-primary" onClick={() => setModalOpen(true)}>
+          Raise Request
+        </Button>
+      </div>
+
       {/* Modal: ONLY textarea + submit */}
       {modalOpen && (<ModalShell title="Send a request" onClose={onClose} size="lg" open={modalOpen}>
         <form ref={formRef} onSubmit={HandleSubmitRequest} className="space-y-4">
@@ -562,7 +548,7 @@ export default function FamilyAccountsSection() {
               Cancel
             </Button>
             <Button type="submit" className="bg-primary" disabled={isSubmitting}>
-              {isSubmitting ? "Sending…" : "Send Mail"}
+              {isSubmitting ? "Sending…" : "Raise Request"}
             </Button>
           </div>
         </form>

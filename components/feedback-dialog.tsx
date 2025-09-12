@@ -88,7 +88,7 @@ export function FeedbackDialog({
     if (!formData.nps || !formData.satisfaction || !formData.clarity || !formData.ease || !formData.nuvamaCode) {
       toast({
         title: "Error",
-        description: "Please fill in all required fields including Nuvama Code.",
+        description: "Please fill in all required fields including Account ID.",
         variant: "destructive",
       })
       return
@@ -125,7 +125,7 @@ export function FeedbackDialog({
             <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
             <div class="info-box">
               <h3 style="margin-top: 0;">Feedback Details:</h3>
-              <p><strong>Nuvama Code:</strong> ${formData.nuvamaCode}</p>
+              <p><strong>Account ID:</strong> ${formData.nuvamaCode}</p>
               <p><strong>Client ID:</strong> ${clientId}</p>
               <p><strong>User Email:</strong> ${userEmail}</p>
               <p><strong>How likely are you to recommend Qode? (1-5):</strong> ${formData.nps}</p>

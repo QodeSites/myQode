@@ -210,7 +210,7 @@ function AddFundsModal({
               setAccountDetails(null);
               toast({
                 title: 'Error',
-                description: 'No bank details found for the selected Nuvama Code.',
+                description: 'No bank details found for the selected Account ID.',
                 variant: 'destructive',
               });
             }
@@ -254,7 +254,7 @@ function AddFundsModal({
     setErrors((prev) => {
       const ne = { ...prev };
       if (name === "nuvamaCode") {
-        ne.nuvamaCode = value ? "" : "Nuvama Code is required";
+        ne.nuvamaCode = value ? "" : "Account ID is required";
       } else if (name === "amount") {
         ne.amount = !value ? "Amount is required" : Number(value) < 100 ? "Amount must be at least ₹100" : "";
       } else if (name === "startDate" && value) {
@@ -622,7 +622,7 @@ function AddFundsModal({
 
       <form ref={formRef} className="space-y-[15px]">
         <div className="p-[12px] rounded-sm border border-lightGray">
-          <label className="block text-[16px] font-semibold text-text-secondary mb-[5px] font-body">Nuvama Code</label>
+          <label className="block text-[16px] font-semibold text-text-secondary mb-[5px] font-body">Account ID</label>
           <select
             name="nuvamaCode"
             value={formData.nuvamaCode}
@@ -873,7 +873,7 @@ function SwitchReallocationModal({
     };
 
     if (!payload.switchTo || !payload.reason || !payload.amount || !payload.nuvamaCode) {
-      toast({ title: "Error", description: "Please fill in all required fields including Nuvama Code.", variant: "destructive" });
+      toast({ title: "Error", description: "Please fill in all required fields including Account ID.", variant: "destructive" });
       return;
     }
 
@@ -891,7 +891,7 @@ function SwitchReallocationModal({
       <div class="content"><p><strong>Request Type:</strong> Switch/Reallocation</p>
       <p><strong>Submitted via:</strong> Qode Investor Portal</p><p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
       <div class="info-box"><h3 style="margin-top:0;">Request Details:</h3>
-      <p><strong>Nuvama Code:</strong> ${payload.nuvamaCode}</p>
+      <p><strong>Account ID:</strong> ${payload.nuvamaCode}</p>
       <p><strong>Client ID:</strong> ${selectedClientId}</p>
       <p><strong>User Email:</strong> ${userEmail}</p>
       <p><strong>Currently Invested In:</strong> ${payload.investedIn}</p>
@@ -953,7 +953,7 @@ function SwitchReallocationModal({
     <ModalShell title="Request Switch/Reallocation" onClose={onClose} size="md">
       <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-foreground mb-2">Nuvama Code *</label>
+          <label className="block text-sm font-medium text-foreground mb-2">Account ID *</label>
           <select
             name="nuvama-code"
             value={formData.nuvamaCode}
@@ -1116,7 +1116,7 @@ function WithdrawalModal({
     };
 
     if (!payload.amount || !payload.nuvamaCode) {
-      toast({ title: "Error", description: "Please provide a Nuvama Code and withdrawal amount.", variant: "destructive" });
+      toast({ title: "Error", description: "Please provide a Account ID and withdrawal amount.", variant: "destructive" });
       return;
     }
 
@@ -1134,7 +1134,7 @@ function WithdrawalModal({
       <div class="content"><p><strong>Request Type:</strong> Withdrawal</p>
       <p><strong>Submitted via:</strong> Qode Investor Portal</p><p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
       <div class="info-box"><h3 style="margin-top:0;">Request Details:</h3>
-      <p><strong>Nuvama Code:</strong> ${payload.nuvamaCode}</p>
+      <p><strong>Account ID:</strong> ${payload.nuvamaCode}</p>
       <p><strong>Client ID:</strong> ${selectedClientId}</p>
       <p><strong>User Email:</strong> ${userEmail}</p>
       <p><strong>Amount:</strong> ${payload.amount}</p>
@@ -1180,7 +1180,7 @@ function WithdrawalModal({
     <ModalShell title="Submit Withdrawal Request" onClose={onClose} size="sm">
       <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium text-foreground mb-2">Nuvama Code *</label>
+          <label className="block text-sm font-medium text-foreground mb-2">Account ID *</label>
           <select
             name="nuvama-code"
             value={formData.nuvamaCode}

@@ -1,32 +1,32 @@
-import { NextResponse } from 'next/server'
-import { cookies } from 'next/headers'
-import { query } from '@/lib/db'
+import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
+import { query } from '@/lib/db';
 
 export async function GET() {
   try {
-    const cookieStore = cookies()
-    const authCookie = cookieStore.get('qode-auth')
-    const clientsCookie = cookieStore.get('qode-clients')
+    const cookieStore = cookies();
+    const authCookie = cookieStore.get('qode-auth');
+    const clientsCookie = cookieStore.get('qode-clients');
 
     if (authCookie?.value !== '1') {
-      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
-    let clients = []
+    let clients = [];
     if (clientsCookie?.value) {
       try {
-        clients = JSON.parse(clientsCookie.value)
+        clients = JSON.parse(clientsCookie.value);
       } catch (error) {
-        console.error('Error parsing clients cookie:', error)
+        console.error('Error parsing clients cookie:', error);
       }
     }
 
     if (!clients.length) {
-      return NextResponse.json({ error: 'No client data found' }, { status: 404 })
+      return NextResponse.json({ error: 'No client data found' }, { status: 404 });
     }
 
     // Get full info of all clients stored in cookie
-    const clientCodes = clients.map((c: any) => c.clientcode)
+    const clientCodes = clients.map((c: any) => c.clientcode);
     const result = await query(
       `SELECT id, clientid, clientname, clientcode, clienttype, accounttype, account_open_date, 
               inceptiondate, mobile, email, address1, address2, city, pincode, state, pannumber, 
@@ -36,26 +36,31 @@ export async function GET() {
        FROM pms_clients_master 
        WHERE clientcode = ANY($1::text[])`,
       [clientCodes]
-    )
+    );
 
-    const allClientDetails = result.rows
+    const allClientDetails = result.rows;
 
-    // Find head of family
-    const headClient = allClientDetails.find((c) => c.head_of_family === true)
+    // Find head of family or designate the single client as head
+    let headClient = allClientDetails.find((c) => c.head_of_family === true);
 
+    // If no head of family is found or there's only one client, treat the first client as the head
     if (!headClient) {
-      return NextResponse.json({ 
-        success: true,
-        clients: allClientDetails,
-        family: [], 
-        message: 'No head of family found' 
-      })
+      headClient = allClientDetails[0]; // Use the first client as the head
     }
 
-    const groupId = headClient.groupid
-    const headOfFamilyEmail = headClient.email // Get head of family email
+    if (!headClient) {
+      return NextResponse.json({
+        success: true,
+        clients: allClientDetails,
+        family: [],
+        message: 'No client data available',
+      });
+    }
 
-    // Now fetch all family members by group ID with complete data
+    const groupId = headClient.groupid;
+    const headOfFamilyEmail = headClient.email; // Get head of family email
+
+    // Fetch all family members by group ID with complete data
     const familyResult = await query(
       `SELECT id, clientid, clientname, clientcode, clienttype, accounttype, account_open_date, 
               inceptiondate, mobile, email, address1, address2, city, pincode, state, pannumber, 
@@ -66,7 +71,7 @@ export async function GET() {
        WHERE groupid = $1 
        ORDER BY head_of_family DESC, firstname ASC`,
       [groupId]
-    )
+    );
 
     const familyMembers = familyResult.rows.map((member) => ({
       id: member.id,
@@ -101,13 +106,13 @@ export async function GET() {
       first_holder_gender: member.first_holder_gender,
       created_at: member.created_at,
       updated_at: member.updated_at,
-      head_of_family: member.head_of_family,
+      head_of_family: member.id === headClient.id, // Ensure headClient is marked as head
       // Computed fields for convenience
       holderName: `${member.firstname} ${member.middlename ?? ''} ${member.lastname}`.trim(),
       fullName: `${member.salutation || ''} ${member.firstname} ${member.middlename ?? ''} ${member.lastname}`.trim(),
-      relation: member.head_of_family ? 'Primary' : 'Family Member',
-      status: 'Active' // You can enhance this based on your business logic
-    }))
+      relation: member.id === headClient.id ? 'Primary' : 'Family Member',
+      status: 'Active', // You can enhance this based on your business logic
+    }));
 
     return NextResponse.json({
       success: true,
@@ -115,11 +120,11 @@ export async function GET() {
       family: familyMembers,
       familyCount: familyMembers.length,
       headOfFamily: headClient,
-      groupEmailId: headOfFamilyEmail // Also return it separately for easy access
-    })
+      groupEmailId: headOfFamilyEmail, // Also return it separately for easy access
+    });
 
   } catch (error) {
-    console.error('Client data fetch error:', error)
-    return NextResponse.json({ error: 'Failed to fetch client data' }, { status: 500 })
+    console.error('Client data fetch error:', error);
+    return NextResponse.json({ error: 'Failed to fetch client data' }, { status: 500 });
   }
 }
