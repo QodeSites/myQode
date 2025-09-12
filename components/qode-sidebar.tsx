@@ -137,7 +137,7 @@ export default function QodeSidebar({ open = false, onClose }: QodeSidebarProps)
               </li>
               <li>
                 <NavLink href="/experience/family-account" icon={<Users className="h-4 w-4" />}>
-                  Family Account
+                  Account Mapping
                 </NavLink>
               </li>
               <li>
