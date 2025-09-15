@@ -109,7 +109,7 @@ export default function ReferAnInvestorPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const { toast } = useToast()
-  const { selectedClientCode, selectedClientId, clients, loading } = useClient()
+  const { selectedClientCode, selectedClientId, clients, loading ,selectedEmailClient} = useClient()
   const formRef = useRef<HTMLFormElement>(null)
   const [formData, setFormData] = useState({
     name: '',
@@ -179,7 +179,7 @@ export default function ReferAnInvestorPage() {
     setIsSubmitting(true)
     setSubmitStatus('idle')
 
-    const userEmail = "user@example.com" // Placeholder: Replace with session-based email retrieval
+    const userEmail = selectedEmailClient;
 
     const emailHtml = `
       <!DOCTYPE html>

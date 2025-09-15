@@ -7,11 +7,12 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { useToast } from "@/hooks/use-toast"
+import { useClient } from "@/contexts/ClientContext"
 
 type FeedbackDialogProps = {
   triggerLabel?: string
   nuvamaCode?: string
-  clientId?: string
+  selectedClientId?: string
 }
 
 async function sendEmail(emailData: {
@@ -62,15 +63,14 @@ async function sendEmail(emailData: {
 }
 
 export function FeedbackDialog({ 
-  triggerLabel = "Open Feedback Form", 
-  nuvamaCode = "QAW0001", 
-  clientId = "" 
+  triggerLabel = "Open Feedback Form"
 }: FeedbackDialogProps) {
   const [open, setOpen] = React.useState(false)
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [submitStatus, setSubmitStatus] = React.useState<'idle' | 'success' | 'error'>('idle')
   const { toast } = useToast()
   const formRef = React.useRef<HTMLFormElement>(null)
+  const { selectedClientCode, selectedClientId, clients, loading ,selectedEmailClient} = useClient()
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -81,7 +81,7 @@ export function FeedbackDialog({
       clarity: form.get("clarity")?.toString() || "",
       ease: form.get("ease")?.toString() || "",
       improve: form.get("improve")?.toString().trim() || "", // Trim to remove trailing spaces
-      nuvamaCode: nuvamaCode,
+      nuvamaCode: selectedClientCode,
     }
 
     // Validate required fields
@@ -97,7 +97,7 @@ export function FeedbackDialog({
     setIsSubmitting(true)
     setSubmitStatus('idle')
 
-    const userEmail = "user@example.com" // Placeholder: Replace with session-based email retrieval
+    const userEmail = selectedEmailClient;
 
     const emailHtml = `
       <!DOCTYPE html>
@@ -126,7 +126,7 @@ export function FeedbackDialog({
             <div class="info-box">
               <h3 style="margin-top: 0;">Feedback Details:</h3>
               <p><strong>Account ID:</strong> ${formData.nuvamaCode}</p>
-              <p><strong>Client ID:</strong> ${clientId}</p>
+              <p><strong>Client ID:</strong> ${selectedClientId}</p>
               <p><strong>User Email:</strong> ${userEmail}</p>
               <p><strong>How likely are you to recommend Qode? (1-5):</strong> ${formData.nps}</p>
               <p><strong>Overall satisfaction with Qode? (1-5):</strong> ${formData.satisfaction}</p>
@@ -144,14 +144,14 @@ export function FeedbackDialog({
     `
 
     sendEmail({
-      to: 'sanket.shinde@qodeinvest.com',
+      to: 'soham.panchal@qodeinvest.com',
       subject: `New Feedback Submission from ${formData.nuvamaCode}`,
       html: emailHtml,
       from: 'investor.relations@qodeinvest.com',
       fromName: 'Qode Investor Relations',
       inquiry_type: 'feedback',
       nuvama_code: formData.nuvamaCode,
-      client_id: clientId,
+      client_id: selectedClientId,
       user_email: userEmail,
       priority: 'normal',
       inquirySpecificData: {
