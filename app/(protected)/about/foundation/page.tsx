@@ -14,9 +14,13 @@ function PageHeader() {
 
 function Portrait({ src, alt }: { src: string; alt: string }) {
   return (
-    <div className="relative w-full max-w-[300px] aspect-square rounded-2xl overflow-hidden shadow bg-muted">
+    <div className="relative w-full max-w-[300px] md:max-w-[400px] xl:max-w-[300px] aspect-square rounded-2xl overflow-hidden shadow bg-muted content-center">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={src} alt={alt} className="absolute inset-0 w-full h-full object-cover" />
+      <img
+        src={src}
+        alt={alt}
+        className="absolute inset-0 w-full h-full object-cover"
+      />
     </div>
   );
 }
@@ -35,27 +39,32 @@ function FundManagerDisplay({
   reverse?: boolean;
 }) {
   return (
-    <section
-      className={`grid items-center md:gap-4 gap-4 ${
-        reverse ? "md:grid-cols-[1.1fr_0.9fr]" : "md:grid-cols-[0.9fr_1.1fr]"
-      }`}
-    >
-      {!reverse ? (
-        <div className="md:order-1 flex justify-center md:justify-center">
-          <Portrait src={img} alt={name} />
-        </div>
-      ) : (
-        <div className="md:order-2 flex justify-center md:justify-center">
-          <Portrait src={img} alt={name} />
-        </div>
-      )}
+    <section className="grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-4 lg:gap-4 xl:gap-4 2xl:gap-0 items-start">
+      {/* Image */}
+      <div
+        className={`
+          ${reverse ? "md:order-2" : "md:order-1"}
+          col-span-1 md:col-span-4 2xl:col-span-3 h-full
+          flex ${reverse ? "justify-center xl:justify-end align-center content-center items-center" : "justify-center xl:justify-start xl:items-center"}
+        `}
+      >
+        <Portrait src={img} alt={name} />
+      </div>
 
-      <div className={reverse ? "md:order-1" : "md:order-2"}>
+      {/* Text */}
+      <div
+        className={`
+          ${reverse ? "md:order-1" : "md:order-2"}
+          col-span-1 md:col-span-8 2xl:col-span-9
+          flex flex-col justify-start
+        `}
+      >
         <div className="space-y-2">
-          <h2 className="text-xl sm:text-2xl font-serif font-bold text-foreground">{name}</h2>
+          <h2 className="text-xl sm:text-xl font-serif font-bold text-foreground">{name}</h2>
           <p className="text-sm sm:text-base text-primary font-semibold">{role}</p>
         </div>
-        <div className="mt-3 space-y-2 text-sm sm:text-base leading-snug text-muted-foreground font-sans">
+
+        <div className="mt-3 space-y-2 text-sm sm:text-xs lg:text-base leading-snug text-muted-foreground font-sans">
           {paragraphs.map((p, i) => (
             <p key={i}>{p}</p>
           ))}
@@ -64,6 +73,8 @@ function FundManagerDisplay({
     </section>
   );
 }
+
+
 
 function PillHeader({ title }: { title: string }) {
   return (
@@ -104,7 +115,7 @@ export default function Page() {
     <main className="min-h-screen text-foreground">
       <PageHeader />
 
-      <div className="mx-auto px-4 sm:px-6 py-10 space-y-12">
+      <div className="mx-auto py-10 space-y-12">
         <FundManagerDisplay
           name="Rishabh Nahar"
           role="Fund Manager"
@@ -132,8 +143,8 @@ export default function Page() {
           ]}
         />
 
-        <MissionVision />
       </div>
+        <MissionVision />
     </main>
   );
 }

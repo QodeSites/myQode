@@ -2,7 +2,7 @@
 const nextConfig = {
   experimental: {
     serverActions: {
-      allowedOrigins: ['localhost:3001', 'bh05pcfr-3001.inc1.devtunnels.ms']
+      allowedOrigins: ['localhost:3001', 'localhost:3000','localhost:3002','bh05pcfr-3001.inc1.devtunnels.ms']
     }
   },
   eslint: {

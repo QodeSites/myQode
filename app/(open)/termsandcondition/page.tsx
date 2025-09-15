@@ -20,7 +20,7 @@ const TermsnConditions: React.FC = () => {
       <h1 className="text-pretty text-xl font-bold text-foreground flex items-center gap-2">
         Terms & Conditions
       </h1>
-      <p className="text-base">
+      <p className="text-md">
         By accessing & using the website of Qode (hereinafter referred to as
         "Qode"), including any of its web pages, you signify your agreement to
         these Terms & Conditions. It is important that you read these terms
@@ -41,7 +41,7 @@ const TermsnConditions: React.FC = () => {
           <p className="text-pretty text-lg font-bold text-foreground flex items-center gap-2">
             Use of Information & Materials:
           </p>
-          <p className="mb-4 text-base md:text-lg">
+          <p className="mb-4 text-md">
             The content provided on Qode's website is for general
             informational purposes only & should not be considered as
             financial advice or a recommendation to invest. The website
@@ -56,7 +56,7 @@ const TermsnConditions: React.FC = () => {
           <p className="text-pretty text-lg font-bold text-foreground flex items-center gap-2">
             Copyright & Intellectual Property:
           </p>
-          <p className="mb-4 text-base md:text-lg">
+          <p className="mb-4 text-md">
             All content on Qode's website, including text, graphics, logos, &
             images, is the property of Qode or its content suppliers & is
             protected by copyright & other intellectual property laws.
@@ -67,7 +67,7 @@ const TermsnConditions: React.FC = () => {
           <p className="text-pretty text-lg font-bold text-foreground flex items-center gap-2">
             No Warranties:
           </p>
-          <p className="mb-4 text-base md:text-lg">
+          <p className="mb-4 text-md">
             Qode makes no warranties or representations about the accuracy,
             completeness, or suitability of the information on its website.
             All content is provided "as is" without any warranty of any kind.
@@ -79,7 +79,7 @@ const TermsnConditions: React.FC = () => {
           <p className="text-pretty text-lg font-bold text-foreground flex items-center gap-2">
             Exclusion of Liability:
           </p>
-          <p className="mb-4 text-base md:text-lg">
+          <p className="mb-4 text-md">
             Qode will not be liable for any damages or losses arising from the
             use of this website, including but not limited to direct,
             indirect, incidental, punitive, & consequential damages. This
@@ -92,7 +92,7 @@ const TermsnConditions: React.FC = () => {
           <p className="text-pretty text-lg font-bold text-foreground flex items-center gap-2">
             Governing Law:
           </p>
-          <p className="mb-4 text-base md:text-lg">
+          <p className="mb-4 text-md">
             These Terms & Conditions are governed by the laws of India. Any
             disputes arising out of or in connection with this website are to
             be submitted to the exclusive jurisdiction of the courts in
@@ -102,7 +102,7 @@ const TermsnConditions: React.FC = () => {
           <p className="text-pretty text-lg font-bold text-foreground flex items-center gap-2">
             Privacy & Security:
           </p>
-          <p className="mb-4 text-base md:text-lg">
+          <p className="mb-4 text-md">
             Qode takes the privacy & security of its users seriously. Please
             review our Privacy Policy to understand how we protect your
             information.
@@ -111,7 +111,7 @@ const TermsnConditions: React.FC = () => {
           <p className="text-pretty text-lg font-bold text-foreground flex items-center gap-2">
             Hyperlinks:
           </p>
-          <p className="mb-4 text-base md:text-lg">
+          <p className="mb-4 text-md">
             This website may contain links to other websites. Qode is not
             responsible for the content or privacy practices of these external
             sites. Users are advised to read the privacy policy of external
@@ -132,7 +132,7 @@ const TermsnConditions: React.FC = () => {
           <p className="text-pretty text-lg font-bold text-foreground flex items-center gap-2">
             Amendments:
           </p>
-          <p className="mb-4 text-base md:text-lg">
+          <p className="mb-4 text-md">
             Qode reserves the right to amend these Terms & Conditions at any
             time. Any such changes will be posted on this page. Your continued
             use of the website following the posting of changes to these terms
@@ -142,7 +142,7 @@ const TermsnConditions: React.FC = () => {
           <p className="text-pretty text-lg font-bold text-foreground flex items-center gap-2">
             Contact Information:
           </p>
-          <p className="text-base md:text-lg">
+          <p className="text-md">
             If you have any questions or concerns about these Terms &
             Conditions, please contact us at{' '}
             <a href="mailto:investor.relations@qodeinvest.com">

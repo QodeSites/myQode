@@ -126,7 +126,7 @@ export default function YourTeamAtQodePage() {
   const discussionFormRef = useRef<HTMLFormElement>(null)
 
   // Get selected client data from context
-  const { selectedClientCode, selectedClientId, clients, loading } = useClient()
+  const { selectedClientCode, selectedClientId, clients, loading, refresh, selectedEmailClient } = useClient()
 
   // Updated handleStrategySubmit function
   const handleStrategySubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -150,7 +150,7 @@ export default function YourTeamAtQodePage() {
     setIsSubmitting(true);
     setSubmitStatus('idle');
 
-    const userEmail = "user@example.com"; // Replace with actual session logic
+    const userEmail = selectedEmailClient; 
 
     try {
       const emailHtml = `
@@ -258,7 +258,7 @@ export default function YourTeamAtQodePage() {
     setIsSubmitting(true);
     setSubmitStatus('idle');
 
-    const userEmail = "user@example.com"; // Replace with actual session logic
+    const userEmail = selectedEmailClient;
 
     try {
       const emailHtml = `
@@ -463,13 +463,15 @@ export default function YourTeamAtQodePage() {
         <div>
           <Section title="WhatsApp/Email" icon={<MessageCircle className="h-5 w-5 text-primary" />}>
             <p className="mb-2 flex flex-col gap-1">
-              <span className="flex items-center gap-2">
-                <Phone className="h-4 w-4 text-primary" />
-                <strong>WhatsApp (IR Desk):</strong> <a href={`https://wa.me/+919820300028?text=Hi!%20I%20am%20${selectedClientCode || 'a client'}%20and%20would%20like%20to%20discuss%20my%20account`}>+91 98203 00028</a>
+              <span className="flex items-center gap-[2px] md:gap-2">
+                <Phone className="h-4 w-4 text-primary " />
+                <strong className="sm:text-sm text-xs">WhatsApp (IR Desk):</strong> 
+                <a href={`https://wa.me/+919820300028?text=Hi!%20I%20am%20${selectedClientCode || 'a client'}%20and%20would%20like%20to%20discuss%20my%20account`}>+91 98203 00028</a>
+                <span className="sm:text-sm text-xs">(9 AM – 5 PM)</span>
               </span>
               <span className="flex items-center gap-2">
                 <Mail className="h-4 w-4 text-primary" />
-                <strong>Email:</strong>{" "}
+                <strong >Email:</strong>{" "}
                 <a
                   href={`mailto:investor.relations@qodeinvest.com?subject=Account%20Query%20-%20${selectedClientCode || 'Client'}`}
                   className="underline decoration-dotted underline-offset-4"

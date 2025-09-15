@@ -109,12 +109,13 @@ export default function ReferAnInvestorPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const { toast } = useToast()
-  const { selectedClientCode, selectedClientId, clients, loading } = useClient()
+  const { selectedClientCode, selectedClientId, clients, loading ,selectedEmailClient} = useClient()
   const formRef = useRef<HTMLFormElement>(null)
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     phone: '',
+    description: '',
     nuvamaCode: selectedClientCode || 'QAW0001',
   })
 
@@ -162,6 +163,7 @@ export default function ReferAnInvestorPage() {
       email: (form.get("referral-email")?.toString() || formData.email).trim(),
       phone: (form.get("referral-phone")?.toString() || formData.phone).trim(),
       nuvamaCode: (form.get("nuvama-code")?.toString() || formData.nuvamaCode).trim(),
+      description : (form.get("description")?.toString() || formData.description).trim(),
     }
 
     // Validate required fields
@@ -177,7 +179,7 @@ export default function ReferAnInvestorPage() {
     setIsSubmitting(true)
     setSubmitStatus('idle')
 
-    const userEmail = "user@example.com" // Placeholder: Replace with session-based email retrieval
+    const userEmail = selectedEmailClient;
 
     const emailHtml = `
       <!DOCTYPE html>
@@ -211,6 +213,7 @@ export default function ReferAnInvestorPage() {
               <p><strong>Referred investor name:</strong> ${formDataSubmit.name}</p>
               <p><strong>Referred investor email:</strong> ${formDataSubmit.email}</p>
               <p><strong>Referred investor phone:</strong> ${formDataSubmit.phone}</p>
+              <p><strong>Description:</strong> ${formDataSubmit.description}</p>
             </div>
             <p style="margin-top: 20px; font-size: 14px; color: #37584F;">
               This message was sent from the Qode investor portal. Please follow up with the referred investor.
@@ -238,6 +241,7 @@ export default function ReferAnInvestorPage() {
       referred_investor_name: formDataSubmit.name,
       referred_investor_email: formDataSubmit.email,
       referred_investor_phone: formDataSubmit.phone,
+      description : formData.description
     }
 
     // Log request body for debugging
@@ -254,6 +258,7 @@ export default function ReferAnInvestorPage() {
           name: '',
           email: '',
           phone: '',
+          description : '',
           nuvamaCode: selectedClientCode || 'QAW0001',
         })
         if (formRef.current) {
@@ -337,6 +342,7 @@ export default function ReferAnInvestorPage() {
             name: '',
             email: '',
             phone: '',
+            description: '',
             nuvamaCode: selectedClientCode || 'QAW0001',
           })
           setSubmitStatus('idle')
@@ -411,6 +417,20 @@ export default function ReferAnInvestorPage() {
               required
             />
           </div>
+          <div>
+            <label htmlFor="description" className="block text-sm font-medium text-foreground mb-2">
+              Description
+            </label>
+            <textarea
+              id="description"
+              name="description"
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              className="w-full p-3 border border-border rounded-md bg-background text-foreground focus:ring-2 focus:ring-primary focus:border-primary"
+              placeholder="Description"
+              required
+            />
+          </div>
           {submitStatus === 'success' && (
             <div className="p-3 bg-green-100 border border-green-400 text-green-700 rounded text-sm">
               Your referral has been sent successfully! Thank you for your input.
@@ -430,6 +450,7 @@ export default function ReferAnInvestorPage() {
                   name: '',
                   email: '',
                   phone: '',
+                  description: '',
                   nuvamaCode: selectedClientCode || 'QAW0001',
                 })
                 setSubmitStatus('idle')

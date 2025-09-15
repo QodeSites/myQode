@@ -393,14 +393,14 @@ const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-0 md:space-y-2">
           {sortedGroupEntries.map(([groupKey, group]) => {
             const isGroupCollapsed = collapsedGroups.has(groupKey);
             const totalAccounts = Object.values(group.owners).reduce((sum, owner) => sum + owner.accounts.length, 0);
 
             return (
-              <Card key={groupKey} className="overflow-hidden py-0">
-                <CardContent className="pt-6">
+              <Card key={groupKey} className="overflow-hidden py-0 p-0 md:p-6">
+                <CardContent className="p-1 md:p-6">
                   {/* Group header */}
                   <div
                     className="flex items-center gap-3 mb-4 cursor-pointer hover:bg-muted/50 rounded p-2 -m-2"
@@ -409,7 +409,7 @@ const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
                     {isGroupCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     <div className="h-3 w-3 rounded-full bg-blue-500" />
                     <div className="flex-1">
-                      <div className="font-semibold text-lg">{group.groupName || "Family Group"}</div>
+                      <div className="font-semibold text-md md:text-lg">{group.groupName || "Family Group"}</div>
                       <div className="text-sm text-muted-foreground">
                         Group ID: {group.groupId} | Email: {group.groupEmail || "N/A"}
                       </div>
@@ -422,7 +422,7 @@ const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
 
                   {/* Owners */}
                   {!isGroupCollapsed && (
-                    <div className="ml-6">
+                    <div className="ml-4 md:ml-6">
                       {Object.entries(group.owners)
                         .sort(([, a], [, b]) => (a.ownerName || "Unknown").localeCompare(b.ownerName || "Unknown"))
                         .map(([ownerKey, owner]) => {
@@ -436,7 +436,7 @@ const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
                               <div className="absolute left-0 top-6 w-4 h-px bg-border"></div>
 
                               {/* Owner Level - Collapsible */}
-                              <div className="ml-6">
+                              <div className="ml-4 md:ml-6">
                                 <div
                                   className="flex items-center gap-3 mb-2 cursor-pointer hover:bg-muted/50 rounded p-1 -m-1"
                                   onClick={() => toggleOwnerCollapse(fullOwnerKey)}
@@ -460,7 +460,7 @@ const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
 
                                 {/* Accounts */}
                                 {!isOwnerCollapsed && (
-                                  <div className="ml-6">
+                                  <div className="ml-4 md:ml-6">
                                     {owner.accounts.map((account, accountIdx) => {
                                       const accountKey = `${fullOwnerKey}-${account.clientid}`;
                                       const isAccountCollapsed = collapsedAccounts.has(accountKey);
@@ -472,7 +472,7 @@ const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
                                           <div className="absolute left-0 top-6 w-3 h-px bg-border opacity-50"></div>
 
                                           {/* Account Level - Collapsible */}
-                                          <div className="ml-4">
+                                          <div className="ml-2 md:ml-4">
                                             <div
                                               className="flex items-center gap-3 mb-2 cursor-pointer hover:bg-muted/50 rounded p-1 -m-1"
                                               onClick={() => toggleAccountCollapse(accountKey)}
@@ -495,7 +495,7 @@ const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
                                             </div>
 
                                             {!isAccountCollapsed && (
-                                              <div className="ml-4 p-2 bg-muted/20 rounded text-xs border-l-2 border-primary/10">
+                                              <div className="ml-2 md:ml-4 p-2 bg-muted/20 rounded text-xs border-l-2 border-primary/10">
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                                                   <div>
                                                     <div className="text-muted-foreground">Client ID</div>
@@ -528,11 +528,11 @@ const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
       )}
 
       {/* Info */}
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-        <p className="text-sm text-amber-800 leading-relaxed mb-3">
+      <div className="rounded-lg p-4">
+        <p className="text-sm leading-relaxed mb-3">
           If your family structure has changed or if you would like to update how your accounts are grouped, you can:
         </p>
-        <ul className="text-sm text-amber-800 space-y-1 list-disc list-inside ml-2">
+        <ul className="text-sm space-y-1 list-disc list-inside ml-2">
           <li>Request to merge multiple accounts under one family head.</li>
           <li>Request to reassign accounts to a different owner within the same family.</li>
           <li>Request to split accounts into a new family group.</li>

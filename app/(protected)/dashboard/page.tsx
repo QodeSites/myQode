@@ -144,7 +144,7 @@ export default function DashboardHome() {
       </AnimatePresence>
 
       {/* Page content */}
-      <div className="space-y-8 p-6">
+      <div className="space-y-8">
         <section className="prose prose-sm max-w-none">
           <h2 className="text-xl font-bold text-foreground">Who We Are</h2>
           <p className="text-card-foreground">

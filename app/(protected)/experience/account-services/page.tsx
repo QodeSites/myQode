@@ -7,6 +7,12 @@ import { useToast } from "@/hooks/use-toast";
 import { useClient } from "@/contexts/ClientContext";
 
 
+const strategy = {
+  'QFH': 'Qode Future Horizon',
+  'QAW': 'Qode All Weather',
+  'QTF': 'Qode Tactical Fund',
+  'QGF': 'Qode Growth Fund'
+}
 /* ---------------------------
    Reusable Modal Component
 ---------------------------- */
@@ -33,8 +39,8 @@ function ModalShell({
       <div className="absolute inset-0 bg-background/60 backdrop-blur-sm" onClick={onClose} />
       <div
         className={`relative w-full ${sizeClass} bg-card shadow-2xl
-          h-[100dvh] sm:h-auto sm:rounded-lg
-          flex flex-col max-h-[90dvh] mt-4 lg:mt-14`}
+          h-[98dvh] sm:h-auto sm:rounded-lg
+          flex flex-col max-h-[90dvh] mt-6 lg:mt-14`}
         role="dialog"
         aria-modal="true"
       >
@@ -1159,19 +1165,20 @@ function SwitchReallocationModal({
       <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-foreground mb-2">Account ID *</label>
-          <select
+          <input
             name="nuvama-code"
             value={formData.nuvamaCode}
             onChange={(e) => setFormData({ ...formData, nuvamaCode: e.target.value })}
-            className="w-full p-3 border border-border rounded-md text-foreground focus:ring-2 focus:ring-primary focus:border-primary"
+            className="w-full p-3 border border-border rounded-md text-foreground bg-muted focus:ring-2 focus:ring-primary focus:border-primary"
             required
+            disabled
           >
-            {clients.map((c) => (
+            {/* {clients.map((c) => (
               <option key={c.clientid} value={c.clientcode}>
                 {c.clientcode} ({c.clientid})
               </option>
-            ))}
-          </select>
+            ))} */}
+          </input>
           <p className="text-xs text-muted-foreground mt-1">Currently selected: {selectedClientCode}</p>
         </div>
 
@@ -1180,7 +1187,7 @@ function SwitchReallocationModal({
           <input
             name="invested-in"
             type="text"
-            value={formData.investedIn}
+            value={`${strategy[formData.investedIn]} - ${formData.investedIn}`}
             disabled
             className="w-full p-3 border border-border rounded-md bg-muted text-muted-foreground cursor-not-allowed"
           />
@@ -1196,10 +1203,17 @@ function SwitchReallocationModal({
             required
           >
             <option value="">Select Strategy</option>
-            <option value="QGF">QGF</option>
-            <option value="QFH">QFH</option>
-            <option value="QTF">QTF</option>
-            <option value="QAW">QAW</option>
+            {/* <option value="QGF">Qode Growth Fund (QGF)</option>
+            <option value="QFH">Qode Future Horizon (QFH)</option>
+            <option value="QTF">Qode Tatical Fund (QTF)</option>
+            <option value="QAW">Qode All Weather (QAW)</option> */}
+            {Object.entries(strategy)
+              .filter(([value]) => value !== formData.investedIn)
+              .map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label} ({value})
+                </option>
+              ))}
           </select>
         </div>
 
@@ -1389,15 +1403,15 @@ function WithdrawalModal({
           <select
             name="nuvama-code"
             value={formData.nuvamaCode}
-            onChange={(e) => setFormData({ ...formData, nuvamaCode: e.target.value })}
             className="w-full p-3 border border-border rounded-md text-foreground focus:ring-2 focus:ring-primary focus:border-primary"
             required
+            disabled
           >
-            {clients.map((c) => (
+            {/* {clients.map((c) => (
               <option key={c.clientid} value={c.clientcode}>
                 {c.clientcode} ({c.clientid})
               </option>
-            ))}
+            ))} */}
           </select>
           <p className="text-xs text-muted-foreground mt-1">Currently selected: {selectedClientCode}</p>
         </div>

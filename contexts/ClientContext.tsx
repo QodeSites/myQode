@@ -6,6 +6,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 interface ClientData {
   clientid: string;
   clientcode: string;
+  email: string
 }
 
 interface ClientContextType {
@@ -15,6 +16,8 @@ interface ClientContextType {
   setSelectedClient: (clientCode: string) => void
   loading: boolean
   refresh: () => void
+  selectedEmailClient: string,
+  setSelectedEmailClient:string
 }
 
 const ClientContext = createContext<ClientContextType | undefined>(undefined)
@@ -23,6 +26,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   const [clients, setClients] = useState<ClientData[]>([])
   const [selectedClientCode, setSelectedClientCode] = useState<string>('')
   const [selectedClientId, setSelectedClientId] = useState<string>('')
+  const [selectedEmailClient, setSelectedEmailClient] = useState<string>('')
   const [loading, setLoading] = useState(true)
 
   const fetchClientData = async () => {
@@ -44,6 +48,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
           // Check localStorage for previous selection
           const savedClientCode = localStorage.getItem('selectedClientCode');
           const savedClientId = localStorage.getItem('selectedClientId');
+          const savedEmailClient = localStorage.getItem('selectedEmailClient');
           
           let clientToSelect: ClientData | null = null;
           
@@ -59,6 +64,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
               console.log('Saved client not found in current data, clearing localStorage');
               localStorage.removeItem('selectedClientCode');
               localStorage.removeItem('selectedClientId');
+              localStorage.removeItem('selectedEmailClient');
             }
           }
           
@@ -71,11 +77,13 @@ export function ClientProvider({ children }: { children: ReactNode }) {
           // Set the selected client
           setSelectedClientCode(clientToSelect.clientcode);
           setSelectedClientId(clientToSelect.clientid);
+          setSelectedEmailClient(clientToSelect.email);
           
           // Save to localStorage if it's not already saved or if it's different
           if (savedClientCode !== clientToSelect.clientcode || savedClientId !== clientToSelect.clientid) {
             localStorage.setItem('selectedClientCode', clientToSelect.clientcode);
             localStorage.setItem('selectedClientId', clientToSelect.clientid);
+            localStorage.setItem('selectedEmailClient', clientToSelect.email);
             console.log('Updated localStorage with client:', clientToSelect);
           }
           
@@ -85,6 +93,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
           setSelectedClientId('');
           localStorage.removeItem('selectedClientCode');
           localStorage.removeItem('selectedClientId');
+          localStorage.removeItem('selectedEmailClient');
         }
       } else {
         console.error('Failed to fetch client data:', response.status, response.statusText);
@@ -93,6 +102,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
         setSelectedClientId('');
         localStorage.removeItem('selectedClientCode');
         localStorage.removeItem('selectedClientId');
+        localStorage.removeItem('selectedEmailClient');
       }
     } catch (error) {
       console.error('Failed to fetch client data:', error);
@@ -101,6 +111,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       setSelectedClientId('');
       localStorage.removeItem('selectedClientCode');
       localStorage.removeItem('selectedClientId');
+      localStorage.removeItem('selectedEmailClient');
     } finally {
       setLoading(false);
     }
@@ -124,6 +135,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       setSelectedClientId(client.clientid);
       localStorage.setItem('selectedClientCode', client.clientcode);
       localStorage.setItem('selectedClientId', client.clientid);
+      localStorage.removeItem('selectedEmailClient');
     } else {
       console.warn('Client not found for code:', clientCode);
       if (clients.length > 0) {
@@ -131,14 +143,17 @@ export function ClientProvider({ children }: { children: ReactNode }) {
         const defaultClient = clients[0];
         setSelectedClientCode(defaultClient.clientcode);
         setSelectedClientId(defaultClient.clientid);
+        setSelectedEmailClient(defaultClient.email)
         localStorage.setItem('selectedClientCode', defaultClient.clientcode);
         localStorage.setItem('selectedClientId', defaultClient.clientid);
+        localStorage.setItem('selectedEmailClient',defaultClient.email);
         console.log('Fell back to first client:', defaultClient);
       } else {
         setSelectedClientCode('');
         setSelectedClientId('');
         localStorage.removeItem('selectedClientCode');
         localStorage.removeItem('selectedClientId');
+        localStorage.removeItem('selectedEmailClient');
       }
     }
   };
@@ -149,7 +164,9 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     selectedClientId,
     setSelectedClient,
     loading,
-    refresh
+    refresh,
+    selectedEmailClient,
+    setSelectedEmailClient
   };
 
   return (
