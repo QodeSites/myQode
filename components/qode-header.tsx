@@ -11,6 +11,7 @@ import {
 import { ChevronDown, Menu, MenuIcon, Sidebar } from "lucide-react"
 import { useClient } from "@/contexts/ClientContext"
 import { Button } from "./ui/button"
+import Link from "next/link"
 
 
 type FamilyAccount = {
@@ -43,9 +44,12 @@ export default function QodeHeader({ setSidebarOpen }: HeaderProps) {
         <div className="border-b bg-secondary px-4 sm:px-6 md:px-8 py-4">
           <div className="mx-auto flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="font-serif text-2xl sm:text-3xl font-bold text-primary leading-none">
-                <sub className="text-xs sm:text-sm">my</sub>Qode
-              </span>
+              <Link href="/">
+                <span className="font-serif text-2xl sm:text-3xl font-bold text-primary leading-none">
+                  <sub className="text-xs sm:text-sm">my</sub>Qode
+                </span>
+              </Link>
+
             </div>
             <div className="flex items-center gap-3 sm:gap-4">
               <div className="inline-flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm text-foreground animate-pulse">
@@ -75,11 +79,12 @@ export default function QodeHeader({ setSidebarOpen }: HeaderProps) {
               <MenuIcon className="h-5 w-5" /> {/* Optional: Icon for visual clarity */}
               <span className="sr-only">Menu</span> {/* Screen-reader-only text for accessibility */}
             </Button>
-            <h1 className="font-serif text-2xl sm:text-3xl font-bold text-primary leading-none">
-              <sub className="text-xs sm:text-sm">my</sub>Qode
-            </h1>
+            <Link href="/">
+              <h1 className="font-serif text-2xl sm:text-3xl font-bold text-primary leading-none">
+                <sub className="text-xs sm:text-sm">my</sub>Qode
+              </h1>
+            </Link>
           </div>
-
           {/* Right section */}
           <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
             <DropdownMenu>
@@ -98,9 +103,8 @@ export default function QodeHeader({ setSidebarOpen }: HeaderProps) {
                     <DropdownMenuItem
                       key={client.clientid}
                       onClick={() => handleClientSelect(client.clientcode)}
-                      className={`cursor-pointer ${
-                        selectedClientCode === client.clientcode ? "bg-accent" : ""
-                      }`}
+                      className={`cursor-pointer ${selectedClientCode === client.clientcode ? "bg-accent" : ""
+                        }`}
                     >
                       <div className="flex flex-col">
                         <span className="font-medium">{client.clientcode}</span>

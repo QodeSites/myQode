@@ -165,7 +165,7 @@ function StrategySection({
 
           {/* Content Grid */}
           <div className={`grid gap-8 ${isEven ? 'lg:grid-cols-5' : 'lg:grid-cols-5'}`}>
-            <div className={`${isEven ? 'lg:col-span-3 lg:order-1' : 'lg:col-span-3 lg:order-2'}`}>
+            <div className={`${isEven ? 'lg:col-span-5 lg:order-1' : 'lg:col-span-5 lg:order-2'}`}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {items.map((label, i) => (
                   <Pill key={`${title}-${i}`} color={color}>
@@ -175,7 +175,7 @@ function StrategySection({
               </div>
             </div>
 
-            <div className={`${isEven ? 'lg:col-span-2 lg:order-2' : 'lg:col-span-2 lg:order-1'}`}>
+            <div className={`hidden ${isEven ? 'lg:col-span-2 lg:order-2' : 'lg:col-span-2 lg:order-1'}`}>
               <button
                 onClick={() => onVideoClick(videoUrl || "")}
                 className="group relative h-48 w-full overflow-hidden rounded-2xl border-4 border-white/20 bg-white/10 backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:border-white/40 hover:shadow-xl"

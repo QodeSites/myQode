@@ -991,10 +991,10 @@ function SwitchReallocationModal({
             required
           >
             <option value="">Select Strategy</option>
-            <option value="QGF">QGF</option>
-            <option value="QFH">QFH</option>
-            <option value="QTF">QTF</option>
-            <option value="QAW">QAW</option>
+            <option value="QGF">Qode Growth Fund</option>
+            <option value="QFH">Qode Future Horizon</option>
+            <option value="QTF">Qode Tatical Fund</option>
+            <option value="QAW">Qode All Weather</option>
           </select>
         </div>
 

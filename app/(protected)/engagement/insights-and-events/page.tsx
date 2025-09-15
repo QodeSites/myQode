@@ -321,13 +321,13 @@ export default function InsightsArchivePage() {
   return (
     <main className="mx-auto w-full">
       {/* Market Notes */}
-      <SectionBar title="Market Notes" />
+      {/* <SectionBar title="Market Notes" />
       <div className="rounded-sm border border-border bg-secondary p-4 leading-relaxed text-foreground">
         Market breadth has improved meaningfully, with nearly two‑thirds of Nifty 500 stocks trading above their 200‑day
         averages, signaling stronger underlying trends even as indices remain range‑bound. In such phases, systematic
         momentum strategies often have an edge — cutting laggards quickly while allowing winners to run. Qode Tactical
         Fund (QTF) is designed to capture this strength across sectors with disciplined rules.
-      </div>
+      </div> */}
 
       {/* Newsletter Archive */}
       <SectionBar title="Newsletter Archive" />
@@ -338,12 +338,12 @@ export default function InsightsArchivePage() {
       />
 
       {/* Pitch Decks Archive */}
-      <SectionBar title="Fact Sheet Archive" />
+      {/* <SectionBar title="Fact Sheet Archive" />
       <Slider 
         items={pitchDecks}
         onItemClick={openPitchDeck}
         sectionId="pitchDeck"
-      />
+      /> */}
 
       {/* Past Recordings */}
       <SectionBar title="Past Recordings (Investor Calls / Webinars, etc.)" />

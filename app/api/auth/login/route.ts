@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
 
     // Query database for user with matching email
     const result = await query(
-      'SELECT clientid, clientcode FROM pms_clients_master WHERE email = $1 and password= $2',
+      'SELECT clientid, clientcode, email FROM pms_clients_master WHERE email = $1 and password= $2',
       [email, password]
     )
 

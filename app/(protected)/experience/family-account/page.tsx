@@ -513,11 +513,11 @@ export default function FamilyAccountsSection() {
       )}
 
       {/* Info */}
-      <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-        <p className="text-sm text-amber-800 leading-relaxed mb-3">
+      <div className="rounded-lg p-4">
+        <p className="text-sm leading-relaxed mb-3">
           If your family structure has changed or if you would like to update how your accounts are grouped, you can:
         </p>
-        <ul className="text-sm text-amber-800 space-y-1 list-disc list-inside ml-2">
+        <ul className="text-sm space-y-1 list-disc list-inside ml-2">
           <li>Request to merge multiple accounts under one family head.</li>
           <li>Request to reassign accounts to a different owner within the same family.</li>
           <li>Request to split accounts into a new family group.</li>

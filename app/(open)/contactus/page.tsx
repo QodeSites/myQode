@@ -15,7 +15,7 @@ export default async function Page() {
                                 <div className="text-pretty text-lg font-bold text-foreground flex items-center gap-2">
                                     Address
                                 </div>
-                                <div>
+                                <div className="text-md">
                                     2nd Floor, Tree Building, Raghuvanshi Mills Compound, Gandhi
                                     Nagar, Upper Worli, Lower Parel, Mumbai, Maharashtra 400013
                                 </div>
@@ -29,7 +29,7 @@ export default async function Page() {
                                 <div className="text-pretty text-lg font-bold text-foreground flex items-center gap-2">
                                     Investor Relations
                                 </div>
-                                <div>
+                                <div className="text-md">
                                     Phone:&nbsp;
                                     <a
                                         href="tel:+919820300028"
@@ -38,7 +38,7 @@ export default async function Page() {
                                         +91 98203 00028
                                     </a>
                                 </div>
-                                <div>
+                                <div className="text-md">
                                     Email:&nbsp;
                                     <a
                                         href="mailto:investor.relations@qodeinvest.com"
@@ -54,7 +54,7 @@ export default async function Page() {
                                 <div className="text-pretty text-lg font-bold text-foreground flex items-center gap-2">
                                     HR Queries
                                 </div>
-                                <div>
+                                <div className="text-md">
                                     Phone:&nbsp;
                                     <a
                                         href="tel:+919820300032"
@@ -63,7 +63,7 @@ export default async function Page() {
                                         +91 98203 00032
                                     </a>
                                 </div>
-                                <div>
+                                <div className="text-md">
                                     Email:&nbsp;
                                     <a
                                         href="mailto:hr@qodeinvest.com"
