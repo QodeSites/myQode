@@ -77,14 +77,6 @@ function InfoCard({
   );
 }
 
-function SectionHeader({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="my-5 rounded-sm bg-primary px-4 py-2 text-center text-sm font-bold tracking-wide text-white">
-      {children}
-    </div>
-  );
-}
-
 async function sendEmail(emailData: {
   to: string;
   subject: string;
@@ -1472,9 +1464,6 @@ function WithdrawalModal({
   );
 }
 
-
-
-
 /* ---------------------------
    Main Page
 ---------------------------- */
@@ -1488,12 +1477,12 @@ export default function InvestmentActionsPage() {
   const { selectedClientCode, selectedClientId, clients, loading } = useClient();
   // Fetch transactions when selectedClientId changes
   useEffect(() => {
-    if (selectedClientId) {
+    if (selectedClientCode) {
       const fetchTransactions = async () => {
         setIsLoadingTransactions(true);
         setError(null);
         try {
-          const response = await fetch(`/api/fetch-transactions?nuvama_code=${selectedClientId}`);
+          const response = await fetch(`/api/fetch-transactions?nuvama_code=${selectedClientCode}`);
           const result = await response.json();
           if (result.success) {
             // Combine one-time and SIP transactions
@@ -1512,7 +1501,7 @@ export default function InvestmentActionsPage() {
       };
       fetchTransactions();
     }
-  }, [selectedClientId]);
+  }, [selectedClientCode]);
   if (loading) {
     return (
       <main className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-background">
@@ -1665,47 +1654,159 @@ export default function InvestmentActionsPage() {
       </div>
 
       {/* Transactions Table */}
+      {/* Transactions Table */}
       <section className="mt-8">
-        <h2 className="text-lg font-semibold text-foreground mb-4">Transaction History</h2>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-lg font-semibold text-foreground">Transaction History</h2>
+          <div className="text-sm text-muted-foreground">
+            Last updated: {new Date().toLocaleDateString()}
+          </div>
+        </div>
+        
         {isLoadingTransactions ? (
-          <div className="flex justify-center items-center">
+          <div className="flex justify-center items-center py-12 bg-card rounded-lg border">
             <Loader className="h-6 w-6 animate-spin text-primary" />
             <span className="ml-2 text-sm text-muted-foreground">Loading transactions...</span>
           </div>
         ) : error ? (
-          <p className="text-sm text-red-600">{error}</p>
+          <div className="p-6 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-sm text-red-600 flex items-center gap-2">
+              <span className="w-2 h-2 bg-red-500 rounded-full"></span>
+              {error}
+            </p>
+          </div>
         ) : transactions.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No transactions found.</p>
+          <div className="p-12 text-center bg-card border rounded-lg">
+            <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center mx-auto mb-4">
+              <Calendar className="w-6 h-6 text-muted-foreground" />
+            </div>
+            <p className="text-sm text-muted-foreground">No transactions found.</p>
+            <p className="text-xs text-muted-foreground mt-1">Your transaction history will appear here once you make your first investment.</p>
+          </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full border-collapse border border-gray-200">
-              <thead>
-                <tr className="bg-gray-100">
-                  <th className="border border-gray-200 px-4 py-2 text-left text-sm font-medium text-foreground">Order ID</th>
-                  <th className="border border-gray-200 px-4 py-2 text-left text-sm font-medium text-foreground">Type</th>
-                  <th className="border border-gray-200 px-4 py-2 text-left text-sm font-medium text-foreground">Amount</th>
-                  <th className="border border-gray-200 px-4 py-2 text-left text-sm font-medium text-foreground">Currency</th>
-                  <th className="border border-gray-200 px-4 py-2 text-left text-sm font-medium text-foreground">Status</th>
-                  <th className="border border-gray-200 px-4 py-2 text-left text-sm font-medium text-foreground">Date</th>
-                  <th className="border border-gray-200 px-4 py-2 text-left text-sm font-medium text-foreground">Account Number</th>
-                </tr>
-              </thead>
-              <tbody>
-                {transactions.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-gray-50">
-                    <td className="border border-gray-200 px-4 py-2 text-sm text-foreground">{tx.order_id}</td>
-                    <td className="border border-gray-200 px-4 py-2 text-sm text-foreground">{tx.payment_type}</td>
-                    <td className="border border-gray-200 px-4 py-2 text-sm text-foreground">{tx.amount.toLocaleString()}</td>
-                    <td className="border border-gray-200 px-4 py-2 text-sm text-foreground">{tx.currency}</td>
-                    <td className="border border-gray-200 px-4 py-2 text-sm text-foreground">{tx.payment_status}</td>
-                    <td className="border border-gray-200 px-4 py-2 text-sm text-foreground">
-                      {new Date(tx.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="border border-gray-200 px-4 py-2 text-sm text-foreground">{tx.account_number || 'N/A'}</td>
+          <div className="bg-card border rounded-lg overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="min-w-full">
+                <thead>
+                  <tr className="border-b bg-muted/30">
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Order ID
+                    </th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Type
+                    </th>
+                    <th className="px-6 py-4 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Amount
+                    </th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Currency
+                    </th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Date
+                    </th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Account
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {transactions.map((tx, index) => (
+                    <tr 
+                      key={tx.id} 
+                      className={`hover:bg-muted/20 transition-colors ${
+                        index % 2 === 0 ? 'bg-background' : 'bg-muted/10'
+                      }`}
+                    >
+                      <td className="px-6 py-4 text-sm font-medium text-foreground">
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 bg-primary/20 rounded-full"></span>
+                          {tx.order_id}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-foreground">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                          tx.payment_type.toLowerCase().includes('deposit') || tx.payment_type.toLowerCase().includes('add') 
+                            ? 'bg-green-100 text-green-800' 
+                            : tx.payment_type.toLowerCase().includes('withdrawal') 
+                            ? 'bg-red-100 text-red-800'
+                            : tx.payment_type.toLowerCase().includes('switch') || tx.payment_type.toLowerCase().includes('reallocation')
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'bg-gray-100 text-gray-800'
+                        }`}>
+                          {tx.payment_type}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm font-semibold text-foreground text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <span className={tx.payment_type.toLowerCase().includes('withdrawal') ? 'text-red-600' : 'text-green-600'}>
+                            {tx.payment_type.toLowerCase().includes('withdrawal') ? '-' : '+'}
+                          </span>
+                          {tx.amount.toLocaleString()}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-muted-foreground">
+                        <span className="font-mono text-xs bg-muted px-2 py-1 rounded">
+                          {tx.currency}
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-foreground">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${
+                            tx.payment_status.toLowerCase() === 'completed' || tx.payment_status.toLowerCase() === 'success'
+                              ? 'bg-green-500'
+                              : tx.payment_status.toLowerCase() === 'pending'
+                              ? 'bg-yellow-500'
+                              : tx.payment_status.toLowerCase() === 'failed'
+                              ? 'bg-red-500'
+                              : 'bg-gray-400'
+                          }`}></div>
+                          <span className={`text-sm ${
+                            tx.payment_status.toLowerCase() === 'completed' || tx.payment_status.toLowerCase() === 'success'
+                              ? 'text-green-700'
+                              : tx.payment_status.toLowerCase() === 'pending'
+                              ? 'text-yellow-700'
+                              : tx.payment_status.toLowerCase() === 'failed'
+                              ? 'text-red-700'
+                              : 'text-muted-foreground'
+                          }`}>
+                            {tx.payment_status}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-muted-foreground">
+                        <div className="flex flex-col">
+                          <span>{new Date(tx.created_at).toLocaleDateString()}</span>
+                          <span className="text-xs text-muted-foreground/70">
+                            {new Date(tx.created_at).toLocaleTimeString([], { 
+                              hour: '2-digit', 
+                              minute: '2-digit' 
+                            })}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-muted-foreground">
+                        <span className="font-mono text-xs">
+                          {tx.account_number || 'N/A'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            
+            {/* Table Footer */}
+            <div className="px-6 py-4 bg-muted/20 border-t">
+              <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <span>Showing {transactions.length} transaction{transactions.length !== 1 ? 's' : ''}</span>
+                <div className="flex items-center gap-4">
+                  <span>Total transactions: {transactions.length}</span>
+                </div>
+              </div>
+            </div>
           </div>
         )}
       </section>
