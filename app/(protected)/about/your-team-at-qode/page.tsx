@@ -195,7 +195,7 @@ export default function YourTeamAtQodePage() {
 
       // FIXED: Properly structure the API call
       await sendEmail({
-        to: 'sanket.shinde@qodeinvest.com',
+        to: 'soham.panchal@qodeinvest.com',
         subject: `New Strategy Question from ${formData.nuvamaCode}`,
         html: emailHtml,
         from: 'investor.relations@qodeinvest.com',
@@ -303,7 +303,7 @@ export default function YourTeamAtQodePage() {
 
       // FIXED: Properly structure the API call
       await sendEmail({
-        to: 'sanket.shinde@qodeinvest.com',
+        to: 'soham.panchal@qodeinvest.com',
         subject: `New Call Discussion Topic from ${formData.nuvamaCode}`,
         html: emailHtml,
         from: 'investor.relations@qodeinvest.com',
@@ -463,7 +463,7 @@ export default function YourTeamAtQodePage() {
         <div>
           <Section title="WhatsApp/Email" icon={<MessageCircle className="h-5 w-5 text-primary" />}>
             <p className="mb-2 flex flex-col gap-1">
-              <span className="flex items-center gap-2">
+              <span className="flex items-center gap-0 lg:gap-2">
                 <Phone className="h-4 w-4 text-primary" />
                 <strong>WhatsApp (IR Desk):</strong> 
                 <a href={`https://wa.me/+919820300028?text=Hi!%20I%20am%20${selectedClientCode || 'a client'}%20and%20would%20like%20to%20discuss%20my%20account`}>+91 98203 00028</a>

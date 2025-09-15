@@ -100,8 +100,8 @@ function ThumbCard({
   )
 }
 
-function Slider({ 
-  items, 
+function Slider({
+  items,
   onItemClick,
   sectionId
 }: {
@@ -110,7 +110,7 @@ function Slider({
   sectionId: string
 }) {
   const sliderRef = useRef<HTMLDivElement>(null);
-  
+
   const scroll = (direction: 'left' | 'right') => {
     if (sliderRef.current) {
       const scrollAmount = 300;
@@ -133,13 +133,13 @@ function Slider({
       </button>
 
       {/* Slider container */}
-      <div 
+      <div
         ref={sliderRef}
         className="flex overflow-x-auto scrollbar-hide gap-4 px-12 py-2"
         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
       >
         {items.map((item, index) => (
-          <ThumbCard 
+          <ThumbCard
             key={`${sectionId}-${index}`}
             title={item.title}
             url={item.url}
@@ -160,132 +160,205 @@ function Slider({
     </div>
   );
 }
+function isIOS() {
+  if (typeof navigator === "undefined") return false;
+  return /iP(hone|ad|od)/.test(navigator.userAgent);
+}
 
-function ContentModal({ 
-  isOpen, 
-  onClose, 
-  items, 
-  currentIndex, 
+export function ContentModal({
+  isOpen,
+  onClose,
+  items,
+  currentIndex,
   setCurrentIndex,
-  modalTitle
+  modalTitle,
 }: {
-  isOpen: boolean
-  onClose: () => void
-  items: Array<{ title: string; url?: string; type: string }>
-  currentIndex: number
-  setCurrentIndex: (index: number) => void
-  modalTitle: string
+  isOpen: boolean;
+  onClose: () => void;
+  items: Array<{ title: string; url?: string; type: string }>;
+  currentIndex: number;
+  setCurrentIndex: (index: number) => void;
+  modalTitle: string;
 }) {
-  const nextItem = () => {
-    setCurrentIndex((currentIndex + 1) % items.length);
-  };
-
-  const prevItem = () => {
-    setCurrentIndex(currentIndex === 0 ? items.length - 1 : currentIndex - 1);
-  };
-
+  const nextItem = () => setCurrentIndex((currentIndex + 1) % items.length);
+  const prevItem = () => setCurrentIndex(currentIndex === 0 ? items.length - 1 : currentIndex - 1);
   if (!isOpen) return null;
 
   const currentItem = items[currentIndex];
-  
+  const showPdfFallback = currentItem.type === "pdf" && isIOS();
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-10 flex items-center justify-center">
       {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black bg-opacity-75"
+      <button
+        aria-label="Close"
         onClick={onClose}
+        className="absolute inset-0 bg-black/70"
       />
-      
-      {/* Modal Content */}
-      <div className="relative w-full h-full max-w-6xl max-h-[90vh] m-4 bg-white rounded-lg shadow-2xl overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b bg-gray-50">
-          <div className="flex items-center space-x-4">
-            <h3 className="text-lg font-semibold text-gray-900">
+
+      {/* Modal */}
+      <div
+        className="
+          relative flex flex-col w-full max-w-[100vw] bg-white
+          h-dvh max-h-[75dvh] rounded-none
+          sm:max-h-[90dvh] sm:h-[88vh]
+          md:max-h-[100vh] md:max-w-5xl md:rounded-lg md:mx-4
+          lg:h-[86vh] lg:max-w-6xl
+          box-border overflow-hidden
+        "
+        style={{
+          paddingTop: "env(safe-area-inset-top)",
+          paddingBottom: "env(safe-area-inset-bottom)",
+        }}
+      >
+        {/* Header (sticky) */}
+        <div className="sticky top-0 z-20 flex items-center justify-between gap-2 border-b bg-gray-50 px-3 py-2 md:px-4 md:py-3">
+          <div className="min-w-0">
+            <h3 className="truncate text-base font-semibold text-gray-900 md:text-lg">
               {currentItem.title}
             </h3>
-            <div className="text-sm text-gray-500">
-              {currentIndex + 1} of {items.length}
-            </div>
-            <div className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-              {currentItem.type.toUpperCase()}
+            <div className="mt-0.5 flex items-center gap-2 text-xs text-gray-500 md:text-sm">
+              <span>{currentIndex + 1} of {items.length}</span>
+              <span className="rounded bg-blue-100 px-1.5 py-0.5 font-medium text-blue-800">
+                {currentItem.type.toUpperCase()}
+              </span>
             </div>
           </div>
-          
-          {/* Navigation Controls */}
-          <div className="flex items-center space-x-2">
+
+          <div className="flex shrink-0 items-center gap-1 md:gap-2">
             <button
               onClick={prevItem}
-              className="p-2 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
               disabled={items.length <= 1}
+              className="h-9 w-9 rounded-md hover:bg-gray-200 disabled:opacity-40 md:h-8 md:w-8"
+              aria-label="Previous"
             >
-              <ChevronLeft className="w-5 h-5" />
+              <ChevronLeft className="mx-auto h-5 w-5" />
             </button>
-            
             <button
               onClick={nextItem}
-              className="p-2 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
               disabled={items.length <= 1}
+              className="h-9 w-9 rounded-md hover:bg-gray-200 disabled:opacity-40 md:h-8 md:w-8"
+              aria-label="Next"
             >
-              <ChevronRight className="w-5 h-5" />
+              <ChevronRight className="mx-auto h-5 w-5" />
             </button>
 
-            {/* Download button for PDFs */}
             {currentItem.type === "pdf" && currentItem.url && (
               <a
                 href={currentItem.url}
                 download
-                className="p-2 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-600 hover:text-gray-800"
+                className="hidden h-9 items-center justify-center rounded-md px-2 hover:bg-gray-200 text-gray-700 md:flex"
                 title="Download PDF"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                 </svg>
               </a>
             )}
-            
+
             <button
               onClick={onClose}
-              className="p-2 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="hidden md:inline-flex h-9 w-9 items-center justify-center rounded-md hover:bg-gray-200 md:h-8 md:w-8"
+              aria-label="Close"
             >
-              <X className="w-5 h-5" />
+              <X className="mx-auto h-5 w-5" />
             </button>
           </div>
         </div>
-        
+
+        {/* Always-on-top Close (mobile only) */}
+        <button
+          onClick={onClose}
+          aria-label="Close"
+          className="
+            md:hidden
+            absolute right-3 top-3 z-30
+            inline-flex h-9 w-9 items-center justify-center rounded-full
+            bg-black/60 text-white backdrop-blur
+            active:scale-95
+          "
+        >
+          <X className="h-5 w-5" />
+        </button>
+
         {/* Content */}
-        <div className="flex-1" style={{ height: 'calc(100% - 80px)' }}>
+        <div className="relative flex-1 overflow-auto overscroll-contain min-h-0 touch-pan-y">
           {currentItem.url && currentItem.url !== "#" ? (
-            <iframe
-              src={currentItem.url}
-              className="w-full h-full border-0"
-              title={`${modalTitle}: ${currentItem.title}`}
-              sandbox={currentItem.type === "pdf" ? "" : "allow-scripts allow-same-origin allow-forms"}
-            />
-          ) : (
-            <div className="w-full h-full flex items-center justify-center bg-gray-50">
-              <div className="text-center">
-                <div className="text-gray-400 mb-2">
-                  <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                  </svg>
+            currentItem.type === "pdf" ? (
+              showPdfFallback ? (
+                // iOS-friendly PDF fallback
+                <div className="h-full w-full">
+                  <object
+                    data={currentItem.url}
+                    type="application/pdf"
+                    className="block h-full w-full"
+                  >
+                    <div className="flex h-full w-full items-center justify-center p-4 text-center">
+                      <div>
+                        <p className="text-sm text-gray-600 mb-3">
+                          This PDF can’t be displayed inline on your device.
+                        </p>
+                        <a
+                          href={currentItem.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center rounded-md bg-gray-900 px-3 py-2 text-white"
+                        >
+                          Open PDF in new tab
+                        </a>
+                      </div>
+                    </div>
+                  </object>
                 </div>
-                <p className="text-gray-500">Content not available</p>
+              ) : (
+                // Non-iOS: iframe is fine
+                <iframe
+                  key={currentItem.url}
+                  src={currentItem.url}
+                  className="block h-full w-full border-0"
+                  title={`${modalTitle}: ${currentItem.title}`}
+                  allow="clipboard-read; clipboard-write; fullscreen"
+                />
+              )
+            ) : (
+              // Non-PDF content
+              <iframe
+                key={currentItem.url}
+                src={currentItem.url}
+                className="block h-full w-full border-0"
+                title={`${modalTitle}: ${currentItem.title}`}
+                allow="clipboard-read; clipboard-write; fullscreen"
+                sandbox="allow-scripts allow-same-origin allow-forms"
+              />
+            )
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-gray-50">
+              <div className="text-center">
+                <svg className="mx-auto h-16 w-16 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                <p className="mt-2 text-gray-500">Content not available</p>
               </div>
             </div>
           )}
         </div>
-        
-        {/* Carousel Indicators */}
-        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
-          <div className="flex space-x-2 bg-black bg-opacity-50 rounded-full px-3 py-2">
+
+        {/* Indicators */}
+        <div
+          className="
+            pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2
+            md:static md:mb-3 md:mt-2 md:translate-x-0
+          "
+        >
+          <div className="pointer-events-auto flex gap-2 rounded-full bg-black/50 px-3 py-2 md:bg-transparent">
             {items.map((_, index) => (
               <button
                 key={index}
                 onClick={() => setCurrentIndex(index)}
-                className={`w-2 h-2 rounded-full transition-colors ${
-                  index === currentIndex ? 'bg-white' : 'bg-gray-400'
+                className={`h-2 w-2 rounded-full transition ${
+                  index === currentIndex ? "bg-white md:bg-gray-800" : "bg-gray-400"
                 }`}
+                aria-label={`Go to item ${index + 1}`}
               />
             ))}
           </div>
@@ -294,6 +367,7 @@ function ContentModal({
     </div>
   );
 }
+
 
 export default function InsightsArchivePage() {
   const [isNewsletterModalOpen, setIsNewsletterModalOpen] = useState(false);
@@ -331,7 +405,7 @@ export default function InsightsArchivePage() {
 
       {/* Newsletter Archive */}
       <SectionBar title="Newsletter Archive" />
-      <Slider 
+      <Slider
         items={newsletters}
         onItemClick={openNewsletter}
         sectionId="newsletter"
@@ -347,7 +421,7 @@ export default function InsightsArchivePage() {
 
       {/* Past Recordings */}
       <SectionBar title="Past Recordings (Investor Calls / Webinars, etc.)" />
-      <Slider 
+      <Slider
         items={recordings}
         onItemClick={openRecording}
         sectionId="recording"

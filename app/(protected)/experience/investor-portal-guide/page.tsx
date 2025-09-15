@@ -25,7 +25,52 @@ type FlatRow = {
   tutorial: string;
   used_for: string;
 };
+function Row({
+  description,
+  snapshotHref,
+  videoHref,
+}: {
+  description: string;
+  snapshotHref: string;
+  videoHref: string;
+}) {
+  return (
+    <div className="mb-3 last:mb-0">
+      {/* ≥sm layout: 5 columns */}
+      <div className="hidden sm:grid sm:grid-cols-5 sm:items-center sm:gap-2">
+        <p className="sm:col-span-3 text-sm text-card-foreground">{description}</p>
+        <div className="sm:col-span-1 text-center">
+          <ViewLink href={snapshotHref} />
+        </div>
+        <div className="sm:col-span-1 text-center">
+          <ViewLink href={videoHref} />
+        </div>
+      </div>
 
+      {/* Mobile layout: stacked with inline labels */}
+      <div className="grid grid-cols-1 gap-2 sm:hidden">
+        <p className="text-sm text-card-foreground">{description}</p>
+
+        <div className="grid grid-cols-2 items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground">Snapshot</span>
+          <div className="justify-self-end">
+            <ViewLink href={snapshotHref} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground">Video</span>
+          <div className="justify-self-end">
+            <ViewLink href={videoHref} />
+          </div>
+        </div>
+      </div>
+
+      {/* Divider for mobile only */}
+      <div className="sm:hidden mt-3 h-px bg-border" />
+    </div>
+  );
+}
 /* =========================
    Data (typed)
    ========================= */
@@ -153,10 +198,9 @@ function ViewLink({ href }: { href?: string }) {
     <button
       type="button"
       className={`h-9 rounded-md border px-3 text-sm font-semibold transition
-        ${
-          isLink
-            ? "border-border bg-primary text-white hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-primary/40"
-            : "border-dashed border-border text-muted-foreground cursor-not-allowed bg-muted"
+        ${isLink
+          ? "border-border bg-primary text-white hover:brightness-105 focus:outline-none focus:ring-2 focus:ring-primary/40"
+          : "border-dashed border-border text-muted-foreground cursor-not-allowed bg-muted"
         }`}
       disabled={!isLink}
       aria-disabled={!isLink}
@@ -214,47 +258,31 @@ export default function ReportingPortalPage(): JSX.Element {
             {/* Left: Portfolio & Performance features (3 cols on md+) */}
             <div className="md:col-span-3">
               <div className="rounded-lg border border-border bg-card p-4">
-                  <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-5 mb-2">
-                    {/* Row 1 */}
-                    <h3 className="text-sm font-bold text-foreground sm:col-span-3 text-left">Portfolio &amp; Performance</h3>
-                    <span className="text-sm font-bold text-foreground sm:col-span-1 text-center">Snapshot</span>
-                    <span className="text-sm font-bold text-foreground sm:col-span-1 text-center">Video Tutorial</span>
-                  </div>
-                  <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-5 mb-2">
-                    <p className="sm:col-span-3 text-sm text-card-foreground">Real-time snapshot of your investments.</p>
-                    <div className="sm:col-span-1 text-center">
-                      <ViewLink href="" />
-                    </div>
-                    <div className="sm:col-span-1 text-center">
-                      <ViewLink href="" />
-                    </div>
-                  </div>
+                {/* Header (desktop/tablet only) */}
+                <div className="hidden sm:grid sm:grid-cols-5 sm:items-start sm:gap-2 mb-3">
+                  <h3 className="text-sm font-bold text-foreground sm:col-span-3 text-left">
+                    Portfolio &amp; Performance
+                  </h3>
+                  <span className="text-sm font-bold text-foreground text-center">Snapshot</span>
+                  <span className="text-sm font-bold text-foreground text-center">Video Tutorial</span>
+                </div>
 
-                  {/* Row 2 */}
-                  <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-5 mb-2">
-                    <p className="sm:col-span-3 text-sm text-card-foreground">
-                      Allocation across strategies, sectors, and asset classes.
-                    </p>
-                    <div className="sm:col-span-1 text-center">
-                      <ViewLink href="" />
-                    </div>
-                    <div className="sm:col-span-1 text-center">
-                      <ViewLink href="" />
-                    </div>
-                  </div>
-
-                  {/* Row 3 */}
-                  <div className="grid grid-cols-1 items-start gap-2 sm:grid-cols-5 mb-2">
-                    <p className="sm:col-span-3 text-sm text-card-foreground">
-                      Benchmark comparisons to track relative performance.
-                    </p>
-                    <div className="sm:col-span-1 text-center">
-                      <ViewLink href="" />
-                    </div>
-                    <div className="sm:col-span-1 text-center">
-                      <ViewLink href="" />
-                    </div>
-                  </div>
+                {/* Rows */}
+                <Row
+                  description="Real-time snapshot of your investments."
+                  snapshotHref=""
+                  videoHref=""
+                />
+                <Row
+                  description="Allocation across strategies, sectors, and asset classes."
+                  snapshotHref=""
+                  videoHref=""
+                />
+                <Row
+                  description="Benchmark comparisons to track relative performance."
+                  snapshotHref=""
+                  videoHref=""
+                />
               </div>
             </div>
 
