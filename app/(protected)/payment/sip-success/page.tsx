@@ -84,13 +84,39 @@ export default function SipSuccessPage() {
           });
         } else if (data.status === 'PENDING') {
           toast({
-            title: 'SIP Setup Pending',
-            description: 'Your SIP is being processed. Please check back later.',
+            title: `SIP Status: ${data.subscription_status}`,
+            description:
+              data.subscription_status === 'BANK_APPROVAL_PENDING'
+                ? 'Your SIP is awaiting bank confirmation, which may take 24-48 hours.'
+                : data.subscription_status === 'INITIALIZED'
+                ? 'Your SIP is initialized and awaiting customer authorization.'
+                : data.subscription_status === 'ON_HOLD'
+                ? 'Your SIP is on hold due to a failed payment. It will resume once reactivated.'
+                : data.subscription_status === 'PAUSED'
+                ? 'Your SIP is paused by the merchant. It can be resumed when needed.'
+                : 'Your SIP is being processed. Please check back later.',
             variant: 'default',
+          });
+        } else if (data.status === 'CANCELLED') {
+          toast({
+            title: `SIP Status: ${data.subscription_status}`,
+            description:
+              data.subscription_status === 'COMPLETED'
+                ? 'Your SIP has completed its cycle.'
+                : data.subscription_status === 'CUSTOMER_CANCELLED'
+                ? 'Your SIP was cancelled at the bank.'
+                : data.subscription_status === 'CUSTOMER_PAUSED'
+                ? 'Your SIP was paused via your UPI app.'
+                : data.subscription_status === 'EXPIRED'
+                ? 'Your SIP has reached its expiry date.'
+                : data.subscription_status === 'LINK_EXPIRED'
+                ? 'The authorization link for your SIP has expired.'
+                : 'Your SIP has been cancelled. Please contact support for details.',
+            variant: 'destructive',
           });
         } else {
           toast({
-            title: 'SIP Setup Failed',
+            title: `SIP Status: ${data.subscription_status}`,
             description: data.error_reason || 'There was an issue setting up your SIP. Please contact support.',
             variant: 'destructive',
           });
@@ -111,7 +137,7 @@ export default function SipSuccessPage() {
   }, [subscriptionId, toast]);
 
   const handleBackToDashboard = () => {
-    router.push('/dashboard'); // Adjust the route as per your application
+    router.push('/dashboard');
   };
 
   const renderStatusIcon = (status: string) => {
@@ -175,7 +201,7 @@ export default function SipSuccessPage() {
               <div className="flex items-start gap-2">
                 <span className="mt-1 text-primary" aria-hidden="true">•</span>
                 <p className="text-sm text-muted-foreground">
-                  <span className="font-semibold">Status:</span> {subscriptionDetails.status}
+                  <span className="font-semibold">Status:</span> {subscriptionDetails.subscription_status}
                 </p>
               </div>
               <div className="flex items-start gap-2">
