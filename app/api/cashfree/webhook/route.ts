@@ -151,7 +151,7 @@ async function sendPaymentNotificationEmail(webhookData: CashfreeWebhookPayload)
     // Uncomment and implement your email service
     /*
     await sendEmail({
-      to: 'soham.panchal@qodeinvest.com',
+      to: 'sanket.shinde@qodeinvest.com',
       cc: 'payments@qodeinvest.com',
       subject: `Payment ${isSuccess ? 'Success' : 'Failed'} - ${webhookData.order.order_id}`,
       html: emailHtml,

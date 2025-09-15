@@ -315,7 +315,7 @@ export default function FamilyAccountsSection() {
 
     try {
       await sendEmail({
-        to: "soham.panchal@qodeinvest.com",
+        to: "sanket.shinde@qodeinvest.com",
         subject,
         html,
         from: "investor.relations@qodeinvest.com",

@@ -910,7 +910,7 @@ function SwitchReallocationModal({
 
     try {
       await sendEmail({
-        to: "soham.panchal@qodeinvest.com",
+        to: "sanket.shinde@qodeinvest.com",
         subject: `New Switch/Reallocation Request from ${payload.nuvamaCode}`,
         html: emailHtml,
         from: "investor.relations@qodeinvest.com",
@@ -1157,7 +1157,7 @@ function WithdrawalModal({
 
     try {
       await sendEmail({
-        to: "soham.panchal@qodeinvest.com",
+        to: "sanket.shinde@qodeinvest.com",
         subject: `New Withdrawal Request from ${payload.nuvamaCode}`,
         html: emailHtml,
         from: "investor.relations@qodeinvest.com",

@@ -195,7 +195,7 @@ export default function YourTeamAtQodePage() {
 
       // FIXED: Properly structure the API call
       await sendEmail({
-        to: 'soham.panchal@qodeinvest.com',
+        to: 'sanket.shinde@qodeinvest.com',
         subject: `New Strategy Question from ${formData.nuvamaCode}`,
         html: emailHtml,
         from: 'investor.relations@qodeinvest.com',
@@ -303,7 +303,7 @@ export default function YourTeamAtQodePage() {
 
       // FIXED: Properly structure the API call
       await sendEmail({
-        to: 'soham.panchal@qodeinvest.com',
+        to: 'sanket.shinde@qodeinvest.com',
         subject: `New Call Discussion Topic from ${formData.nuvamaCode}`,
         html: emailHtml,
         from: 'investor.relations@qodeinvest.com',
