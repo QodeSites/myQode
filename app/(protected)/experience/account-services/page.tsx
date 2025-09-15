@@ -405,6 +405,7 @@ function AddFundsModal({
     setLoading(true);
 
     try {
+      // Load Cashfree SDK if not already loaded
       if (!window.Cashfree) {
         toast({
           title: "Loading",
@@ -482,6 +483,7 @@ function AddFundsModal({
               description: "Your SIP has been set up and authorized successfully.",
             });
 
+            // Reset form data
             setFormData({
               nuvamaCode: selectedClientCode || 'QAW0001',
               amount: '',
@@ -491,6 +493,7 @@ function AddFundsModal({
               frequency: 'monthly',
               startDate: '',
               endDate: '',
+              totalInstallments: '',
               amount: ''
             });
 
@@ -499,6 +502,7 @@ function AddFundsModal({
               amount: '',
               startDate: '',
               endDate: '',
+              totalInstallments: '',
             });
 
             setTimeout(() => {
@@ -533,6 +537,7 @@ function AddFundsModal({
     }
   };
 
+  // Updated handlePayment function
   const handlePayment = async () => {
     try {
       console.log('handlePayment called with activeTab:', activeTab);
@@ -557,7 +562,38 @@ function AddFundsModal({
         });
         return;
       }
+    try {
+      console.log('handlePayment called with activeTab:', activeTab);
 
+      // Basic validation
+      if (!formData?.nuvamaCode || !formData?.amount) {
+        toast({
+          title: "Error",
+          description: "Please fill in all required fields.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Validate amount is a positive number
+      const amount = parseFloat(formData.amount);
+      if (isNaN(amount) || amount <= 0) {
+        toast({
+          title: "Error",
+          description: "Please enter a valid amount greater than 0.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!accountDetails) {
+        toast({
+          title: "Error",
+          description: "Bank details not loaded. Please try again.",
+          variant: "destructive",
+        });
+        return;
+      }
       if (!accountDetails) {
         toast({
           title: "Error",
@@ -594,6 +630,29 @@ function AddFundsModal({
           return;
         }
 
+        // Additional validation for total installments if end date is not provided
+        if (!sipData.endDate && !sipData.totalInstallments) {
+          toast({
+            title: "Error",
+            description: "Please provide either an end date or total number of installments.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        // Validate total installments if provided
+        if (sipData.totalInstallments) {
+          const installments = parseInt(sipData.totalInstallments);
+          if (isNaN(installments) || installments <= 0 || installments > 1000) {
+            toast({
+              title: "Error",
+              description: "Please enter a valid number of installments (1-1000).",
+              variant: "destructive",
+            });
+            return;
+          }
+        }
+
         // Validate end date if provided
         if (sipData.endDate) {
           const endDate = new Date(sipData.endDate);
@@ -621,10 +680,10 @@ function AddFundsModal({
 
       // Check for required user data for one-time payments
       if (activeTab !== 'sip') {
-        if (!accountDetails?.email || !accountDetails?.phone_number) {
+        if (!userData?.email || !userData?.phone) {
           toast({
             title: "Error",
-            description: "User information is incomplete. Please try again.",
+            description: "User information is incomplete. Please refresh and try again.",
             variant: "destructive",
           });
           return;
@@ -642,29 +701,32 @@ function AddFundsModal({
 
       setLoading(true);
       setPaymentStatus('');
+      setLoading(true);
+      setPaymentStatus('');
 
       if (activeTab === 'sip') {
+        console.log('Processing SIP flow...');
+
+        // SIP flow
         console.log('Processing SIP flow...');
 
         // SIP flow
         const sipPayload = {
           order_amount: amount,
           nuvama_code: formData.nuvamaCode.trim(),
+          order_amount: amount,
+          nuvama_code: formData.nuvamaCode.trim(),
           sip_details: {
             frequency: sipData.frequency,
             start_date: sipData.startDate,
             ...(sipData.endDate && { end_date: sipData.endDate }),
+            ...(sipData.totalInstallments && {
+              total_installments: parseInt(sipData.totalInstallments)
+            }),
           },
           order_meta: {
             return_url: `${window.location.origin}/payment/sip-success`,
           },
-          account_number: accountDetails.account_number,
-          ifsc_code: accountDetails.ifsc_code,
-          cashfree_bank_code: String(accountDetails.cashfree_bank_code),
-          client_id: selectedClientId,
-          customer_name: accountDetails.client_name || 'N/A',
-          customer_email: accountDetails.email,
-          customer_phone: accountDetails.phone_number,
         };
 
         console.log('Sending SIP payload:', sipPayload);
@@ -688,6 +750,7 @@ function AddFundsModal({
           const responseText = await response.text();
           console.log('Non-JSON response received:', responseText);
 
+          // Try to parse as JSON in case content-type header is wrong
           try {
             responseData = JSON.parse(responseText);
           } catch {
@@ -701,6 +764,9 @@ function AddFundsModal({
           console.error('SIP API Error Response:', responseData);
           const errorMessage = responseData?.message || responseData?.error || `HTTP ${response.status}: Failed to create SIP order`;
           throw new Error(errorMessage);
+          console.error('SIP API Error Response:', responseData);
+          const errorMessage = responseData?.message || responseData?.error || `HTTP ${response.status}: Failed to create SIP order`;
+          throw new Error(errorMessage);
         }
 
         if (!responseData.success) {
@@ -711,11 +777,24 @@ function AddFundsModal({
         if (!responseData.data) {
           console.error('Missing data object in response:', responseData);
           throw new Error('Invalid response structure: missing data object');
+        if (!responseData.success) {
+          console.error('API returned success: false:', responseData);
+          throw new Error(responseData.message || responseData.error || 'SIP order creation failed');
         }
 
+        if (!responseData.data) {
+          console.error('Missing data object in response:', responseData);
+          throw new Error('Invalid response structure: missing data object');
+        }
+
+        // For SIP, the checkout_url is actually the subscription_session_id
         const subscriptionSessionId = responseData.data.checkout_url;
         const subscriptionId = responseData.data.subscription_id || responseData.data.order_id;
 
+        if (!subscriptionSessionId) {
+          console.error('No subscription session ID in response data:', responseData.data);
+          console.error('Available fields in data:', Object.keys(responseData.data));
+          throw new Error('Subscription session ID not provided by SIP service');
         if (!subscriptionSessionId) {
           console.error('No subscription session ID in response data:', responseData.data);
           console.error('Available fields in data:', Object.keys(responseData.data));
@@ -729,29 +808,36 @@ function AddFundsModal({
 
         console.log('Initiating Cashfree subscription with session ID:', subscriptionSessionId, 'Subscription ID:', subscriptionId);
 
+        // Show initial success message
         toast({
+          title: "SIP Authorization Initiated",
+          description: "Opening payment gateway for SIP authorization...",
           title: "SIP Authorization Initiated",
           description: "Opening payment gateway for SIP authorization...",
         });
 
+        // Use Cashfree SDK for SIP subscription authorization
         await initiateCashfreeSubscription(subscriptionSessionId, subscriptionId);
 
       } else {
-        // One-time payment flow
+        // One-time payment flow (unchanged)
         console.log('Processing one-time payment flow...');
 
         const orderPayload = {
           amount: amount,
+          amount: amount,
           currency: 'INR',
           customer_name: accountDetails.client_name || 'N/A',
-          customer_email: accountDetails.email,
-          customer_phone: accountDetails.phone_number,
+          customer_email: userData.email,
+          customer_phone: userData.phone,
           nuvama_code: formData.nuvamaCode.trim(),
           client_id: selectedClientId,
+          order_type: 'one_time',
           order_type: 'one_time',
           return_url: `${window.location.origin}/payment/success`,
           account_number: accountDetails.account_number,
           ifsc_code: accountDetails.ifsc_code,
+          cashfree_bank_code: accountDetails.cashfree_bank_code,
           cashfree_bank_code: accountDetails.cashfree_bank_code,
         };
 
@@ -773,7 +859,14 @@ function AddFundsModal({
           } catch {
             errorData = { error: `Server error: ${response.status}` };
           }
+          let errorData;
+          try {
+            errorData = await response.json();
+          } catch {
+            errorData = { error: `Server error: ${response.status}` };
+          }
           console.error('API Error Response:', errorData);
+          throw new Error(errorData.error || errorData.message || 'Failed to create payment order');
           throw new Error(errorData.error || errorData.message || 'Failed to create payment order');
         }
 
@@ -790,7 +883,17 @@ function AddFundsModal({
           throw new Error('Order ID is missing in the response');
         }
 
+        // Ensure initiateCashfreePayment function exists
+        if (typeof initiateCashfreePayment !== 'function') {
+          throw new Error('Payment initialization function is not available. Please refresh the page.');
+        }
+
         await initiateCashfreePayment(orderData.payment_session_id, orderData.order_id);
+
+        toast({
+          title: "Payment Initiated",
+          description: "Opening payment gateway...",
+        });
 
         toast({
           title: "Payment Initiated",
@@ -805,8 +908,15 @@ function AddFundsModal({
 
       setPaymentStatus(`Failed to ${actionType}. Please try again.`);
 
+
+      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+      const actionType = activeTab === 'sip' ? 'setting up SIP' : 'processing payment';
+
+      setPaymentStatus(`Failed to ${actionType}. Please try again.`);
+
       toast({
         title: "Error",
+        description: `${errorMessage}. Please try again or contact support if the issue persists.`,
         description: `${errorMessage}. Please try again or contact support if the issue persists.`,
         variant: "destructive",
       });
