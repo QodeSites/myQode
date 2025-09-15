@@ -7,7 +7,8 @@ import { Cashfree, CFEnvironment } from 'cashfree-pg';
 const initCashfree = () => {
   const clientId = process.env.CASHFREE_APP_ID || process.env.CASHFREE_CLIENT_ID;
   const clientSecret = process.env.CASHFREE_SECRET_KEY;
-  const environment = CFEnvironment.SANDBOX; // Change to PRODUCTION for live
+//   const environment = CFEnvironment.SANDBOX; // Change to PRODUCTION for live
+const environment = process.env.CASHFREE_ENVIRONMENT === 'production' ? CFEnvironment.PRODUCTION : CFEnvironment.SANDBOX;
 
   if (!clientId || !clientSecret) {
     throw new Error("Cashfree credentials not found in environment variables");
@@ -54,28 +55,18 @@ async function updateDatabaseRecord(dbRecord: any, cashfreeOrder: any, payments:
       UPDATE payment_transactions 
       SET 
         payment_status = $1,
-        cf_payment_id = $2,
-        payment_time = $3,
-        bank_reference = $4,
-        payment_method = $5,
-        payment_message = $6,
-        auth_id = $7,
-        updated_at = $8,
-        synced_at = $9
-      WHERE id = $10
+        payment_session_id = $2,
+        cf_order_id = $3,
+        updated_at = $4
+      WHERE id = $5
       RETURNING *
     `;
 
     const updateValues = [
       latestPayment?.payment_status || cashfreeOrder.order_status,
-      latestPayment?.cf_payment_id || null,
-      latestPayment?.payment_time ? new Date(latestPayment.payment_time) : null,
-      latestPayment?.bank_reference || null,
-      latestPayment?.payment_method ? JSON.stringify(latestPayment.payment_method) : null,
-      latestPayment?.payment_message || null,
-      latestPayment?.auth_id || null,
+      latestPayment?.payment_session_id || cashfreeOrder.payment_session_id || null,
+      cashfreeOrder.cf_order_id || cashfreeOrder.order_id || null,
       new Date(),
-      new Date(), // synced_at timestamp
       dbRecord.id
     ];
 
@@ -110,7 +101,7 @@ export async function GET(request: NextRequest) {
       query += ' AND payment_status IN ($2, $3, $4)';
       queryParams.push('CREATED', 'ACTIVE', 'PENDING');
     } else if (status === 'unsync') {
-      query += ' AND (synced_at IS NULL OR cf_payment_id IS NULL)';
+      query += ' AND (cf_order_id IS NULL OR payment_session_id IS NULL)';
     }
 
     query += ' ORDER BY created_at DESC';
@@ -163,17 +154,11 @@ export async function GET(request: NextRequest) {
         const latestPayment = payments.length > 0 ? payments[0] : null;
         const newPaymentStatus = latestPayment?.payment_status || cashfreeOrder.order_status;
 
-        if (currentPaymentStatus !== newPaymentStatus || !dbRecord.cf_payment_id) {
+        if (currentPaymentStatus !== newPaymentStatus || !dbRecord.cf_order_id || !dbRecord.payment_session_id) {
           console.log(`Updating order ${dbRecord.order_id}: ${currentPaymentStatus} → ${newPaymentStatus}`);
           
           await updateDatabaseRecord(dbRecord, cashfreeOrder, payments);
           syncResults.updated++;
-        } else {
-          // Mark as synced even if no update needed
-          await pool.query(
-            'UPDATE payment_transactions SET synced_at = $1 WHERE id = $2',
-            [new Date(), dbRecord.id]
-          );
         }
 
         // Rate limiting - wait between requests
