@@ -39,8 +39,8 @@ function ModalShell({
       <div className="absolute inset-0 bg-background/60 backdrop-blur-sm" onClick={onClose} />
       <div
         className={`relative w-full ${sizeClass} bg-card shadow-2xl
-          h-[100dvh] sm:h-auto sm:rounded-lg
-          flex flex-col max-h-[90dvh] mt-4 lg:mt-14`}
+          h-[98dvh] sm:h-auto sm:rounded-lg
+          flex flex-col max-h-[90dvh] mt-6 lg:mt-14`}
         role="dialog"
         aria-modal="true"
       >
