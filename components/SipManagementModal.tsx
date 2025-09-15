@@ -1,6 +1,5 @@
 // components/SipManagementModal.tsx
 import React, { useState, useEffect } from 'react';
-import { ModalShell } from './ModalShell';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Pause, 
@@ -324,60 +323,77 @@ const SipManagementModal: React.FC<SipManagementModalProps> = ({
 
   return (
     <>
-      <ModalShell title="Manage Your SIPs" onClose={onClose} size="lg">
-        <div className="max-h-96 overflow-y-auto">
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader className="w-6 h-6 animate-spin text-primary" />
-              <span className="ml-2 text-sm text-muted-foreground">Loading SIPs...</span>
-            </div>
-          ) : error ? (
-            <div className="p-6 text-center">
-              <XCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
-              <p className="text-sm text-red-600">{error}</p>
-              <button
-                onClick={fetchSips}
-                className="mt-4 px-4 py-2 text-sm bg-primary text-white rounded hover:bg-primary/90"
-              >
-                Retry
-              </button>
-            </div>
-          ) : sips.length === 0 ? (
-            <div className="p-6 text-center">
-              <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-sm text-gray-600">No SIPs found for this account.</p>
-              <p className="text-xs text-gray-500 mt-1">
-                Set up a new SIP using the "Add Funds / SIP" option.
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-medium">
-                  Found {sips.length} SIP{sips.length !== 1 ? 's' : ''}
-                </h3>
-                <button
-                  onClick={fetchSips}
-                  disabled={loading}
-                  className="text-xs text-primary hover:underline"
-                >
-                  Refresh
-                </button>
-              </div>
-              {sips.map(renderSipCard)}
-            </div>
-          )}
-        </div>
+      {/* Modal Overlay */}
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden">
+          {/* Modal Header */}
+          <div className="flex items-center justify-between p-6 border-b">
+            <h2 className="text-xl font-semibold text-gray-900">Manage Your SIPs</h2>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 text-2xl font-semibold"
+            >
+              ×
+            </button>
+          </div>
 
-        <div className="mt-6 pt-4 border-t">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Info className="w-4 h-4" />
-            <span>
-              Actions may take a few minutes to reflect. Contact support for urgent changes.
-            </span>
+          {/* Modal Body */}
+          <div className="p-6">
+            <div className="max-h-96 overflow-y-auto">
+              {loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader className="w-6 h-6 animate-spin text-primary" />
+                  <span className="ml-2 text-sm text-muted-foreground">Loading SIPs...</span>
+                </div>
+              ) : error ? (
+                <div className="p-6 text-center">
+                  <XCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+                  <p className="text-sm text-red-600">{error}</p>
+                  <button
+                    onClick={fetchSips}
+                    className="mt-4 px-4 py-2 text-sm bg-primary text-white rounded hover:bg-primary/90"
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : sips.length === 0 ? (
+                <div className="p-6 text-center">
+                  <Calendar className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-sm text-gray-600">No SIPs found for this account.</p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Set up a new SIP using the "Add Funds / SIP" option.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-sm font-medium">
+                      Found {sips.length} SIP{sips.length !== 1 ? 's' : ''}
+                    </h3>
+                    <button
+                      onClick={fetchSips}
+                      disabled={loading}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      Refresh
+                    </button>
+                  </div>
+                  {sips.map(renderSipCard)}
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 pt-4 border-t">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <Info className="w-4 h-4" />
+                <span>
+                  Actions may take a few minutes to reflect. Contact support for urgent changes.
+                </span>
+              </div>
+            </div>
           </div>
         </div>
-      </ModalShell>
+      </div>
 
       {renderConfirmationDialog()}
     </>
