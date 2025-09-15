@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { Cashfree, CFEnvironment } from 'cashfree-pg'; // ← correct import/casing
-
+import pool from '@/lib/db';
 interface CreateOrderRequest {
   amount: number;
   currency?: string;
@@ -35,27 +35,6 @@ function generateOrderId(): string {
   const ts = Date.now().toString();
   const rnd = Math.random().toString(36).substring(2, 8);
   return `qode_${ts}_${rnd}`;
-}
-
-function createSignature(postData: string, timestamp: string): string {
-  const secretKey = process.env.CASHFREE_SECRET_KEY;
-  if (!secretKey) throw new Error('Cashfree secret key is not configured');
-  return crypto.createHmac('sha256', secretKey).update(postData + timestamp).digest('base64');
-}
-
-// ─────────────────────────────────────────────────────────────
-// Mock DB + email helpers (replace with real impls)
-async function storePaymentTransaction(data: {
-  order_id: string;
-  nuvama_code: string;
-  amount: number;
-  account_number: string;
-  ifsc_code: string;
-  client_name: string;
-  payment_session_id: string;
-  payment_status: string;
-}) {
-  console.log('Storing payment transaction:', data);
 }
 
 async function sendSIPEmail(sipData: any) {
@@ -102,6 +81,8 @@ async function cfCreateOrder(orderData: any) {
     return resp.data as CashfreeOrderResponse;
   }
 }
+
+
 
 // Updated cfFetchOrder to use initialized instance
 async function cfFetchOrder(orderId: string) {
@@ -236,16 +217,30 @@ export async function POST(request: NextRequest) {
     const cfOrder = await cfCreateOrder(orderData);
 
     // Persist basic transaction details
-    await storePaymentTransaction({
-      order_id: cfOrder.order_id,
-      nuvama_code,
-      amount,
-      account_number,
-      ifsc_code,
-      client_name: customer_name,
-      payment_session_id: cfOrder.payment_session_id,
-      payment_status: cfOrder.order_status || 'CREATED',
-    });
+    // In POST handler, after cfCreateOrder
+      const result = await pool.query(
+  `INSERT INTO payment_transactions (
+    order_id, client_id, nuvama_code, client_name, amount, currency, payment_type,
+    payment_status, payment_session_id, cf_order_id, account_number, ifsc_code, created_at
+  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+  RETURNING id`,
+  [
+    cfOrder.order_id,
+    client_id,
+    nuvama_code,
+    customer_name,
+    amount,
+    'INR',
+    'ONE_TIME',
+    cfOrder.order_status || 'CREATED',
+    cfOrder.payment_session_id,
+    cfOrder.cf_order_id || cfOrder.order_id,
+    account_number,
+    ifsc_code,
+    new Date(cfOrder.created_at),
+  ]
+);
+console.log('Inserted one-time transaction with ID:', result.rows[0].id);
 
     return NextResponse.json({
       success: true,

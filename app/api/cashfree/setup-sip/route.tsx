@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-
+import pool from '@/lib/db';
 interface CreateSipOrderRequest {
   order_amount: number;
   nuvama_code: string;
@@ -52,33 +52,6 @@ function sanitizeDescription(description: string): string {
   return description.replace(/[^a-zA-Z0-9_-]/g, ''); // Allow only alphanumeric, underscore, and hyphen
 }
 
-async function storePaymentTransaction(data: {
-  order_id: string;
-  nuvama_code: string;
-  amount: number;
-  account_number: string;
-  ifsc_code: string;
-  client_name: string;
-  payment_session_id: string;
-  payment_status: string;
-  payment_type: string;
-  cf_subscription_id: string;
-}) {
-  console.log('Storing payment transaction:', data);
-  return 1; // Mock transaction ID
-}
-
-async function storeSipDetails(data: {
-  payment_transaction_id: number;
-  subscription_id: string;
-  frequency: string;
-  start_date: string;
-  end_date: string | null;
-  total_installments?: number;
-  next_charge_date?: string | null;
-}) {
-  console.log('Storing SIP details:', data);
-}
 
 const makeCashfreeRequest = async (endpoint: string, method: string, data?: any, apiVersion: string = '2025-01-01') => {
   const clientId = process.env.CASHFREE_APP_ID || process.env.CASHFREE_CLIENT_ID;
@@ -366,30 +339,38 @@ export async function POST(request: NextRequest) {
     }
 
     // Store transaction and SIP details
-    const transactionId = await storePaymentTransaction({
-      order_id: subscription_id,
-      nuvama_code,
-      amount: parseFloat(order_amount.toString()),
-      account_number,
-      ifsc_code,
-      client_name: customer_name,
-      payment_session_id: subscriptionResponse.subscription_session_id,
-      payment_status: 'INITIALIZED',
-      payment_type: 'SIP',
-      cf_subscription_id: subscriptionResponse.cf_subscription_id,
-    });
+    const result = await pool.query(
+      `INSERT INTO payment_transactions (
+    order_id, client_id, nuvama_code, client_name, amount, currency, payment_type,
+    payment_status, payment_session_id, cf_subscription_id, account_number, ifsc_code,
+    frequency, start_date, end_date, total_installments, next_charge_date, created_at
+  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+  RETURNING id`,
+      [
+        subscriptionResponse.subscription_id,
+        client_id || customer_phone, // Use customer_phone as fallback
+        nuvama_code,
+        customer_name,
+        parseFloat(order_amount.toString()),
+        'INR',
+        'SIP',
+        subscriptionResponse.subscription_status || 'INITIALISED',
+        subscriptionResponse.subscription_session_id,
+        subscriptionResponse.cf_subscription_id,
+        account_number,
+        ifsc_code,
+        sip_details.frequency,
+        actualStartDate.toISOString().split('T')[0],
+        actualEndDate ? actualEndDate.toISOString().split('T')[0] : null,
+        sip_details.total_installments || null,
+        subscriptionResponse.next_schedule_date
+          ? new Date(subscriptionResponse.next_schedule_date).toISOString().split('T')[0]
+          : null,
+        new Date(subscriptionResponse.authorization_details.authorization_time),
+      ]
+    );
+    console.log('Inserted SIP transaction with ID:', result.rows[0].id);
 
-    await storeSipDetails({
-      payment_transaction_id: transactionId,
-      subscription_id: subscriptionResponse.subscription_id,
-      frequency: sip_details.frequency,
-      start_date: actualStartDate.toISOString().split('T')[0],
-      end_date: actualEndDate ? actualEndDate.toISOString().split('T')[0] : null,
-      total_installments: sip_details.total_installments,
-      next_charge_date: subscriptionResponse.next_schedule_date
-        ? new Date(subscriptionResponse.next_schedule_date).toISOString().split('T')[0]
-        : null,
-    });
 
     return NextResponse.json({
       success: true,

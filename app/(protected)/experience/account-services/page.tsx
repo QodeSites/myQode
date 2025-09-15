@@ -1482,8 +1482,37 @@ export default function InvestmentActionsPage() {
   const [isAddFundsModalOpen, setIsAddFundsModalOpen] = useState(false);
   const [isSwitchModalOpen, setIsSwitchModalOpen] = useState(false);
   const [isWithdrawalModalOpen, setIsWithdrawalModalOpen] = useState(false);
+  const [transactions, setTransactions] = useState([]);
+  const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
+  const [error, setError] = useState(null);
   const { selectedClientCode, selectedClientId, clients, loading } = useClient();
-
+  // Fetch transactions when selectedClientId changes
+  useEffect(() => {
+    if (selectedClientId) {
+      const fetchTransactions = async () => {
+        setIsLoadingTransactions(true);
+        setError(null);
+        try {
+          const response = await fetch(`/api/fetch-transactions?nuvama_code=${selectedClientId}`);
+          const result = await response.json();
+          if (result.success) {
+            // Combine one-time and SIP transactions
+            setTransactions([
+              ...result.data.one_time_transactions,
+              ...result.data.sip_transactions,
+            ]);
+          } else {
+            setError(result.error || 'Failed to fetch transactions');
+          }
+        } catch (err) {
+          setError('Failed to fetch transactions');
+        } finally {
+          setIsLoadingTransactions(false);
+        }
+      };
+      fetchTransactions();
+    }
+  }, [selectedClientId]);
   if (loading) {
     return (
       <main className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-background">
@@ -1634,6 +1663,52 @@ export default function InvestmentActionsPage() {
           </div>
         </InfoCard>
       </div>
+
+      {/* Transactions Table */}
+      <section className="mt-8">
+        <h2 className="text-lg font-semibold text-foreground mb-4">Transaction History</h2>
+        {isLoadingTransactions ? (
+          <div className="flex justify-center items-center">
+            <Loader className="h-6 w-6 animate-spin text-primary" />
+            <span className="ml-2 text-sm text-muted-foreground">Loading transactions...</span>
+          </div>
+        ) : error ? (
+          <p className="text-sm text-red-600">{error}</p>
+        ) : transactions.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No transactions found.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full border-collapse border border-gray-200">
+              <thead>
+                <tr className="bg-gray-100">
+                  <th className="border border-gray-200 px-4 py-2 text-left text-sm font-medium text-foreground">Order ID</th>
+                  <th className="border border-gray-200 px-4 py-2 text-left text-sm font-medium text-foreground">Type</th>
+                  <th className="border border-gray-200 px-4 py-2 text-left text-sm font-medium text-foreground">Amount</th>
+                  <th className="border border-gray-200 px-4 py-2 text-left text-sm font-medium text-foreground">Currency</th>
+                  <th className="border border-gray-200 px-4 py-2 text-left text-sm font-medium text-foreground">Status</th>
+                  <th className="border border-gray-200 px-4 py-2 text-left text-sm font-medium text-foreground">Date</th>
+                  <th className="border border-gray-200 px-4 py-2 text-left text-sm font-medium text-foreground">Account Number</th>
+                </tr>
+              </thead>
+              <tbody>
+                {transactions.map((tx) => (
+                  <tr key={tx.id} className="hover:bg-gray-50">
+                    <td className="border border-gray-200 px-4 py-2 text-sm text-foreground">{tx.order_id}</td>
+                    <td className="border border-gray-200 px-4 py-2 text-sm text-foreground">{tx.payment_type}</td>
+                    <td className="border border-gray-200 px-4 py-2 text-sm text-foreground">{tx.amount.toLocaleString()}</td>
+                    <td className="border border-gray-200 px-4 py-2 text-sm text-foreground">{tx.currency}</td>
+                    <td className="border border-gray-200 px-4 py-2 text-sm text-foreground">{tx.payment_status}</td>
+                    <td className="border border-gray-200 px-4 py-2 text-sm text-foreground">
+                      {new Date(tx.created_at).toLocaleDateString()}
+                    </td>
+                    <td className="border border-gray-200 px-4 py-2 text-sm text-foreground">{tx.account_number || 'N/A'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       {/* Modals */}
       <AddFundsModal
