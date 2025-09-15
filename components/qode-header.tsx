@@ -55,7 +55,7 @@ export default function QodeHeader({ setSidebarOpen }: HeaderProps) {
               <div className="inline-flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm text-foreground animate-pulse">
                 <span className="h-4 w-16 bg-gray-300 rounded"></span>
               </div>
-              <button disabled className="rounded-md border px-3 py-2 text-sm text-foreground opacity-50">
+              <button disabled className="rounded-md border px-3 py-2 text-sm bg-primary text-primary-foreground">
                 Logout
               </button>
             </div>
@@ -68,25 +68,27 @@ export default function QodeHeader({ setSidebarOpen }: HeaderProps) {
   return (
     <header className="w-full fixed top-0 left-0 right-0 z-1000">
       <div className="w-full border-b bg-secondary px-4 sm:px-6 md:px-8 py-4">
-        <div className="mx-auto flex flex-wrap items-center justify-between gap-6">
+        <div className="mx-auto flex flex-row items-center justify-between gap-6">
           {/* Mobile menu button */}
-          <div className="flex items-center gap-4">
-            <Button
-              onClick={() => setSidebarOpen(true)}
-              className="lg:hidden block rounded-md border bg-primary px-3 py-2 text-sm"
-              aria-label="Open sidebar"
-            >
-              <MenuIcon className="h-5 w-5" /> {/* Optional: Icon for visual clarity */}
-              <span className="sr-only">Menu</span> {/* Screen-reader-only text for accessibility */}
-            </Button>
+          <div className="w-full md:max-w-content flex flex-row items-center">
             <Link href="/">
               <h1 className="font-serif text-2xl sm:text-3xl font-bold text-primary leading-none">
                 <sub className="text-xs sm:text-sm">my</sub>Qode
               </h1>
             </Link>
+            <div className="ml-auto">
+              <Button
+                onClick={() => setSidebarOpen(true)}
+                className="lg:hidden block rounded-md border bg-primary px-3 py-2 text-sm"
+                aria-label="Open sidebar"
+              >
+                <MenuIcon className="h-5 w-5" />
+                <span className="sr-only">Menu</span>
+              </Button>
+            </div>
           </div>
           {/* Right section */}
-          <div className="flex items-center gap-3 sm:gap-4 flex-wrap">
+          <div className="hidden md:flex lg:flex flex-row items-center gap-3 sm:gap-4">
             <DropdownMenu>
               <DropdownMenuTrigger className="inline-flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm text-foreground">
                 <span className="font-medium text-primary truncate max-w-[120px] sm:max-w-[160px]">
@@ -121,7 +123,7 @@ export default function QodeHeader({ setSidebarOpen }: HeaderProps) {
             <button
               onClick={logout}
               disabled={isPending}
-              className="hover:bg-destructive rounded-md border px-3 py-2 text-sm text-foreground disabled:opacity-50"
+              className="rounded-md bg-primary text-primary-foreground border px-3 py-2 text-sm hover:bg-primary-foreground hover:text-primary"
             >
               {isPending ? "Logging out..." : "Logout"}
             </button>

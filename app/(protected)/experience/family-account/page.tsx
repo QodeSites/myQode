@@ -378,14 +378,14 @@ export default function FamilyAccountsSection() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-0 md:space-y-2">
           {sortedGroupEntries.map(([groupKey, group]) => {
             const isGroupCollapsed = collapsedGroups.has(groupKey);
             const totalAccounts = Object.values(group.owners).reduce((sum, owner) => sum + owner.accounts.length, 0);
 
             return (
-              <Card key={groupKey} className="overflow-hidden py-0">
-                <CardContent className="pt-6">
+              <Card key={groupKey} className="overflow-hidden py-0 p-0 md:p-6">
+                <CardContent className="p-1 md:p-6">
                   {/* Group header */}
                   <div
                     className="flex items-center gap-3 mb-4 cursor-pointer hover:bg-muted/50 rounded p-2 -m-2"
@@ -394,7 +394,7 @@ export default function FamilyAccountsSection() {
                     {isGroupCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     <div className="h-3 w-3 rounded-full bg-blue-500" />
                     <div className="flex-1">
-                      <div className="font-semibold text-lg">{group.groupName || "Family Group"}</div>
+                      <div className="font-semibold text-md md:text-lg">{group.groupName || "Family Group"}</div>
                       <div className="text-sm text-muted-foreground">
                         Group ID: {group.groupId} | Email: {group.groupEmail || "N/A"}
                       </div>
@@ -407,7 +407,7 @@ export default function FamilyAccountsSection() {
 
                   {/* Owners */}
                   {!isGroupCollapsed && (
-                    <div className="ml-6">
+                    <div className="ml-4 md:ml-6">
                       {Object.entries(group.owners)
                         .sort(([, a], [, b]) => (a.ownerName || "Unknown").localeCompare(b.ownerName || "Unknown"))
                         .map(([ownerKey, owner]) => {
@@ -421,7 +421,7 @@ export default function FamilyAccountsSection() {
                               <div className="absolute left-0 top-6 w-4 h-px bg-border"></div>
 
                               {/* Owner Level - Collapsible */}
-                              <div className="ml-6">
+                              <div className="ml-4 md:ml-6">
                                 <div
                                   className="flex items-center gap-3 mb-2 cursor-pointer hover:bg-muted/50 rounded p-1 -m-1"
                                   onClick={() => toggleOwnerCollapse(fullOwnerKey)}
@@ -445,7 +445,7 @@ export default function FamilyAccountsSection() {
 
                                 {/* Accounts */}
                                 {!isOwnerCollapsed && (
-                                  <div className="ml-6">
+                                  <div className="ml-4 md:ml-6">
                                     {owner.accounts.map((account, accountIdx) => {
                                       const accountKey = `${fullOwnerKey}-${account.clientid}`;
                                       const isAccountCollapsed = collapsedAccounts.has(accountKey);
@@ -457,7 +457,7 @@ export default function FamilyAccountsSection() {
                                           <div className="absolute left-0 top-6 w-3 h-px bg-border opacity-50"></div>
 
                                           {/* Account Level - Collapsible */}
-                                          <div className="ml-4">
+                                          <div className="ml-2 md:ml-4">
                                             <div
                                               className="flex items-center gap-3 mb-2 cursor-pointer hover:bg-muted/50 rounded p-1 -m-1"
                                               onClick={() => toggleAccountCollapse(accountKey)}
@@ -480,7 +480,7 @@ export default function FamilyAccountsSection() {
                                             </div>
 
                                             {!isAccountCollapsed && (
-                                              <div className="ml-4 p-2 bg-muted/20 rounded text-xs border-l-2 border-primary/10">
+                                              <div className="ml-2 md:ml-4 p-2 bg-muted/20 rounded text-xs border-l-2 border-primary/10">
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                                                   <div>
                                                     <div className="text-muted-foreground">Client ID</div>

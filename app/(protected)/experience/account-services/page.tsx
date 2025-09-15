@@ -960,19 +960,20 @@ function SwitchReallocationModal({
       <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-foreground mb-2">Account ID *</label>
-          <select
+          <input
             name="nuvama-code"
             value={formData.nuvamaCode}
             onChange={(e) => setFormData({ ...formData, nuvamaCode: e.target.value })}
-            className="w-full p-3 border border-border rounded-md text-foreground focus:ring-2 focus:ring-primary focus:border-primary"
+            className="w-full p-3 border border-border rounded-md text-foreground bg-muted focus:ring-2 focus:ring-primary focus:border-primary"
             required
+            disabled
           >
-            {clients.map((c) => (
+            {/* {clients.map((c) => (
               <option key={c.clientid} value={c.clientcode}>
                 {c.clientcode} ({c.clientid})
               </option>
-            ))}
-          </select>
+            ))} */}
+          </input>
           <p className="text-xs text-muted-foreground mt-1">Currently selected: {selectedClientCode}</p>
         </div>
 
@@ -1197,15 +1198,15 @@ function WithdrawalModal({
           <select
             name="nuvama-code"
             value={formData.nuvamaCode}
-            onChange={(e) => setFormData({ ...formData, nuvamaCode: e.target.value })}
             className="w-full p-3 border border-border rounded-md text-foreground focus:ring-2 focus:ring-primary focus:border-primary"
             required
+            disabled
           >
-            {clients.map((c) => (
+            {/* {clients.map((c) => (
               <option key={c.clientid} value={c.clientcode}>
                 {c.clientcode} ({c.clientid})
               </option>
-            ))}
+            ))} */}
           </select>
           <p className="text-xs text-muted-foreground mt-1">Currently selected: {selectedClientCode}</p>
         </div>
