@@ -52,18 +52,6 @@ function sanitizeDescription(description: string): string {
   return description.replace(/[^a-zA-Z0-9_-]/g, ''); // Allow only alphanumeric, underscore, and hyphen
 }
 
-async function fetchAccountDetails(nuvama_code: string): Promise<AccountDetails> {
-  console.log('Fetching account details for:', nuvama_code);
-  // Replace with actual implementation to fetch real account details
-
-  return {
-    client_name: 'John Doe',
-    account_number: '59108290701802', // Valid account number from sample
-    ifsc_code: 'HDFC0002614', // Valid IFSC from sample
-    phone_number: '9908730221',
-  };
-}
-
 async function storePaymentTransaction(data: {
   order_id: string;
   nuvama_code: string;
@@ -472,8 +460,8 @@ export async function GET(request: NextRequest) {
       const mapStatus = (apiStatus: string) => {
         const norm = (apiStatus || '').toUpperCase();
         if (norm === 'ACTIVE') return 'ACTIVE';
-        if (norm === 'INITIALIZED' || norm === 'PENDING' || norm === 'ON_HOLD' || norm === 'PAUSED') return 'PENDING';
-        if (norm === 'CANCELLED' || norm === 'EXPIRED' || norm === 'USER_DROPPED') return 'CANCELLED';
+        if (norm === 'INITIALIZED' || norm === 'BANK_APPROVAL_PENDING' || norm === 'PENDING' || norm === 'ON_HOLD' || norm === 'PAUSED') return 'PENDING';
+        if (norm === 'COMPLETED' || norm === 'CUSTOMER_CANCELLED' || norm === 'CUSTOMER_PAUSED' || norm === 'EXPIRED' || norm === 'LINK_EXPIRED') return 'CANCELLED';
         return 'FAILED';
       };
 
