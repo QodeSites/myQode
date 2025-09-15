@@ -163,7 +163,6 @@ function AddFundsModal({
     frequency: 'monthly',
     startDate: '',
     endDate: '',
-    totalInstallments: '',
     amount: ''
   });
   const [errors, setErrors] = useState({
@@ -171,11 +170,10 @@ function AddFundsModal({
     amount: "",
     startDate: "",
     endDate: "",
-    totalInstallments: "",
   });
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
-  const SIP_ENABLED = true; // Set to true to enable SIP functionality
+  const SIP_ENABLED = true;
 
   useEffect(() => {
     setFormData((p) => ({ ...p, nuvamaCode: selectedClientCode || "QAW0001" }));
@@ -239,7 +237,7 @@ function AddFundsModal({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    if (["frequency", "startDate", "endDate", "totalInstallments"].includes(name)) {
+    if (["frequency", "startDate", "endDate"].includes(name)) {
       setSipData((prev) => ({ ...prev, [name]: value }));
       validateField(name, value);
     } else {
@@ -261,8 +259,6 @@ function AddFundsModal({
         ne.startDate = new Date(value) < tomorrow ? "Start date must be tomorrow or later" : "";
       } else if (name === "endDate" && value && sipData.startDate) {
         ne.endDate = new Date(value) < new Date(sipData.startDate) ? "End date must be after start date" : "";
-      } else if (name === "totalInstallments" && value) {
-        ne.totalInstallments = Number(value) < 1 ? "Total installments must be at least 1" : "";
       }
       return ne;
     });
@@ -347,7 +343,6 @@ function AddFundsModal({
               amount: '',
               startDate: '',
               endDate: '',
-              totalInstallments: '',
             });
             setTimeout(() => {
               setPaymentStatus('');
@@ -402,7 +397,6 @@ function AddFundsModal({
     setLoading(true);
 
     try {
-      // Load Cashfree SDK if not already loaded
       if (!window.Cashfree) {
         toast({
           title: "Loading",
@@ -480,7 +474,6 @@ function AddFundsModal({
               description: "Your SIP has been set up and authorized successfully.",
             });
 
-            // Reset form data
             setFormData({
               nuvamaCode: selectedClientCode || 'QAW0001',
               amount: '',
@@ -490,7 +483,6 @@ function AddFundsModal({
               frequency: 'monthly',
               startDate: '',
               endDate: '',
-              totalInstallments: '',
               amount: ''
             });
 
@@ -499,7 +491,6 @@ function AddFundsModal({
               amount: '',
               startDate: '',
               endDate: '',
-              totalInstallments: '',
             });
 
             setTimeout(() => {
@@ -534,7 +525,6 @@ function AddFundsModal({
     }
   };
 
-  // Updated handlePayment function
   const handlePayment = async () => {
     try {
       console.log('handlePayment called with activeTab:', activeTab);
@@ -594,29 +584,6 @@ function AddFundsModal({
             variant: "destructive",
           });
           return;
-        }
-
-        // Additional validation for total installments if end date is not provided
-        if (!sipData.endDate && !sipData.totalInstallments) {
-          toast({
-            title: "Error",
-            description: "Please provide either an end date or total number of installments.",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        // Validate total installments if provided
-        if (sipData.totalInstallments) {
-          const installments = parseInt(sipData.totalInstallments);
-          if (isNaN(installments) || installments <= 0 || installments > 1000) {
-            toast({
-              title: "Error",
-              description: "Please enter a valid number of installments (1-1000).",
-              variant: "destructive",
-            });
-            return;
-          }
         }
 
         // Validate end date if provided
@@ -679,9 +646,6 @@ function AddFundsModal({
             frequency: sipData.frequency,
             start_date: sipData.startDate,
             ...(sipData.endDate && { end_date: sipData.endDate }),
-            ...(sipData.totalInstallments && {
-              total_installments: parseInt(sipData.totalInstallments)
-            }),
           },
           order_meta: {
             return_url: `${window.location.origin}/payment/sip-success`,
@@ -716,7 +680,6 @@ function AddFundsModal({
           const responseText = await response.text();
           console.log('Non-JSON response received:', responseText);
 
-          // Try to parse as JSON in case content-type header is wrong
           try {
             responseData = JSON.parse(responseText);
           } catch {
@@ -742,7 +705,6 @@ function AddFundsModal({
           throw new Error('Invalid response structure: missing data object');
         }
 
-        // For SIP, the checkout_url is actually the subscription_session_id
         const subscriptionSessionId = responseData.data.checkout_url;
         const subscriptionId = responseData.data.subscription_id || responseData.data.order_id;
 
@@ -759,13 +721,11 @@ function AddFundsModal({
 
         console.log('Initiating Cashfree subscription with session ID:', subscriptionSessionId, 'Subscription ID:', subscriptionId);
 
-        // Show initial success message
         toast({
           title: "SIP Authorization Initiated",
           description: "Opening payment gateway for SIP authorization...",
         });
 
-        // Use Cashfree SDK for SIP subscription authorization
         await initiateCashfreeSubscription(subscriptionSessionId, subscriptionId);
 
       } else {
@@ -820,11 +780,6 @@ function AddFundsModal({
         if (!orderData.order_id) {
           console.error('Missing order_id in orderData:', orderData);
           throw new Error('Order ID is missing in the response');
-        }
-
-        // Ensure initiateCashfreePayment function exists
-        if (typeof initiateCashfreePayment !== 'function') {
-          throw new Error('Payment initialization function is not available. Please refresh the page.');
         }
 
         await initiateCashfreePayment(orderData.payment_session_id, orderData.order_id);
@@ -1015,28 +970,6 @@ function AddFundsModal({
               </div>
             </div>
 
-            <div className="p-[12px] rounded-sm border border-lightGray">
-              <label className="block text-[16px] font-semibold text-text-secondary mb-[5px] font-body">
-                Total Installments (Optional)
-              </label>
-              <input
-                type="number"
-                name="totalInstallments"
-                value={sipData.totalInstallments}
-                onChange={handleInputChange}
-                min="1"
-                className={`w-full p-[12px] border-2 rounded text-[14px] font-body ${errors.totalInstallments ? "border-brown" : "border-lightGray focus:border-primary"
-                  } focus:outline-none transition-all`}
-                placeholder="e.g., 12 (leave empty if end date is provided)"
-              />
-              {errors.totalInstallments && (
-                <p className="mt-[5px] text-[12px] text-brown font-body">{errors.totalInstallments}</p>
-              )}
-              <p className="mt-[5px] text-[12px] text-darkGray font-body">
-                Specify either end date or total installments, not both
-              </p>
-            </div>
-
             <div className="p-[12px] rounded-sm border border-beige">
               <div className="flex items-center mb-[10px]">
                 <Calendar className="w-[16px] h-[16px] text-primary mr-[5px]" />
@@ -1056,12 +989,7 @@ function AddFundsModal({
                         <strong>End Date:</strong> {new Date(sipData.endDate).toLocaleDateString()}
                       </p>
                     )}
-                    {sipData.totalInstallments && (
-                      <p>
-                        <strong>Total Installments:</strong> {sipData.totalInstallments}
-                      </p>
-                    )}
-                    {!sipData.endDate && !sipData.totalInstallments && (
+                    {!sipData.endDate && (
                       <p className="text-orange-600">
                         <strong>Duration:</strong> Indefinite (until you cancel)
                       </p>

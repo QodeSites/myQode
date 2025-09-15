@@ -55,7 +55,7 @@ function sanitizeDescription(description: string): string {
 async function fetchAccountDetails(nuvama_code: string): Promise<AccountDetails> {
   console.log('Fetching account details for:', nuvama_code);
   // Replace with actual implementation to fetch real account details
-  
+
   return {
     client_name: 'John Doe',
     account_number: '59108290701802', // Valid account number from sample
@@ -500,7 +500,7 @@ export async function GET(request: NextRequest) {
         authorization_details: {
           authorization_status: subscriptionData.authorisation_details?.authorization_status,
           authorization_time: subscriptionData.authorisation_details?.authorization_time,
-          payment_methods: ["enach", "pnach", "upi", "card"] 
+          payment_methods: ["enach", "pnach", "upi", "card"]
         },
         subscription_first_charge_time: subscriptionData.subscription_first_charge_time,
         subscription_expiry_time: subscriptionData.subscription_expiry_time,
