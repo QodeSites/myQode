@@ -22,20 +22,11 @@ interface AccountDetails {
   phone_number?: string;
 }
 
-interface CashfreePlanResponse {
-  plan_id: string;
-  plan_name: string;
-  plan_type: string;
-  plan_currency: string;
-  amount: number;
-  plan_note: string;
-}
-
 interface CashfreeSubscriptionResponse {
   subscription_id: string;
   cf_subscription_id: string;
   subscription_status: string;
-  payment_link: string;
+  subscription_session_id: string;
   plan_details: any;
   subscription_first_charge_time: string;
   subscription_expiry_time: string;
@@ -59,9 +50,9 @@ async function fetchAccountDetails(nuvama_code: string): Promise<AccountDetails>
   // Replace with actual implementation to fetch real account details
   return {
     client_name: 'John Doe',
-    account_number: '010080198715', // Valid account number for testing
-    ifsc_code: 'ICIC0001008', // Valid IFSC for ICICI Bank
-    phone_number: '9876543210',
+    account_number: '59108290701802', // Valid account number from sample
+    ifsc_code: 'HDFC0002614', // Valid IFSC from sample
+    phone_number: '9908730221',
   };
 }
 
@@ -142,12 +133,7 @@ const makeCashfreeRequest = async (endpoint: string, method: string, data?: any,
   return responseData;
 };
 
-// Create Plan
-const createPlan = async (planData: any): Promise<CashfreePlanResponse> => {
-  return await makeCashfreeRequest('/plans', 'POST', planData, '2025-01-01');
-};
-
-// Create Subscription
+// Create Subscription (Direct approach without separate plan creation)
 const createSubscription = async (subscriptionData: any): Promise<CashfreeSubscriptionResponse> => {
   return await makeCashfreeRequest('/subscriptions', 'POST', subscriptionData, '2025-01-01');
 };
@@ -225,20 +211,27 @@ export async function POST(request: NextRequest) {
     }
 
     const subscription_id = `SUB_${generateOrderId()}`;
-    const plan_id = `PLAN_${generateOrderId()}`;
 
-    // Map frequency to Cashfree interval types
-    const intervalTypeMap = {
-      daily: 'DAY',
-      weekly: 'WEEK',
-      monthly: 'MONTH',
-      quarterly: 'MONTH',
-      yearly: 'YEAR',
-      custom: 'MONTH',
+    // Map frequency to Cashfree interval types and calculate intervals
+    const getIntervalConfig = (frequency: string) => {
+      const freq = frequency.toLowerCase();
+      switch (freq) {
+        case 'daily':
+          return { intervalType: 'DAY', intervals: 1 };
+        case 'weekly':
+          return { intervalType: 'WEEK', intervals: 1 };
+        case 'monthly':
+          return { intervalType: 'MONTH', intervals: 1 };
+        case 'quarterly':
+          return { intervalType: 'MONTH', intervals: 3 };
+        case 'yearly':
+          return { intervalType: 'YEAR', intervals: 1 };
+        default:
+          return { intervalType: 'MONTH', intervals: 1 };
+      }
     };
 
-    const intervalType = intervalTypeMap[sip_details.frequency.toLowerCase() as keyof typeof intervalTypeMap] || 'MONTH';
-    const planIntervals = sip_details.frequency.toLowerCase() === 'quarterly' ? 3 : 1;
+    const { intervalType, intervals } = getIntervalConfig(sip_details.frequency);
 
     // Bank code mapping
     const bankCodeMapping: { [key: string]: string } = {
@@ -255,77 +248,67 @@ export async function POST(request: NextRequest) {
     };
 
     const ifscPrefix = accountDetails.ifsc_code ? accountDetails.ifsc_code.substring(0, 4) : '';
-    const customerBankCode = bankCodeMapping[ifscPrefix] || 'ICIC'; // Default to ICICI for testing
+    const customerBankCode = bankCodeMapping[ifscPrefix] || 'HDFC'; // Default to HDFC as in sample
 
-    // Step 1: Create Plan
-    const planRequest = {
-      plan_id,
-      plan_name: `SIP_${nuvama_code}_${Date.now()}`,
-      plan_type: 'PERIODIC',
-      plan_currency: 'INR',
-      amount: parseFloat(order_amount.toString()), // Changed from plan_max_amount
-      plan_max_amount: parseFloat(order_amount.toString()) * 100, // Kept for backward compatibility
-      intervalType, // Added for periodic plan
-      plan_interval_type: 'MONTH', // Added to specify number of intervals
-      plan_note: sanitizeDescription(`SIP_Plan_for_${accountDetails.client_name}_${sip_details.frequency}`), // Sanitized description
+    // Format dates properly with timezone
+    const formatDateWithTimezone = (date: Date): string => {
+      // Add 5:30 hours for IST timezone
+      const istOffset = 5.5 * 60 * 60 * 1000; // 5.5 hours in milliseconds
+      const istDate = new Date(date.getTime() + istOffset);
+      return istDate.toISOString().replace('Z', '+05:30');
     };
 
+    // Set proper start date (if it's today, set it to tomorrow to avoid same-day issues)
+    const now = new Date();
+    const minStartDate = new Date(now.getTime() + 24 * 60 * 60 * 1000); // Tomorrow
+    const actualStartDate = startDate > minStartDate ? startDate : minStartDate;
+    
+    // Set end date (default to 10 years from start if not provided)
+    const actualEndDate = endDate || new Date(actualStartDate.getTime() + 10 * 365 * 24 * 60 * 60 * 1000);
 
-    console.log('Creating plan with request:', JSON.stringify(planRequest, null, 2));
-    // Validate plan request
-    if (!planRequest.amount || !planRequest.intervalType) {
-      throw new Error('Plan request missing required fields: amount or intervalType');
-    }
-
-    console.log('Plan Request:', JSON.stringify(planRequest, null, 2));
-    const planResponse = await createPlan(planRequest);
-    console.log('Plan Created:', planResponse);
-
-    // Step 2: Create Subscription
     const baseReturn = order_meta.return_url || `${request.nextUrl.origin}/payment-result`;
+
+    // Create Subscription Request (matching the sample structure)
     const subscriptionRequest = {
       subscription_id,
       customer_details: {
         customer_name: String(accountDetails.client_name),
-        customer_bank_account_holder_name: String(accountDetails.client_name), // Explicitly set for TPV
         customer_email: `${nuvama_code}@nuvama.com`,
         customer_phone: String(customerPhone),
         customer_bank_account_number: String(accountDetails.account_number),
+        customer_bank_account_holder_name: String(accountDetails.client_name),
         customer_bank_ifsc: String(accountDetails.ifsc_code),
         customer_bank_code: String(customerBankCode),
         customer_bank_account_type: 'SAVINGS',
       },
       plan_details: {
-        plan_id: planRequest.plan_id,
-        plan_name: planRequest.plan_name,
+        plan_name: `SIP_${nuvama_code}_${Date.now()}`,
         plan_type: 'PERIODIC',
-        plan_currency: planRequest.plan_currency,
-        plan_recurring_amount: planRequest.amount,
-        plan_intervals: planIntervals,
-        plan_interval_type: planRequest.plan_interval_type,
-        plan_note: planRequest.plan_note,
-        plan_max_amount: planRequest.amount * 100, // Kept for backward compatibility
-        plan_status: 'ACTIVE',
-        plan_amount: planRequest.amount,
+        plan_amount: parseFloat(order_amount.toString()),
+        plan_max_amount: parseFloat(order_amount.toString()) * 100, // Max amount for authorization
+        plan_max_cycles: sip_details.total_installments || 120, // Default to 10 years of monthly payments
+        plan_intervals: intervals,
+        plan_currency: 'INR',
+        plan_interval_type: intervalType,
+        plan_note: sanitizeDescription(`SIP_Plan_${sip_details.frequency}_${parseFloat(order_amount.toString()).toFixed(2)}`),
       },
       authorization_details: {
-        authorization_amount: parseFloat(order_amount.toString()),
+        authorization_amount: parseFloat(order_amount.toString()) * 100, // Higher authorization amount
         authorization_amount_refund: true,
-        authorization_time: 1,
         payment_methods: ['enach', 'pnach', 'upi', 'card'],
       },
       subscription_meta: {
         return_url: `${baseReturn}?subscription_id=${subscription_id}`,
         notification_channel: ['EMAIL', 'SMS'],
       },
-      subscription_first_charge_time: startDate.toISOString(),
-      subscription_expiry_time: endDate
-        ? endDate.toISOString()
-        : new Date(Date.now() + 10 * 365 * 24 * 60 * 60 * 1000).toISOString(),
-      subscription_note: sanitizeDescription(`Nuvama_Code_${nuvama_code}_SIP_Amount_${parseFloat(order_amount.toString()).toFixed(2)}`),
+      subscription_expiry_time: formatDateWithTimezone(actualEndDate),
+      subscription_first_charge_time: formatDateWithTimezone(actualStartDate),
+      subscription_note: sanitizeDescription(`Nuvama_SIP_${nuvama_code}`),
       subscription_tags: {
         nuvama_code,
         client_name: accountDetails.client_name,
+        frequency: sip_details.frequency,
+        psp_note: `${sip_details.frequency} subscription payment`,
       },
     };
 
@@ -348,9 +331,9 @@ export async function POST(request: NextRequest) {
     const subscriptionResponse = await createSubscription(subscriptionRequest);
     console.log('Subscription Created:', subscriptionResponse);
 
-    if (!subscriptionResponse.payment_link) {
+    if (!subscriptionResponse.subscription_session_id ) {
       console.error('Missing payment_link in response:', subscriptionResponse);
-      throw new Error('Failed to create subscription session - missing payment_link');
+      throw new Error('Failed to create subscription session - missing subscription_session_id ');
     }
 
     if (subscriptionResponse.subscription_status !== 'INITIALIZED') {
@@ -366,7 +349,7 @@ export async function POST(request: NextRequest) {
       account_number: accountDetails.account_number,
       ifsc_code: accountDetails.ifsc_code,
       client_name: accountDetails.client_name,
-      payment_session_id: subscriptionResponse.payment_link,
+      payment_session_id: subscriptionResponse.subscription_session_id ,
       payment_status: 'INITIALIZED',
       payment_type: 'SIP',
       cf_subscription_id: subscriptionResponse.cf_subscription_id,
@@ -376,8 +359,8 @@ export async function POST(request: NextRequest) {
       payment_transaction_id: transactionId,
       subscription_id: subscriptionResponse.subscription_id,
       frequency: sip_details.frequency,
-      start_date: startDate.toISOString().split('T')[0],
-      end_date: endDate ? endDate.toISOString().split('T')[0] : null,
+      start_date: actualStartDate.toISOString().split('T')[0],
+      end_date: actualEndDate ? actualEndDate.toISOString().split('T')[0] : null,
       total_installments: sip_details.total_installments,
       next_charge_date: subscriptionResponse.next_schedule_date
         ? new Date(subscriptionResponse.next_schedule_date).toISOString().split('T')[0]
@@ -388,13 +371,12 @@ export async function POST(request: NextRequest) {
       success: true,
       data: {
         order_id: subscription_id,
-        plan_id: planResponse.plan_id,
         subscription_id: subscriptionResponse.subscription_id,
         cf_subscription_id: subscriptionResponse.cf_subscription_id,
         subscription_status: subscriptionResponse.subscription_status,
         order_amount: parseFloat(order_amount.toString()),
         order_currency: 'INR',
-        checkout_url: subscriptionResponse.payment_link,
+        checkout_url: subscriptionResponse.subscription_session_id,
         customer_bank_account_number: accountDetails.account_number,
         customer_bank_ifsc: accountDetails.ifsc_code,
         customer_bank_code: customerBankCode,
@@ -403,8 +385,8 @@ export async function POST(request: NextRequest) {
         subscription_expiry_time: subscriptionResponse.subscription_expiry_time,
         sip_details: {
           frequency: sip_details.frequency,
-          start_date: startDate.toISOString().split('T')[0],
-          end_date: endDate ? endDate.toISOString().split('T')[0] : null,
+          start_date: actualStartDate.toISOString().split('T')[0],
+          end_date: actualEndDate ? actualEndDate.toISOString().split('T')[0] : null,
           total_installments: sip_details.total_installments,
           next_charge_date: subscriptionResponse.next_schedule_date
             ? new Date(subscriptionResponse.next_schedule_date).toISOString().split('T')[0]
@@ -482,7 +464,7 @@ export async function GET(request: NextRequest) {
         authorization_details: {
           authorization_status: subscriptionData.authorisation_details?.authorization_status,
           authorization_time: subscriptionData.authorisation_details?.authorization_time,
-          payment_method: subscriptionData.authorisation_details?.payment_method?.enach?.auth_mode || subscriptionData.authorisation_details?.payment_method,
+          payment_methods: ["enach", "pnach", "upi", "card"] 
         },
         subscription_first_charge_time: subscriptionData.subscription_first_charge_time,
         subscription_expiry_time: subscriptionData.subscription_expiry_time,
