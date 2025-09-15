@@ -7,6 +7,12 @@ import { useToast } from "@/hooks/use-toast";
 import { useClient } from "@/contexts/ClientContext";
 
 
+const strategy = {
+  'QFH': 'Qode Future Horizon',
+  'QAW': 'Qode All Weather',
+  'QTF': 'Qode Tactical Fund',
+  'QGF': 'Qode Growth Fund'
+}
 /* ---------------------------
    Reusable Modal Component
 ---------------------------- */
@@ -491,14 +497,14 @@ function AddFundsModal({
 
         // Get checkout URL from response or construct it
         const checkoutUrl = sipOrderData.data.checkout_url;
-        
+
         if (!checkoutUrl) {
           console.error('No checkout URL in response:', sipOrderData);
           throw new Error('Checkout URL not provided by SIP service');
         }
 
         console.log('Redirecting to SIP checkout:', checkoutUrl);
-        
+
         // Show success message before redirect
         toast({
           title: "SIP Setup Initiated",
@@ -975,7 +981,7 @@ function SwitchReallocationModal({
           <input
             name="invested-in"
             type="text"
-            value={formData.investedIn}
+            value={`${strategy[formData.investedIn]} - ${formData.investedIn}`}
             disabled
             className="w-full p-3 border border-border rounded-md bg-muted text-muted-foreground cursor-not-allowed"
           />
@@ -991,10 +997,17 @@ function SwitchReallocationModal({
             required
           >
             <option value="">Select Strategy</option>
-            <option value="QGF">Qode Growth Fund</option>
-            <option value="QFH">Qode Future Horizon</option>
-            <option value="QTF">Qode Tatical Fund</option>
-            <option value="QAW">Qode All Weather</option>
+            {/* <option value="QGF">Qode Growth Fund (QGF)</option>
+            <option value="QFH">Qode Future Horizon (QFH)</option>
+            <option value="QTF">Qode Tatical Fund (QTF)</option>
+            <option value="QAW">Qode All Weather (QAW)</option> */}
+            {Object.entries(strategy)
+              .filter(([value]) => value !== formData.investedIn)
+              .map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label} ({value})
+                </option>
+              ))}
           </select>
         </div>
 

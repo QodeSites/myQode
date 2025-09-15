@@ -226,7 +226,7 @@ export default function ReferAnInvestorPage() {
 
     // Fixed: Use 'feedback' as inquiry_type (valid type) and properly structure the data
     const emailData = {
-      to: 'soham.panchal@qodeinvest.com',
+      to: 'sanket.shinde@qodeinvest.com',
       subject: `New Investor Referral from ${formDataSubmit.nuvamaCode}`,
       html: emailHtml,
       from: 'investor.relations@qodeinvest.com',
