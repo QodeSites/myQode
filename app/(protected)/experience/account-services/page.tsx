@@ -130,7 +130,7 @@ async function sendEmail(emailData: {
 }
 
 /* ---------------------------
-   Add Funds / SIP Modal - Updated for SIP API Integration
+   Add Funds / SIP Modal - Updated for SIP API Integration and User Data from Bank Details
 ---------------------------- */
 function AddFundsModal({
   isOpen,
@@ -155,6 +155,8 @@ function AddFundsModal({
     account_number: string;
     ifsc_code: string;
     cashfree_bank_code: string;
+    phone_number: string;
+    email: string;
   } | null>(null);
   const [formData, setFormData] = useState({ nuvamaCode: selectedClientCode || "QAW0001", amount: "" });
   const [sipData, setSipData] = useState({
@@ -174,12 +176,6 @@ function AddFundsModal({
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const SIP_ENABLED = true; // Set to true to enable SIP functionality
-
-  const [userData] = useState({
-    email: 'user@example.com',
-    phone: '9999999999',
-    name: 'John Doe'
-  });
 
   useEffect(() => {
     setFormData((p) => ({ ...p, nuvamaCode: selectedClientCode || "QAW0001" }));
@@ -205,6 +201,8 @@ function AddFundsModal({
                 account_number: bankDetail.account_number || '',
                 ifsc_code: bankDetail.ifsc_code || 'N/A',
                 cashfree_bank_code: bankDetail.cashfree_bank_code || 'CASHFREE',
+                phone_number: bankDetail.phone_number || 'N/A',
+                email: bankDetail.email || 'N/A',
               });
             } else {
               setAccountDetails(null);
@@ -648,10 +646,10 @@ function AddFundsModal({
 
       // Check for required user data for one-time payments
       if (activeTab !== 'sip') {
-        if (!userData?.email || !userData?.phone) {
+        if (!accountDetails?.email || !accountDetails?.phone_number) {
           toast({
             title: "Error",
-            description: "User information is incomplete. Please refresh and try again.",
+            description: "User information is incomplete. Please try again.",
             variant: "destructive",
           });
           return;
@@ -764,15 +762,15 @@ function AddFundsModal({
         await initiateCashfreeSubscription(subscriptionSessionId, subscriptionId);
 
       } else {
-        // One-time payment flow (unchanged)
+        // One-time payment flow
         console.log('Processing one-time payment flow...');
 
         const orderPayload = {
           amount: amount,
           currency: 'INR',
           customer_name: accountDetails.client_name || 'N/A',
-          customer_email: userData.email,
-          customer_phone: userData.phone,
+          customer_email: accountDetails.email,
+          customer_phone: accountDetails.phone_number,
           nuvama_code: formData.nuvamaCode.trim(),
           client_id: selectedClientId,
           order_type: 'one_time',
@@ -933,6 +931,8 @@ function AddFundsModal({
               {renderPaymentDetail('Client Name', accountDetails.client_name, 'brown')}
               {renderPaymentDetail('Account Number', accountDetails.account_number_masked, 'brown')}
               {renderPaymentDetail('IFSC Code', accountDetails.ifsc_code, 'brown')}
+              {renderPaymentDetail('Email', accountDetails.email, 'brown')}
+              {renderPaymentDetail('Phone Number', accountDetails.phone_number, 'brown')}
             </div>
           </div>
         )}
