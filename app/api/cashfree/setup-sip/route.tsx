@@ -13,6 +13,13 @@ interface CreateSipOrderRequest {
   order_meta?: {
     return_url?: string;
   };
+  account_number?: string;
+  ifsc_code?: string;
+  cashfree_bank_code?: string;
+  client_id?: string;
+  customer_name?: string;
+  customer_email?: string;
+  customer_phone?: string;
 }
 
 interface AccountDetails {
@@ -48,6 +55,7 @@ function sanitizeDescription(description: string): string {
 async function fetchAccountDetails(nuvama_code: string): Promise<AccountDetails> {
   console.log('Fetching account details for:', nuvama_code);
   // Replace with actual implementation to fetch real account details
+  
   return {
     client_name: 'John Doe',
     account_number: '59108290701802', // Valid account number from sample
@@ -143,21 +151,48 @@ export async function POST(request: NextRequest) {
 
   try {
     const body: CreateSipOrderRequest = await request.json();
-    const { order_amount, nuvama_code, sip_details = {}, order_meta = {} } = body;
+    console.log('Request Body:', JSON.stringify(body, null, 2));
 
-    console.log('Request Body:', body);
+    const {
+      order_amount,
+      nuvama_code,
+      sip_details = {},
+      order_meta = {},
+      account_number,
+      ifsc_code,
+      cashfree_bank_code,
+      customer_name,
+      customer_email,
+      customer_phone,
+    } = body;
 
     // Validate required fields
-    if (!order_amount || !nuvama_code || !sip_details.frequency || !sip_details.start_date) {
+    const requiredFields = [
+      'order_amount',
+      'nuvama_code',
+      'sip_details.frequency',
+      'sip_details.start_date',
+      'account_number',
+      'ifsc_code',
+      'customer_name',
+      'customer_email',
+      'customer_phone',
+    ];
+    const missingFields = requiredFields.filter(field => {
+      const [parent, child] = field.split('.');
+      return child ? !body[parent]?.[child] : !body[field];
+    });
+    if (missingFields.length > 0) {
       return NextResponse.json(
         {
           success: false,
-          message: 'Missing required fields: order_amount, nuvama_code, frequency, or start_date',
+          message: `Missing required fields: ${missingFields.join(', ')}`,
         },
         { status: 400 }
       );
     }
 
+    // Validate amount
     if (isNaN(order_amount) || parseFloat(order_amount.toString()) < 1) {
       return NextResponse.json(
         {
@@ -191,24 +226,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch account details
-    const accountDetails = await fetchAccountDetails(nuvama_code);
+    // Validate phone number
     const phoneRegex = /^[0-9]{10}$/;
-    const customerPhone = accountDetails.phone_number && phoneRegex.test(accountDetails.phone_number)
-      ? accountDetails.phone_number
-      : '9999999999';
-
-    console.log('Account details fetched for TPV:', {
-      nuvama_code,
-      client_name: accountDetails.client_name,
-      account_masked: `***${accountDetails.account_number.slice(-4)}`,
-      ifsc_code: accountDetails.ifsc_code,
-      phone_number: customerPhone,
-    });
-
-    if (!accountDetails.account_number || !accountDetails.ifsc_code || !accountDetails.client_name) {
-      throw new Error('Missing required TPV fields: account_number, ifsc_code, or client_name');
+    if (!phoneRegex.test(customer_phone)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Invalid customer_phone format. Must be a 10-digit number',
+        },
+        { status: 400 }
+      );
     }
+
+    // Log customer details for TPV
+    console.log('Customer details for TPV:', {
+      nuvama_code,
+      client_name: customer_name,
+      account_masked: `***${account_number.slice(-4)}`,
+      ifsc_code,
+      phone_number: customer_phone,
+    });
 
     const subscription_id = `SUB_${generateOrderId()}`;
 
@@ -233,7 +270,7 @@ export async function POST(request: NextRequest) {
 
     const { intervalType, intervals } = getIntervalConfig(sip_details.frequency);
 
-    // Bank code mapping
+    // Bank code mapping (fallback if cashfree_bank_code is not provided)
     const bankCodeMapping: { [key: string]: string } = {
       ICIC: 'ICIC',
       HDFC: 'HDFC',
@@ -247,12 +284,11 @@ export async function POST(request: NextRequest) {
       UTIB: 'AXIS',
     };
 
-    const ifscPrefix = accountDetails.ifsc_code ? accountDetails.ifsc_code.substring(0, 4) : '';
-    const customerBankCode = bankCodeMapping[ifscPrefix] || 'HDFC'; // Default to HDFC as in sample
+    const ifscPrefix = ifsc_code ? ifsc_code.substring(0, 4) : '';
+    const customerBankCode = bankCodeMapping[ifscPrefix] || 'HDFC';
 
     // Format dates properly with timezone
     const formatDateWithTimezone = (date: Date): string => {
-      // Add 5:30 hours for IST timezone
       const istOffset = 5.5 * 60 * 60 * 1000; // 5.5 hours in milliseconds
       const istDate = new Date(date.getTime() + istOffset);
       return istDate.toISOString().replace('Z', '+05:30');
@@ -262,22 +298,22 @@ export async function POST(request: NextRequest) {
     const now = new Date();
     const minStartDate = new Date(now.getTime() + 24 * 60 * 60 * 1000); // Tomorrow
     const actualStartDate = startDate > minStartDate ? startDate : minStartDate;
-    
+
     // Set end date (default to 10 years from start if not provided)
     const actualEndDate = endDate || new Date(actualStartDate.getTime() + 10 * 365 * 24 * 60 * 60 * 1000);
 
     const baseReturn = order_meta.return_url || `${request.nextUrl.origin}/payment-result`;
 
-    // Create Subscription Request (matching the sample structure)
+    // Create Subscription Request
     const subscriptionRequest = {
       subscription_id,
       customer_details: {
-        customer_name: String(accountDetails.client_name),
-        customer_email: `${nuvama_code}@nuvama.com`,
-        customer_phone: String(customerPhone),
-        customer_bank_account_number: String(accountDetails.account_number),
-        customer_bank_account_holder_name: String(accountDetails.client_name),
-        customer_bank_ifsc: String(accountDetails.ifsc_code),
+        customer_name: String(customer_name),
+        customer_email: String(customer_email),
+        customer_phone: String(customer_phone),
+        customer_bank_account_number: String(account_number),
+        customer_bank_account_holder_name: String(customer_name),
+        customer_bank_ifsc: String(ifsc_code),
         customer_bank_code: String(customerBankCode),
         customer_bank_account_type: 'SAVINGS',
       },
@@ -285,15 +321,15 @@ export async function POST(request: NextRequest) {
         plan_name: `SIP_${nuvama_code}_${Date.now()}`,
         plan_type: 'PERIODIC',
         plan_amount: parseFloat(order_amount.toString()),
-        plan_max_amount: parseFloat(order_amount.toString()) * 100, // Max amount for authorization
-        plan_max_cycles: sip_details.total_installments || 120, // Default to 10 years of monthly payments
+        plan_max_amount: parseFloat(order_amount.toString()) * 100,
+        plan_max_cycles: sip_details.total_installments || 120,
         plan_intervals: intervals,
         plan_currency: 'INR',
         plan_interval_type: intervalType,
         plan_note: sanitizeDescription(`SIP_Plan_${sip_details.frequency}_${parseFloat(order_amount.toString()).toFixed(2)}`),
       },
       authorization_details: {
-        authorization_amount: parseFloat(order_amount.toString()) * 100, // Higher authorization amount
+        authorization_amount: parseFloat(order_amount.toString()) * 100,
         authorization_amount_refund: true,
         payment_methods: ['enach', 'pnach', 'upi', 'card'],
       },
@@ -306,7 +342,7 @@ export async function POST(request: NextRequest) {
       subscription_note: sanitizeDescription(`Nuvama_SIP_${nuvama_code}`),
       subscription_tags: {
         nuvama_code,
-        client_name: accountDetails.client_name,
+        client_name: customer_name,
         frequency: sip_details.frequency,
         psp_note: `${sip_details.frequency} subscription payment`,
       },
@@ -319,8 +355,8 @@ export async function POST(request: NextRequest) {
           ...subscriptionRequest,
           customer_details: {
             ...subscriptionRequest.customer_details,
-            customer_phone: '***' + customerPhone.slice(-4),
-            customer_bank_account_number: `***${accountDetails.account_number.slice(-4)}`,
+            customer_phone: '***' + customer_phone.slice(-4),
+            customer_bank_account_number: `***${account_number.slice(-4)}`,
           },
         },
         null,
@@ -331,9 +367,9 @@ export async function POST(request: NextRequest) {
     const subscriptionResponse = await createSubscription(subscriptionRequest);
     console.log('Subscription Created:', subscriptionResponse);
 
-    if (!subscriptionResponse.subscription_session_id ) {
-      console.error('Missing payment_link in response:', subscriptionResponse);
-      throw new Error('Failed to create subscription session - missing subscription_session_id ');
+    if (!subscriptionResponse.subscription_session_id) {
+      console.error('Missing subscription_session_id in response:', subscriptionResponse);
+      throw new Error('Failed to create subscription session - missing subscription_session_id');
     }
 
     if (subscriptionResponse.subscription_status !== 'INITIALIZED') {
@@ -346,10 +382,10 @@ export async function POST(request: NextRequest) {
       order_id: subscription_id,
       nuvama_code,
       amount: parseFloat(order_amount.toString()),
-      account_number: accountDetails.account_number,
-      ifsc_code: accountDetails.ifsc_code,
-      client_name: accountDetails.client_name,
-      payment_session_id: subscriptionResponse.subscription_session_id ,
+      account_number,
+      ifsc_code,
+      client_name: customer_name,
+      payment_session_id: subscriptionResponse.subscription_session_id,
       payment_status: 'INITIALIZED',
       payment_type: 'SIP',
       cf_subscription_id: subscriptionResponse.cf_subscription_id,
@@ -377,9 +413,9 @@ export async function POST(request: NextRequest) {
         order_amount: parseFloat(order_amount.toString()),
         order_currency: 'INR',
         checkout_url: subscriptionResponse.subscription_session_id,
-        customer_bank_account_number: accountDetails.account_number,
-        customer_bank_ifsc: accountDetails.ifsc_code,
-        customer_bank_code: customerBankCode,
+        customer_bank_account_number: account_number,
+        customer_bank_ifsc: ifsc_code,
+        customer_bank_code: String(customerBankCode),
         plan_details: subscriptionResponse.plan_details,
         subscription_first_charge_time: subscriptionResponse.subscription_first_charge_time,
         subscription_expiry_time: subscriptionResponse.subscription_expiry_time,
@@ -395,9 +431,9 @@ export async function POST(request: NextRequest) {
         tpv_enabled: true,
         tpv_details: {
           nuvama_code,
-          client_name: accountDetails.client_name,
-          account_number_masked: `***${accountDetails.account_number.slice(-4)}`,
-          ifsc_code: accountDetails.ifsc_code,
+          client_name: customer_name,
+          account_number_masked: `***${account_number.slice(-4)}`,
+          ifsc_code,
           tpv_enabled: true,
         },
       },

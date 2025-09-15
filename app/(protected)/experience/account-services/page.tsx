@@ -686,6 +686,13 @@ function AddFundsModal({
           order_meta: {
             return_url: `${window.location.origin}/payment/sip-success`,
           },
+          account_number: accountDetails.account_number,
+          ifsc_code: accountDetails.ifsc_code,
+          cashfree_bank_code: String(accountDetails.cashfree_bank_code),
+          client_id: selectedClientId,
+          customer_name: accountDetails.client_name || 'N/A',
+          customer_email: accountDetails.email,
+          customer_phone: accountDetails.phone_number,
         };
 
         console.log('Sending SIP payload:', sipPayload);
