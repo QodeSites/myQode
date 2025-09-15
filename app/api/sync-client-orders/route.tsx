@@ -7,8 +7,8 @@ import { Cashfree, CFEnvironment } from 'cashfree-pg';
 const initCashfree = () => {
   const clientId = process.env.CASHFREE_APP_ID || process.env.CASHFREE_CLIENT_ID;
   const clientSecret = process.env.CASHFREE_SECRET_KEY;
-//   const environment = CFEnvironment.SANDBOX; // Change to PRODUCTION for live
-const environment = process.env.CASHFREE_ENVIRONMENT === 'production' ? CFEnvironment.PRODUCTION : CFEnvironment.SANDBOX;
+  const environment = process.env.CASHFREE_ENVIRONMENT === 'production' ? CFEnvironment.PRODUCTION : CFEnvironment.SANDBOX;
+
 
   if (!clientId || !clientSecret) {
     throw new Error("Cashfree credentials not found in environment variables");
@@ -46,11 +46,33 @@ async function fetchOrderPayments(orderId: string) {
   }
 }
 
+// Function to map Cashfree status to valid database status
+function mapPaymentStatus(cashfreeStatus: string): string {
+  const statusMap: { [key: string]: string } = {
+    'SUCCESS': 'PAID',
+    'PAID': 'PAID',
+    'FAILED': 'FAILED',
+    'PENDING': 'ACTIVE',
+    'ACTIVE': 'ACTIVE',
+    'CREATED': 'ACTIVE',
+    'EXPIRED': 'EXPIRED',
+    'CANCELLED': 'CANCELLED',
+    'TERMINATED': 'CANCELLED'
+  };
+  
+  return statusMap[cashfreeStatus] || cashfreeStatus;
+}
+
 // Function to update database record
 async function updateDatabaseRecord(dbRecord: any, cashfreeOrder: any, payments: any[]) {
   const latestPayment = payments.length > 0 ? payments[0] : null;
   
   try {
+    const rawStatus = latestPayment?.payment_status || cashfreeOrder.order_status;
+    const mappedStatus = mapPaymentStatus(rawStatus);
+    
+    console.log(`Mapping status: ${rawStatus} → ${mappedStatus}`);
+    
     const updateQuery = `
       UPDATE payment_transactions 
       SET 
@@ -63,7 +85,7 @@ async function updateDatabaseRecord(dbRecord: any, cashfreeOrder: any, payments:
     `;
 
     const updateValues = [
-      latestPayment?.payment_status || cashfreeOrder.order_status,
+      mappedStatus,
       latestPayment?.payment_session_id || cashfreeOrder.payment_session_id || null,
       cashfreeOrder.cf_order_id || cashfreeOrder.order_id || null,
       new Date(),
@@ -152,10 +174,11 @@ export async function GET(request: NextRequest) {
         // Check if update is needed
         const currentPaymentStatus = dbRecord.payment_status;
         const latestPayment = payments.length > 0 ? payments[0] : null;
-        const newPaymentStatus = latestPayment?.payment_status || cashfreeOrder.order_status;
+        const rawNewStatus = latestPayment?.payment_status || cashfreeOrder.order_status;
+        const newPaymentStatus = mapPaymentStatus(rawNewStatus);
 
         if (currentPaymentStatus !== newPaymentStatus || !dbRecord.cf_order_id || !dbRecord.payment_session_id) {
-          console.log(`Updating order ${dbRecord.order_id}: ${currentPaymentStatus} → ${newPaymentStatus}`);
+          console.log(`Updating order ${dbRecord.order_id}: ${currentPaymentStatus} → ${newPaymentStatus} (raw: ${rawNewStatus})`);
           
           await updateDatabaseRecord(dbRecord, cashfreeOrder, payments);
           syncResults.updated++;
