@@ -9,12 +9,44 @@ const initCashfree = () => {
   const clientSecret = process.env.CASHFREE_SECRET_KEY;
   const environment = process.env.CASHFREE_ENVIRONMENT === 'production' ? CFEnvironment.PRODUCTION : CFEnvironment.SANDBOX;
 
-
   if (!clientId || !clientSecret) {
     throw new Error("Cashfree credentials not found in environment variables");
   }
 
   return new Cashfree(environment, clientId, clientSecret);
+};
+
+// Make direct Cashfree API request (for subscription endpoints not available in SDK)
+const makeCashfreeRequest = async (endpoint: string, method: string = 'GET', apiVersion: string = '2025-01-01') => {
+  const clientId = process.env.CASHFREE_APP_ID || process.env.CASHFREE_CLIENT_ID;
+  const clientSecret = process.env.CASHFREE_SECRET_KEY;
+  const baseUrl = process.env.CASHFREE_ENVIRONMENT === 'production'
+    ? 'https://api.cashfree.com/pg'
+    : 'https://sandbox.cashfree.com/pg';
+
+  if (!clientId || !clientSecret) {
+    throw new Error('Cashfree credentials not found in environment variables');
+  }
+
+  const headers = {
+    accept: 'application/json',
+    'content-type': 'application/json',
+    'x-api-version': apiVersion,
+    'x-client-id': clientId,
+    'x-client-secret': clientSecret,
+  };
+
+  const response = await fetch(`${baseUrl}${endpoint}`, {
+    method,
+    headers,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.message || `Cashfree API error: ${response.status}`);
+  }
+
+  return await response.json();
 };
 
 // Function to fetch order details from Cashfree
@@ -34,6 +66,22 @@ async function fetchCashfreeOrderStatus(orderId: string) {
   }
 }
 
+// Function to fetch subscription details from Cashfree
+async function fetchCashfreeSubscriptionStatus(subscriptionId: string) {
+  try {
+    const subscriptionData = await makeCashfreeRequest(`/subscriptions/${subscriptionId}`, 'GET', '2025-01-01');
+    console.log(`Fetched subscription ${subscriptionId} from Cashfree:`, subscriptionData);
+    return subscriptionData;
+  } catch (error: any) {
+    if (error.message?.includes('404')) {
+      console.log(`Subscription ${subscriptionId} not found in Cashfree`);
+      return null;
+    }
+    console.error(`Error fetching subscription ${subscriptionId}:`, error.message);
+    throw error;
+  }
+}
+
 // Function to fetch payments for an order
 async function fetchOrderPayments(orderId: string) {
   const cashfree = initCashfree();
@@ -47,31 +95,55 @@ async function fetchOrderPayments(orderId: string) {
 }
 
 // Function to map Cashfree status to valid database status
-function mapPaymentStatus(cashfreeStatus: string): string {
-  const statusMap: { [key: string]: string } = {
-    'SUCCESS': 'PAID',
-    'PAID': 'PAID',
-    'FAILED': 'FAILED',
-    'PENDING': 'ACTIVE',
-    'ACTIVE': 'ACTIVE',
-    'CREATED': 'ACTIVE',
-    'EXPIRED': 'EXPIRED',
-    'CANCELLED': 'CANCELLED',
-    'TERMINATED': 'CANCELLED'
-  };
+function mapPaymentStatus(cashfreeStatus: string, paymentType: string = 'ONE_TIME'): string {
+  const statusUpper = (cashfreeStatus || '').toUpperCase();
   
-  return statusMap[cashfreeStatus] || cashfreeStatus;
+  if (paymentType === 'SIP') {
+    // SIP-specific status mapping
+    const sipStatusMap: { [key: string]: string } = {
+      'ACTIVE': 'ACTIVE',
+      'INITIALIZED': 'PENDING',
+      'BANK_APPROVAL_PENDING': 'PENDING',
+      'PENDING': 'PENDING',
+      'ON_HOLD': 'PAUSED',
+      'PAUSED': 'PAUSED',
+      'CUSTOMER_PAUSED': 'PAUSED',
+      'COMPLETED': 'CANCELLED',
+      'CUSTOMER_CANCELLED': 'CANCELLED',
+      'CANCELLED': 'CANCELLED',
+      'EXPIRED': 'EXPIRED',
+      'LINK_EXPIRED': 'EXPIRED',
+      'FAILED': 'FAILED'
+    };
+    
+    return sipStatusMap[statusUpper] || statusUpper;
+  } else {
+    // Regular payment status mapping
+    const statusMap: { [key: string]: string } = {
+      'SUCCESS': 'PAID',
+      'PAID': 'PAID',
+      'FAILED': 'FAILED',
+      'PENDING': 'ACTIVE',
+      'ACTIVE': 'ACTIVE',
+      'CREATED': 'ACTIVE',
+      'EXPIRED': 'EXPIRED',
+      'CANCELLED': 'CANCELLED',
+      'TERMINATED': 'CANCELLED'
+    };
+    
+    return statusMap[statusUpper] || statusUpper;
+  }
 }
 
-// Function to update database record
-async function updateDatabaseRecord(dbRecord: any, cashfreeOrder: any, payments: any[]) {
+// Function to update database record for regular orders
+async function updateOrderRecord(dbRecord: any, cashfreeOrder: any, payments: any[]) {
   const latestPayment = payments.length > 0 ? payments[0] : null;
   
   try {
     const rawStatus = latestPayment?.payment_status || cashfreeOrder.order_status;
-    const mappedStatus = mapPaymentStatus(rawStatus);
+    const mappedStatus = mapPaymentStatus(rawStatus, 'ONE_TIME');
     
-    console.log(`Mapping status: ${rawStatus} → ${mappedStatus}`);
+    console.log(`Mapping order status: ${rawStatus} → ${mappedStatus}`);
     
     const updateQuery = `
       UPDATE payment_transactions 
@@ -95,7 +167,54 @@ async function updateDatabaseRecord(dbRecord: any, cashfreeOrder: any, payments:
     const result = await pool.query(updateQuery, updateValues);
     return result.rows[0];
   } catch (error) {
-    console.error(`Error updating database record ${dbRecord.id}:`, error);
+    console.error(`Error updating order record ${dbRecord.id}:`, error);
+    throw error;
+  }
+}
+
+// Function to update database record for SIP subscriptions
+async function updateSubscriptionRecord(dbRecord: any, subscriptionData: any) {
+  try {
+    const rawStatus = subscriptionData.subscription_status;
+    const mappedStatus = mapPaymentStatus(rawStatus, 'SIP');
+    
+    console.log(`Mapping SIP status: ${rawStatus} → ${mappedStatus}`);
+    
+    // Calculate next charge date if available
+    let nextChargeDate = null;
+    if (subscriptionData.next_schedule_date) {
+      try {
+        nextChargeDate = new Date(subscriptionData.next_schedule_date).toISOString().split('T')[0];
+      } catch (e) {
+        console.warn(`Invalid next_schedule_date format: ${subscriptionData.next_schedule_date}`);
+      }
+    }
+
+    const updateQuery = `
+      UPDATE payment_transactions 
+      SET 
+        payment_status = $1,
+        cf_subscription_id = $2,
+        next_charge_date = $3,
+        updated_at = $4,
+        canceled_at = $5
+      WHERE id = $6
+      RETURNING *
+    `;
+
+    const updateValues = [
+      mappedStatus,
+      subscriptionData.cf_subscription_id || subscriptionData.subscription_id || null,
+      nextChargeDate,
+      new Date(),
+      ['CANCELLED', 'EXPIRED'].includes(mappedStatus) && !dbRecord.canceled_at ? new Date() : dbRecord.canceled_at,
+      dbRecord.id
+    ];
+
+    const result = await pool.query(updateQuery, updateValues);
+    return result.rows[0];
+  } catch (error) {
+    console.error(`Error updating subscription record ${dbRecord.id}:`, error);
     throw error;
   }
 }
@@ -120,10 +239,10 @@ export async function GET(request: NextRequest) {
     let queryParams: any[] = [nuvamaCode];
 
     if (status === 'pending') {
-      query += ' AND payment_status IN ($2, $3, $4)';
-      queryParams.push('CREATED', 'ACTIVE', 'PENDING');
+      query += ' AND payment_status IN ($2, $3, $4, $5)';
+      queryParams.push('CREATED', 'ACTIVE', 'PENDING', 'PAUSED');
     } else if (status === 'unsync') {
-      query += ' AND (cf_order_id IS NULL OR payment_session_id IS NULL)';
+      query += ' AND (cf_order_id IS NULL OR payment_session_id IS NULL OR cf_subscription_id IS NULL)';
     }
 
     query += ' ORDER BY created_at DESC';
@@ -142,7 +261,9 @@ export async function GET(request: NextRequest) {
           updated: 0,
           failed: 0,
           notFound: 0,
-          errors: []
+          errors: [],
+          sipsSynced: 0,
+          ordersSynced: 0
         }
       });
     }
@@ -152,46 +273,89 @@ export async function GET(request: NextRequest) {
       updated: 0,
       failed: 0,
       notFound: 0,
-      errors: [] as any[]
+      errors: [] as any[],
+      sipsSynced: 0,
+      ordersSynced: 0
     };
 
     // Process orders with rate limiting
     for (const dbRecord of orders) {
       try {
-        console.log(`Syncing order: ${dbRecord.order_id}`);
+        console.log(`Syncing ${dbRecord.payment_type || 'ONE_TIME'}: ${dbRecord.order_id}`);
 
-        // Fetch current status from Cashfree
-        const cashfreeOrder = await fetchCashfreeOrderStatus(dbRecord.order_id);
-        
-        if (!cashfreeOrder) {
-          syncResults.notFound++;
-          continue;
+        let needsUpdate = false;
+        let updateResult = null;
+
+        if (dbRecord.payment_type === 'SIP') {
+          // Handle SIP subscription
+          const subscriptionData = await fetchCashfreeSubscriptionStatus(dbRecord.order_id);
+          
+          if (!subscriptionData) {
+            syncResults.notFound++;
+            continue;
+          }
+
+          // Check if update is needed for SIP
+          const currentStatus = dbRecord.payment_status;
+          const rawNewStatus = subscriptionData.subscription_status;
+          const newStatus = mapPaymentStatus(rawNewStatus, 'SIP');
+
+          if (currentStatus !== newStatus || 
+              !dbRecord.cf_subscription_id || 
+              !dbRecord.next_charge_date ||
+              (subscriptionData.next_schedule_date && 
+               dbRecord.next_charge_date !== new Date(subscriptionData.next_schedule_date).toISOString().split('T')[0])) {
+            
+            console.log(`Updating SIP ${dbRecord.order_id}: ${currentStatus} → ${newStatus} (raw: ${rawNewStatus})`);
+            
+            updateResult = await updateSubscriptionRecord(dbRecord, subscriptionData);
+            needsUpdate = true;
+            syncResults.sipsSynced++;
+          }
+
+        } else {
+          // Handle regular order
+          const cashfreeOrder = await fetchCashfreeOrderStatus(dbRecord.order_id);
+          
+          if (!cashfreeOrder) {
+            syncResults.notFound++;
+            continue;
+          }
+
+          // Fetch payments for this order
+          const payments = await fetchOrderPayments(dbRecord.order_id);
+
+          // Check if update is needed for regular order
+          const currentPaymentStatus = dbRecord.payment_status;
+          const latestPayment = payments.length > 0 ? payments[0] : null;
+          const rawNewStatus = latestPayment?.payment_status || cashfreeOrder.order_status;
+          const newPaymentStatus = mapPaymentStatus(rawNewStatus, 'ONE_TIME');
+
+          if (currentPaymentStatus !== newPaymentStatus || 
+              !dbRecord.cf_order_id || 
+              !dbRecord.payment_session_id) {
+            
+            console.log(`Updating order ${dbRecord.order_id}: ${currentPaymentStatus} → ${newPaymentStatus} (raw: ${rawNewStatus})`);
+            
+            updateResult = await updateOrderRecord(dbRecord, cashfreeOrder, payments);
+            needsUpdate = true;
+            syncResults.ordersSynced++;
+          }
         }
 
-        // Fetch payments for this order
-        const payments = await fetchOrderPayments(dbRecord.order_id);
-
-        // Check if update is needed
-        const currentPaymentStatus = dbRecord.payment_status;
-        const latestPayment = payments.length > 0 ? payments[0] : null;
-        const rawNewStatus = latestPayment?.payment_status || cashfreeOrder.order_status;
-        const newPaymentStatus = mapPaymentStatus(rawNewStatus);
-
-        if (currentPaymentStatus !== newPaymentStatus || !dbRecord.cf_order_id || !dbRecord.payment_session_id) {
-          console.log(`Updating order ${dbRecord.order_id}: ${currentPaymentStatus} → ${newPaymentStatus} (raw: ${rawNewStatus})`);
-          
-          await updateDatabaseRecord(dbRecord, cashfreeOrder, payments);
+        if (needsUpdate) {
           syncResults.updated++;
         }
 
         // Rate limiting - wait between requests
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 300));
 
       } catch (error) {
-        console.error(`Failed to sync order ${dbRecord.order_id}:`, error);
+        console.error(`Failed to sync ${dbRecord.payment_type || 'order'} ${dbRecord.order_id}:`, error);
         syncResults.failed++;
         syncResults.errors.push({
           order_id: dbRecord.order_id,
+          payment_type: dbRecord.payment_type || 'ONE_TIME',
           error: error instanceof Error ? error.message : 'Unknown error'
         });
       }

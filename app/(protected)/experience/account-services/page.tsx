@@ -1,10 +1,11 @@
 "use client";
 import type React from "react";
 import { useState, useRef, useEffect } from "react";
-import { X, IndianRupee, Lock, CreditCard, TrendingUp, CheckCircle, Calendar, Loader, Info, RefreshCw } from "lucide-react";
+import { X, IndianRupee, Lock, CreditCard, TrendingUp, CheckCircle, Calendar, Loader, Info, RefreshCw,Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useClient } from "@/contexts/ClientContext";
+import SipManagementModal from "@/components/SipManagementModal";
 
 
 const strategy = {
@@ -1485,6 +1486,7 @@ export default function InvestmentActionsPage() {
   const [isAddFundsModalOpen, setIsAddFundsModalOpen] = useState(false);
   const [isSwitchModalOpen, setIsSwitchModalOpen] = useState(false);
   const [isWithdrawalModalOpen, setIsWithdrawalModalOpen] = useState(false);
+  const [isSipManagementModalOpen, setIsSipManagementModalOpen] = useState(false);
   const [transactions, setTransactions] = useState([]);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -1562,6 +1564,11 @@ export default function InvestmentActionsPage() {
     }
   };
 
+  // Handle SIP updates from SIP management modal
+  const handleSipUpdated = () => {
+    fetchTransactions(); // Refresh transactions when SIP is updated
+  };
+
   if (loading) {
     return (
       <main className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-background">
@@ -1604,7 +1611,7 @@ export default function InvestmentActionsPage() {
         </div>
       </header>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <InfoCard
           title="Add Funds or SIP"
           icon={CreditCard}
@@ -1638,6 +1645,41 @@ export default function InvestmentActionsPage() {
             </span>
             <p>
               <span className="font-semibold">Timeline:</span> Executed T+1 after funds reflect in the PMS bank account.
+            </p>
+          </div>
+        </InfoCard>
+
+        <InfoCard
+          title="Manage SIPs"
+          icon={Settings}
+          action={
+            <Button
+              onClick={() => setIsSipManagementModalOpen(true)}
+              className="inline-flex items-center rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              aria-label="Manage SIP Subscriptions"
+            >
+              Manage SIPs
+            </Button>
+          }
+        >
+          <div className="flex items-start gap-2">
+            <span className="mt-1 text-blue-600" aria-hidden="true">
+              •
+            </span>
+            <p>Pause, resume, or cancel your existing SIP subscriptions.</p>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="mt-1 text-blue-600" aria-hidden="true">
+              •
+            </span>
+            <p>View detailed information about all your active SIPs.</p>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="mt-1 text-blue-600" aria-hidden="true">
+              •
+            </span>
+            <p>
+              <span className="font-semibold">Control:</span> Manage your automated investments as per your needs.
             </p>
           </div>
         </InfoCard>
@@ -1739,7 +1781,7 @@ export default function InvestmentActionsPage() {
         </div>
 
         {/* Refresh Result Banner */}
-        {refreshResult && (
+        {/* {refreshResult && (
           <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
             <div className="flex items-center gap-2 mb-2">
               <div className="w-2 h-2 bg-green-500 rounded-full"></div>
@@ -1756,7 +1798,7 @@ export default function InvestmentActionsPage() {
               )}
             </div>
           </div>
-        )}
+        )} */}
         
         {isLoadingTransactions ? (
           <div className="flex justify-center items-center py-12 bg-card rounded-lg border">
@@ -1803,6 +1845,9 @@ export default function InvestmentActionsPage() {
                       Date
                     </th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Frequency
+                    </th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                       Account
                     </th>
                   </tr>
@@ -1817,13 +1862,17 @@ export default function InvestmentActionsPage() {
                     >
                       <td className="px-6 py-4 text-sm font-medium text-foreground">
                         <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 bg-primary/20 rounded-full"></span>
+                          <span className={`w-2 h-2 rounded-full ${
+                            tx.payment_type === 'SIP' ? 'bg-blue-500' : 'bg-primary/20'
+                          }`}></span>
                           {tx.order_id}
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-foreground">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          tx.payment_type.toLowerCase().includes('deposit') || tx.payment_type.toLowerCase().includes('add') 
+                          tx.payment_type === 'SIP' 
+                            ? 'bg-blue-100 text-blue-800'
+                            : tx.payment_type.toLowerCase().includes('deposit') || tx.payment_type.toLowerCase().includes('add') 
                             ? 'bg-green-100 text-green-800' 
                             : tx.payment_type.toLowerCase().includes('withdrawal') 
                             ? 'bg-red-100 text-red-800'
@@ -1850,19 +1899,27 @@ export default function InvestmentActionsPage() {
                       <td className="px-6 py-4 text-sm text-foreground">
                         <div className="flex items-center gap-2">
                           <div className={`w-2 h-2 rounded-full ${
-                            tx.payment_status.toLowerCase() === 'completed' || tx.payment_status.toLowerCase() === 'success'
+                            tx.payment_status.toLowerCase() === 'completed' || tx.payment_status.toLowerCase() === 'paid' || tx.payment_status.toLowerCase() === 'success'
                               ? 'bg-green-500'
                               : tx.payment_status.toLowerCase() === 'pending' || tx.payment_status.toLowerCase() === 'active'
                               ? 'bg-yellow-500'
+                              : tx.payment_status.toLowerCase() === 'paused'
+                              ? 'bg-orange-500'
+                              : tx.payment_status.toLowerCase() === 'cancelled'
+                              ? 'bg-gray-500'
                               : tx.payment_status.toLowerCase() === 'failed'
                               ? 'bg-red-500'
                               : 'bg-gray-400'
                           }`}></div>
                           <span className={`text-sm ${
-                            tx.payment_status.toLowerCase() === 'completed' || tx.payment_status.toLowerCase() === 'success'
+                            tx.payment_status.toLowerCase() === 'completed' || tx.payment_status.toLowerCase() === 'paid' || tx.payment_status.toLowerCase() === 'success'
                               ? 'text-green-700'
                               : tx.payment_status.toLowerCase() === 'pending' || tx.payment_status.toLowerCase() === 'active'
                               ? 'text-yellow-700'
+                              : tx.payment_status.toLowerCase() === 'paused'
+                              ? 'text-orange-700'
+                              : tx.payment_status.toLowerCase() === 'cancelled'
+                              ? 'text-gray-700'
                               : tx.payment_status.toLowerCase() === 'failed'
                               ? 'text-red-700'
                               : 'text-muted-foreground'
@@ -1887,6 +1944,15 @@ export default function InvestmentActionsPage() {
                             })}
                           </span>
                         </div>
+                      </td>
+                      <td className="px-6 py-4 text-sm text-muted-foreground">
+                        {tx.frequency ? (
+                          <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
+                            {tx.frequency}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">One-time</span>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-sm text-muted-foreground">
                         <span className="font-mono text-xs">
@@ -1924,6 +1990,12 @@ export default function InvestmentActionsPage() {
         selectedClientCode={selectedClientCode}
         selectedClientId={selectedClientId}
         clients={clients}
+      />
+      <SipManagementModal
+        isOpen={isSipManagementModalOpen}
+        onClose={() => setIsSipManagementModalOpen(false)}
+        selectedClientCode={selectedClientCode}
+        onSipUpdated={handleSipUpdated}
       />
       <SwitchReallocationModal
         isOpen={isSwitchModalOpen}
