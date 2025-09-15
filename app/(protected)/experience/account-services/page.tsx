@@ -1,7 +1,7 @@
 "use client";
 import type React from "react";
 import { useState, useRef, useEffect } from "react";
-import { X, IndianRupee, Lock, CreditCard, TrendingUp, CheckCircle, Calendar, Loader, Info } from "lucide-react";
+import { X, IndianRupee, Lock, CreditCard, TrendingUp, CheckCircle, Calendar, Loader, Info, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useClient } from "@/contexts/ClientContext";
@@ -1115,7 +1115,7 @@ function SwitchReallocationModal({
 
     try {
       await sendEmail({
-        to: "sanket.shinde@qodeinvest.com",
+        to: "'sanket.shinde@qodeinvest.com', investor.relations@qodeinvest.com",
         subject: `New Switch/Reallocation Request from ${payload.nuvamaCode}`,
         html: emailHtml,
         from: "investor.relations@qodeinvest.com",
@@ -1363,7 +1363,7 @@ function WithdrawalModal({
 
     try {
       await sendEmail({
-        to: "sanket.shinde@qodeinvest.com",
+        to: "'sanket.shinde@qodeinvest.com', investor.relations@qodeinvest.com",
         subject: `New Withdrawal Request from ${payload.nuvamaCode}`,
         html: emailHtml,
         from: "investor.relations@qodeinvest.com",
@@ -1487,35 +1487,81 @@ export default function InvestmentActionsPage() {
   const [isWithdrawalModalOpen, setIsWithdrawalModalOpen] = useState(false);
   const [transactions, setTransactions] = useState([]);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [refreshResult, setRefreshResult] = useState(null);
   const { selectedClientCode, selectedClientId, clients, loading } = useClient();
+
+  // Fetch transactions function
+  const fetchTransactions = async () => {
+    setIsLoadingTransactions(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/fetch-transactions?nuvama_code=${selectedClientCode}`);
+      const result = await response.json();
+      if (result.success) {
+        // Combine one-time and SIP transactions
+        setTransactions([
+          ...result.data.one_time_transactions,
+          ...result.data.sip_transactions,
+        ]);
+      } else {
+        setError(result.error || 'Failed to fetch transactions');
+      }
+    } catch (err) {
+      setError('Failed to fetch transactions');
+    } finally {
+      setIsLoadingTransactions(false);
+    }
+  };
+
   // Fetch transactions when selectedClientId changes
   useEffect(() => {
     if (selectedClientCode) {
-      const fetchTransactions = async () => {
-        setIsLoadingTransactions(true);
-        setError(null);
-        try {
-          const response = await fetch(`/api/fetch-transactions?nuvama_code=${selectedClientCode}`);
-          const result = await response.json();
-          if (result.success) {
-            // Combine one-time and SIP transactions
-            setTransactions([
-              ...result.data.one_time_transactions,
-              ...result.data.sip_transactions,
-            ]);
-          } else {
-            setError(result.error || 'Failed to fetch transactions');
-          }
-        } catch (err) {
-          setError('Failed to fetch transactions');
-        } finally {
-          setIsLoadingTransactions(false);
-        }
-      };
       fetchTransactions();
     }
   }, [selectedClientCode]);
+
+  // Refresh transaction status function
+  const refreshTransactionStatus = async () => {
+    if (!selectedClientCode) return;
+
+    setIsRefreshing(true);
+    setRefreshResult(null);
+    setError(null);
+
+    try {
+      // First get pending/active transactions for this client
+      const pendingTxResponse = await fetch(
+        `/api/sync-client-orders?nuvama_code=${selectedClientCode}&status=pending`
+      );
+      const pendingResult = await pendingTxResponse.json();
+
+      if (!pendingResult.success) {
+        throw new Error(pendingResult.error || 'Failed to sync orders');
+      }
+
+      // Show refresh result
+      setRefreshResult(pendingResult.results);
+
+      // Refetch transactions to show updated data
+      await fetchTransactions();
+
+      // Clear refresh result after 5 seconds
+      setTimeout(() => {
+        setRefreshResult(null);
+      }, 5000);
+
+    } catch (err) {
+      setError(`Refresh failed: ${err.message}`);
+      setTimeout(() => {
+        setError(null);
+      }, 5000);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   if (loading) {
     return (
       <main className="flex min-h-[calc(100vh-4rem)] items-center justify-center bg-background">
@@ -1668,14 +1714,49 @@ export default function InvestmentActionsPage() {
       </div>
 
       {/* Transactions Table */}
-      {/* Transactions Table */}
       <section className="mt-8">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-lg font-semibold text-foreground">Transaction History</h2>
-          <div className="text-sm text-muted-foreground">
-            Last updated: {new Date().toLocaleDateString()}
+          <div className="flex items-center gap-4">
+            <Button
+              onClick={refreshTransactionStatus}
+              disabled={isRefreshing || !selectedClientCode}
+              variant="outline"
+              size="sm"
+              className="inline-flex items-center gap-2 px-3 py-2 text-sm"
+            >
+              {isRefreshing ? (
+                <Loader className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              {isRefreshing ? 'Refreshing...' : 'Refresh Status'}
+            </Button>
+            <div className="text-sm text-muted-foreground">
+              Last updated: {new Date().toLocaleDateString()}
+            </div>
           </div>
         </div>
+
+        {/* Refresh Result Banner */}
+        {refreshResult && (
+          <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+              <span className="text-sm font-medium text-green-800">Refresh Completed</span>
+            </div>
+            <div className="text-sm text-green-700 space-y-1">
+              <div>• Total orders checked: {refreshResult.total}</div>
+              <div>• Updated: {refreshResult.updated}</div>
+              <div>• Failed: {refreshResult.failed}</div>
+              {refreshResult.updated > 0 && (
+                <div className="text-xs text-green-600 mt-2">
+                  Transaction statuses have been updated with the latest information from Cashfree.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         
         {isLoadingTransactions ? (
           <div className="flex justify-center items-center py-12 bg-card rounded-lg border">
@@ -1771,7 +1852,7 @@ export default function InvestmentActionsPage() {
                           <div className={`w-2 h-2 rounded-full ${
                             tx.payment_status.toLowerCase() === 'completed' || tx.payment_status.toLowerCase() === 'success'
                               ? 'bg-green-500'
-                              : tx.payment_status.toLowerCase() === 'pending'
+                              : tx.payment_status.toLowerCase() === 'pending' || tx.payment_status.toLowerCase() === 'active'
                               ? 'bg-yellow-500'
                               : tx.payment_status.toLowerCase() === 'failed'
                               ? 'bg-red-500'
@@ -1780,7 +1861,7 @@ export default function InvestmentActionsPage() {
                           <span className={`text-sm ${
                             tx.payment_status.toLowerCase() === 'completed' || tx.payment_status.toLowerCase() === 'success'
                               ? 'text-green-700'
-                              : tx.payment_status.toLowerCase() === 'pending'
+                              : tx.payment_status.toLowerCase() === 'pending' || tx.payment_status.toLowerCase() === 'active'
                               ? 'text-yellow-700'
                               : tx.payment_status.toLowerCase() === 'failed'
                               ? 'text-red-700'
@@ -1788,6 +1869,12 @@ export default function InvestmentActionsPage() {
                           }`}>
                             {tx.payment_status}
                           </span>
+                          {/* Show updated indicator for recently synced items */}
+                          {tx.synced_at && new Date(tx.synced_at) > new Date(Date.now() - 30000) && (
+                            <span className="ml-1 text-xs text-green-600 bg-green-100 px-1 py-0.5 rounded">
+                              Updated
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-muted-foreground">
@@ -1818,6 +1905,11 @@ export default function InvestmentActionsPage() {
                 <span>Showing {transactions.length} transaction{transactions.length !== 1 ? 's' : ''}</span>
                 <div className="flex items-center gap-4">
                   <span>Total transactions: {transactions.length}</span>
+                  {refreshResult && refreshResult.updated > 0 && (
+                    <span className="text-green-600">
+                      {refreshResult.updated} recently updated
+                    </span>
+                  )}
                 </div>
               </div>
             </div>

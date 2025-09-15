@@ -1,6 +1,7 @@
 // pages/api/cashfree/webhook.ts or app/api/cashfree/webhook/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
+import pool from '@/lib/db'; // Your database connection
 
 interface CashfreeWebhookPayload {
   type: string;
@@ -77,6 +78,69 @@ function verifyWebhookSignature(payload: string, signature: string, timestamp: s
   } catch (error) {
     console.error('Error verifying webhook signature:', error);
     return false;
+  }
+}
+
+// Function to update order status in database
+async function updateOrderStatus(webhookData: CashfreeWebhookPayload) {
+  try {
+    console.log(`Updating order ${webhookData.order.order_id} status to ${webhookData.payment.payment_status}`);
+    
+    // First, check if the order exists
+    const existingOrder = await pool.query(
+      'SELECT * FROM payment_transactions WHERE order_id = $1',
+      [webhookData.order.order_id]
+    );
+
+    if (existingOrder.rows.length === 0) {
+      console.error(`Order ${webhookData.order.order_id} not found in database`);
+      throw new Error(`Order ${webhookData.order.order_id} not found`);
+    }
+
+    // Update the order with payment details
+    const updateQuery = `
+      UPDATE payment_transactions 
+      SET 
+        payment_status = $1,
+        cf_payment_id = $2,
+        payment_time = $3,
+        bank_reference = $4,
+        payment_method = $5,
+        payment_message = $6,
+        auth_id = $7,
+        updated_at = $8
+      WHERE order_id = $9
+      RETURNING *
+    `;
+
+    const updateValues = [
+      webhookData.payment.payment_status,
+      webhookData.payment.cf_payment_id,
+      new Date(webhookData.payment.payment_time),
+      webhookData.payment.bank_reference || null,
+      JSON.stringify(webhookData.payment.payment_method),
+      webhookData.payment.payment_message || null,
+      webhookData.payment.auth_id || null,
+      new Date(),
+      webhookData.order.order_id
+    ];
+
+    const result = await pool.query(updateQuery, updateValues);
+    
+    if (result.rows.length > 0) {
+      console.log(`Successfully updated order ${webhookData.order.order_id}:`, {
+        id: result.rows[0].id,
+        payment_status: result.rows[0].payment_status,
+        cf_payment_id: result.rows[0].cf_payment_id,
+        updated_at: result.rows[0].updated_at
+      });
+      return result.rows[0];
+    } else {
+      throw new Error(`Failed to update order ${webhookData.order.order_id}`);
+    }
+  } catch (error) {
+    console.error('Failed to update order status in database:', error);
+    throw error;
   }
 }
 
@@ -165,31 +229,6 @@ async function sendPaymentNotificationEmail(webhookData: CashfreeWebhookPayload)
   }
 }
 
-// Function to update order status in database
-async function updateOrderStatus(webhookData: CashfreeWebhookPayload) {
-  try {
-    // Implement your database update logic here
-    // Example:
-    /*
-    await db.order.update({
-      where: { order_id: webhookData.order.order_id },
-      data: {
-        payment_status: webhookData.payment.payment_status,
-        cf_payment_id: webhookData.payment.cf_payment_id,
-        payment_time: new Date(webhookData.payment.payment_time),
-        bank_reference: webhookData.payment.bank_reference,
-        payment_method: JSON.stringify(webhookData.payment.payment_method),
-        updated_at: new Date(),
-      },
-    });
-    */
-    console.log(`Order ${webhookData.order.order_id} status updated to ${webhookData.payment.payment_status}`);
-  } catch (error) {
-    console.error('Failed to update order status in database:', error);
-    throw error;
-  }
-}
-
 export async function POST(request: NextRequest) {
   try {
     // Get the raw payload
@@ -220,7 +259,9 @@ export async function POST(request: NextRequest) {
     }
 
     console.log('Received valid Cashfree webhook for order:', webhookData.order.order_id);
+    console.log('Webhook type:', webhookData.type);
     console.log('Payment status:', webhookData.payment.payment_status);
+    console.log('Order status:', webhookData.order.order_status);
 
     // Process different webhook types
     switch (webhookData.type) {
@@ -241,21 +282,36 @@ export async function POST(request: NextRequest) {
         await updateOrderStatus(webhookData);
         break;
 
+      // Handle other status updates that might occur
+      case 'ORDER_PAID':
+        console.log(`Order marked as paid: ${webhookData.order.order_id}`);
+        await updateOrderStatus(webhookData);
+        break;
+
       default:
         console.log('Unknown webhook type:', webhookData.type);
+        // Still try to update status in case it's a new webhook type
+        try {
+          await updateOrderStatus(webhookData);
+        } catch (error) {
+          console.error('Failed to update status for unknown webhook type:', error);
+        }
         break;
     }
 
     // Return success response
     return NextResponse.json({ 
       success: true, 
-      message: 'Webhook processed successfully' 
+      message: 'Webhook processed successfully',
+      order_id: webhookData.order.order_id,
+      status_updated: webhookData.payment.payment_status
     });
 
   } catch (error) {
     console.error('Error processing webhook:', error);
     
-    // Return error response
+    // Return error response but don't fail completely
+    // Cashfree will retry failed webhooks
     return NextResponse.json(
       { 
         error: 'Webhook processing failed', 

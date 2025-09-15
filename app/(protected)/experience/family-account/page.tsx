@@ -325,7 +325,7 @@ const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
 
   try {
     await sendEmail({
-      to: "sanket.shinde@qodeinvest.com",
+      to: "'sanket.shinde@qodeinvest.com', investor.relations@qodeinvest.com",
       subject,
       html,
       from: "investor.relations@qodeinvest.com",
