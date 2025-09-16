@@ -243,6 +243,7 @@ export default function ReportingPortalPage(): JSX.Element {
               Open Reporting Portal
             </a>
           </div>
+          <p className="text-md italic">[Your WealthSpectrum login can be either your Account ID or your registered Email ID.]</p>
         </div>
 
         {/* What You Can Access */}

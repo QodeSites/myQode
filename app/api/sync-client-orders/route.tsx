@@ -102,13 +102,14 @@ function mapPaymentStatus(cashfreeStatus: string, paymentType: string = 'ONE_TIM
     // SIP-specific status mapping
     const sipStatusMap: { [key: string]: string } = {
       'ACTIVE': 'ACTIVE',
+      'INITIALISED': 'PENDING',
       'INITIALIZED': 'PENDING',
-      'BANK_APPROVAL_PENDING': 'PENDING',
+      'BANK_APPROVAL_PENDING': 'BANK_APPROVAL_PENDING', // Keep original status
       'PENDING': 'PENDING',
-      'ON_HOLD': 'PAUSED',
+      'ON_HOLD': 'ON_HOLD', // Keep original status
       'PAUSED': 'PAUSED',
-      'CUSTOMER_PAUSED': 'PAUSED',
-      'COMPLETED': 'CANCELLED',
+      'CUSTOMER_PAUSED': 'CUSTOMER_PAUSED', // Keep original status
+      'COMPLETED': 'COMPLETED',
       'CUSTOMER_CANCELLED': 'CANCELLED',
       'CANCELLED': 'CANCELLED',
       'EXPIRED': 'EXPIRED',
@@ -207,7 +208,7 @@ async function updateSubscriptionRecord(dbRecord: any, subscriptionData: any) {
       subscriptionData.cf_subscription_id || subscriptionData.subscription_id || null,
       nextChargeDate,
       new Date(),
-      ['CANCELLED', 'EXPIRED'].includes(mappedStatus) && !dbRecord.canceled_at ? new Date() : dbRecord.canceled_at,
+      ['CANCELLED', 'EXPIRED', 'COMPLETED', 'CUSTOMER_CANCELLED'].includes(mappedStatus) && !dbRecord.canceled_at ? new Date() : dbRecord.canceled_at,
       dbRecord.id
     ];
 
@@ -223,7 +224,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const nuvamaCode = searchParams.get('nuvama_code');
-    const status = searchParams.get('status'); // 'pending', 'all', etc.
+    const status = searchParams.get('status');
 
     if (!nuvamaCode) {
       return NextResponse.json(
@@ -234,15 +235,32 @@ export async function GET(request: NextRequest) {
 
     console.log(`Starting sync for client: ${nuvamaCode}`);
 
+    // Define status categories
+    const PENDING_ORDER_STATUSES = ['CREATED', 'ACTIVE', 'PENDING'];
+    const PENDING_SIP_STATUSES = [
+      'INITIALISED', 
+      'BANK_APPROVAL_PENDING', 
+      'ACTIVE', 
+      'ON_HOLD', 
+      'PAUSED', 
+      'CUSTOMER_PAUSED'
+    ];
+
     // Build query based on status filter
     let query = 'SELECT * FROM payment_transactions WHERE nuvama_code = $1';
     let queryParams: any[] = [nuvamaCode];
 
     if (status === 'pending') {
-      query += ' AND payment_status IN ($2, $3, $4, $5)';
-      queryParams.push('CREATED', 'ACTIVE', 'PENDING', 'PAUSED');
+      const allPendingStatuses = [...PENDING_ORDER_STATUSES, ...PENDING_SIP_STATUSES];
+      const placeholders = allPendingStatuses.map((_, index) => `$${index + 2}`).join(', ');
+      query += ` AND payment_status IN (${placeholders})`;
+      queryParams.push(...allPendingStatuses);
+      console.log(`DEBUG: Using comprehensive pending filter with statuses:`, allPendingStatuses);
     } else if (status === 'unsync') {
       query += ' AND (cf_order_id IS NULL OR payment_session_id IS NULL OR cf_subscription_id IS NULL)';
+      console.log(`DEBUG: Using unsync filter`);
+    } else {
+      console.log(`DEBUG: No status filter applied`);
     }
 
     query += ' ORDER BY created_at DESC';
@@ -251,6 +269,13 @@ export async function GET(request: NextRequest) {
     const orders = result.rows;
 
     console.log(`Found ${orders.length} orders to sync for client ${nuvamaCode}`);
+
+    // Log details about what we found
+    if (orders.length > 0) {
+      const sipCount = orders.filter(o => o.payment_type === 'SIP').length;
+      const regularCount = orders.filter(o => o.payment_type !== 'SIP').length;
+      console.log(`DEBUG: SIP orders: ${sipCount}, Regular orders: ${regularCount}`);
+    }
 
     if (orders.length === 0) {
       return NextResponse.json({
@@ -287,18 +312,29 @@ export async function GET(request: NextRequest) {
         let updateResult = null;
 
         if (dbRecord.payment_type === 'SIP') {
+          console.log(`DEBUG: Processing SIP subscription ID: ${dbRecord.order_id}`);
+          
           // Handle SIP subscription
           const subscriptionData = await fetchCashfreeSubscriptionStatus(dbRecord.order_id);
           
           if (!subscriptionData) {
+            console.log(`DEBUG: No subscription data found for ${dbRecord.order_id}`);
             syncResults.notFound++;
             continue;
           }
+
+          console.log(`DEBUG: Subscription data received:`, {
+            subscription_id: subscriptionData.subscription_id || subscriptionData.cf_subscription_id,
+            status: subscriptionData.subscription_status,
+            next_schedule_date: subscriptionData.next_schedule_date
+          });
 
           // Check if update is needed for SIP
           const currentStatus = dbRecord.payment_status;
           const rawNewStatus = subscriptionData.subscription_status;
           const newStatus = mapPaymentStatus(rawNewStatus, 'SIP');
+
+          console.log(`DEBUG: SIP status comparison - Current: ${currentStatus}, New: ${newStatus}, Raw: ${rawNewStatus}`);
 
           if (currentStatus !== newStatus || 
               !dbRecord.cf_subscription_id || 
@@ -311,25 +347,33 @@ export async function GET(request: NextRequest) {
             updateResult = await updateSubscriptionRecord(dbRecord, subscriptionData);
             needsUpdate = true;
             syncResults.sipsSynced++;
+          } else {
+            console.log(`DEBUG: No update needed for SIP ${dbRecord.order_id}`);
           }
 
         } else {
+          console.log(`DEBUG: Processing regular order ID: ${dbRecord.order_id}`);
+          
           // Handle regular order
           const cashfreeOrder = await fetchCashfreeOrderStatus(dbRecord.order_id);
           
           if (!cashfreeOrder) {
+            console.log(`DEBUG: No order data found for ${dbRecord.order_id}`);
             syncResults.notFound++;
             continue;
           }
 
           // Fetch payments for this order
           const payments = await fetchOrderPayments(dbRecord.order_id);
+          console.log(`DEBUG: Found ${payments.length} payments for order ${dbRecord.order_id}`);
 
           // Check if update is needed for regular order
           const currentPaymentStatus = dbRecord.payment_status;
           const latestPayment = payments.length > 0 ? payments[0] : null;
           const rawNewStatus = latestPayment?.payment_status || cashfreeOrder.order_status;
           const newPaymentStatus = mapPaymentStatus(rawNewStatus, 'ONE_TIME');
+
+          console.log(`DEBUG: Order status comparison - Current: ${currentPaymentStatus}, New: ${newPaymentStatus}, Raw: ${rawNewStatus}`);
 
           if (currentPaymentStatus !== newPaymentStatus || 
               !dbRecord.cf_order_id || 
@@ -340,11 +384,14 @@ export async function GET(request: NextRequest) {
             updateResult = await updateOrderRecord(dbRecord, cashfreeOrder, payments);
             needsUpdate = true;
             syncResults.ordersSynced++;
+          } else {
+            console.log(`DEBUG: No update needed for order ${dbRecord.order_id}`);
           }
         }
 
         if (needsUpdate) {
           syncResults.updated++;
+          console.log(`DEBUG: Successfully updated record ${dbRecord.id}`);
         }
 
         // Rate limiting - wait between requests

@@ -1,7 +1,7 @@
 "use client";
 import type React from "react";
 import { useState, useRef, useEffect } from "react";
-import { X, IndianRupee, Lock, CreditCard, TrendingUp, CheckCircle, Calendar, Loader, Info, RefreshCw,Settings } from "lucide-react";
+import { X, IndianRupee, Lock, CreditCard, TrendingUp, CheckCircle, Calendar, Loader, Info, RefreshCw, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useClient } from "@/contexts/ClientContext";
@@ -1043,12 +1043,14 @@ function SwitchReallocationModal({
   onClose,
   selectedClientCode,
   selectedClientId,
+  selectedEmailClient,
   clients,
 }: {
   isOpen: boolean;
   onClose: () => void;
   selectedClientCode: string;
   selectedClientId: string;
+  selectedEmailClient: string,
   clients: { clientid: string; clientcode: string }[];
 }) {
   const [formData, setFormData] = useState({
@@ -1116,7 +1118,7 @@ function SwitchReallocationModal({
 
     try {
       await sendEmail({
-        to: "'sanket.shinde@qodeinvest.com', investor.relations@qodeinvest.com",
+        to: "sanket.shinde@qodeinvest.com",
         subject: `New Switch/Reallocation Request from ${payload.nuvamaCode}`,
         html: emailHtml,
         from: "investor.relations@qodeinvest.com",
@@ -1308,12 +1310,14 @@ function WithdrawalModal({
   onClose,
   selectedClientCode,
   selectedClientId,
+  selectedEmailClient,
   clients,
 }: {
   isOpen: boolean;
   onClose: () => void;
   selectedClientCode: string;
   selectedClientId: string;
+  selectedEmailClient: string,
   clients: { clientid: string; clientcode: string }[];
 }) {
   const [formData, setFormData] = useState({ nuvamaCode: selectedClientCode || "QGF0001", amount: "", additionalNotes: "" });
@@ -1364,7 +1368,7 @@ function WithdrawalModal({
 
     try {
       await sendEmail({
-        to: "'sanket.shinde@qodeinvest.com', investor.relations@qodeinvest.com",
+        to: "sanket.shinde@qodeinvest.com",
         subject: `New Withdrawal Request from ${payload.nuvamaCode}`,
         html: emailHtml,
         from: "investor.relations@qodeinvest.com",
@@ -1799,7 +1803,7 @@ export default function InvestmentActionsPage() {
             </div>
           </div>
         )}
-        
+
         {isLoadingTransactions ? (
           <div className="flex justify-center items-center py-12 bg-card rounded-lg border">
             <Loader className="h-6 w-6 animate-spin text-primary" />
@@ -1854,32 +1858,29 @@ export default function InvestmentActionsPage() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {transactions.map((tx, index) => (
-                    <tr 
-                      key={tx.id} 
-                      className={`hover:bg-muted/20 transition-colors ${
-                        index % 2 === 0 ? 'bg-background' : 'bg-muted/10'
-                      }`}
+                    <tr
+                      key={tx.id}
+                      className={`hover:bg-muted/20 transition-colors ${index % 2 === 0 ? 'bg-background' : 'bg-muted/10'
+                        }`}
                     >
                       <td className="px-6 py-4 text-sm font-medium text-foreground">
                         <div className="flex items-center gap-2">
-                          <span className={`w-2 h-2 rounded-full ${
-                            tx.payment_type === 'SIP' ? 'bg-blue-500' : 'bg-primary/20'
-                          }`}></span>
+                          <span className={`w-2 h-2 rounded-full ${tx.payment_type === 'SIP' ? 'bg-blue-500' : 'bg-primary/20'
+                            }`}></span>
                           {tx.order_id}
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-foreground">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          tx.payment_type === 'SIP' 
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${tx.payment_type === 'SIP'
                             ? 'bg-blue-100 text-blue-800'
-                            : tx.payment_type.toLowerCase().includes('deposit') || tx.payment_type.toLowerCase().includes('add') 
-                            ? 'bg-green-100 text-green-800' 
-                            : tx.payment_type.toLowerCase().includes('withdrawal') 
-                            ? 'bg-red-100 text-red-800'
-                            : tx.payment_type.toLowerCase().includes('switch') || tx.payment_type.toLowerCase().includes('reallocation')
-                            ? 'bg-blue-100 text-blue-800'
-                            : 'bg-gray-100 text-gray-800'
-                        }`}>
+                            : tx.payment_type.toLowerCase().includes('deposit') || tx.payment_type.toLowerCase().includes('add')
+                              ? 'bg-green-100 text-green-800'
+                              : tx.payment_type.toLowerCase().includes('withdrawal')
+                                ? 'bg-red-100 text-red-800'
+                                : tx.payment_type.toLowerCase().includes('switch') || tx.payment_type.toLowerCase().includes('reallocation')
+                                  ? 'bg-blue-100 text-blue-800'
+                                  : 'bg-gray-100 text-gray-800'
+                          }`}>
                           {tx.payment_type}
                         </span>
                       </td>
@@ -1898,32 +1899,30 @@ export default function InvestmentActionsPage() {
                       </td>
                       <td className="px-6 py-4 text-sm text-foreground">
                         <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${
-                            tx.payment_status.toLowerCase() === 'completed' || tx.payment_status.toLowerCase() === 'paid' || tx.payment_status.toLowerCase() === 'success'
+                          <div className={`w-2 h-2 rounded-full ${tx.payment_status.toLowerCase() === 'completed' || tx.payment_status.toLowerCase() === 'paid' || tx.payment_status.toLowerCase() === 'success'
                               ? 'bg-green-500'
                               : tx.payment_status.toLowerCase() === 'pending' || tx.payment_status.toLowerCase() === 'active'
-                              ? 'bg-yellow-500'
-                              : tx.payment_status.toLowerCase() === 'paused'
-                              ? 'bg-orange-500'
-                              : tx.payment_status.toLowerCase() === 'cancelled'
-                              ? 'bg-gray-500'
-                              : tx.payment_status.toLowerCase() === 'failed'
-                              ? 'bg-red-500'
-                              : 'bg-gray-400'
-                          }`}></div>
-                          <span className={`text-sm ${
-                            tx.payment_status.toLowerCase() === 'completed' || tx.payment_status.toLowerCase() === 'paid' || tx.payment_status.toLowerCase() === 'success'
+                                ? 'bg-yellow-500'
+                                : tx.payment_status.toLowerCase() === 'paused'
+                                  ? 'bg-orange-500'
+                                  : tx.payment_status.toLowerCase() === 'cancelled'
+                                    ? 'bg-gray-500'
+                                    : tx.payment_status.toLowerCase() === 'failed'
+                                      ? 'bg-red-500'
+                                      : 'bg-gray-400'
+                            }`}></div>
+                          <span className={`text-sm ${tx.payment_status.toLowerCase() === 'completed' || tx.payment_status.toLowerCase() === 'paid' || tx.payment_status.toLowerCase() === 'success'
                               ? 'text-green-700'
                               : tx.payment_status.toLowerCase() === 'pending' || tx.payment_status.toLowerCase() === 'active'
-                              ? 'text-yellow-700'
-                              : tx.payment_status.toLowerCase() === 'paused'
-                              ? 'text-orange-700'
-                              : tx.payment_status.toLowerCase() === 'cancelled'
-                              ? 'text-gray-700'
-                              : tx.payment_status.toLowerCase() === 'failed'
-                              ? 'text-red-700'
-                              : 'text-muted-foreground'
-                          }`}>
+                                ? 'text-yellow-700'
+                                : tx.payment_status.toLowerCase() === 'paused'
+                                  ? 'text-orange-700'
+                                  : tx.payment_status.toLowerCase() === 'cancelled'
+                                    ? 'text-gray-700'
+                                    : tx.payment_status.toLowerCase() === 'failed'
+                                      ? 'text-red-700'
+                                      : 'text-muted-foreground'
+                            }`}>
                             {tx.payment_status}
                           </span>
                           {/* Show updated indicator for recently synced items */}
@@ -1938,9 +1937,9 @@ export default function InvestmentActionsPage() {
                         <div className="flex flex-col">
                           <span>{new Date(tx.created_at).toLocaleDateString()}</span>
                           <span className="text-xs text-muted-foreground/70">
-                            {new Date(tx.created_at).toLocaleTimeString([], { 
-                              hour: '2-digit', 
-                              minute: '2-digit' 
+                            {new Date(tx.created_at).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit'
                             })}
                           </span>
                         </div>
@@ -1964,7 +1963,7 @@ export default function InvestmentActionsPage() {
                 </tbody>
               </table>
             </div>
-            
+
             {/* Table Footer */}
             <div className="px-6 py-4 bg-muted/20 border-t">
               <div className="flex items-center justify-between text-sm text-muted-foreground">
