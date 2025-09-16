@@ -121,7 +121,7 @@ export function FeedbackDialog({
           </div>
           <div class="content">
             <p><strong>Request Type:</strong> Feedback Submission</p>
-            <p><strong>Submitted via:</strong> Qode Investor Portal</p>
+            <p><strong>Submitted via:</strong> myQode Portal</p>
             <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
             <div class="info-box">
               <h3 style="margin-top: 0;">Feedback Details:</h3>
@@ -135,7 +135,7 @@ export function FeedbackDialog({
               ${formData.improve ? `<p><strong>One thing we could do to improve your experience:</strong> ${formData.improve.replace(/\n/g, '<br>')}</p>` : ''}
             </div>
             <p style="margin-top: 20px; font-size: 14px; color: #37584F;">
-              This message was sent from the Qode investor portal. Please review the feedback.
+              This message was sent from the myQode Portal. Please review the feedback.
             </p>
           </div>
         </div>

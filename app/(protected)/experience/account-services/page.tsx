@@ -1113,7 +1113,7 @@ function SwitchReallocationModal({
       </head><body><div class="container"><div class="header">
       <h1 style="margin:0;">Switch/Reallocation Request</h1></div>
       <div class="content"><p><strong>Request Type:</strong> Switch/Reallocation</p>
-      <p><strong>Submitted via:</strong> Qode Investor Portal</p><p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+      <p><strong>Submitted via:</strong> myQode Portal</p><p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
       <div class="info-box"><h3 style="margin-top:0;">Request Details:</h3>
       <p><strong>Account ID:</strong> ${payload.nuvamaCode}</p>
       <p><strong>Client ID:</strong> ${selectedClientId}</p>
@@ -1123,7 +1123,7 @@ function SwitchReallocationModal({
       <p><strong>Amount:</strong> ${payload.amount}</p>
       <p><strong>Reason:</strong> ${payload.reason.replace(/\n/g, "<br>")}</p>
       ${payload.additionalNotes ? `<p><strong>Additional Notes:</strong> ${payload.additionalNotes.replace(/\n/g, "<br>")}</p>` : ""}
-      </div><p style="margin-top:20px;font-size:14px;color:#37584F;">This message was sent from the Qode investor portal. Please review and process the request.</p>
+      </div><p style="margin-top:20px;font-size:14px;color:#37584F;">This message was sent from the myQode Portal. Please review and process the request.</p>
       </div></div></body></html>`;
 
     try {
@@ -1366,14 +1366,14 @@ function WithdrawalModal({
       </head><body><div class="container"><div class="header">
       <h1 style="margin:0;">Withdrawal Request</h1></div>
       <div class="content"><p><strong>Request Type:</strong> Withdrawal</p>
-      <p><strong>Submitted via:</strong> Qode Investor Portal</p><p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+      <p><strong>Submitted via:</strong> myQode Portal</p><p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
       <div class="info-box"><h3 style="margin-top:0;">Request Details:</h3>
       <p><strong>Account ID:</strong> ${payload.nuvamaCode}</p>
       <p><strong>Client ID:</strong> ${selectedClientId}</p>
       <p><strong>User Email:</strong> ${userEmail}</p>
       <p><strong>Amount:</strong> ${payload.amount}</p>
       ${payload.additionalNotes ? `<p><strong>Additional Notes:</strong> ${payload.additionalNotes.replace(/\n/g, "<br>")}</p>` : ""}
-      </div><p style="margin-top:20px;font-size:14px;color:#37584F;">This message was sent from the Qode investor portal. Please review and process the request.</p>
+      </div><p style="margin-top:20px;font-size:14px;color:#37584F;">This message was sent from the myQode Portal. Please review and process the request.</p>
       </div></div></body></html>`;
 
     try {

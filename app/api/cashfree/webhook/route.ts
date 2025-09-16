@@ -203,7 +203,7 @@ async function sendPaymentNotificationEmail(webhookData: CashfreeWebhookPayload)
           ` : ''}
           
           <p style="margin-top: 20px; font-size: 14px; color: #37584F;">
-            This notification was automatically generated from the Qode investor portal payment gateway.
+            This notification was automatically generated from the myQode Portal payment gateway.
           </p>
         </div>
       </div>

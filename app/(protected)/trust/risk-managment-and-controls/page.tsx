@@ -53,7 +53,7 @@ const policies: Policy[] = [
 
 export default function PoliciesPage() {
   return (
-    <main className="p-4 md:p-6">
+    <main className="space-y-10">
       <header className="mb-6">
         <h1 className="text-2xl font-semibold text-balance">Policies</h1>
         <p className="mt-1 text-sm text-muted-foreground">

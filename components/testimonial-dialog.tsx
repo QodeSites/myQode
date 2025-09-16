@@ -116,7 +116,7 @@ export function TestimonialDialog({
           </div>
           <div class="content">
             <p><strong>Request Type:</strong> Testimonial Submission</p>
-            <p><strong>Submitted via:</strong> Qode Investor Portal</p>
+            <p><strong>Submitted via:</strong> myQode Portal</p>
             <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
             <div class="info-box">
               <h3 style="margin-top: 0;">Testimonial Details:</h3>
@@ -126,7 +126,7 @@ export function TestimonialDialog({
               <p><strong>Your testimonial story:</strong> ${formData.story.replace(/\n/g, '<br>')}</p>
             </div>
             <p style="margin-top: 20px; font-size: 14px; color: #37584F;">
-              This message was sent from the Qode investor portal. Please review the testimonial.
+              This message was sent from the myQode Portal. Please review the testimonial.
             </p>
           </div>
         </div>

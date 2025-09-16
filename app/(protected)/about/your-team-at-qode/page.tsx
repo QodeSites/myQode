@@ -175,7 +175,7 @@ export default function YourTeamAtQodePage() {
           </div>
           <div class="content">
             <p><strong>Question Type:</strong> Strategy Inquiry</p>
-            <p><strong>Submitted via:</strong> Qode Investor Portal</p>
+            <p><strong>Submitted via:</strong> myQode Portal</p>
             <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
             <div class="question-box">
               <h3 style="margin-top: 0;">Investor Question:</h3>
@@ -185,7 +185,7 @@ export default function YourTeamAtQodePage() {
               <p><strong>Question:</strong> ${formData.question.replace(/\n/g, '<br>')}</p>
             </div>
             <p style="margin-top: 20px; font-size: 14px; color: #37584F;">
-              This message was sent from the Qode investor portal. Please respond directly to the investor.
+              This message was sent from the myQode Portal. Please respond directly to the investor.
             </p>
           </div>
         </div>
@@ -283,7 +283,7 @@ export default function YourTeamAtQodePage() {
           </div>
           <div class="content">
             <p><strong>Request Type:</strong> Call Discussion Topic</p>
-            <p><strong>Submitted via:</strong> Qode Investor Portal</p>
+            <p><strong>Submitted via:</strong> myQode Portal</p>
             <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
             <div class="topic-box">
               <h3 style="margin-top: 0;">Discussion Topic:</h3>

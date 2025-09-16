@@ -329,7 +329,7 @@ const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
       subject,
       html,
       from: "investor.relations@qodeinvest.com",
-      fromName: "Qode Investor Portal",
+      fromName: "myQode Portal",
       inquiry_type: "raised_request",
       nuvama_code: selectedClientCode,
       client_id: selectedClientId,

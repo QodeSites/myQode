@@ -181,7 +181,7 @@ export default function AccountDocumentsPage() {
   };
 
   return (
-    <main className="p-4 md:p-6">
+    <main className="space-y-10">
       <header className="mb-6">
         <h1 className="text-pretty text-xl font-bold text-foreground flex items-center gap-2">
           Account Documents
