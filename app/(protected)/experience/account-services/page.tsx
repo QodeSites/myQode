@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/alert-dialog';
 
 const strategy = {
-  'QFH': 'Qode Future Horizon',
+  'QFH': 'Qode Future Horizons',
   'QAW': 'Qode All Weather',
   'QTF': 'Qode Tactical Fund',
   'QGF': 'Qode Growth Fund'
@@ -1907,15 +1907,15 @@ export default function InvestmentActionsPage() {
 
       {/* Transactions Table */}
       <section className="mt-8">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-start md:items-center justify-between mb-6">
           <h2 className="text-lg font-semibold text-foreground">Transaction History</h2>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col items-center lg:flex-row gap-1 md:gap-4">
             <Button
               onClick={refreshTransactionStatus}
               disabled={isRefreshing || !selectedClientCode}
               variant="outline"
               size="sm"
-              className="inline-flex items-center gap-2 px-3 py-2 text-sm"
+              className="inline-flex items-center gap-2 md:px-3 md:py-2 px-1 py-1 text-xs md:text-sm "
             >
               {isRefreshing ? (
                 <Loader className="h-4 w-4 animate-spin" />
@@ -1924,7 +1924,7 @@ export default function InvestmentActionsPage() {
               )}
               {isRefreshing ? 'Refreshing...' : 'Refresh Status'}
             </Button>
-            <div className="text-sm text-muted-foreground">
+            <div className="text-xs md:text-sm text-muted-foreground">
               Last updated: {new Date().toLocaleDateString()}
             </div>
           </div>

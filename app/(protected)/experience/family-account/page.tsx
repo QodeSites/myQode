@@ -528,7 +528,7 @@ const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
       )}
 
       {/* Info */}
-      <div className="rounded-lg p-4">
+      <div className="rounded-lg">
         <p className="text-sm leading-relaxed mb-3">
           If your family structure has changed or if you would like to update how your accounts are grouped, you can:
         </p>

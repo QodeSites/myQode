@@ -95,11 +95,11 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center bg-background justify-center p-6">
-      <div className="w-full max-w-md rounded-lg border bg-card p-6 card-shadow relative">
+    <main className="min-h-screen flex flex-col items-center bg-background justify-center gap-8">
+      <h1 className="font-serif text-4xl md:text-5xl text-primary font-bold text-center tracking-tight">myQode</h1>
+      <div className="w-full max-w-sm rounded-lg bg-card p-6 card-shadow relative">
         <div className="mb-6">
-          <h1 className="font-serif text-3xl text-primary font-bold text-center tracking-tight">myQode</h1>
-          <p className="text-sm text-muted-foreground text-center mt-1">Sign in to access your dashboard.</p>
+          <p className="text-xl md:text-2xl text-muted-foreground text-center mt-1">Welcome Back!</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -109,8 +109,8 @@ export default function LoginPage() {
             </div>
           )}
 
-          <div className="grid gap-2">
-            <label htmlFor="username" className="text-sm font-medium">
+          <div className="grid">
+            <label htmlFor="username" className="text-sm text-muted-foreground">
               Email or Account ID
             </label>
             <input
@@ -121,14 +121,14 @@ export default function LoginPage() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="h-10 rounded-md border bg-background px-3 text-sm outline-none ring-0 focus:border-ring"
-              placeholder="you@example.com or Account ID"
+              placeholder="Enter your email or Account ID"
               disabled={isLoading}
               autoComplete="email"
             />
           </div>
 
-          <div className="grid gap-2">
-            <label htmlFor="password" className="text-sm font-medium">Password</label>
+          <div className="grid">
+            <label htmlFor="password" className="text-sm text-muted-foreground">Password</label>
             <div className="relative">
               <input
                 id="password"
@@ -138,7 +138,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="h-10 rounded-md border w-full bg-background px-3 pr-10 text-sm outline-none ring-0 focus:border-ring"
-                placeholder="••••••••"
+                placeholder="Enter your password"
                 disabled={isLoading}
                 autoComplete="current-password"
               />
@@ -149,7 +149,7 @@ export default function LoginPage() {
                 disabled={isLoading}
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
-                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                {showPassword ? <EyeOff className="text-primary" size={20} /> : <Eye className="text-primary" size={20} />}
               </button>
             </div>
 
@@ -169,12 +169,17 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={isLoading}
-            className="inline-flex h-10 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-white transition-colors hover:opacity-90 disabled:opacity-50"
+            className="inline-flex h-10 w-full items-center justify-center rounded-md px-4 text-sm md:text-lg font-semibold bg-primary text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-50"
           >
-            {isLoading ? 'Signing in...' : 'Sign in'}
+            {isLoading ? 'Signing In...' : 'Sign In'}
           </button>
         </form>
+        
       </div>
+
+      <div className='text-xs md:text-sm text-wrap m-2 text-center'>
+          © 2025 Qode Advisors LLP | SEBI Registered PMS No: INP000008914 | All Rights Reserved
+        </div>
 
       {/* Forgot Password Modal */}
       {fpOpen && (

@@ -217,13 +217,13 @@ export default function ReportingPortalPage(): JSX.Element {
   const rows = React.useMemo(() => getFlatRows(reports_available), []);
 
   return (
-    <main className="min-h-[100dvh] w-full bg-background text-foreground">
+    <main className="min-h-[100dvh] w-full text-foreground">
       {/* Banner */}
-      <div className="w-full bg-primary px-4 py-2 text-center text-sm font-semibold text-white">
+      <div className="w-full bg-primary py-2 text-center text-sm font-semibold text-white">
         Access all your portfolio details anytime on our secure reporting portal.
       </div>
 
-      <section className="mx-auto w-full px-4 py-8 space-y-8">
+      <section className="mx-auto w-full py-8 space-y-8">
         {/* Intro + Link */}
         <div className="space-y-4 text-center">
           <p className="mx-auto text-base leading-relaxed text-card-foreground">
