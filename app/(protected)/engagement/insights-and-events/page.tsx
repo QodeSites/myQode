@@ -420,42 +420,42 @@ export default function InsightsArchivePage() {
       /> */}
 
       {/* Past Recordings */}
-      <SectionBar title="Past Recordings (Investor Calls / Webinars, etc.)" />
+      {/* <SectionBar title="Past Recordings (Investor Calls / Webinars, etc.)" />
       <Slider
         items={recordings}
         onItemClick={openRecording}
         sectionId="recording"
-      />
+      /> */}
 
       {/* Newsletter Modal */}
-      <ContentModal
+      {/* <ContentModal
         isOpen={isNewsletterModalOpen}
         onClose={() => setIsNewsletterModalOpen(false)}
         items={newsletters}
         currentIndex={currentNewsletterIndex}
         setCurrentIndex={setCurrentNewsletterIndex}
         modalTitle="Newsletter"
-      />
+      /> */}
 
       {/* Pitch Deck Modal */}
-      <ContentModal
+      {/* <ContentModal
         isOpen={isPitchDeckModalOpen}
         onClose={() => setIsPitchDeckModalOpen(false)}
         items={pitchDecks}
         currentIndex={currentPitchDeckIndex}
         setCurrentIndex={setCurrentPitchDeckIndex}
         modalTitle="Pitch Deck"
-      />
+      /> */}
 
       {/* Recording Modal */}
-      <ContentModal
+      {/* <ContentModal
         isOpen={isRecordingModalOpen}
         onClose={() => setIsRecordingModalOpen(false)}
         items={recordings}
         currentIndex={currentRecordingIndex}
         setCurrentIndex={setCurrentRecordingIndex}
         modalTitle="Recording"
-      />
+      /> */}
     </main>
   )
 }

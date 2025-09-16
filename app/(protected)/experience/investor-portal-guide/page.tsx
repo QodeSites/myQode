@@ -240,7 +240,7 @@ export default function ReportingPortalPage(): JSX.Element {
               aria-label="Open WealthSpectrum reporting portal"
               className="inline-flex min-w-48 items-center justify-center rounded-md border border-border bg-primary px-4 py-2 text-lg font-semibold text-white hover:brightness-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
             >
-              Open Reporting Portal
+              WealthSpectrum Portal
             </a>
           </div>
           <p className="text-md italic">[Your WealthSpectrum login can be either your Account ID or your registered Email ID.]</p>
