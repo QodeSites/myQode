@@ -6,7 +6,17 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useClient } from "@/contexts/ClientContext";
 import SipManagementModal from "@/components/SipManagementModal";
-
+import { AlertTriangle } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const strategy = {
   'QFH': 'Qode Future Horizon',
@@ -1497,7 +1507,146 @@ export default function InvestmentActionsPage() {
   const [error, setError] = useState(null);
   const [refreshResult, setRefreshResult] = useState(null);
   const { selectedClientCode, selectedClientId, clients, loading } = useClient();
+  const [cancelingSipId, setCancelingSipId] = useState(null);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [sipToCancel, setSipToCancel] = useState(null);
 
+  // Function to handle SIP cancellation
+  const handleCancelSip = async (sipRecord) => {
+    setCancelingSipId(sipRecord.id);
+    try {
+      const response = await fetch('/api/cancel-sip', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          subscription_id: sipRecord.order_id,
+          nuvama_code: selectedClientCode,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        // Show success message
+        setRefreshResult({
+          total: 1,
+          updated: 1,
+          failed: 0,
+          sipsCancelled: 1,
+          message: 'SIP cancelled successfully'
+        });
+
+        // Refresh transactions to show updated status
+        await fetchTransactions();
+
+        // Clear success message after 5 seconds
+        setTimeout(() => {
+          setRefreshResult(null);
+        }, 5000);
+      } else {
+        throw new Error(result.error || 'Failed to cancel SIP');
+      }
+    } catch (error) {
+      setError(`Failed to cancel SIP: ${error.message}`);
+      setTimeout(() => {
+        setError(null);
+      }, 5000);
+    } finally {
+      setCancelingSipId(null);
+      setCancelDialogOpen(false);
+      setSipToCancel(null);
+    }
+  };
+
+  const openCancelDialog = (sipRecord) => {
+    setSipToCancel(sipRecord);
+    setCancelDialogOpen(true);
+  };
+
+  // Add these state variables
+  const [pausingSipId, setPausingSipId] = useState(null);
+  const [pauseDialogOpen, setPauseDialogOpen] = useState(false);
+  const [sipToPause, setSipToPause] = useState(null);
+
+  // Function to handle SIP pause/resume
+  const handlePauseSip = async (sipRecord) => {
+    setPausingSipId(sipRecord.id);
+    try {
+      const action = ['PAUSED', 'CUSTOMER_PAUSED'].includes(sipRecord.payment_status.toUpperCase()) ? 'resume' : 'pause';
+
+      const response = await fetch('/api/pause-resume-sip', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          subscription_id: sipRecord.order_id,
+          nuvama_code: selectedClientCode,
+          action: action,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        // Show success message
+        setRefreshResult({
+          total: 1,
+          updated: 1,
+          failed: 0,
+          sipsPaused: action === 'pause' ? 1 : 0,
+          sipsResumed: action === 'resume' ? 1 : 0,
+          message: `SIP ${action}d successfully`
+        });
+
+        // Refresh transactions to show updated status
+        await fetchTransactions();
+
+        // Clear success message after 5 seconds
+        setTimeout(() => {
+          setRefreshResult(null);
+        }, 5000);
+      } else {
+        throw new Error(result.error || `Failed to ${action} SIP`);
+      }
+    } catch (error) {
+      setError(`Failed to ${['PAUSED', 'CUSTOMER_PAUSED'].includes(sipRecord.payment_status.toUpperCase()) ? 'resume' : 'pause'} SIP: ${error.message}`);
+      setTimeout(() => {
+        setError(null);
+      }, 5000);
+    } finally {
+      setPausingSipId(null);
+      setPauseDialogOpen(false);
+      setSipToPause(null);
+    }
+  };
+
+  const openPauseDialog = (sipRecord) => {
+    setSipToPause(sipRecord);
+    setPauseDialogOpen(true);
+  };
+
+  // Helper function to check if SIP can be cancelled
+  const canCancelSip = (tx) => {
+    return tx.payment_type === 'SIP' &&
+      ['ACTIVE', 'BANK_APPROVAL_PENDING', 'PENDING', 'ON_HOLD', 'CUSTOMER_PAUSED'].includes(tx.payment_status.toUpperCase());
+  };
+
+  // Helper function to check if SIP can be paused/resumed
+  const canPauseResumeSip = (tx) => {
+    return tx.payment_type === 'SIP' &&
+      ['ACTIVE', 'PAUSED', 'CUSTOMER_PAUSED'].includes(tx.payment_status.toUpperCase());
+  };
+
+  // Helper function to get pause/resume action text
+  const getPauseResumeText = (tx) => {
+    if (['PAUSED', 'CUSTOMER_PAUSED'].includes(tx.payment_status.toUpperCase())) {
+      return 'Resume';
+    }
+    return 'Pause';
+  };
   // Fetch transactions function
   const fetchTransactions = async () => {
     setIsLoadingTransactions(true);
@@ -1568,10 +1717,6 @@ export default function InvestmentActionsPage() {
     }
   };
 
-  // Handle SIP updates from SIP management modal
-  const handleSipUpdated = () => {
-    fetchTransactions(); // Refresh transactions when SIP is updated
-  };
 
   if (loading) {
     return (
@@ -1615,7 +1760,7 @@ export default function InvestmentActionsPage() {
         </div>
       </header>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         <InfoCard
           title="Add Funds or SIP"
           icon={CreditCard}
@@ -1653,7 +1798,7 @@ export default function InvestmentActionsPage() {
           </div>
         </InfoCard>
 
-        <InfoCard
+        {/* <InfoCard
           title="Manage SIPs"
           icon={Settings}
           action={
@@ -1686,7 +1831,7 @@ export default function InvestmentActionsPage() {
               <span className="font-semibold">Control:</span> Manage your automated investments as per your needs.
             </p>
           </div>
-        </InfoCard>
+        </InfoCard> */}
 
         <InfoCard
           title="Switch Strategy"
@@ -1852,7 +1997,16 @@ export default function InvestmentActionsPage() {
                       Frequency
                     </th>
                     <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Start Date
+                    </th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Next Charge
+                    </th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                       Account
+                    </th>
+                    <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                      Actions
                     </th>
                   </tr>
                 </thead>
@@ -1863,6 +2017,7 @@ export default function InvestmentActionsPage() {
                       className={`hover:bg-muted/20 transition-colors ${index % 2 === 0 ? 'bg-background' : 'bg-muted/10'
                         }`}
                     >
+                      {/* ... existing table cells ... */}
                       <td className="px-6 py-4 text-sm font-medium text-foreground">
                         <div className="flex items-center gap-2">
                           <span className={`w-2 h-2 rounded-full ${tx.payment_type === 'SIP' ? 'bg-blue-500' : 'bg-primary/20'
@@ -1872,14 +2027,14 @@ export default function InvestmentActionsPage() {
                       </td>
                       <td className="px-6 py-4 text-sm text-foreground">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${tx.payment_type === 'SIP'
-                            ? 'bg-blue-100 text-blue-800'
-                            : tx.payment_type.toLowerCase().includes('deposit') || tx.payment_type.toLowerCase().includes('add')
-                              ? 'bg-green-100 text-green-800'
-                              : tx.payment_type.toLowerCase().includes('withdrawal')
-                                ? 'bg-red-100 text-red-800'
-                                : tx.payment_type.toLowerCase().includes('switch') || tx.payment_type.toLowerCase().includes('reallocation')
-                                  ? 'bg-blue-100 text-blue-800'
-                                  : 'bg-gray-100 text-gray-800'
+                          ? 'bg-blue-100 text-blue-800'
+                          : tx.payment_type.toLowerCase().includes('deposit') || tx.payment_type.toLowerCase().includes('add')
+                            ? 'bg-green-100 text-green-800'
+                            : tx.payment_type.toLowerCase().includes('withdrawal')
+                              ? 'bg-red-100 text-red-800'
+                              : tx.payment_type.toLowerCase().includes('switch') || tx.payment_type.toLowerCase().includes('reallocation')
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-gray-100 text-gray-800'
                           }`}>
                           {tx.payment_type}
                         </span>
@@ -1900,32 +2055,31 @@ export default function InvestmentActionsPage() {
                       <td className="px-6 py-4 text-sm text-foreground">
                         <div className="flex items-center gap-2">
                           <div className={`w-2 h-2 rounded-full ${tx.payment_status.toLowerCase() === 'completed' || tx.payment_status.toLowerCase() === 'paid' || tx.payment_status.toLowerCase() === 'success'
-                              ? 'bg-green-500'
-                              : tx.payment_status.toLowerCase() === 'pending' || tx.payment_status.toLowerCase() === 'active'
-                                ? 'bg-yellow-500'
-                                : tx.payment_status.toLowerCase() === 'paused'
-                                  ? 'bg-orange-500'
-                                  : tx.payment_status.toLowerCase() === 'cancelled'
-                                    ? 'bg-gray-500'
-                                    : tx.payment_status.toLowerCase() === 'failed'
-                                      ? 'bg-red-500'
-                                      : 'bg-gray-400'
+                            ? 'bg-green-500'
+                            : tx.payment_status.toLowerCase() === 'pending' || tx.payment_status.toLowerCase() === 'active' || tx.payment_status.toLowerCase() === 'bank_approval_pending'
+                              ? 'bg-yellow-500'
+                              : tx.payment_status.toLowerCase() === 'paused' || tx.payment_status.toLowerCase() === 'on_hold' || tx.payment_status.toLowerCase() === 'customer_paused'
+                                ? 'bg-orange-500'
+                                : tx.payment_status.toLowerCase() === 'cancelled' || tx.payment_status.toLowerCase() === 'customer_cancelled'
+                                  ? 'bg-gray-500'
+                                  : tx.payment_status.toLowerCase() === 'failed'
+                                    ? 'bg-red-500'
+                                    : 'bg-gray-400'
                             }`}></div>
                           <span className={`text-sm ${tx.payment_status.toLowerCase() === 'completed' || tx.payment_status.toLowerCase() === 'paid' || tx.payment_status.toLowerCase() === 'success'
-                              ? 'text-green-700'
-                              : tx.payment_status.toLowerCase() === 'pending' || tx.payment_status.toLowerCase() === 'active'
-                                ? 'text-yellow-700'
-                                : tx.payment_status.toLowerCase() === 'paused'
-                                  ? 'text-orange-700'
-                                  : tx.payment_status.toLowerCase() === 'cancelled'
-                                    ? 'text-gray-700'
-                                    : tx.payment_status.toLowerCase() === 'failed'
-                                      ? 'text-red-700'
-                                      : 'text-muted-foreground'
+                            ? 'text-green-700'
+                            : tx.payment_status.toLowerCase() === 'pending' || tx.payment_status.toLowerCase() === 'active' || tx.payment_status.toLowerCase() === 'bank_approval_pending'
+                              ? 'text-yellow-700'
+                              : tx.payment_status.toLowerCase() === 'paused' || tx.payment_status.toLowerCase() === 'on_hold' || tx.payment_status.toLowerCase() === 'customer_paused'
+                                ? 'text-orange-700'
+                                : tx.payment_status.toLowerCase() === 'cancelled' || tx.payment_status.toLowerCase() === 'customer_cancelled'
+                                  ? 'text-gray-700'
+                                  : tx.payment_status.toLowerCase() === 'failed'
+                                    ? 'text-red-700'
+                                    : 'text-muted-foreground'
                             }`}>
-                            {tx.payment_status}
+                            {tx.payment_status.replace(/_/g, ' ')}
                           </span>
-                          {/* Show updated indicator for recently synced items */}
                           {tx.synced_at && new Date(tx.synced_at) > new Date(Date.now() - 30000) && (
                             <span className="ml-1 text-xs text-green-600 bg-green-100 px-1 py-0.5 rounded">
                               Updated
@@ -1954,9 +2108,94 @@ export default function InvestmentActionsPage() {
                         )}
                       </td>
                       <td className="px-6 py-4 text-sm text-muted-foreground">
+                        {tx.payment_type === 'SIP' && tx.start_date ? (
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium">
+                              {new Date(tx.start_date).toLocaleDateString()}
+                            </span>
+                            <span className="text-xs text-muted-foreground/70">
+                              {new Date(tx.start_date) <= new Date() ? 'Started' : 'Will start'}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-muted-foreground">
+                        {tx.payment_type === 'SIP' && tx.next_charge_date ? (
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium">
+                              {new Date(tx.next_charge_date).toLocaleDateString()}
+                            </span>
+                            <span className="text-xs text-muted-foreground/70">
+                              {new Date(tx.next_charge_date) > new Date() ? 'Upcoming' : 'Due'}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-muted-foreground">
                         <span className="font-mono text-xs">
                           {tx.account_number || 'N/A'}
                         </span>
+                      </td>
+
+                      {/* Actions Column */}
+                      <td className="px-6 py-4 text-sm">
+                        <div className="flex items-center gap-2">
+                          {tx.payment_type === 'SIP' ? (
+                            <div className="flex items-center gap-1">
+                              {canPauseResumeSip(tx) && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openPauseDialog(tx)}
+                                  disabled={pausingSipId === tx.id}
+                                  className={`inline-flex items-center gap-1 px-2 py-1 text-xs ${['PAUSED', 'CUSTOMER_PAUSED'].includes(tx.payment_status.toUpperCase())
+                                      ? 'border-green-200 text-green-600 hover:bg-green-50 hover:border-green-300'
+                                      : 'border-orange-200 text-orange-600 hover:bg-orange-50 hover:border-orange-300'
+                                    }`}
+                                >
+                                  {pausingSipId === tx.id ? (
+                                    <Loader className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <div className={`h-3 w-3 ${['PAUSED', 'CUSTOMER_PAUSED'].includes(tx.payment_status.toUpperCase())
+                                        ? 'bg-green-500 rounded-full'
+                                        : 'bg-orange-500 rounded-sm'
+                                      }`}></div>
+                                  )}
+                                  {pausingSipId === tx.id ? 'Processing...' : getPauseResumeText(tx)}
+                                </Button>
+                              )}
+
+                              {canCancelSip(tx) && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openCancelDialog(tx)}
+                                  disabled={cancelingSipId === tx.id}
+                                  className="inline-flex items-center gap-1 px-2 py-1 text-xs border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
+                                >
+                                  {cancelingSipId === tx.id ? (
+                                    <Loader className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <X className="h-3 w-3" />
+                                  )}
+                                  {cancelingSipId === tx.id ? 'Cancelling...' : 'Cancel'}
+                                </Button>
+                              )}
+
+                              {!canPauseResumeSip(tx) && !canCancelSip(tx) && (
+                                <span className="text-xs text-muted-foreground">
+                                  No actions available
+                                </span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">—</span>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1982,6 +2221,145 @@ export default function InvestmentActionsPage() {
         )}
       </section>
 
+      {/* Pause/Resume SIP Confirmation Dialog */}
+      <AlertDialog open={pauseDialogOpen} onOpenChange={setPauseDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <div className={`h-5 w-5 ${sipToPause && ['PAUSED', 'CUSTOMER_PAUSED'].includes(sipToPause.payment_status.toUpperCase())
+                  ? 'bg-green-500 rounded-full'
+                  : 'bg-orange-500 rounded-sm'
+                }`}></div>
+              {sipToPause && ['PAUSED', 'CUSTOMER_PAUSED'].includes(sipToPause.payment_status.toUpperCase())
+                ? 'Resume SIP Subscription'
+                : 'Pause SIP Subscription'
+              }
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                {sipToPause && ['PAUSED', 'CUSTOMER_PAUSED'].includes(sipToPause.payment_status.toUpperCase())
+                  ? 'Are you sure you want to resume this SIP subscription? Future payments will be automatically debited as scheduled.'
+                  : 'Are you sure you want to pause this SIP subscription? No future payments will be debited until you resume it.'
+                }
+              </p>
+              {sipToPause && (
+                <div className="bg-muted p-3 rounded-lg space-y-1">
+                  <div className="text-sm">
+                    <span className="font-medium">Order ID:</span> {sipToPause.order_id}
+                  </div>
+                  <div className="text-sm">
+                    <span className="font-medium">Amount:</span> {sipToPause.currency} {sipToPause.amount.toLocaleString()}
+                  </div>
+                  <div className="text-sm">
+                    <span className="font-medium">Frequency:</span> {sipToPause.frequency || 'Monthly'}
+                  </div>
+                  <div className="text-sm">
+                    <span className="font-medium">Current Status:</span> {sipToPause.payment_status.replace(/_/g, ' ')}
+                  </div>
+                  {sipToPause.next_charge_date && (
+                    <div className="text-sm">
+                      <span className="font-medium">Next Charge:</span> {new Date(sipToPause.next_charge_date).toLocaleDateString()}
+                    </div>
+                  )}
+                </div>
+              )}
+              <p className="text-sm text-muted-foreground">
+                <strong>Note:</strong> You can {sipToPause && ['PAUSED', 'CUSTOMER_PAUSED'].includes(sipToPause.payment_status.toUpperCase()) ? 'pause' : 'resume'} this SIP again at any time from this interface.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pausingSipId}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => sipToPause && handlePauseSip(sipToPause)}
+              disabled={pausingSipId}
+              className={sipToPause && ['PAUSED', 'CUSTOMER_PAUSED'].includes(sipToPause.payment_status.toUpperCase())
+                ? "bg-green-600 hover:bg-green-700 text-white"
+                : "bg-orange-600 hover:bg-orange-700 text-white"
+              }
+            >
+              {pausingSipId ? (
+                <>
+                  <Loader className="h-4 w-4 animate-spin mr-2" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <div className={`h-4 w-4 mr-2 ${sipToPause && ['PAUSED', 'CUSTOMER_PAUSED'].includes(sipToPause.payment_status.toUpperCase())
+                      ? 'bg-white rounded-full'
+                      : 'bg-white rounded-sm'
+                    }`}></div>
+                  {sipToPause && ['PAUSED', 'CUSTOMER_PAUSED'].includes(sipToPause.payment_status.toUpperCase())
+                    ? 'Resume SIP'
+                    : 'Pause SIP'
+                  }
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Cancel SIP Confirmation Dialog */}
+      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              Cancel SIP Subscription
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-2">
+              <p>
+                Are you sure you want to cancel this SIP subscription?
+              </p>
+              {sipToCancel && (
+                <div className="bg-muted p-3 rounded-lg space-y-1">
+                  <div className="text-sm">
+                    <span className="font-medium">Order ID:</span> {sipToCancel.order_id}
+                  </div>
+                  <div className="text-sm">
+                    <span className="font-medium">Amount:</span> {sipToCancel.currency} {sipToCancel.amount.toLocaleString()}
+                  </div>
+                  <div className="text-sm">
+                    <span className="font-medium">Frequency:</span> {sipToCancel.frequency || 'Monthly'}
+                  </div>
+                  <div className="text-sm">
+                    <span className="font-medium">Status:</span> {sipToCancel.payment_status.replace(/_/g, ' ')}
+                  </div>
+                </div>
+              )}
+              <p className="text-sm text-muted-foreground">
+                <strong>Note:</strong> Once cancelled, this SIP cannot be reactivated. You'll need to create a new SIP if you want to continue periodic investments.
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={cancelingSipId}>
+              Keep SIP Active
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => sipToCancel && handleCancelSip(sipToCancel)}
+              disabled={cancelingSipId}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {cancelingSipId ? (
+                <>
+                  <Loader className="h-4 w-4 animate-spin mr-2" />
+                  Cancelling...
+                </>
+              ) : (
+                <>
+                  <X className="h-4 w-4 mr-2" />
+                  Cancel SIP
+                </>
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Modals */}
       <AddFundsModal
         isOpen={isAddFundsModalOpen}
@@ -1990,12 +2368,12 @@ export default function InvestmentActionsPage() {
         selectedClientId={selectedClientId}
         clients={clients}
       />
-      <SipManagementModal
+      {/* <SipManagementModal
         isOpen={isSipManagementModalOpen}
         onClose={() => setIsSipManagementModalOpen(false)}
         selectedClientCode={selectedClientCode}
         onSipUpdated={handleSipUpdated}
-      />
+      /> */}
       <SwitchReallocationModal
         isOpen={isSwitchModalOpen}
         onClose={() => setIsSwitchModalOpen(false)}
