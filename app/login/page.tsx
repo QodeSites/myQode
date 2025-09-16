@@ -96,7 +96,7 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen flex flex-col items-center bg-background justify-center gap-8">
-      <h1 className="font-serif text-4xl md:text-5xl text-primary font-bold text-center tracking-tight">myQode</h1>
+      <h1 className="font-serif text-4xl md:text-5xl text-primary font-bold text-center tracking-tight"><sub className="text-2xl">my</sub>Qode</h1>
       <div className="w-full max-w-sm rounded-lg bg-card p-6 card-shadow relative">
         <div className="mb-6">
           <p className="text-xl md:text-2xl text-muted-foreground text-center mt-1">Welcome Back!</p>
@@ -121,7 +121,7 @@ export default function LoginPage() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="h-10 rounded-md border bg-background px-3 text-sm outline-none ring-0 focus:border-ring"
-              placeholder="Enter your email or Account ID"
+              placeholder="Enter your Email or Account ID"
               disabled={isLoading}
               autoComplete="email"
             />
@@ -154,7 +154,7 @@ export default function LoginPage() {
             </div>
 
             {/* Forgot password trigger */}
-            <div className="flex items-center justify-end">
+            <div className="flex items-center justify-end mt-1">
               <button
                 type="button"
                 onClick={() => setFpOpen(true)}
