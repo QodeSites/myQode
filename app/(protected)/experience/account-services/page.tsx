@@ -5,7 +5,6 @@ import { X, IndianRupee, Lock, CreditCard, TrendingUp, CheckCircle, Calendar, Lo
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useClient } from "@/contexts/ClientContext";
-import SipManagementModal from "@/components/SipManagementModal";
 import { AlertTriangle } from 'lucide-react';
 import {
   AlertDialog,
@@ -1060,7 +1059,7 @@ function SwitchReallocationModal({
   onClose: () => void;
   selectedClientCode: string;
   selectedClientId: string;
-  selectedEmailClient: string,
+  selectedEmailClient: string;
   clients: { clientid: string; clientcode: string }[];
 }) {
   const [formData, setFormData] = useState({
@@ -1103,7 +1102,8 @@ function SwitchReallocationModal({
 
     setIsSubmitting(true);
     setSubmitStatus("idle");
-    const userEmail = "user@example.com";
+    // Use the actual user email from props instead of hardcoded email
+    const userEmail = selectedEmailClient || "user@example.com";
 
     const emailHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
       <style>body{font-family:Lato,Arial,sans-serif;line-height:1.6;color:#002017;background-color:#EFECD3}
@@ -1180,18 +1180,13 @@ function SwitchReallocationModal({
           <label className="block text-sm font-medium text-foreground mb-2">Account ID *</label>
           <input
             name="nuvama-code"
+            type="text"
             value={formData.nuvamaCode}
             onChange={(e) => setFormData({ ...formData, nuvamaCode: e.target.value })}
             className="w-full p-3 border border-border rounded-md text-foreground bg-muted focus:ring-2 focus:ring-primary focus:border-primary"
             required
             disabled
-          >
-            {/* {clients.map((c) => (
-              <option key={c.clientid} value={c.clientcode}>
-                {c.clientcode} ({c.clientid})
-              </option>
-            ))} */}
-          </input>
+          />
           <p className="text-xs text-muted-foreground mt-1">Currently selected: {selectedClientCode}</p>
         </div>
 
@@ -1216,10 +1211,6 @@ function SwitchReallocationModal({
             required
           >
             <option value="">Select Strategy</option>
-            {/* <option value="QGF">Qode Growth Fund (QGF)</option>
-            <option value="QFH">Qode Future Horizon (QFH)</option>
-            <option value="QTF">Qode Tatical Fund (QTF)</option>
-            <option value="QAW">Qode All Weather (QAW)</option> */}
             {Object.entries(strategy)
               .filter(([value]) => value !== formData.investedIn)
               .map(([value, label]) => (
@@ -1327,17 +1318,24 @@ function WithdrawalModal({
   onClose: () => void;
   selectedClientCode: string;
   selectedClientId: string;
-  selectedEmailClient: string,
+  selectedEmailClient: string;
   clients: { clientid: string; clientcode: string }[];
 }) {
-  const [formData, setFormData] = useState({ nuvamaCode: selectedClientCode || "QGF0001", amount: "", additionalNotes: "" });
+  const [formData, setFormData] = useState({
+    nuvamaCode: selectedClientCode || "",
+    amount: "",
+    additionalNotes: ""
+  });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle");
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
-    setFormData((prev) => ({ ...prev, nuvamaCode: selectedClientCode || "QGF0001" }));
+    setFormData((prev) => ({
+      ...prev,
+      nuvamaCode: selectedClientCode || ""
+    }));
   }, [selectedClientCode]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -1350,13 +1348,14 @@ function WithdrawalModal({
     };
 
     if (!payload.amount || !payload.nuvamaCode) {
-      toast({ title: "Error", description: "Please provide a Account ID and withdrawal amount.", variant: "destructive" });
+      toast({ title: "Error", description: "Please provide an Account ID and withdrawal amount.", variant: "destructive" });
       return;
     }
 
     setIsSubmitting(true);
     setSubmitStatus("idle");
-    const userEmail = "user@example.com";
+    // Use the actual user email from props instead of hardcoded email
+    const userEmail = selectedEmailClient || "user@example.com";
 
     const emailHtml = `<!DOCTYPE html><html><head><meta charset="utf-8">
       <style>body{font-family:Lato,Arial,sans-serif;line-height:1.6;color:#002017;background-color:#EFECD3}
@@ -1393,7 +1392,7 @@ function WithdrawalModal({
 
       setSubmitStatus("success");
       toast({ title: "Thank you!", description: "Your withdrawal request has been submitted successfully." });
-      setFormData({ nuvamaCode: selectedClientCode || "QGF0001", amount: "", additionalNotes: "" });
+      setFormData({ nuvamaCode: selectedClientCode || "", amount: "", additionalNotes: "" });
       formRef.current?.reset();
       setTimeout(() => {
         setSubmitStatus("idle");
@@ -1418,17 +1417,20 @@ function WithdrawalModal({
           <select
             name="nuvama-code"
             value={formData.nuvamaCode}
+            onChange={(e) => setFormData({ ...formData, nuvamaCode: e.target.value })}
             className="w-full p-3 border border-border rounded-md text-foreground focus:ring-2 focus:ring-primary focus:border-primary"
             required
-            disabled
           >
-            {/* {clients.map((c) => (
+            <option value="">Select Account</option>
+            {clients.map((c) => (
               <option key={c.clientid} value={c.clientcode}>
                 {c.clientcode} ({c.clientid})
               </option>
-            ))} */}
+            ))}
           </select>
-          <p className="text-xs text-muted-foreground mt-1">Currently selected: {selectedClientCode}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {selectedClientCode ? `Currently selected: ${selectedClientCode}` : 'Please select an account'}
+          </p>
         </div>
 
         <div>
@@ -1471,7 +1473,7 @@ function WithdrawalModal({
           <button
             type="button"
             onClick={() => {
-              setFormData({ nuvamaCode: selectedClientCode || "QGF0001", amount: "", additionalNotes: "" });
+              setFormData({ nuvamaCode: selectedClientCode || "", amount: "", additionalNotes: "" });
               setSubmitStatus("idle");
               onClose();
             }}
@@ -1500,13 +1502,12 @@ export default function InvestmentActionsPage() {
   const [isAddFundsModalOpen, setIsAddFundsModalOpen] = useState(false);
   const [isSwitchModalOpen, setIsSwitchModalOpen] = useState(false);
   const [isWithdrawalModalOpen, setIsWithdrawalModalOpen] = useState(false);
-  const [isSipManagementModalOpen, setIsSipManagementModalOpen] = useState(false);
   const [transactions, setTransactions] = useState([]);
   const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [refreshResult, setRefreshResult] = useState(null);
-  const { selectedClientCode, selectedClientId, clients, loading } = useClient();
+  const { selectedClientCode, selectedClientId, clients, loading,selectedEmailClient } = useClient();
   const [cancelingSipId, setCancelingSipId] = useState(null);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [sipToCancel, setSipToCancel] = useState(null);
@@ -2153,16 +2154,16 @@ export default function InvestmentActionsPage() {
                                   onClick={() => openPauseDialog(tx)}
                                   disabled={pausingSipId === tx.id}
                                   className={`inline-flex items-center gap-1 px-2 py-1 text-xs ${['PAUSED', 'CUSTOMER_PAUSED'].includes(tx.payment_status.toUpperCase())
-                                      ? 'border-green-200 text-green-600 hover:bg-green-50 hover:border-green-300'
-                                      : 'border-orange-200 text-orange-600 hover:bg-orange-50 hover:border-orange-300'
+                                    ? 'border-green-200 text-green-600 hover:bg-green-50 hover:border-green-300'
+                                    : 'border-orange-200 text-orange-600 hover:bg-orange-50 hover:border-orange-300'
                                     }`}
                                 >
                                   {pausingSipId === tx.id ? (
                                     <Loader className="h-3 w-3 animate-spin" />
                                   ) : (
                                     <div className={`h-3 w-3 ${['PAUSED', 'CUSTOMER_PAUSED'].includes(tx.payment_status.toUpperCase())
-                                        ? 'bg-green-500 rounded-full'
-                                        : 'bg-orange-500 rounded-sm'
+                                      ? 'bg-green-500 rounded-full'
+                                      : 'bg-orange-500 rounded-sm'
                                       }`}></div>
                                   )}
                                   {pausingSipId === tx.id ? 'Processing...' : getPauseResumeText(tx)}
@@ -2227,8 +2228,8 @@ export default function InvestmentActionsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2">
               <div className={`h-5 w-5 ${sipToPause && ['PAUSED', 'CUSTOMER_PAUSED'].includes(sipToPause.payment_status.toUpperCase())
-                  ? 'bg-green-500 rounded-full'
-                  : 'bg-orange-500 rounded-sm'
+                ? 'bg-green-500 rounded-full'
+                : 'bg-orange-500 rounded-sm'
                 }`}></div>
               {sipToPause && ['PAUSED', 'CUSTOMER_PAUSED'].includes(sipToPause.payment_status.toUpperCase())
                 ? 'Resume SIP Subscription'
@@ -2288,8 +2289,8 @@ export default function InvestmentActionsPage() {
               ) : (
                 <>
                   <div className={`h-4 w-4 mr-2 ${sipToPause && ['PAUSED', 'CUSTOMER_PAUSED'].includes(sipToPause.payment_status.toUpperCase())
-                      ? 'bg-white rounded-full'
-                      : 'bg-white rounded-sm'
+                    ? 'bg-white rounded-full'
+                    : 'bg-white rounded-sm'
                     }`}></div>
                   {sipToPause && ['PAUSED', 'CUSTOMER_PAUSED'].includes(sipToPause.payment_status.toUpperCase())
                     ? 'Resume SIP'
@@ -2379,6 +2380,7 @@ export default function InvestmentActionsPage() {
         onClose={() => setIsSwitchModalOpen(false)}
         selectedClientCode={selectedClientCode}
         selectedClientId={selectedClientId}
+        selectedEmailClient={selectedEmailClient} // Add this prop
         clients={clients}
       />
       <WithdrawalModal
@@ -2386,6 +2388,7 @@ export default function InvestmentActionsPage() {
         onClose={() => setIsWithdrawalModalOpen(false)}
         selectedClientCode={selectedClientCode}
         selectedClientId={selectedClientId}
+        selectedEmailClient={selectedEmailClient} // Add this prop
         clients={clients}
       />
     </main>

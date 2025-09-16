@@ -111,7 +111,7 @@ export default function LoginPage() {
 
           <div className="grid gap-2">
             <label htmlFor="username" className="text-sm font-medium">
-              Email or Client ID
+              Email or Account ID
             </label>
             <input
               id="username"
