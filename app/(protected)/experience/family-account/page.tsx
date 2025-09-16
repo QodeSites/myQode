@@ -400,7 +400,7 @@ const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
 
             return (
               <Card key={groupKey} className="overflow-hidden py-0 p-0 md:p-6">
-                <CardContent className="p-1 md:p-6">
+                <CardContent className="p-2 md:p-6">
                   {/* Group header */}
                   <div
                     className="flex items-center gap-3 mb-4 cursor-pointer hover:bg-muted/50 rounded p-2 -m-2"
