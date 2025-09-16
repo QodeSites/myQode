@@ -121,7 +121,7 @@ export default function LoginPage() {
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="h-10 rounded-md border bg-background px-3 text-sm outline-none ring-0 focus:border-ring"
-              placeholder="you@example.com or client ID"
+              placeholder="you@example.com or Account ID"
               disabled={isLoading}
               autoComplete="email"
             />
