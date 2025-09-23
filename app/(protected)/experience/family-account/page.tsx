@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, Crown, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ModalShell from "@/components/ModalShell";
 import { useToast } from "@/hooks/use-toast";
@@ -36,11 +36,11 @@ type FamAcc = {
   city?: string;
   state?: string;
   pannumber?: string;
+  head_of_family?: boolean;
 };
 
 /* =========================
    Helper: sendEmail
-   (Adjust endpoint to your backend if needed)
    ========================= */
 async function sendEmail(payload: {
   to: string;
@@ -52,6 +52,7 @@ async function sendEmail(payload: {
   nuvama_code?: string;
   client_id?: string;
   user_email?: string;
+  message?: string;
 }) {
   const res = await fetch("/api/send-email", {
     method: "POST",
@@ -99,6 +100,7 @@ export default function FamilyAccountsSection() {
   const { toast } = useToast();
 
   const [familyAccounts, setFamilyAccounts] = useState<FamAcc[]>([]);
+  const [isHeadOfFamily, setIsHeadOfFamily] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<"All" | "Active" | "Pending KYC" | "Dormant">("All");
 
@@ -115,7 +117,7 @@ export default function FamilyAccountsSection() {
   const onClose = () => setModalOpen(false);
 
   /* =========================
-     Fetch family data
+     Fetch family data with role-based logic
      ========================= */
   useEffect(() => {
     const fetchFamilyAccounts = async () => {
@@ -143,8 +145,10 @@ export default function FamilyAccountsSection() {
             city: member.city,
             state: member.state,
             pannumber: member.pannumber,
+            head_of_family: member.head_of_family,
           }));
           setFamilyAccounts(mapped);
+          setIsHeadOfFamily(data.isHeadOfFamily || false);
         } else {
           console.error("No family data found:", data);
         }
@@ -195,7 +199,7 @@ export default function FamilyAccountsSection() {
 
   const groupedAccounts = useMemo(() => {
     const groups = filteredAccounts.reduce((acc, member) => {
-      const groupKey = member.groupname || "Unknown Group";
+      const groupKey = member.groupname || "Onwer Account";
       if (!acc[groupKey]) {
         acc[groupKey] = {
           groupName: member.groupname,
@@ -207,11 +211,11 @@ export default function FamilyAccountsSection() {
           >,
         };
       }
-      const ownerKey = member.ownerid || "Unknown Owner";
+      const ownerKey = member.ownerid || member.clientid || "Owner";
       if (!acc[groupKey].owners[ownerKey]) {
         acc[groupKey].owners[ownerKey] = {
-          ownerId: member.ownerid,
-          ownerName: member.ownername,
+          ownerId: member.ownerid || member.clientid,
+          ownerName: member.ownername || member.holderName,
           ownerEmail: member.owneremailid,
           accounts: [],
         };
@@ -233,6 +237,8 @@ export default function FamilyAccountsSection() {
         owner.accounts.sort((a, b) => {
           if (a.relation === "Primary") return -1;
           if (b.relation === "Primary") return 1;
+          if (a.head_of_family) return -1;
+          if (b.head_of_family) return 1;
           return a.holderName.localeCompare(b.holderName);
         });
       });
@@ -283,88 +289,102 @@ export default function FamilyAccountsSection() {
   /* =========================
      Handle Submit (Modal with only textarea)
      ========================= */
-const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
-  e.preventDefault();
-  const fd = new FormData(e.currentTarget);
-  const message = (fd.get("message")?.toString() || "").trim();
+  const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    const message = (fd.get("message")?.toString() || "").trim();
 
-  if (!selectedClientCode || !selectedClientId) {
-    toast({
-      title: "Missing account",
-      description: "No account is selected. Please select an account and try again.",
-      variant: "destructive",
-    });
-    return;
-  }
-  if (!message) {
-    toast({ title: "Message required", description: "Please write your request.", variant: "destructive" });
-    return;
-  }
+    if (!selectedClientCode || !selectedClientId) {
+      toast({
+        title: "Missing account",
+        description: "No account is selected. Please select an account and try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!message) {
+      toast({ title: "Message required", description: "Please write your request.", variant: "destructive" });
+      return;
+    }
 
-  setIsSubmitting(true);
+    setIsSubmitting(true);
 
-  const subject = `Family Mapping / Account Request — ${selectedClientCode}`;
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
-    <style>body{font-family:Lato,Arial,sans-serif;line-height:1.6;color:#002017;background-color:#EFECD3}
-    .container{max-width:600px;margin:0 auto;padding:20px}.header{background:#02422B;padding:16px;border-radius:8px;margin-bottom:16px;text-align:center}
-    .content{background:#FFFFFF;padding:16px;border:1px solid #37584F;border-radius:8px}.info{background:#EFECD3;padding:12px;border-left:4px solid #DABD38;margin:12px 0}
-    h1{font-family:'Playfair Display',Georgia,serif;color:#DABD38;font-size:20px;margin:0}</style>
-    </head><body><div class="container">
-      <div class="header"><h1>Family Mapping / Account Request</h1></div>
-      <div class="content">
-        <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
-        <div class="info">
-          <p><strong>Client Code:</strong> ${selectedClientCode}</p>
-          <p><strong>Client ID:</strong> ${selectedClientId}</p>
-          <p><strong>User Email (fallback):</strong> ${fallbackEmail}</p>
-          <p><strong>Message:</strong></p>
-          <p>${message.replace(/\n/g, "<br/>")}</p>
+    const subject = `${isHeadOfFamily ? 'Family Mapping' : 'Account'} Request — ${selectedClientCode}`;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+      <style>body{font-family:Lato,Arial,sans-serif;line-height:1.6;color:#002017;background-color:#EFECD3}
+      .container{max-width:600px;margin:0 auto;padding:20px}.header{background:#02422B;padding:16px;border-radius:8px;margin-bottom:16px;text-align:center}
+      .content{background:#FFFFFF;padding:16px;border:1px solid #37584F;border-radius:8px}.info{background:#EFECD3;padding:12px;border-left:4px solid #DABD38;margin:12px 0}
+      h1{font-family:'Playfair Display',Georgia,serif;color:#DABD38;font-size:20px;margin:0}</style>
+      </head><body><div class="container">
+        <div class="header"><h1>${isHeadOfFamily ? 'Family Mapping' : 'Account'} Request</h1></div>
+        <div class="content">
+          <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
+          <div class="info">
+            <p><strong>User Role:</strong> ${isHeadOfFamily ? 'Head of Family' : 'Account Owners'}</p>
+            <p><strong>Account Code:</strong> ${selectedClientCode}</p>
+            <p><strong>Client ID:</strong> ${selectedClientId}</p>
+            <p><strong>User Email:</strong> ${fallbackEmail}</p>
+            <p><strong>Message:</strong></p>
+            <p>${message.replace(/\n/g, "<br/>")}</p>
+          </div>
         </div>
-      </div>
-    </div></body></html>`;
+      </div></body></html>`;
 
-  try {
-    await sendEmail({
-      to: "'sanket.shinde@qodeinvest.com', investor.relations@qodeinvest.com",
-      subject,
-      html,
-      from: "investor.relations@qodeinvest.com",
-      fromName: "myQode Portal",
-      inquiry_type: "raised_request",
-      nuvama_code: selectedClientCode,
-      client_id: selectedClientId,
-      user_email: fallbackEmail,
-      message, // Add message to the payload for storage in the data column
-    });
+    try {
+      await sendEmail({
+        to: 'investor.relations@qodeinvest.com',
+        subject,
+        html,
+        from: "investor.relations@qodeinvest.com",
+        fromName: "myQode Portal",
+        inquiry_type: "raised_request",
+        nuvama_code: selectedClientCode,
+        client_id: selectedClientId,
+        user_email: fallbackEmail,
+        message, // Add message to the payload for storage in the data column
+      });
 
-    toast({
-      title: "Request sent",
-      description: "Your message has been emailed to our team. We’ll get back to you soon.",
-    });
-    formRef.current?.reset();
-    setModalOpen(false);
-  } catch (err) {
-    console.error("Email send error:", err);
-    toast({
-      title: "Failed to send",
-      description: "Could not send your request. Please try again or contact us directly.",
-      variant: "destructive",
-    });
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+      toast({
+        title: "Request sent",
+        description: "Your message has been emailed to our team. We'll get back to you soon.",
+      });
+      formRef.current?.reset();
+      setModalOpen(false);
+    } catch (err) {
+      console.error("Email send error:", err);
+      toast({
+        title: "Failed to send",
+        description: "Could not send your request. Please try again or contact us directly.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <section className="space-y-4 w-full">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-xl font-bold text-foreground">Account Tree</h2>
-        <p>If you hold multiple accounts with Qode, you will be able to see how each account has been mapped by us under your family structure.
-          This helps ensure that all your holdings and reports are consolidated in one place for a complete view of your investments.
-          Even if you hold a single account with Qode, the account will still be displayed in the same family mapping format in our backend systems.</p>
+        <div className="flex items-center gap-3">
+          <h2 className="text-xl font-bold text-foreground">
+            {isHeadOfFamily ? "Family Account Tree" : "My Account"}
+          </h2>
+          {isHeadOfFamily ? (
+            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+              <Crown className="w-3 h-3 mr-1" />
+              Head of Family
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200">
+              <User className="w-3 h-3 mr-1" />
+              Owners
+            </Badge>
+          )}
+        </div>
+        
         <div className="flex gap-2">
           <Input
-            placeholder="Search family members..."
+            placeholder={isHeadOfFamily ? "Search family members..." : "Search accounts..."}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="max-w-xs"
@@ -380,8 +400,16 @@ const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
               <SelectItem value="Dormant">Dormant</SelectItem>
             </SelectContent>
           </Select>
-
         </div>
+      </div>
+
+      {/* Description based on user role */}
+      <div className="text-sm text-muted-foreground">
+        {isHeadOfFamily ? (
+          <p>As the head of family, you can see how all family accounts are mapped and organized. This consolidated view helps you manage all your family's investments in one place.</p>
+        ) : (
+          <p>This shows your individual account details. If you're part of a family group, only the head of family can see all family accounts.</p>
+        )}
       </div>
 
       {loading ? (
@@ -389,7 +417,7 @@ const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
       ) : sortedGroupEntries.length === 0 ? (
         <Card>
           <CardContent className="text-center py-8">
-            <p className="text-sm text-muted-foreground"></p>
+            <p className="text-sm text-muted-foreground">No account data available.</p>
           </CardContent>
         </Card>
       ) : (
@@ -407,16 +435,25 @@ const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
                     onClick={() => toggleGroupCollapse(groupKey)}
                   >
                     {isGroupCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    <div className="h-3 w-3 rounded-full bg-blue-500" />
+                    <div className={`h-3 w-3 rounded-full ${isHeadOfFamily ? 'bg-blue-500' : 'bg-gray-500'}`} />
                     <div className="flex-1">
-                      <div className="font-semibold text-md md:text-lg">{group.groupName || "Family Group"}</div>
+                      <div className="font-semibold text-md md:text-lg">
+                        {isHeadOfFamily ? (group.groupName || "Family Group") : "Account Owner"}
+                      </div>
                       <div className="text-sm text-muted-foreground">
-                        Group ID: {group.groupId} | Email: {group.groupEmail || "N/A"}
+                        {isHeadOfFamily ? (
+                          `Group ID: ${group.groupId} | Email: ${group.groupEmail || "N/A"}`
+                        ) : (
+                          `Account Email: ${group.groupEmail || "N/A"}`
+                        )}
                       </div>
                     </div>
                     <div className="text-sm text-muted-foreground">
-                      {Object.keys(group.owners).length} owner{Object.keys(group.owners).length !== 1 ? "s" : ""} | {totalAccounts} account
-                      {totalAccounts !== 1 ? "s" : ""}
+                      {isHeadOfFamily ? (
+                        `${Object.keys(group.owners).length} owner${Object.keys(group.owners).length !== 1 ? "s" : ""} | ${totalAccounts} account${totalAccounts !== 1 ? "s" : ""}`
+                      ) : (
+                        `${totalAccounts} account${totalAccounts !== 1 ? "s" : ""}`
+                      )}
                     </div>
                   </div>
 
@@ -448,9 +485,13 @@ const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
                                   )}
                                   <div className="h-2 w-2 rounded-full bg-green-500"></div>
                                   <div className="flex-1">
-                                    <div className="font-medium">{owner.ownerName || 'Unknown Owner'}</div>
+                                    <div className="font-medium">{owner.ownerName || 'Account Holder'}</div>
                                     <div className="text-sm text-muted-foreground">
-                                      Owner ID: {owner.ownerId} | Email: {owner.ownerEmail || "N/A"}
+                                      {isHeadOfFamily ? (
+                                        `Owner ID: ${owner.ownerId} | Email: ${owner.ownerEmail || "N/A"}`
+                                      ) : (
+                                        `Owner ID: ${owner.ownerId} | Email: ${owner.ownerEmail || "N/A"}`
+                                      )}
                                     </div>
                                   </div>
                                   <div className="text-xs text-muted-foreground">
@@ -482,9 +523,15 @@ const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
                                               ) : (
                                                 <ChevronDown className="h-2 w-2" />
                                               )}
-                                              <div className={`h-1.5 w-1.5 rounded-full ${account.relation === 'Primary' ? 'bg-orange-500' : 'bg-gray-400'}`}></div>
+                                              <div className={`h-1.5 w-1.5 rounded-full ${
+                                                account.head_of_family ? 'bg-blue-500' : 
+                                                account.relation === 'Primary' ? 'bg-orange-500' : 'bg-gray-400'
+                                              }`}></div>
                                               <div className="flex-1">
-                                                <div className="font-medium text-sm">{account.holderName}</div>
+                                                <div className="font-medium text-sm flex items-center gap-2">
+                                                  {account.holderName}
+                                                  {account.head_of_family && <Crown className="w-3 h-3 text-blue-600" />}
+                                                </div>
                                                 <div className="text-xs text-muted-foreground">
                                                   Account ID: {account.accountid} | {account.relation}
                                                 </div>
@@ -505,6 +552,18 @@ const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
                                                     <div className="text-muted-foreground">Email</div>
                                                     <div className="font-medium truncate">{account.email || 'N/A'}</div>
                                                   </div>
+                                                  {/* {account.mobile && (
+                                                    <div>
+                                                      <div className="text-muted-foreground">Mobile</div>
+                                                      <div className="font-medium">{account.mobile}</div>
+                                                    </div>
+                                                  )}
+                                                  {account.pannumber && (
+                                                    <div>
+                                                      <div className="text-muted-foreground">PAN</div>
+                                                      <div className="font-medium">{account.pannumber}</div>
+                                                    </div>
+                                                  )} */}
                                                 </div>
                                               </div>
                                             )}
@@ -527,34 +586,54 @@ const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
         </div>
       )}
 
-      {/* Info */}
+      {/* Info section with role-specific messaging */}
       <div className="rounded-lg">
-        <p className="text-sm leading-relaxed mb-3">
-          If your family structure has changed or if you would like to update how your accounts are grouped, you can:
-        </p>
-        <ul className="text-sm space-y-1 list-disc list-inside ml-2">
-          <li>Request to merge multiple accounts under one family head.</li>
-          <li>Request to reassign accounts to a different owner within the same family.</li>
-          <li>Request to split accounts into a new family group.</li>
-          <li>Update or change your contact email ID for reporting and login purposes.</li>
-        </ul>
+        {isHeadOfFamily ? (
+          <>
+            <p className="text-sm leading-relaxed mb-3">
+              As the head of family, you can request changes to your family structure:
+            </p>
+            <ul className="text-sm space-y-1 list-disc list-inside ml-2">
+              <li>Request to merge multiple accounts under one family head.</li>
+              <li>Request to reassign accounts to a different owner within the same family.</li>
+              <li>Request to split accounts into a new family group.</li>
+              <li>Update or change contact email ID for reporting and login purposes.</li>
+            </ul>
+          </>
+        ) : (
+          <>
+            <p className="text-sm leading-relaxed mb-3">
+              For Owner account changes, you can request:
+            </p>
+            <ul className="text-sm space-y-1 list-disc list-inside ml-2">
+              <li>Update your contact email ID or personal details.</li>
+              <li>Request to join a family group (if applicable).</li>
+              <li>Request account status changes or updates.</li>
+              <li>General account-related queries and modifications.</li>
+            </ul>
+          </>
+        )}
       </div>
 
       <div>
         <Button className="bg-primary" onClick={() => setModalOpen(true)}>
-          Raise Request
+          {isHeadOfFamily ? "Raise Family Request" : "Raise Account Request"}
         </Button>
       </div>
 
       {/* Modal: ONLY textarea + submit */}
-      {modalOpen && (<ModalShell title="Send a request" onClose={onClose} size="lg" open={modalOpen}>
+      {modalOpen && (<ModalShell title={`Send ${isHeadOfFamily ? 'family' : 'account'} request`} onClose={onClose} size="lg" open={modalOpen}>
         <form ref={formRef} onSubmit={HandleSubmitRequest} className="space-y-4">
           <div className="text-sm text-muted-foreground">
             This message will be emailed to our team with your <b>Client Code</b> and <b>Client ID</b> attached.
+            {isHeadOfFamily && <span className="text-blue-600 font-medium"> As head of family, you can request changes for all family accounts.</span>}
           </div>
           <Textarea
             name="message"
-            placeholder="Write your request here (e.g., merge accounts, reassign owner, update email)…"
+            placeholder={isHeadOfFamily ? 
+              "Write your family request here (e.g., merge accounts, reassign owner, update family email)…" :
+              "Write your account request here (e.g., update email, change personal details)…"
+            }
             className="min-h-40"
             required
           />
@@ -563,7 +642,7 @@ const HandleSubmitRequest = async (e: React.FormEvent<HTMLFormElement>) => {
               Cancel
             </Button>
             <Button type="submit" className="bg-primary" disabled={isSubmitting}>
-              {isSubmitting ? "Sending…" : "Raise Request"}
+              {isSubmitting ? "Sending…" : `Raise ${isHeadOfFamily ? 'Family' : 'Account'} Request`}
             </Button>
           </div>
         </form>

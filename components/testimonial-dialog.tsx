@@ -135,7 +135,7 @@ export function TestimonialDialog({
     `
 
     sendEmail({
-      to: 'sanket.shinde@qodeinvest.com',
+      to: 'investor.relations@qodeinvest.com',
       subject: `New Testimonial Submission from ${formData.nuvamaCode}`,
       html: emailHtml,
       from: 'investor.relations@qodeinvest.com',

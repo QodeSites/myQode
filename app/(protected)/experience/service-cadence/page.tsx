@@ -57,6 +57,7 @@ export default function ReportsReviewsPage() {
 
       {/* Monthly */}
       <SectionHeader>Monthly Report</SectionHeader>
+      <p className="italic text-sm">We will send fund-level performance; individual returns may differ</p>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <InfoCard title="Delivered via Email" icon={Mail}>
           <p><strong>How:</strong> Sent directly to your registered email ID.</p>

@@ -3,15 +3,11 @@ import type React from "react";
 import "@/app/globals.css";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { Suspense } from "react";
-import QodeHeader from "@/components/qode-header";
-import QodeSidebar from "@/components/qode-sidebar";
-import QodeFooter from "@/components/footer";
 import ClientLayout from "@/app/(protected)/client-layout";
 
 // Metadata (optional, for SEO or page configuration)
 export const metadata = {
-    title: "Qode App",
+    title: "myQode",
     description: "A Next.js application with authentication",
 };
 
@@ -27,7 +23,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     return (
         <div className="flex flex-col min-h-screen">
             <ClientLayout>{children}</ClientLayout>
-            <QodeFooter />
+            {/* <QodeFooter /> */}
         </div>
     );
 }

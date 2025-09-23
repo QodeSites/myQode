@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Validate inquiry_type
-      const validInquiryTypes = ['strategy', 'discussion', 'switch', 'withdrawal', 'feedback', 'testimonial', 'raised_request'];
+      const validInquiryTypes = ['strategy', 'discussion', 'switch', 'withdrawal', 'feedback', 'testimonial', 'raised_request','payment_confirmation','new_strategy_payment','payment_confirmation','payment_success','new_strategy_payment_success'];
       if (!validInquiryTypes.includes(inquiry_type)) {
         return NextResponse.json(
           { error: `Invalid inquiry_type. Must be one of: ${validInquiryTypes.join(', ')}` },
@@ -102,6 +102,8 @@ export async function POST(request: NextRequest) {
       subject,
       html,
     });
+
+    console.log('Email sent successfully via Resend:', emailData);
 
     // Update email_sent status if inquiry was created
     if (inquiryId) {

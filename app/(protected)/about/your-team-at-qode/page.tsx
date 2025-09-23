@@ -150,7 +150,7 @@ export default function YourTeamAtQodePage() {
     setIsSubmitting(true);
     setSubmitStatus('idle');
 
-    const userEmail = selectedEmailClient; 
+    const userEmail = selectedEmailClient;
 
     try {
       const emailHtml = `
@@ -195,7 +195,7 @@ export default function YourTeamAtQodePage() {
 
       // FIXED: Properly structure the API call
       await sendEmail({
-        to: 'sanket.shinde@qodeinvest.com',
+        to: 'investor.relations@qodeinvest.com',
         subject: `New Strategy Question from ${formData.nuvamaCode}`,
         html: emailHtml,
         from: 'investor.relations@qodeinvest.com',
@@ -213,12 +213,13 @@ export default function YourTeamAtQodePage() {
       setSubmitStatus('success');
       toast({
         title: "Thank you!",
-        description: "Your strategy question has been submitted successfully.",
+        description: "Your strategy question has been submitted successfully. We will get back to you soon.",
       });
       setStrategyQuestion('');
       if (strategyFormRef.current) {
         strategyFormRef.current.reset();
       }
+      // Auto-close modal after 2 seconds
       setTimeout(() => {
         setIsStrategyModalOpen(false);
         setSubmitStatus('idle');
@@ -303,7 +304,7 @@ export default function YourTeamAtQodePage() {
 
       // FIXED: Properly structure the API call
       await sendEmail({
-        to: 'sanket.shinde@qodeinvest.com',
+        to: 'investor.relations@qodeinvest.com',
         subject: `New Call Discussion Topic from ${formData.nuvamaCode}`,
         html: emailHtml,
         from: 'investor.relations@qodeinvest.com',
@@ -321,12 +322,13 @@ export default function YourTeamAtQodePage() {
       setSubmitStatus('success');
       toast({
         title: "Thank you!",
-        description: "Your discussion topic has been submitted successfully.",
+        description: "Your discussion topic has been submitted successfully. We will get back to you soon",
       });
       setDiscussionTopic('');
       if (discussionFormRef.current) {
         discussionFormRef.current.reset();
       }
+      // Auto-close modal after 2 seconds
       setTimeout(() => {
         setIsDiscussionModalOpen(false);
         setSubmitStatus('idle');
@@ -421,6 +423,7 @@ export default function YourTeamAtQodePage() {
             <p className="mb-0">
               <strong>When to Contact:</strong> For reports, account queries, or operational clarifications.
             </p>
+            <div className="flex gap-2 items-center">
             <Button
               className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md border border-border bg-primary text-white px-4 py-4 text-center font-semibold md:w-auto cursor-pointer"
               onClick={() => window.location.href = `mailto:investor.relations@qodeinvest.com?subject=IR%20Support%20Request%20-%20${selectedClientCode || 'Account'}`}
@@ -428,6 +431,15 @@ export default function YourTeamAtQodePage() {
               <Mail className="h-4 w-4" />
               Contact IR Team
             </Button>
+            <Button
+              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md border border-border bg-primary text-white px-4 py-4 text-center font-semibold md:w-auto cursor-pointer"
+              onClick={() => setIsDiscussionModalOpen(true)}
+            >
+              <MessageCircle className="h-4 w-4" />
+              Raise Any Query
+            </Button>
+            </div>
+
             <p className="mt-1 text-xs text-muted-foreground">
               We will get back to you promptly.
             </p>
@@ -449,13 +461,7 @@ export default function YourTeamAtQodePage() {
             </Button>
             <p className="mt-1 text-xs text-muted-foreground"></p>
 
-            <Button
-              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md border border-border bg-primary text-white px-4 py-4 text-center font-semibold md:w-auto cursor-pointer"
-              onClick={() => setIsDiscussionModalOpen(true)}
-            >
-              <MessageCircle className="h-4 w-4" />
-              What Would You Like to Discuss?
-            </Button>
+
           </Section>
         </div>
 
@@ -465,8 +471,8 @@ export default function YourTeamAtQodePage() {
             <p className="mb-2 flex flex-col gap-1">
               <span className="flex items-center gap-[2px] md:gap-2">
                 <Phone className="h-4 w-4 text-primary " />
-                <strong className="sm:text-sm text-xs">WhatsApp (IR Desk):</strong> 
-                <a href={`https://wa.me/+919820300028?text=Hi!%20I%20am%20${selectedClientCode || 'a client'}%20and%20would%20like%20to%20discuss%20my%20account`}>+91 98203 00028</a>
+                <strong className="sm:text-sm text-xs">WhatsApp (IR Desk):</strong>
+                <a className="underline decoration-dotted" href={`https://wa.me/+919820300028?text=Hi!%20I%20am%20${selectedClientCode || 'a client'}%20and%20would%20like%20to%20discuss%20my%20account`}>+91 98203 00028</a>
                 <span className="sm:text-sm text-xs">(9 AM – 5 PM)</span>
               </span>
               <span className="flex items-center gap-2">
@@ -511,7 +517,7 @@ export default function YourTeamAtQodePage() {
             >
               {clients.map((client) => (
                 <option key={client.clientid} value={client.clientcode}>
-                  {client.clientcode} ({client.clientid})
+                  {client.clientname} - ({client.clientcode})
                 </option>
               ))}
             </select>
@@ -535,6 +541,14 @@ export default function YourTeamAtQodePage() {
             />
           </div>
 
+          {/* Success Message */}
+          {submitStatus === 'success' && (
+            <div className="p-3 bg-green-100 border border-green-400 text-green-700 rounded text-sm">
+              Your strategy question has been sent successfully! Thank you for your input. We Will get back to you soon.
+            </div>
+          )}
+
+          {/* Error Message */}
           {submitStatus === 'error' && (
             <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded text-sm">
               Failed to send your question. Please try again or contact us directly.
@@ -589,7 +603,7 @@ export default function YourTeamAtQodePage() {
             >
               {clients.map((client) => (
                 <option key={client.clientid} value={client.clientcode}>
-                  {client.clientcode} ({client.clientid})
+                  {client.clientname} - ({client.clientcode})
                 </option>
               ))}
             </select>
@@ -613,6 +627,14 @@ export default function YourTeamAtQodePage() {
             />
           </div>
 
+          {/* Success Message */}
+          {submitStatus === 'success' && (
+            <div className="p-3 bg-green-100 border border-green-400 text-green-700 rounded text-sm">
+              Your discussion topic has been sent successfully! Thank you for your input. We Will get back to you soon.
+            </div>
+          )}
+
+          {/* Error Message */}
           {submitStatus === 'error' && (
             <div className="p-3 bg-red-100 border border-red-400 text-red-700 rounded text-sm">
               Failed to send your topic. Please try again or contact us directly.

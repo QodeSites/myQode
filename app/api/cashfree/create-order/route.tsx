@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import crypto from 'crypto';
-import { Cashfree, CFEnvironment } from 'cashfree-pg'; // ← correct import/casing
+import { Cashfree, CFEnvironment } from 'cashfree-pg';
 import pool from '@/lib/db';
+
 interface CreateOrderRequest {
   amount: number;
   currency?: string;
@@ -12,9 +12,8 @@ interface CreateOrderRequest {
   client_id: string;
   order_type: 'one_time' | 'sip';
   return_url?: string;
-  account_number: string;
-  ifsc_code: string;
-  cashfree_bank_code?: string; // NetBanking bank code (required for TPV via NB)
+  is_new_strategy?: boolean;
+  strategy_type?: string;
 }
 
 interface CashfreeOrderResponse {
@@ -26,11 +25,9 @@ interface CashfreeOrderResponse {
   order_status: string;
   order_expiry_time: string;
   payment_session_id: string;
-  payment_link?: string; // Not always present for Orders
+  payment_link?: string;
 }
 
-// ─────────────────────────────────────────────────────────────
-// Optional: keep if you’ll reuse for webhooks etc.
 function generateOrderId(): string {
   const ts = Date.now().toString();
   const rnd = Math.random().toString(36).substring(2, 8);
@@ -42,65 +39,60 @@ async function sendSIPEmail(sipData: any) {
   return { success: true };
 }
 
-// ─────────────────────────────────────────────────────────────
-// SDK bootstrap (updated to match JavaScript code)
 const initCashfree = () => {
-    console.log("=== INITIALIZE CASHFREE SDK ===");
+  console.log("=== INITIALIZE CASHFREE SDK ===");
+  const clientId = process.env.CASHFREE_APP_ID || process.env.CASHFREE_CLIENT_ID;
+  const clientSecret = process.env.CASHFREE_SECRET_KEY;
+  const environment = CFEnvironment.SANDBOX;
 
-    const clientId = process.env.CASHFREE_APP_ID || process.env.CASHFREE_CLIENT_ID;
-    const clientSecret = process.env.CASHFREE_SECRET_KEY;
-    const environment = CFEnvironment.SANDBOX;
+  if (!clientId || !clientSecret) {
+    throw new Error("Cashfree credentials not found in environment variables");
+  }
 
-    if (!clientId || !clientSecret) {
-        throw new Error("Cashfree credentials not found in environment variables");
-    }
-
-    try {
-        console.log("Initializing Cashfree SDK with environment:", environment);
-        console.log("Client ID:", clientId);
-        const cashfree = new Cashfree(CFEnvironment.SANDBOX, clientId, clientSecret);
-
-        console.log("Cashfree SDK initialized successfully");
-        return cashfree;
-    } catch (error) {
-        console.error("Failed to initialize Cashfree SDK:", error);
-        throw error;
-    }
+  try {
+    console.log("Initializing Cashfree SDK with environment:", environment);
+    console.log("Client ID:", clientId);
+    const cashfree = new Cashfree(CFEnvironment.SANDBOX, clientId, clientSecret);
+    console.log('cashfree instance:', cashfree);
+    console.log("Cashfree SDK initialized successfully");
+    return cashfree;
+  } catch (error) {
+    console.error("Failed to initialize Cashfree SDK:", error);
+    throw error;
+  }
 };
 
-
-// Updated cfCreateOrder to use initialized instance
 async function cfCreateOrder(orderData: any) {
   const cashfree = initCashfree();
   try {
-    const resp = await cashfree.PGCreateOrder(orderData);
+    const resp = await cashfree.PGCreateOrder(orderData, undefined, undefined, {
+      headers: { 'x-api-version': '2023-08-01' }
+    });
+    console.log('Order Created successfully:', resp.data);
     return resp.data as CashfreeOrderResponse;
-  } catch (e) {
-    // Fallback: older SDK requires explicit API version
-    const resp = await cashfree.PGCreateOrder(orderData);
-    return resp.data as CashfreeOrderResponse;
+  } catch (error: any) {
+    console.error('Error:', error.response);
+    throw error;
   }
 }
-
-
-
-// Updated cfFetchOrder to use initialized instance
 async function cfFetchOrder(orderId: string) {
   const cashfree = initCashfree();
   try {
-    const resp = await cashfree.PGFetchOrder(orderId);
-    return resp.data as CashfreeOrderResponse;
-  } catch (e) {
     const resp = await cashfree.PGFetchOrder('2023-08-01', orderId);
     return resp.data as CashfreeOrderResponse;
+  } catch (e: any) {
+    console.error('Cashfree PGFetchOrder error:', e);
+    if (e.response) {
+      console.error('Cashfree API response:', e.response.data);
+    }
+    throw e;
   }
 }
-
-// ─────────────────────────────────────────────────────────────
 
 export async function POST(request: NextRequest) {
   try {
     const body: CreateOrderRequest = await request.json();
+    console.log('Received payload:', body);
     const {
       amount,
       customer_name,
@@ -110,10 +102,8 @@ export async function POST(request: NextRequest) {
       client_id,
       order_type,
       return_url,
-      account_number,
-      ifsc_code,
-      cashfree_bank_code,
-      currency,
+      is_new_strategy,
+      strategy_type
     } = body;
 
     // Required field checks
@@ -124,12 +114,10 @@ export async function POST(request: NextRequest) {
     if (!customer_phone) missing.push('customer_phone');
     if (!nuvama_code) missing.push('nuvama_code');
     if (!client_id) missing.push('client_id');
-    if (!account_number) missing.push('account_number');
-    if (!ifsc_code) missing.push('ifsc_code');
     if (missing.length) {
       return NextResponse.json(
         { error: `Missing required fields: ${missing.join(', ')}`, missing_fields: missing, received_data: Object.keys(body) },
-        { status: 400 },
+        { status: 400 }
       );
     }
 
@@ -154,9 +142,7 @@ export async function POST(request: NextRequest) {
         client_id,
         customer_name,
         customer_email,
-        amount,
-        account_number: `***${account_number.slice(-4)}`,
-        ifsc_code,
+        amount
       });
 
       return NextResponse.json({
@@ -166,81 +152,73 @@ export async function POST(request: NextRequest) {
         nuvama_code,
         client_id,
         amount,
-        order_type: 'sip',
-        tpv_details: {
-          nuvama_code,
-          client_name: customer_name,
-          account_number_masked: `***${account_number.slice(-4)}`,
-          ifsc_code,
-          tpv_enabled: true,
-        },
+        order_type: 'sip'
       });
     }
 
-    // Build Create Order request (with TPV fields)
-    const customer_details: any = {
+    // Build Create Order request
+    const customer_details = {
       customer_id: client_id,
       customer_name,
       customer_email,
-      customer_phone: cleanPhone,
+      customer_phone: cleanPhone
     };
-    if (account_number && ifsc_code) {
-      customer_details.customer_bank_account_number = account_number;
-      customer_details.customer_bank_ifsc = ifsc_code;
-    }
-    if (cashfree_bank_code) {
-      customer_details.customer_bank_code = cashfree_bank_code; // NetBanking bank code if you want NB-only TPV
-    }
 
+    // Use a public URL for local development (replace with ngrok or staging URL)
+    const baseUrl = process.env.PUBLIC_BASE_URL || 'https://your-ngrok-subdomain.ngrok.io'; // Set in .env or use ngrok
     const orderData: any = {
       order_id: orderId,
       order_amount: amount,
-      order_currency: currency || 'INR',
+      order_currency: 'INR',
       customer_details,
       order_meta: {
-        return_url: return_url || `${request.nextUrl.origin}/payment/success?order_id=${orderId}`,
-        notify_url: `${request.nextUrl.origin}/api/cashfree/webhook`,
+        return_url: return_url || `${baseUrl}/payment/success?order_id=${orderId}`,
+        notify_url: `${baseUrl}/api/cashfree/webhook`
       },
       order_note: `Investment - Account ID: ${nuvama_code}, Client: ${customer_name}, Amount: ₹${amount.toFixed(2)}`,
       order_tags: {
         nuvama_code,
         client_id,
-        order_type: 'one_time',
+        // FIXED: Set order_type based on is_new_strategy
+        order_type: is_new_strategy ? 'new_strategy' : 'one_time',
         source: 'qode_investor_portal',
-        tpv_enabled: 'true',
-        account_number_last4: account_number.slice(-4),
-        ifsc_code,
-      },
+        is_new_strategy: is_new_strategy ? 'true' : 'false',
+        ...(strategy_type && { strategy_type })
+      }
     };
+
+    console.log('Sending orderData to Cashfree:', orderData); // Log for debugging
 
     // Create order via SDK
     const cfOrder = await cfCreateOrder(orderData);
 
+    // FIXED: Set payment_type based on is_new_strategy
+    const paymentType = is_new_strategy ? 'NEW_STRATEGY' : 'ONE_TIME';
+
     // Persist basic transaction details
-    // In POST handler, after cfCreateOrder
-      const result = await pool.query(
-  `INSERT INTO payment_transactions (
-    order_id, client_id, nuvama_code, client_name, amount, currency, payment_type,
-    payment_status, payment_session_id, cf_order_id, account_number, ifsc_code, created_at
-  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
-  RETURNING id`,
-  [
-    cfOrder.order_id,
-    client_id,
-    nuvama_code,
-    customer_name,
-    amount,
-    'INR',
-    'ONE_TIME',
-    cfOrder.order_status || 'CREATED',
-    cfOrder.payment_session_id,
-    cfOrder.cf_order_id || cfOrder.order_id,
-    account_number,
-    ifsc_code,
-    new Date(cfOrder.created_at),
-  ]
-);
-console.log('Inserted one-time transaction with ID:', result.rows[0].id);
+    const result = await pool.query(
+      `INSERT INTO payment_transactions (
+        order_id, client_id, nuvama_code, client_name, amount, currency, payment_type,
+        payment_status, payment_session_id, cf_order_id, created_at, is_new_strategy, strategy_type
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      RETURNING id`,
+      [
+        cfOrder.order_id,
+        client_id,
+        nuvama_code,
+        customer_name,
+        amount,
+        'INR',
+        paymentType, // Use the conditional payment type
+        cfOrder.order_status || 'CREATED',
+        cfOrder.payment_session_id,
+        cfOrder.cf_order_id || cfOrder.order_id,
+        new Date(),
+        is_new_strategy || false, // Store the new strategy flag
+        strategy_type || null // Store the strategy type
+      ]
+    );
+    console.log(`Inserted ${paymentType} transaction with ID:`, result.rows[0].id);
 
     return NextResponse.json({
       success: true,
@@ -250,30 +228,25 @@ console.log('Inserted one-time transaction with ID:', result.rows[0].id);
       order_currency: cfOrder.order_currency,
       order_status: cfOrder.order_status,
       order_expiry_time: cfOrder.order_expiry_time,
-      payment_link: cfOrder.payment_link || null, // often null for Orders
-      environment: process.env.ENV || 'development',
-      tpv_enabled: true,
-      tpv_details: {
-        nuvama_code,
-        client_name: customer_name,
-        account_number_masked: `***${account_number.slice(-4)}`,
-        ifsc_code,
-        tpv_enabled: true,
-      },
+      payment_link: cfOrder.payment_link || null,
+      // Include these for the success page
+      payment_type: paymentType,
+      is_new_strategy: is_new_strategy || false,
+      strategy_type: strategy_type || null
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating Cashfree order via SDK:', error);
-    const msg = error instanceof Error ? error.message : 'Unknown error';
-    const details = error instanceof Error ? error.stack || error.message : String(error);
+    const msg = error.message || 'Unknown error';
+    const details = error.response ? error.response.data : (error.stack || error.message || String(error));
     return NextResponse.json(
       {
         error: msg,
         message: details,
         error_code: 'ORDER_CREATION_FAILED',
         timestamp: new Date().toISOString(),
-        environment: process.env.ENV || 'development',
+        environment: process.env.ENV || 'development'
       },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }
@@ -290,18 +263,20 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      ...order,
+      ...order
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error fetching order via SDK:', error);
+    const msg = error.message || 'Unknown error';
+    const details = error.response ? error.response.data : (error.stack || error.message || String(error));
     return NextResponse.json(
       {
         error: 'Internal server error',
-        message: error instanceof Error ? error.message : 'Unknown error',
+        message: details,
         error_code: 'ORDER_STATUS_CHECK_FAILED',
-        timestamp: new Date().toISOString(),
+        timestamp: new Date().toISOString()
       },
-      { status: 500 },
+      { status: 500 }
     );
   }
 }

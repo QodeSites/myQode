@@ -49,7 +49,7 @@ const DOC_TEMPLATES = [
 ];
 
 export default function AccountDocumentsPage() {
-  const { selectedClientId, clientLoading } = useClient();
+  const { selectedClientId, clientLoading, clients } = useClient();
   const [docSections, setDocSections] = useState<DocSection[]>(() =>
     // Initialize once with empty files
     DOC_TEMPLATES.map((template) => ({
@@ -61,8 +61,96 @@ export default function AccountDocumentsPage() {
     }))
   );
   const [fetchedClientIds, setFetchedClientIds] = useState<Set<string>>(new Set());
+  // Cache successful clientId mappings for each client name
+  const [clientIdMappings, setClientIdMappings] = useState<Map<string, string>>(new Map());
 
-  // Function to fetch files for a specific folder
+  // Get all client IDs for the same client name as the selected client
+  const getRelatedClientIds = useCallback((currentClientId: string): string[] => {
+    const currentClient = clients.find(c => c.clientid === currentClientId);
+    if (!currentClient) return [currentClientId];
+    
+    // Find all clients with the same name
+    const relatedClients = clients.filter(c => c.clientname === currentClient.clientname);
+    return relatedClients.map(c => c.clientid);
+  }, [clients]);
+
+  // Function to try fetching from multiple client IDs
+  const tryFetchWithFallback = useCallback(async (
+    sectionId: string, 
+    folderName: string, 
+    primaryClientId: string
+  ): Promise<DocFile[]> => {
+    const currentClient = clients.find(c => c.clientid === primaryClientId);
+    if (!currentClient) throw new Error("Client not found");
+
+    const clientName = currentClient.clientname;
+    
+    // Check if we already have a successful mapping for this client name
+    const cachedClientId = clientIdMappings.get(clientName);
+    const clientIdsToTry = cachedClientId 
+      ? [cachedClientId] // Try cached one first
+      : getRelatedClientIds(primaryClientId);
+
+    // If we have a cached mapping but it's not in our current list, add the primary client ID
+    if (cachedClientId && !clientIdsToTry.includes(primaryClientId)) {
+      clientIdsToTry.unshift(primaryClientId);
+    }
+
+    let lastError: Error | null = null;
+
+    for (const clientId of clientIdsToTry) {
+      try {
+        console.log(`Trying to fetch documents for clientId: ${clientId} (client: ${clientName})`);
+        
+        const folderUrl = `https://vault.qodeinvest.com/client-documents/ClientList/${clientId}/${encodeURIComponent(folderName)}`;
+        const response = await fetch(folderUrl);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: Failed to fetch from ${clientId}`);
+        }
+
+        const htmlText = await response.text();
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(htmlText, "text/html");
+        const links = doc.querySelectorAll("a[href]");
+        const files: DocFile[] = [];
+
+        links.forEach((link) => {
+          const href = link.getAttribute("href");
+          const text = link.textContent?.trim();
+
+          if (
+            href &&
+            text &&
+            !href.includes("../") &&
+            !href.endsWith("/") &&
+            text.includes(".") &&
+            text !== ".gitkeep"
+          ) {
+            const fileName = decodeURIComponent(text);
+            const fileUrl = `${folderUrl}/${encodeURIComponent(fileName)}`;
+            files.push({ name: fileName, url: fileUrl });
+          }
+        });
+
+        // Success! Cache this client ID for future requests
+        if (files.length > 0 || clientId === primaryClientId) {
+          console.log(`Successfully fetched ${files.length} files using clientId: ${clientId}`);
+          setClientIdMappings(prev => new Map(prev).set(clientName, clientId));
+          return files;
+        }
+      } catch (error) {
+        console.log(`Failed to fetch from clientId ${clientId}:`, error);
+        lastError = error as Error;
+        continue; // Try next client ID
+      }
+    }
+
+    // If we get here, all attempts failed
+    throw lastError || new Error("All client ID attempts failed");
+  }, [clients, clientIdMappings, getRelatedClientIds]);
+
+  // Function to fetch files for a specific folder with fallback logic
   const fetchFolderFiles = useCallback(async (sectionId: string, folderName: string, clientId: string) => {
     if (!clientId) return;
 
@@ -76,39 +164,8 @@ export default function AccountDocumentsPage() {
     );
 
     try {
-      const folderUrl = `https://vault.qodeinvest.com/client-documents/ClientList/${clientId}/${encodeURIComponent(
-        folderName
-      )}`;
-
-      const response = await fetch(folderUrl);
-      if (!response.ok) {
-        throw new Error("Failed to fetch folder contents");
-      }
-
-      const htmlText = await response.text();
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(htmlText, "text/html");
-      const links = doc.querySelectorAll("a[href]");
-      const files: DocFile[] = [];
-
-      links.forEach((link) => {
-        const href = link.getAttribute("href");
-        const text = link.textContent?.trim();
-
-        if (
-          href &&
-          text &&
-          !href.includes("../") &&
-          !href.endsWith("/") &&
-          text.includes(".") &&
-          text !== ".gitkeep"
-        ) {
-          const fileName = decodeURIComponent(text);
-          const fileUrl = `${folderUrl}/${encodeURIComponent(fileName)}`;
-          files.push({ name: fileName, url: fileUrl });
-        }
-      });
-
+      const files = await tryFetchWithFallback(sectionId, folderName, clientId);
+      
       // Successfully fetched - update files and clear error
       setDocSections((prev) =>
         prev.map((section) =>
@@ -134,7 +191,7 @@ export default function AccountDocumentsPage() {
         )
       );
     }
-  }, []);
+  }, [tryFetchWithFallback]);
 
   // Update disabled state when client loading or selection changes
   useEffect(() => {
@@ -253,7 +310,7 @@ export default function AccountDocumentsPage() {
                         {section.description}
                         {section.hasError && (
                           <span className="text-destructive ml-2">
-                            {/* (Failed to refresh - showing cached files) */}
+                            (Failed to load documents)
                           </span>
                         )}
                       </p>
@@ -265,7 +322,7 @@ export default function AccountDocumentsPage() {
                         </span>
                       ) : (
                         <div className="flex items-center gap-2">
-                          {/* {section.hasError && (
+                          {section.hasError && (
                             <Button
                               onClick={() => retryFetch(section.id, section.folderName)}
                               variant="outline"
@@ -274,7 +331,7 @@ export default function AccountDocumentsPage() {
                             >
                               Retry
                             </Button>
-                          )} */}
+                          )}
                           <Button
                             onClick={() => toggleSection(section.id)}
                             className="bg-primary"

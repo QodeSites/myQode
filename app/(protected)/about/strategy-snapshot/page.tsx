@@ -15,29 +15,29 @@ type Section = {
 
 const SECTIONS: Section[] = [
   {
-    title: "Qode All Weather (QAW)",
+    title: "Qode All Weather (QAW)™",
     color: "#008455",
     accent: "#001E13",
     description:
       "Qode All Weather (QAW) is a multi-asset portfolio crafted to deliver consistent long-term performance without timing the markets. This robust framework ensures strong probability of outperforming large cap indices over longer horizons.",
-    items: ["Large cap Alpha", "Highest Sharpe", "Smarter Asset Mix", "Downside Cushion"],
+    items: ["Large cap Alpha", "Highest Sharpe*", "Smart Asset Mix", "Downside Cushion"],
     videoNote: "Watch video from Fund Manager",
     videoUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ",
     previewUrl: "https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
   },
   {
-    title: "Qode Tactical Fund (QTF)",
+    title: "Qode Tactical Fund (QTF)™",
     color: "#550e0e",
     accent: "#360404",
     description:
       "Qode Tactical Fund harnesses the power of momentum, systematically allocating to the strongest market trends while avoiding laggards. This allows the strategy to capture upside faster and deliver higher long-term returns.",
-    items: ["Momentum Driven", "Tactical Rebalance", "Regime Switch", "Hedge Overlay"],
+    items: ["Momentum Driven", "Tactical Rebalance", "Regime Switch", "Hedge Overlay*"],
     videoNote: "Watch video from Fund Manager",
     videoUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ",
     previewUrl: "https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
   },
   {
-    title: "Qode Growth Fund (QGF)",
+    title: "Qode Growth Fund (QGF)™",
     color: "#0b3452",
     accent: "#051E31",
     description:
@@ -48,28 +48,34 @@ const SECTIONS: Section[] = [
     previewUrl: "https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
   },
   {
-    title: "Qode Future Horizons (QFH)",
+    title: "Qode Future Horizons (QFH)™",
     color: "#A78C11",
     accent: "#554602",
     description:
       "Qode Future Horizons (QFH) targets high-growth, under-researched small and micro-cap companies with limited institutional coverage. The strategy seeks asymmetric payoffs, accepting higher volatility and drawdowns.",
-    items: ["Quantamental", "Multi-bagger", "Concentrated", "Uncharted"],
+    items: ["Quantamental", "Multi-bagger", "Concentrated", "Uncharted*"],
     videoNote: "Watch video from Fund Manager",
     videoUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ",
     previewUrl: "https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
   },
 ]
 
+const GLOSSARY = {
+  "Highest Sharpe*": "A measure of risk-adjusted returns - higher values indicate better performance per unit of risk taken.",
+  "Hedge Overlay*": "Risk management technique using derivatives to protect against adverse market movements while maintaining upside potential.",
+  "Uncharted*": "Investing in lesser-known companies with limited analyst coverage, potentially offering undiscovered opportunities."
+}
+
 function Pill({ children, color }: { children: React.ReactNode; color: string }) {
   return (
     <div 
-      className="flex justify-center align-center group relative overflow-hidden rounded-xl border-2 bg-white/80 px-6 py-4 text-center font-medium text-gray-800 shadow-sm transition-all duration-300 hover:scale-105 hover:shadow-lg backdrop-blur-sm"
+      className="flex justify-center items-center group relative overflow-hidden rounded-xl border-2 bg-white/80 px-4 py-3 text-center font-medium text-gray-800 shadow-sm transition-all duration-300 hover:scale-105 hover:shadow-lg backdrop-blur-sm min-h-[3rem]"
       style={{ 
         borderColor: color,
         background: `linear-gradient(135deg, white 0%, ${color}08 100%)`
       }}
     >
-      <span className="flex text-sm justify-center items-center relative z-8">{children}</span>
+      <span className="text-sm leading-tight relative z-8">{children}</span>
     </div>
   )
 }
@@ -85,11 +91,11 @@ function VideoModal({
 }) {
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-5 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
       <div className="relative w-full max-w-4xl mx-4 rounded-2xl bg-white shadow-2xl overflow-hidden">
         <button
           onClick={onClose}
-          className="absolute right-4 top-4 z-8 flex h-10 w-10 items-center justify-center rounded-full bg-black/20 text-white backdrop-blur-sm transition-colors hover:bg-black/40"
+          className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-full bg-black/20 text-white backdrop-blur-sm transition-colors hover:bg-black/40"
           aria-label="Close video"
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -129,7 +135,7 @@ function StrategySection({
   return (
     <section className="h-full">
       <div 
-        className="relative h-full overflow-hidden rounded-3xl shadow-2xl"
+        className="relative h-full overflow-hidden rounded-3xl shadow-2xl flex flex-col min-h-[400px]"
         style={{
           background: `linear-gradient(to right, ${color} 0%, ${accent} 100%)`
         }}
@@ -146,9 +152,9 @@ function StrategySection({
           </svg>
         </div>
 
-        <div className="relative h-full z-8 p-8">
+        <div className="relative flex-1 z-8 p-8 flex flex-col">
           {/* Header */}
-          <div className="mb-8">
+          <div className="mb-6">
             <div className="flex items-center gap-4 mb-4">
               <div 
                 className="h-2 w-16 rounded-full"
@@ -157,15 +163,15 @@ function StrategySection({
               <h2 className="text-2xl font-bold text-white tracking-tight">{title}</h2>
             </div>
             {description && (
-              <p className="text-white/90 text-md leading-relaxed max-w-4xl">
+              <p className="text-white/90 text-md leading-relaxed">
                 {description}
               </p>
             )}
           </div>
 
-          {/* Content Grid */}
-          <div className={`grid gap-8 ${isEven ? 'lg:grid-cols-5' : 'lg:grid-cols-5'}`}>
-            <div className={`${isEven ? 'lg:col-span-5 lg:order-1' : 'lg:col-span-5 lg:order-2'}`}>
+          {/* Content Grid - Takes remaining space */}
+          <div className="flex-1 flex items-center">
+            <div className="w-full">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {items.map((label, i) => (
                   <Pill key={`${title}-${i}`} color={color}>
@@ -174,68 +180,24 @@ function StrategySection({
                 ))}
               </div>
             </div>
-
-            <div className={`hidden ${isEven ? 'lg:col-span-2 lg:order-2' : 'lg:col-span-2 lg:order-1'}`}>
-              <button
-                onClick={() => onVideoClick(videoUrl || "")}
-                className="group relative h-48 w-full overflow-hidden rounded-2xl border-4 border-white/20 bg-white/10 backdrop-blur-sm transition-all duration-300 hover:scale-105 hover:border-white/40 hover:shadow-xl"
-                aria-label={`Play ${title} video`}
-              >
-                {previewUrl ? (
-                  <>
-                    <img
-                      src={previewUrl}
-                      alt={`${title} preview`}
-                      className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-                    <div className="absolute inset-0 flex flex-col items-center justify-center text-white opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                      <div className="rounded-full bg-white/20 p-4 backdrop-blur-sm">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-8 w-8 fill-current"
-                          viewBox="0 0 24 24"
-                          aria-hidden="true"
-                        >
-                          <path d="M8 5v14l11-7z" />
-                        </svg>
-                      </div>
-                      <span className="mt-3 text-sm font-medium">{videoNote}</span>
-                    </div>
-                    {/* Always visible play icon */}
-                    <div className="absolute bottom-4 right-4 rounded-full bg-white/20 p-2 backdrop-blur-sm">
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-4 w-4 fill-current text-white"
-                        viewBox="0 0 24 24"
-                        aria-hidden="true"
-                      >
-                        <path d="M8 5v14l11-7z" />
-                      </svg>
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex h-full items-center justify-center">
-                    <div className="text-center">
-                      <div className="mb-4 rounded-full bg-white/20 p-4 backdrop-blur-sm">
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-8 w-8 fill-current text-white"
-                          viewBox="0 0 24 24"
-                        >
-                          <path d="M8 5v14l11-7z" />
-                        </svg>
-                      </div>
-                      <span className="text-sm font-medium text-white">{videoNote}</span>
-                    </div>
-                  </div>
-                )}
-              </button>
-            </div>
           </div>
         </div>
       </div>
     </section>
+  )
+}
+
+function Tooltip({ term, definition }: { term: string; definition: string }) {
+  return (
+    <div className="group relative inline-block">
+      <span className="cursor-help border-b border-dotted border-muted-foreground/60">
+        {term}
+      </span>
+      <div className="invisible group-hover:visible absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg shadow-lg whitespace-normal w-64 z-10">
+        {definition}
+        <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-4 border-transparent border-t-gray-900"></div>
+      </div>
+    </div>
   )
 }
 
@@ -259,7 +221,7 @@ export default function StrategySnapshotPage() {
         </p>
       </header>
 
-      <div className="space-y-8 grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {SECTIONS.map((section, index) => (
           <StrategySection 
             key={section.title} 
@@ -268,6 +230,19 @@ export default function StrategySnapshotPage() {
             onVideoClick={openVideo} 
           />
         ))}
+      </div>
+
+      {/* Glossary Section */}
+      <div className="mt-12 p-6 bg-gray-50 rounded-xl border">
+        <h3 className="text-lg font-semibold text-foreground mb-4">Glossary</h3>
+        <div className="space-y-3">
+          {Object.entries(GLOSSARY).map(([term, definition]) => (
+            <div key={term} className="flex flex-col sm:flex-row sm:gap-4">
+              <dt className="font-medium text-foreground min-w-[140px]">{term}</dt>
+              <dd className="text-sm text-muted-foreground leading-relaxed">{definition}</dd>
+            </div>
+          ))}
+        </div>
       </div>
 
       <VideoModal

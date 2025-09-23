@@ -144,7 +144,7 @@ export function FeedbackDialog({
     `
 
     sendEmail({
-      to: 'sanket.shinde@qodeinvest.com',
+      to: 'investor.relations@qodeinvest.com',
       subject: `New Feedback Submission from ${formData.nuvamaCode}`,
       html: emailHtml,
       from: 'investor.relations@qodeinvest.com',

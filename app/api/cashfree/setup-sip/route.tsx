@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import pool from '@/lib/db';
+
 interface CreateSipOrderRequest {
   order_amount: number;
   nuvama_code: string;
@@ -22,6 +23,13 @@ interface CreateSipOrderRequest {
   customer_phone?: string;
 }
 
+interface AccountDetails {
+  client_name: string;
+  account_number: string;
+  ifsc_code: string;
+  phone_number?: string;
+}
+
 interface CashfreeSubscriptionResponse {
   subscription_id: string;
   cf_subscription_id: string;
@@ -39,6 +47,7 @@ function generateOrderId(): string {
   const rnd = Math.random().toString(36).substring(2, 8);
   return `qode_${ts}_${rnd}`;
 }
+
 // Sanitize string to include only alphanumeric characters and allowed special characters
 function sanitizeDescription(description: string): string {
   return description.replace(/[^a-zA-Z0-9_-]/g, ''); // Allow only alphanumeric, underscore, and hyphen
@@ -113,6 +122,7 @@ export async function POST(request: NextRequest) {
       account_number,
       ifsc_code,
       cashfree_bank_code,
+      client_id, // Fixed: properly destructure client_id
       customer_name,
       customer_email,
       customer_phone,
@@ -332,14 +342,14 @@ export async function POST(request: NextRequest) {
     // Store transaction and SIP details
     const result = await pool.query(
       `INSERT INTO payment_transactions (
-    order_id, client_id, nuvama_code, client_name, amount, currency, payment_type,
-    payment_status, payment_session_id, cf_subscription_id, account_number, ifsc_code,
-    frequency, start_date, end_date, total_installments, next_charge_date, created_at
-  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
-  RETURNING id`,
+        order_id, client_id, nuvama_code, client_name, amount, currency, payment_type,
+        payment_status, payment_session_id, cf_subscription_id, account_number, ifsc_code,
+        frequency, start_date, end_date, total_installments, next_charge_date, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+      RETURNING id`,
       [
         subscriptionResponse.subscription_id,
-        client_id || customer_phone, // Use customer_phone as fallback
+        client_id || customer_phone, // Fixed: Now client_id is properly defined
         nuvama_code,
         customer_name,
         parseFloat(order_amount.toString()),
@@ -357,11 +367,10 @@ export async function POST(request: NextRequest) {
         subscriptionResponse.next_schedule_date
           ? new Date(subscriptionResponse.next_schedule_date).toISOString().split('T')[0]
           : null,
-        new Date(subscriptionResponse.authorization_details.authorization_time),
+        new Date().toISOString(), // Fixed: Use current timestamp instead of subscription response timestamp
       ]
     );
     console.log('Inserted SIP transaction with ID:', result.rows[0].id);
-
 
     return NextResponse.json({
       success: true,

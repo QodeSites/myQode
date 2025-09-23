@@ -3,7 +3,7 @@ import { useLayoutEffect, useRef, useState } from "react"
 import { Plus, X } from "lucide-react"
 import { AnimatePresence, motion } from "framer-motion"
 
-type QA = { q: string; a: string }
+type QA = { q: string; a: string | React.ReactNode }
 type Section = { title: string; items: QA[] }
 
 const sections: Section[] = [
@@ -93,7 +93,20 @@ const sections: Section[] = [
     items: [
       {
         q: "Q15. How do I log in to see my portfolio?",
-        a: "Log in via WealthSpectrum using the credentials shared at onboarding.",
+        a: (
+          <>
+            Log in via{" "}
+            <a
+              href="https://eclientreporting.nuvamaassetservices.com/wealthspectrum/app/loginWith"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[#008455] hover:text-[#006644] underline font-medium"
+            >
+              WealthSpectrum
+            </a>{" "}
+            using your registered email id below is the link{" "}
+          </>
+        ),
       },
       {
         q: "Q16. What if I forget my login password?",
@@ -241,7 +254,7 @@ export default function FAQsGlossaryPage() {
                     {/* Accordion answer inside the card with height animation */}
                     <Collapse open={isOpen}>
                       <div className="px-4 pb-4 -mt-1">
-                        <p className="text-sm text-muted-foreground">{item.a}</p>
+                        <div className="text-sm text-muted-foreground">{item.a}</div>
                       </div>
                     </Collapse>
                   </div>

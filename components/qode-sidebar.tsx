@@ -176,6 +176,14 @@ export default function QodeSidebar({ open = false, onClose }: QodeSidebarProps)
                 </NavLink>
               </li>
               <li>
+                <NavLink
+                  href="/experience/portfolio-snapshot"
+                  icon={<BookOpen className="h-4 w-4" />}
+                >
+                  Portfolio Snapshot
+                </NavLink>
+              </li>
+              <li>
                 <NavLink href="/experience/account-services" icon={<Settings className="h-4 w-4" />}>
                   Account Services
                 </NavLink>

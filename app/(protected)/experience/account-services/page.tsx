@@ -1,9 +1,9 @@
 "use client";
 import type React from "react";
 import { useState, useRef, useEffect } from "react";
-import { X, IndianRupee, Lock, CreditCard, TrendingUp, CheckCircle, Calendar, Loader, Info, RefreshCw, Settings } from "lucide-react";
+import { X, IndianRupee, Lock, CreditCard, TrendingUp, CheckCircle, Calendar, Loader, Info, RefreshCw, Settings, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useToast } from "@/hooks/use-toast";
+import { toast, useToast } from "@/hooks/use-toast";
 import { useClient } from "@/contexts/ClientContext";
 import { AlertTriangle } from 'lucide-react';
 import {
@@ -93,6 +93,10 @@ function InfoCard({
   );
 }
 
+/* ---------------------------
+   Add Funds / SIP / New Strategy Modal - Enhanced with New Strategy Tab
+   Modified to send email before Cashfree payment/subscription
+---------------------------- */
 async function sendEmail(emailData: {
   to: string;
   subject: string;
@@ -107,6 +111,14 @@ async function sendEmail(emailData: {
   [key: string]: any;
 }) {
   try {
+    console.log("🚀 sendEmail function called with data:", {
+    to: emailData.to,
+    subject: emailData.subject,
+    inquiry_type: emailData.inquiry_type,
+    nuvama_code: emailData.nuvama_code,
+    htmlLength: emailData.html?.length,
+    timestamp: new Date().toISOString()
+  });
     const response = await fetch("/api/send-email", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -137,35 +149,34 @@ async function sendEmail(emailData: {
   }
 }
 
-/* ---------------------------
-   Add Funds / SIP Modal - Updated for SIP API Integration and User Data from Bank Details
----------------------------- */
 function AddFundsModal({
   isOpen,
   onClose,
   selectedClientCode,
   selectedClientId,
   clients,
+  customer_name,
+  customer_email,
+  customer_phone,
 }: {
   isOpen: boolean;
   onClose: () => void;
   selectedClientCode: string;
   selectedClientId: string;
   clients: { clientid: string; clientcode: string }[];
+  customer_name: string;
+  customer_email: string;
+  customer_phone: string;
 }) {
-  const [activeTab, setActiveTab] = useState<"oneTime" | "sip">("oneTime");
+
+  console.log(customer_name, customer_email, customer_phone);
+  const [activeTab, setActiveTab] = useState<"oneTime" | "sip" | "newStrategy">("oneTime");
   const [loading, setLoading] = useState(false);
   const [paymentStatus, setPaymentStatus] = useState("");
   const [showTooltip, setShowTooltip] = useState(false);
-  const [accountDetails, setAccountDetails] = useState<{
-    client_name: string;
-    account_number_masked: string;
-    account_number: string;
-    ifsc_code: string;
-    cashfree_bank_code: string;
-    phone_number: string;
-    email: string;
-  } | null>(null);
+  const [showSummaryModal, setShowSummaryModal] = useState(false);
+  const [userInvestments, setUserInvestments] = useState([]); // Track user's current investments
+  const [loadingInvestments, setLoadingInvestments] = useState(false);
   const [formData, setFormData] = useState({ nuvamaCode: selectedClientCode || "QAW0001", amount: "" });
   const [sipData, setSipData] = useState({
     frequency: 'monthly',
@@ -173,85 +184,316 @@ function AddFundsModal({
     endDate: '',
     amount: ''
   });
+  const [newStrategyData, setNewStrategyData] = useState({
+    selectedStrategy: '',
+    amount: ''
+  });
   const [errors, setErrors] = useState({
     nuvamaCode: "",
     amount: "",
     startDate: "",
     endDate: "",
+    selectedStrategy: "",
   });
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
   const SIP_ENABLED = true;
+  console.log('activeTab:', activeTab);
+  // Email sending helper functions - ONLY SEND AFTER SUCCESSFUL PAYMENT
+  const sendPaymentSuccessEmail = async (amount: string, paymentResult: any, investmentType: string) => {
+    try {
+      const accountCode = formData.nuvamaCode;
+      const strategyName = activeTab === "newStrategy"
+        ? strategy[newStrategyData.selectedStrategy]
+        : getStrategyName(formData.nuvamaCode);
+
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9;">
+          <div style="background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <div style="text-align: center; margin-bottom: 30px;">
+              <h1 style="color: #8B4513; margin: 0; font-size: 28px;">Payment Successful</h1>
+              <div style="width: 50px; height: 3px; background-color: #D4AF37; margin: 10px auto;"></div>
+            </div>
+            
+            <div style="background-color: #e8f5e8; padding: 20px; border-radius: 8px; margin-bottom: 25px;">
+              <h2 style="color: #2e7d32; margin: 0 0 15px 0; font-size: 20px;">
+                ${activeTab === "newStrategy" ? "🎉 New Strategy Investment Completed!" : "✅ Payment Completed!"}
+              </h2>
+              <p style="color: #2e7d32; margin: 0; font-size: 16px;">
+                Your ${activeTab === "newStrategy" ? "new strategy investment" : "payment"} has been processed successfully.
+              </p>
+            </div>
+
+            <div style="background-color: #F5F5DC; padding: 20px; border-radius: 8px; margin-bottom: 25px;">
+              <h3 style="color: #8B4513; margin: 0 0 15px 0; font-size: 18px;">Payment Details</h3>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd;"><strong>Account ID:</strong></td>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd; text-align: right;">${accountCode}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd;"><strong>Strategy:</strong></td>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd; text-align: right;">${strategyName}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd;"><strong>Amount:</strong></td>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd; text-align: right; color: #4CAF50; font-size: 18px;"><strong>₹${amount}</strong></td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd;"><strong>Investment Type:</strong></td>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd; text-align: right;">
+                    ${activeTab === "newStrategy" ? "New Strategy Investment" : "One-time Payment"}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd;"><strong>Transaction ID:</strong></td>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd; text-align: right;">${paymentResult?.order_id || 'N/A'}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0;"><strong>Date:</strong></td>
+                  <td style="padding: 8px 0; text-align: right;">${new Date().toLocaleDateString()}</td>
+                </tr>
+              </table>
+            </div>
+
+            ${activeTab === "newStrategy" ? `
+              <div style="background-color: #e8f5e8; padding: 20px; border-radius: 8px; margin-bottom: 25px; border-left: 4px solid #4CAF50;">
+                <h3 style="color: #2e7d32; margin: 0 0 10px 0; font-size: 16px;">🚀 New Strategy Investment Completed!</h3>
+                <p style="color: #2e7d32; margin: 0; font-size: 14px;">
+                  Investment in your new Qode strategy has been completed successfully. Your new account ID is <strong>${accountCode}</strong>.
+                  Your investment is now active and being managed by our team.
+                </p>
+              </div>
+            ` : ''}
+
+            <div style="background-color: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 25px; border: 1px solid #2196F3;">
+              <p style="color: #1976d2; margin: 0; font-size: 14px;">
+                <strong>✅ Confirmation:</strong> This payment has been successfully processed and confirmed by our payment gateway.
+              </p>
+            </div>
+
+            <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+              <p style="color: #666; margin: 0 0 10px 0; font-size: 14px;">
+                Questions about your investment? Contact our team:
+              </p>
+              <p style="color: #8B4513; margin: 0; font-size: 16px;">
+                📧 <a href="mailto:support@qodeinvest.com" style="color: #8B4513; text-decoration: none;">support@qodeinvest.com</a>
+              </p>
+            </div>
+          </div>
+        </div>
+      `;
+
+      console.log('Sending payment success notification to Qode Investor Relations:', {
+        to: 'sanket.shinde@qodeinvest.com',
+        subject: `Payment Completed - ₹${amount} ${activeTab === "newStrategy" ? "New Strategy Investment" : "Investment"} | Qode Advisors`,
+        inquiry_type: activeTab === "newStrategy" ? "new_strategy_payment_success" : "payment_success",
+        nuvama_code: accountCode,
+        client_id: selectedClientId,
+      });
+
+      const result = await sendEmail({
+        to: 'investor.relations@qodeinvest.com',
+        subject: `Payment Completed - ₹${amount} ${activeTab === "newStrategy" ? "New Strategy Investment" : "Investment"} | Qode Advisors`,
+        html: emailHtml,
+        inquiry_type: activeTab === "newStrategy" ? "new_strategy_payment_success" : "payment_success",
+        nuvama_code: accountCode,
+        client_id: selectedClientId,
+        user_email: "investor.relations@qodeinvest.com",
+        priority: "high",
+        from: "investor.relations@qodeinvest.com",
+        fromName: "Qode Investor Relations",
+        payment_amount: amount,
+        investment_type: investmentType,
+        transaction_id: paymentResult?.order_id || 'N/A',
+        payment_status: "success"
+      });
+
+      console.log('Payment success notification sent successfully:', result);
+      return result;
+    } catch (error) {
+      console.error('Error sending payment success notification:', error);
+      throw error;  
+    }
+  };
+
+  const sendSipSuccessEmail = async (sipResult: any) => {
+    try {
+      const accountCode = formData.nuvamaCode;
+      const strategyName = getStrategyName(formData.nuvamaCode);
+      const amount = formData.amount;
+
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9;">
+          <div style="background-color: white; padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+            <div style="text-align: center; margin-bottom: 30px;">
+              <h1 style="color: #8B4513; margin: 0; font-size: 28px;">SIP Authorized Successfully</h1>
+              <div style="width: 50px; height: 3px; background-color: #D4AF37; margin: 10px auto;"></div>
+            </div>
+            
+            <div style="background-color: #e8f5e8; padding: 20px; border-radius: 8px; margin-bottom: 25px;">
+              <h2 style="color: #2e7d32; margin: 0 0 15px 0; font-size: 20px;">
+                🔄 SIP Successfully Authorized!
+              </h2>
+              <p style="color: #2e7d32; margin: 0; font-size: 16px;">
+                Your Systematic Investment Plan (SIP) has been successfully authorized and is now active.
+              </p>
+            </div>
+
+            <div style="background-color: #F5F5DC; padding: 20px; border-radius: 8px; margin-bottom: 25px;">
+              <h3 style="color: #8B4513; margin: 0 0 15px 0; font-size: 18px;">SIP Details</h3>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd;"><strong>Account ID:</strong></td>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd; text-align: right;">${accountCode}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd;"><strong>Strategy:</strong></td>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd; text-align: right;">${strategyName}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd;"><strong>SIP Amount:</strong></td>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd; text-align: right; color: #4CAF50; font-size: 18px;"><strong>₹${amount}</strong></td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd;"><strong>Frequency:</strong></td>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd; text-align: right; text-transform: capitalize;">${sipData.frequency}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd;"><strong>Start Date:</strong></td>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd; text-align: right;">${new Date(sipData.startDate).toLocaleDateString()}</td>
+                </tr>
+                ${sipData.endDate ? `
+                  <tr>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #ddd;"><strong>End Date:</strong></td>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #ddd; text-align: right;">${new Date(sipData.endDate).toLocaleDateString()}</td>
+                  </tr>
+                ` : `
+                  <tr>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #ddd;"><strong>Duration:</strong></td>
+                    <td style="padding: 8px 0; border-bottom: 1px solid #ddd; text-align: right; color: #ff9800;">Indefinite</td>
+                  </tr>
+                `}
+                <tr>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd;"><strong>Subscription ID:</strong></td>
+                  <td style="padding: 8px 0; border-bottom: 1px solid #ddd; text-align: right;">${sipResult?.subscription_id || 'N/A'}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0;"><strong>Authorization Date:</strong></td>
+                  <td style="padding: 8px 0; text-align: right;">${new Date().toLocaleDateString()}</td>
+                </tr>
+              </table>
+            </div>
+
+            <div style="background-color: #e3f2fd; padding: 20px; border-radius: 8px; margin-bottom: 25px; border-left: 4px solid #2196F3;">
+              <h3 style="color: #1976d2; margin: 0 0 10px 0; font-size: 16px;">📅 SIP Status: Active</h3>
+              <ul style="color: #1976d2; margin: 0; padding-left: 20px; font-size: 14px;">
+                <li>Your SIP is now active and authorized. The first deduction will occur on ${new Date(sipData.startDate).toLocaleDateString()}.</li>
+                <li>Subsequent deductions will happen automatically every ${sipData.frequency}.</li>
+                <li>You can manage your SIP anytime from your dashboard.</li>
+              </ul>
+            </div>
+
+            <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+              <p style="color: #666; margin: 0 0 10px 0; font-size: 14px;">
+                Questions about your SIP? Contact our team:
+              </p>
+              <p style="color: #8B4513; margin: 0; font-size: 16px;">
+                📧 <a href="mailto:support@qodeinvest.com" style="color: #8B4513; text-decoration: none;">support@qodeinvest.com</a>
+              </p>
+            </div>
+          </div>
+        </div>
+      `;
+
+      const result = await sendEmail({
+        to: "investor.relations@qodeinvest.com",
+        subject: `SIP Authorized Successfully - ₹${amount} ${sipData.frequency} | ${strategyName} | Qode Advisors`,
+        html: emailHtml,
+        inquiry_type: "sip_success",
+        nuvama_code: accountCode,
+        client_id: selectedClientId,
+        user_email: "investor.relations@qodeinvest.com",
+        priority: "high",
+        sip_amount: amount,
+        sip_frequency: sipData.frequency,
+        sip_start_date: sipData.startDate,
+        sip_end_date: sipData.endDate || 'indefinite',
+        subscription_id: sipResult?.subscription_id || 'N/A',
+        payment_status: "success"
+      });
+
+      console.log('SIP success notification sent successfully:', result);
+      return result;
+    } catch (error) {
+      console.error('Error sending SIP success notification:', error);
+      throw error;
+    }
+  };
+
+  // Strategy mapping
+  const strategy = {
+    'QFH': 'Qode Future Horizons',
+    'QAW': 'Qode All Weather',
+    'QTF': 'Qode Tactical Fund',
+    'QGF': 'Qode Growth Fund'
+  };
+
+  // Get strategy name based on account code
+  const getStrategyName = (accountCode: string) => {
+    const prefix = accountCode.substring(0, 3).toUpperCase();
+    return strategy[prefix] || 'Unknown Strategy';
+  };
+
+  // Get available strategies (not currently invested in)
+  const getAvailableStrategies = () => {
+    const investedPrefixes = userInvestments.map(inv => inv.substring(0, 3).toUpperCase());
+    const allStrategies = Object.keys(strategy);
+    return allStrategies.filter(prefix => !investedPrefixes.includes(prefix));
+  };
+
+  // Fetch user's current investments
+  const fetchUserInvestments = async () => {
+    if (!selectedClientCode) return;
+
+    setLoadingInvestments(true);
+    try {
+      const userStrategies = clients
+        .filter(client => client.clientid === selectedClientId)
+        .map(client => client.clientcode);
+
+      setUserInvestments(userStrategies);
+    } catch (error) {
+      console.error('Error fetching user investments:', error);
+      setUserInvestments([selectedClientCode]);
+    } finally {
+      setLoadingInvestments(false);
+    }
+  };
 
   useEffect(() => {
     setFormData((p) => ({ ...p, nuvamaCode: selectedClientCode || "QAW0001" }));
-  }, [selectedClientCode]);
-
-  useEffect(() => {
-    if (formData.nuvamaCode) {
-      const fetchBankDetails = async () => {
-        try {
-          const response = await fetch(`/api/bank-details?nuvama_code=${encodeURIComponent(formData.nuvamaCode)}`, {
-            method: 'GET',
-            credentials: 'include',
-          });
-          console.log('Bank details API response status:', response.status);
-          if (response.ok) {
-            const data = await response.json();
-            console.log('Bank details fetched:', data);
-            if (data.bankDetails && data.bankDetails.length > 0) {
-              const bankDetail = data.bankDetails[0];
-              setAccountDetails({
-                client_name: bankDetail.client_name || 'Unknown Client',
-                account_number_masked: bankDetail.account_number ? `XXXX-XXXX-${bankDetail.account_number.slice(-4)}` : 'N/A',
-                account_number: bankDetail.account_number || '',
-                ifsc_code: bankDetail.ifsc_code || 'N/A',
-                cashfree_bank_code: bankDetail.cashfree_bank_code || 'CASHFREE',
-                phone_number: bankDetail.phone_number || 'N/A',
-                email: bankDetail.email || 'N/A',
-              });
-            } else {
-              setAccountDetails(null);
-              toast({
-                title: 'Error',
-                description: 'No bank details found for the selected Account ID.',
-                variant: 'destructive',
-              });
-            }
-          } else {
-            console.error('Failed to fetch bank details:', response.status, response.statusText);
-            setAccountDetails(null);
-            toast({
-              title: 'Error',
-              description: 'Failed to fetch bank details. Please try again.',
-              variant: 'destructive',
-            });
-          }
-        } catch (error) {
-          console.error('Error fetching bank details:', error);
-          setAccountDetails(null);
-          toast({
-            title: 'Error',
-            description: 'An error occurred while fetching bank details.',
-            variant: 'destructive',
-          });
-        }
-      };
-      fetchBankDetails();
-    } else {
-      setAccountDetails(null);
-    }
-  }, [formData.nuvamaCode]);
+    fetchUserInvestments();
+  }, [selectedClientCode, selectedClientId]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     if (["frequency", "startDate", "endDate"].includes(name)) {
       setSipData((prev) => ({ ...prev, [name]: value }));
       validateField(name, value);
+    } else if (["selectedStrategy"].includes(name)) {
+      setNewStrategyData((prev) => ({ ...prev, [name]: value }));
+      validateField(name, value);
     } else {
       setFormData((prev) => ({ ...prev, [name]: value }));
       validateField(name, value);
     }
+  };
+
+  const handleNewStrategyAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { value } = e.target;
+    setNewStrategyData((prev) => ({ ...prev, amount: value }));
+    validateField("amount", value);
   };
 
   const validateField = (name: string, value: string) => {
@@ -261,28 +503,187 @@ function AddFundsModal({
         ne.nuvamaCode = value ? "" : "Account ID is required";
       } else if (name === "amount") {
         ne.amount = !value ? "Amount is required" : Number(value) < 100 ? "Amount must be at least ₹100" : "";
+      } else if (name === "selectedStrategy") {
+        ne.selectedStrategy = value ? "" : "Please select a strategy";
       } else if (name === "startDate" && value) {
         const tomorrow = new Date();
         tomorrow.setDate(tomorrow.getDate() + 1);
-        ne.startDate = new Date(value) < tomorrow ? "Start date must be tomorrow or later" : "";
+        tomorrow.setHours(0, 0, 0, 0);
+
+        const selectedDate = new Date(value);
+        selectedDate.setHours(0, 0, 0, 0);
+
+        ne.startDate = selectedDate < tomorrow ? "Start date must be tomorrow or later" : "";
       } else if (name === "endDate" && value && sipData.startDate) {
-        ne.endDate = new Date(value) < new Date(sipData.startDate) ? "End date must be after start date" : "";
+        const startDate = new Date(sipData.startDate);
+        const endDate = new Date(value);
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(0, 0, 0, 0);
+
+        ne.endDate = endDate <= startDate ? "End date must be after start date" : "";
       }
       return ne;
     });
   };
 
-  const renderPaymentDetail = (label: string, value: string, color: string) => (
-    <div>
-      <p className={`text-[14px] font-semibold font-body text-${color}`}>{label}</p>
-      <p className="text-[14px] font-body">{value}</p>
-    </div>
-  );
-
   const getTomorrowDate = () => {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
-    return tomorrow.toISOString().split('T')[0];
+    tomorrow.setHours(0, 0, 0, 0);
+
+    const year = tomorrow.getFullYear();
+    const month = String(tomorrow.getMonth() + 1).padStart(2, '0');
+    const day = String(tomorrow.getDate()).padStart(2, '0');
+
+    return `${year}-${month}-${day}`;
+  };
+
+  const isFormValid = () => {
+    const currentAmount = activeTab === "newStrategy" ? newStrategyData.amount : formData.amount;
+
+    if (!currentAmount || !formData.nuvamaCode || loading) {
+      return false;
+    }
+
+    const amount = parseFloat(currentAmount);
+    if (isNaN(amount) || amount < 100) {
+      return false;
+    }
+
+    if (activeTab === "newStrategy") {
+      if (!newStrategyData.selectedStrategy) {
+        return false;
+      }
+    }
+
+    if (Object.values(errors).some(error => error)) {
+      return false;
+    }
+
+    if (activeTab === "sip") {
+      if (!sipData.startDate) {
+        return false;
+      }
+
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(0, 0, 0, 0);
+
+      const startDate = new Date(sipData.startDate);
+      startDate.setHours(0, 0, 0, 0);
+
+      if (startDate < tomorrow) {
+        return false;
+      }
+
+      if (sipData.endDate) {
+        const endDate = new Date(sipData.endDate);
+        endDate.setHours(0, 0, 0, 0);
+
+        if (endDate <= startDate) {
+          return false;
+        }
+      }
+    }
+
+    return true;
+  };
+
+  const SummaryModal = () => {
+    if (!showSummaryModal) return null;
+
+    const currentAmount = activeTab === "newStrategy" ? newStrategyData.amount : formData.amount;
+    const strategyName = activeTab === "newStrategy"
+      ? strategy[newStrategyData.selectedStrategy]
+      : getStrategyName(formData.nuvamaCode);
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+        <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+          <div className="text-center mb-6">
+            <h2 className="text-xl font-semibold text-brown font-heading mb-2">
+              {activeTab === "newStrategy" ? "New Strategy Investment" : "Investment Summary"}
+            </h2>
+            <div className="w-12 h-0.5 bg-primary mx-auto"></div>
+          </div>
+
+          <div className="space-y-4 mb-6">
+            <div className="p-4 bg-beige rounded-lg">
+              <h3 className="font-semibold text-brown mb-2">Investment Details</h3>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span>Account ID:</span>
+                  <span className="font-semibold">
+                   {formData.nuvamaCode}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Strategy:</span>
+                  <span className="font-semibold">{strategyName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Amount:</span>
+                  <span className="font-semibold">₹{currentAmount}</span>
+                </div>
+                {activeTab === "newStrategy" && (
+                  <div className="flex justify-between">
+                    <span>Type:</span>
+                    <span className="font-semibold text-green-600">New Strategy Investment</span>
+                  </div>
+                )}
+                {activeTab === "sip" && (
+                  <>
+                    <div className="flex justify-between">
+                      <span>Frequency:</span>
+                      <span className="font-semibold capitalize">{sipData.frequency}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Start Date:</span>
+                      <span className="font-semibold">{new Date(sipData.startDate).toLocaleDateString()}</span>
+                    </div>
+                    {sipData.endDate && (
+                      <div className="flex justify-between">
+                        <span>End Date:</span>
+                        <span className="font-semibold">{new Date(sipData.endDate).toLocaleDateString()}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+              <div className="flex items-start">
+                <Info className="w-5 h-5 text-yellow-600 mr-2 mt-0.5 flex-shrink-0" />
+                <div className="text-sm text-yellow-800">
+                  <p className="font-semibold mb-1">Important Notes:</p>
+                  <ul className="space-y-1 text-xs">
+                    <li>• Please ensure you have sufficient funds in your account for the transaction.</li>
+                    <li>• In case you are unsure, please get in touch with us.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex space-x-2">
+            <button
+              onClick={() => setShowSummaryModal(false)}
+              className="flex-1 px-4 py-2 border border-gray-300 rounded text-gray-700 font-semibold hover:bg-gray-50 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleConfirmPayment}
+              className="flex-1 px-4 py-2 bg-primary text-white rounded font-semibold hover:bg-brown transition-colors"
+            >
+              {activeTab === 'sip' ? 'Proceed with SIP' :
+                activeTab === 'newStrategy' ? 'Start New Strategy' : 'Proceed with Payment'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   };
 
   const initiateCashfreePayment = async (orderToken: string, orderId: string) => {
@@ -326,7 +727,7 @@ function AddFundsModal({
         const paymentTimeout = setTimeout(() => {
           toast({
             title: "Error",
-            description: `${activeTab === 'sip' ? 'SIP setup' : 'Payment'} timed out`,
+            description: `Payment timed out`,
             variant: "destructive",
           });
           reject(new Error('Payment timeout'));
@@ -335,23 +736,49 @@ function AddFundsModal({
         cashfree.checkout({
           paymentSessionId: orderToken,
           redirectTarget: '_self',
-          onSuccess: (result) => {
+          onSuccess: async (result) => {
             clearTimeout(paymentTimeout);
+            const currentAmount = activeTab === "newStrategy" ? newStrategyData.amount : formData.amount;
             setPaymentStatus('Payment completed successfully!');
+            console.log('Payment Success:', result);
             toast({
               title: "Payment Successful",
-              description: `Your payment of ₹${formData.amount} has been processed successfully.`,
+              description: `Your payment of ₹${currentAmount} has been processed successfully.`,
             });
+
+            // Send success notification to Qode Investor Relations ONLY AFTER successful payment
+            try {
+              await sendPaymentSuccessEmail(currentAmount, result);
+              toast({
+                title: "Notification Sent",
+                description: "Payment notification has been sent to Qode Investor Relations.",
+              });
+            } catch (emailError) {
+              console.error('Failed to send payment success notification:', emailError);
+              toast({
+                title: "Email Error",
+                description: "Payment was successful, but we couldn't send the notification. Please contact support.",
+                variant: "destructive",
+              });
+            }
+
+            // Reset form
             setFormData({
               nuvamaCode: selectedClientCode || 'QAW0001',
               amount: '',
+            });
+            setNewStrategyData({
+              selectedStrategy: '',
+              amount: ''
             });
             setErrors({
               nuvamaCode: '',
               amount: '',
               startDate: '',
               endDate: '',
+              selectedStrategy: '',
             });
+
             setTimeout(() => {
               setPaymentStatus('');
               onClose();
@@ -465,7 +892,7 @@ function AddFundsModal({
         cashfree.subscriptionsCheckout({
           subsSessionId: subscriptionSessionId,
           redirectTarget: '_self',
-        }).then((result) => {
+        }).then(async (result) => {
           clearTimeout(paymentTimeout);
           if (result.error) {
             console.error('SIP Checkout Error:', result.error);
@@ -476,12 +903,29 @@ function AddFundsModal({
             });
             reject(new Error(result.error.message || 'SIP setup failed'));
           } else {
-            console.log('SIP checkout initiated, result:', result);
+            console.log('SIP checkout successful, result:', result);
             toast({
               title: "SIP Authorized",
               description: "Your SIP has been set up and authorized successfully.",
             });
 
+            // Send success notification to Qode Investor Relations ONLY AFTER successful SIP authorization
+            try {
+              await sendSipSuccessEmail(result);
+              toast({
+                title: "Notification Sent",
+                description: "SIP authorization notification has been sent to Qode Investor Relations.",
+              });
+            } catch (emailError) {
+              console.error('Failed to send SIP success notification:', emailError);
+              toast({
+                title: "Email Error",
+                description: "SIP was authorized successfully, but we couldn't send the notification. Please contact support.",
+                variant: "destructive",
+              });
+            }
+
+            // Reset form
             setFormData({
               nuvamaCode: selectedClientCode || 'QAW0001',
               amount: '',
@@ -499,6 +943,7 @@ function AddFundsModal({
               amount: '',
               startDate: '',
               endDate: '',
+              selectedStrategy: '',
             });
 
             setTimeout(() => {
@@ -537,18 +982,47 @@ function AddFundsModal({
     try {
       console.log('handlePayment called with activeTab:', activeTab);
 
-      // Basic validation
-      if (!formData?.nuvamaCode || !formData?.amount) {
+      if (!isFormValid()) {
+        const currentAmount = activeTab === "newStrategy" ? newStrategyData.amount : formData.amount;
+
+        if (!formData?.nuvamaCode || !currentAmount) {
+          toast({
+            title: "Error",
+            description: "Please fill in all required fields.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (activeTab === "newStrategy" && !newStrategyData.selectedStrategy) {
+          toast({
+            title: "Error",
+            description: "Please select a strategy to start investing.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        if (activeTab === 'sip' && !sipData.startDate) {
+          toast({
+            title: "Error",
+            description: "Please select a start date for the SIP.",
+            variant: "destructive",
+          });
+          return;
+        }
+
         toast({
           title: "Error",
-          description: "Please fill in all required fields.",
+          description: "Please check all form fields and correct any errors.",
           variant: "destructive",
         });
         return;
       }
 
-      // Validate amount is a positive number
-      const amount = parseFloat(formData.amount);
+      const currentAmount = activeTab === "newStrategy" ? newStrategyData.amount : formData.amount;
+      const amount = parseFloat(currentAmount);
+      
       if (isNaN(amount) || amount <= 0) {
         toast({
           title: "Error",
@@ -558,16 +1032,6 @@ function AddFundsModal({
         return;
       }
 
-      if (!accountDetails) {
-        toast({
-          title: "Error",
-          description: "Bank details not loaded. Please try again.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // SIP-specific validation
       if (activeTab === 'sip') {
         console.log('Validating SIP data:', sipData);
 
@@ -580,23 +1044,26 @@ function AddFundsModal({
           return;
         }
 
-        // Validate start date is not in the past
-        const startDate = new Date(sipData.startDate);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(0, 0, 0, 0);
 
-        if (startDate < today) {
+        const startDate = new Date(sipData.startDate);
+        startDate.setHours(0, 0, 0, 0);
+
+        if (startDate < tomorrow) {
           toast({
             title: "Error",
-            description: "SIP start date cannot be in the past.",
+            description: "SIP start date must be tomorrow or later.",
             variant: "destructive",
           });
           return;
         }
 
-        // Validate end date if provided
         if (sipData.endDate) {
           const endDate = new Date(sipData.endDate);
+          endDate.setHours(0, 0, 0, 0);
+
           if (endDate <= startDate) {
             toast({
               title: "Error",
@@ -607,7 +1074,6 @@ function AddFundsModal({
           }
         }
 
-        // Validate frequency
         const validFrequencies = ['daily', 'weekly', 'monthly', 'quarterly', 'yearly'];
         if (!sipData.frequency || !validFrequencies.includes(sipData.frequency)) {
           toast({
@@ -619,433 +1085,562 @@ function AddFundsModal({
         }
       }
 
-      // Check for required user data for one-time payments
-      if (activeTab !== 'sip') {
-        if (!accountDetails?.email || !accountDetails?.phone_number) {
-          toast({
-            title: "Error",
-            description: "User information is incomplete. Please try again.",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        if (!selectedClientId) {
-          toast({
-            title: "Error",
-            description: "Client ID is missing. Please refresh and try again.",
-            variant: "destructive",
-          });
-          return;
-        }
+      if (!selectedClientId) {
+        toast({
+          title: "Error",
+          description: "Client ID is missing. Please refresh and try again.",
+          variant: "destructive",
+        });
+        return;
       }
 
-      setLoading(true);
-      setPaymentStatus('');
+      setShowSummaryModal(true);
 
-      if (activeTab === 'sip') {
-        console.log('Processing SIP flow...');
-
-        // SIP flow
-        const sipPayload = {
-          order_amount: amount,
-          nuvama_code: formData.nuvamaCode.trim(),
-          sip_details: {
-            frequency: sipData.frequency,
-            start_date: sipData.startDate,
-            ...(sipData.endDate && { end_date: sipData.endDate }),
-          },
-          order_meta: {
-            return_url: `${window.location.origin}/payment/sip-success`,
-          },
-          account_number: accountDetails.account_number,
-          ifsc_code: accountDetails.ifsc_code,
-          cashfree_bank_code: String(accountDetails.cashfree_bank_code),
-          client_id: selectedClientId,
-          customer_name: accountDetails.client_name || 'N/A',
-          customer_email: accountDetails.email,
-          customer_phone: accountDetails.phone_number,
-        };
-
-        console.log('Sending SIP payload:', sipPayload);
-
-        const response = await fetch('/api/cashfree/setup-sip', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify(sipPayload),
-        });
-
-        // Handle different response scenarios
-        let responseData;
-        const contentType = response.headers.get('content-type');
-
-        if (contentType && contentType.includes('application/json')) {
-          responseData = await response.json();
-        } else {
-          const responseText = await response.text();
-          console.log('Non-JSON response received:', responseText);
-
-          try {
-            responseData = JSON.parse(responseText);
-          } catch {
-            throw new Error(response.ok ? 'Invalid response format from server' : `Server error: ${response.status}`);
-          }
-        }
-
-        console.log('SIP API Response:', responseData);
-
-        if (!response.ok) {
-          console.error('SIP API Error Response:', responseData);
-          const errorMessage = responseData?.message || responseData?.error || `HTTP ${response.status}: Failed to create SIP order`;
-          throw new Error(errorMessage);
-        }
-
-        if (!responseData.success) {
-          console.error('API returned success: false:', responseData);
-          throw new Error(responseData.message || responseData.error || 'SIP order creation failed');
-        }
-
-        if (!responseData.data) {
-          console.error('Missing data object in response:', responseData);
-          throw new Error('Invalid response structure: missing data object');
-        }
-
-        const subscriptionSessionId = responseData.data.checkout_url;
-        const subscriptionId = responseData.data.subscription_id || responseData.data.order_id;
-
-        if (!subscriptionSessionId) {
-          console.error('No subscription session ID in response data:', responseData.data);
-          console.error('Available fields in data:', Object.keys(responseData.data));
-          throw new Error('Subscription session ID not provided by SIP service');
-        }
-
-        if (!subscriptionId) {
-          console.error('No subscription ID in response data:', responseData.data);
-          throw new Error('Subscription ID not provided by SIP service');
-        }
-
-        console.log('Initiating Cashfree subscription with session ID:', subscriptionSessionId, 'Subscription ID:', subscriptionId);
-
-        toast({
-          title: "SIP Authorization Initiated",
-          description: "Opening payment gateway for SIP authorization...",
-        });
-
-        await initiateCashfreeSubscription(subscriptionSessionId, subscriptionId);
-
-      } else {
-        // One-time payment flow
-        console.log('Processing one-time payment flow...');
-
-        const orderPayload = {
-          amount: amount,
-          currency: 'INR',
-          customer_name: accountDetails.client_name || 'N/A',
-          customer_email: accountDetails.email,
-          customer_phone: accountDetails.phone_number,
-          nuvama_code: formData.nuvamaCode.trim(),
-          client_id: selectedClientId,
-          order_type: 'one_time',
-          return_url: `${window.location.origin}/payment/success`,
-          account_number: accountDetails.account_number,
-          ifsc_code: accountDetails.ifsc_code,
-          cashfree_bank_code: accountDetails.cashfree_bank_code,
-        };
-
-        console.log('Sending order payload:', orderPayload);
-
-        const response = await fetch('/api/cashfree/create-order', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          credentials: 'include',
-          body: JSON.stringify(orderPayload),
-        });
-
-        if (!response.ok) {
-          let errorData;
-          try {
-            errorData = await response.json();
-          } catch {
-            errorData = { error: `Server error: ${response.status}` };
-          }
-          console.error('API Error Response:', errorData);
-          throw new Error(errorData.error || errorData.message || 'Failed to create payment order');
-        }
-
-        const orderData = await response.json();
-        console.log('Order created successfully:', orderData);
-
-        if (!orderData.payment_session_id) {
-          console.error('Missing payment_session_id in orderData:', orderData);
-          throw new Error('Payment session ID is missing in the response');
-        }
-
-        if (!orderData.order_id) {
-          console.error('Missing order_id in orderData:', orderData);
-          throw new Error('Order ID is missing in the response');
-        }
-
-        await initiateCashfreePayment(orderData.payment_session_id, orderData.order_id);
-
-        toast({
-          title: "Payment Initiated",
-          description: "Opening payment gateway...",
-        });
-      }
     } catch (error) {
-      console.error('Payment error:', error);
-
-      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
-      const actionType = activeTab === 'sip' ? 'setting up SIP' : 'processing payment';
-
-      setPaymentStatus(`Failed to ${actionType}. Please try again.`);
-
+      console.error('Validation error:', error);
       toast({
         title: "Error",
-        description: `${errorMessage}. Please try again or contact support if the issue persists.`,
+        description: "An error occurred during validation. Please try again.",
         variant: "destructive",
       });
-    } finally {
-      setLoading(false);
     }
   };
 
-  if (!isOpen) return null;
-  return (
-    <ModalShell title="Add Funds / Create SIP" onClose={onClose} size="lg">
-      <div className="text-center hidden mb-[20px]">
-        <div className="flex items-center justify-center mb-[10px]">
-          <IndianRupee className="sm:w-[40px] sm:h-[40px] text-primary mr-[5px]" />
-          <h1 className="sm:text-[28px] text-primary font-heading text-[24px]">Invest With Qode</h1>
-        </div>
-        <div className="flex items-center justify-center text-[14px] text-text-secondary">
-          <Lock className="sm:w-[16px] sm:h-[16px] mr-[5px]" />
-          <span className="font-body">Secure Payment Gateway Powered by Cashfree</span>
-        </div>
-      </div>
+ const handleConfirmPayment = async () => {
+  try {
+    setShowSummaryModal(false);
+    setLoading(true);
+    setPaymentStatus('');
+    console.log('handleConfirmPayment called with activeTab:', activeTab);
+    const currentAmount = activeTab === "newStrategy" ? newStrategyData.amount : formData.amount;
+    const amount = parseFloat(currentAmount);
+    const investmentType = activeTab === "newStrategy" ? "new_strategy" : "one_time";
 
-      <div className="p-[15px]">
-        <div className="flex justify-center">
-          <div className="flex rounded p-[3px]">
-            <button
-              onClick={() => setActiveTab('oneTime')}
-              className={`px-[20px] py-[10px] text-[14px] font-semibold rounded transition-all font-body ${activeTab === 'oneTime'
-                ? 'bg-primary text-white shadow'
-                : 'text-brown hover:bg-beige'
-                }`}
-            >
-              <div className="flex items-center">
-                <CreditCard className="w-[18px] h-[18px] mr-[5px]" />
-                One-Time Payment
-              </div>
-            </button>
-            <div
-              className="relative"
-              onMouseEnter={() => setShowTooltip(true)}
-              onMouseLeave={() => setShowTooltip(false)}
-            >
+    // Validate required customer information
+    if (!customer_name || customer_name.trim() === '') {
+      throw new Error('Missing required fields: customer_name');
+    }
+    if (!customer_email || customer_email.trim() === '') {
+      throw new Error('Missing required fields: customer_email');
+    }
+    if (!customer_phone || customer_phone.trim() === '') {
+      throw new Error('Missing required fields: customer_phone');
+    }
+
+    let accountCodeToUse = formData.nuvamaCode;
+
+    if (activeTab === 'sip') {
+      console.log('Processing SIP flow...');
+      const sipPayload = {
+        order_amount: amount,
+        nuvama_code: accountCodeToUse.trim(),
+        sip_details: {
+          frequency: sipData.frequency,
+          start_date: sipData.startDate,
+          ...(sipData.endDate && { end_date: sipData.endDate }),
+        },
+        order_meta: {
+          return_url: `${window.location.origin}/payment/sip-success`,
+        },
+        client_id: selectedClientId,
+        customer_name: customer_name,
+        customer_email: customer_email,
+        customer_phone: customer_phone,
+        order_type: 'sip', // Explicitly set for SIP
+      };
+
+      console.log('Sending SIP payload:', sipPayload);
+
+      const response = await fetch('/api/cashfree/setup-sip', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(sipPayload),
+      });
+
+      let responseData;
+      const contentType = response.headers.get('content-type');
+
+      if (contentType && contentType.includes('application/json')) {
+        responseData = await response.json();
+      } else {
+        const responseText = await response.text();
+        console.log('Non-JSON response received:', responseText);
+        try {
+          responseData = JSON.parse(responseText);
+        } catch {
+          throw new Error(response.ok ? 'Invalid response format from server' : `Server error: ${response.status}`);
+        }
+      }
+
+      console.log('SIP API Response:', responseData);
+
+      if (!response.ok) {
+        console.error('SIP API Error Response:', responseData);
+        const errorMessage = responseData?.message || responseData?.error || `HTTP ${response.status}: Failed to create SIP order`;
+        throw new Error(errorMessage);
+      }
+
+      if (!responseData.success) {
+        console.error('API returned success: false:', responseData);
+        throw new Error(responseData.message || responseData.error || 'SIP order creation failed');
+      }
+
+      if (!responseData.data) {
+        console.error('Missing data object in response:', responseData);
+        throw new Error('Invalid response structure: missing data object');
+      }
+
+      const subscriptionSessionId = responseData.data.checkout_url;
+      const subscriptionId = responseData.data.subscription_id || responseData.data.order_id;
+
+      if (!subscriptionSessionId) {
+        console.error('No subscription session ID in response data:', responseData.data);
+        console.error('Available fields in data:', Object.keys(responseData.data));
+        throw new Error('Subscription session ID not provided by SIP service');
+      }
+
+      if (!subscriptionId) {
+        console.error('No subscription ID in response data:', responseData.data);
+        throw new Error('Subscription ID not provided by SIP service');
+      }
+
+      // Store subscription ID for success page
+      sessionStorage.setItem('qode_payment_order_id', subscriptionId);
+      sessionStorage.setItem('qode_payment_type', 'sip');
+      sessionStorage.setItem('qode_payment_amount', currentAmount);
+      sessionStorage.setItem('qode_payment_nuvama_code', accountCodeToUse);
+
+      console.log('Initiating Cashfree subscription with session ID:', subscriptionSessionId, 'Subscription ID:', subscriptionId);
+
+      toast({
+        title: "SIP Authorization Starting",
+        description: "Opening payment gateway for SIP authorization...",
+      });
+
+      await initiateCashfreeSubscription(subscriptionSessionId, subscriptionId);
+    } else {
+      console.log('Processing payment flow...');
+      const orderPayload = {
+        amount: amount,
+        currency: 'INR',
+        customer_name: customer_name,
+        customer_email: customer_email,
+        customer_phone: customer_phone,
+        nuvama_code: accountCodeToUse.trim(),
+        client_id: selectedClientId,
+        order_type: activeTab === "newStrategy" ? 'new_strategy' : 'one_time', // Set order_type dynamically
+        return_url: `${window.location.origin}/payment/success`,
+        ...(activeTab === "newStrategy" && {
+          is_new_strategy: true,
+          strategy_type: newStrategyData.selectedStrategy,
+        }),
+      };
+
+      console.log('Sending order payload:', orderPayload);
+
+      const response = await fetch('/api/cashfree/create-order', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(orderPayload),
+      });
+
+      if (!response.ok) {
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch {
+          errorData = { error: `Server error: ${response.status}` };
+        }
+        console.error('API Error Response:', errorData);
+        throw new Error(errorData.error || errorData.message || 'Failed to create payment order');
+      }
+
+      const orderData = await response.json();
+      console.log('Order created successfully:', orderData);
+
+      if (!orderData.payment_session_id) {
+        console.error('Missing payment_session_id in orderData:', orderData);
+        throw new Error('Payment session ID is missing in the response');
+      }
+
+      if (!orderData.order_id) {
+        console.error('Missing order_id in orderData:', orderData);
+        throw new Error('Order ID is missing in the response');
+      }
+
+      // Store order details for success page
+      sessionStorage.setItem('qode_payment_order_id', orderData.order_id);
+      sessionStorage.setItem('qode_payment_cf_order_id', orderData.cf_order_id || '');
+      sessionStorage.setItem('qode_payment_type', activeTab === "newStrategy" ? 'new_strategy' : 'one_time');
+      sessionStorage.setItem('qode_payment_amount', currentAmount);
+      sessionStorage.setItem('qode_payment_nuvama_code', accountCodeToUse);
+
+      toast({
+        title: "Payment Starting",
+        description: "Opening payment gateway...",
+      });
+
+      await initiateCashfreePayment(orderData.payment_session_id, orderData.order_id);
+    }
+  } catch (error) {
+    console.error('Payment error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+    const actionType = activeTab === 'sip' ? 'setting up SIP' :
+      activeTab === 'newStrategy' ? 'starting new strategy' : 'processing payment';
+
+    setPaymentStatus(`Failed to ${actionType}. Please try again.`);
+
+    toast({
+      title: "Error",
+      description: `${errorMessage}. Please try again or contact support.`,
+      variant: "destructive",
+    });
+  } finally {
+    setLoading(false);
+  }
+};
+
+  if (!isOpen) return null;
+
+  return (
+    <>
+      <ModalShell title="Investment Options" onClose={onClose} size="lg">
+        <div className="text-center hidden mb-[20px]">
+          <div className="flex items-center justify-center mb-[10px]">
+            <IndianRupee className="sm:w-[40px] sm:h-[40px] text-primary mr-[5px]" />
+            <h1 className="sm:text-[28px] text-primary font-heading text-[24px]">Invest With Qode</h1>
+          </div>
+          <div className="flex items-center justify-center text-[14px] text-text-secondary">
+            <Lock className="sm:w-[16px] sm:h-[16px] mr-[5px]" />
+            <span className="font-body">Secure Payment Gateway Powered by Cashfree</span>
+          </div>
+        </div>
+
+        <div className="p-[15px]">
+          <div className="flex justify-center">
+            <div className="flex bg-accent rounded p-[3px]">
               <button
-                onClick={() => setActiveTab('sip')}
-                className={`px-[20px] py-[10px] text-[14px] font-semibold rounded transition-all font-body ${activeTab === 'sip'
+                onClick={() => setActiveTab('oneTime')}
+                className={`px-[15px] py-[8px] text-[12px] font-semibold rounded transition-all font-body ${activeTab === 'oneTime'
                   ? 'bg-primary text-white shadow'
                   : 'text-brown hover:bg-beige'
                   }`}
               >
                 <div className="flex items-center">
-                  <TrendingUp className="w-[18px] h-[18px] mr-[5px]" />
-                  SIP Setup
+                  <CreditCard className="w-[16px] h-[16px] mr-[4px]" />
+                  Add Funds
+                </div>
+              </button>
+
+              <div
+                className="relative"
+                onMouseEnter={() => setShowTooltip(true)}
+                onMouseLeave={() => setShowTooltip(false)}
+              >
+                <button
+                  onClick={() => setActiveTab('sip')}
+                  className={`px-[15px] py-[8px] text-[12px] font-semibold rounded transition-all font-body ${activeTab === 'sip'
+                    ? 'bg-primary text-white shadow'
+                    : 'text-brown hover:bg-beige'
+                    }`}
+                >
+                  <div className="flex items-center">
+                    <TrendingUp className="w-[16px] h-[16px] mr-[4px]" />
+                    SIP Setup
+                  </div>
+                </button>
+              </div>
+
+              <button
+                onClick={() => setActiveTab('newStrategy')}
+                className={`px-[15px] py-[8px] text-[12px] font-semibold rounded transition-all font-body ${activeTab === 'newStrategy'
+                  ? 'bg-primary text-white shadow'
+                  : 'text-brown hover:bg-beige'
+                  }`}
+              >
+                <div className="flex items-center">
+                  <Plus className="w-[16px] h-[16px] mr-[4px]" />
+                  Start New Strategy
                 </div>
               </button>
             </div>
           </div>
         </div>
-      </div>
 
-      <form ref={formRef} className="space-y-[15px]">
-        <div className="p-[12px] rounded-sm border border-lightGray">
-          <label className="block text-[16px] font-semibold text-text-secondary mb-[5px] font-body">Account ID</label>
-          <select
-            name="nuvamaCode"
-            value={formData.nuvamaCode}
-            onChange={handleInputChange}
-            className={`w-full p-[12px] border-2 rounded text-[14px] font-body ${errors.nuvamaCode ? "border-brown" : "border-lightGray focus:border-primary"
-              } focus:outline-none transition-all`}
-            required
-          >
-            {clients.length > 0 ? (
-              clients.map((client) => (
-                <option key={client.clientid} value={client.clientcode}>
-                  {client.clientcode} ({client.clientid})
-                </option>
-              ))
-            ) : (
-              <option value="QAW0001">QAW0001 (Default)</option>
-            )}
-          </select>
-          <p className="text-xs text-muted-foreground mt-1">Currently selected: {selectedClientCode || "QAW0001"}</p>
-          {errors.nuvamaCode && <p className="mt-[5px] text-[12px] text-brown font-body">{errors.nuvamaCode}</p>}
-        </div>
-
-        {accountDetails && (
-          <div className="p-[12px] rounded-sm border-2 border-beige">
-            <div className="flex items-center mb-[10px]">
-              <CheckCircle className="w-[16px] h-[16px] text-primary mr-[5px]" />
-              <h3 className="text-[16px] font-semibold text-brown font-body">Verified Account Details</h3>
-            </div>
-            <div className="grid grid-cols-2 gap-[10px] text-[14px]">
-              {renderPaymentDetail('Client Name', accountDetails.client_name, 'brown')}
-              {renderPaymentDetail('Account Number', accountDetails.account_number_masked, 'brown')}
-              {renderPaymentDetail('IFSC Code', accountDetails.ifsc_code, 'brown')}
-              {renderPaymentDetail('Email', accountDetails.email, 'brown')}
-              {renderPaymentDetail('Phone Number', accountDetails.phone_number, 'brown')}
-            </div>
-          </div>
-        )}
-
-        <div className="p-[12px] rounded-sm border border-lightGray">
-          <label className="block text-[16px] font-semibold text-text-secondary mb-[5px] font-body">
-            {activeTab === "sip" ? "SIP Amount (₹)" : "Payment Amount (₹)"}
-          </label>
-          <input
-            type="number"
-            name="amount"
-            value={formData.amount}
-            onChange={handleInputChange}
-            min="100"
-            className={`w-full p-[12px] text-[14px] font-semibold border-2 rounded font-body ${errors.amount ? "border-brown" : "border-lightGray focus:border-primary"
-              } focus:outline-none transition-all`}
-            placeholder="Enter amount (e.g., 1000.00)"
-            required
-          />
-          {errors.amount && <p className="mt-[5px] text-[12px] text-brown font-body">{errors.amount}</p>}
-          <p className="mt-[5px] text-[12px] text-darkGray font-body">Minimum: ₹100</p>
-        </div>
-
-        {activeTab === "sip" && (
-          <>
+        <form ref={formRef} className="space-y-[15px]">
+          {(activeTab === 'oneTime' || activeTab === 'sip') && (
             <div className="p-[12px] rounded-sm border border-lightGray">
-              <label className="block text-[16px] font-semibold text-text-secondary mb-[5px] font-body">Frequency</label>
+              <label className="block text-[16px] font-semibold text-text-secondary mb-[5px] font-body">Account ID</label>
               <select
-                name="frequency"
-                value={sipData.frequency}
+                name="nuvamaCode"
+                value={formData.nuvamaCode}
                 onChange={handleInputChange}
-                className="w-full p-[12px] border-2 border-lightGray focus:border-primary rounded text-[14px] focus:outline-none font-body"
+                className={`w-full p-[12px] border-2 rounded text-[14px] font-body ${errors.nuvamaCode ? "border-brown" : "border-lightGray focus:border-primary"
+                  } focus:outline-none transition-all`}
+                required
               >
-                <option value="daily">Daily</option>
-                <option value="weekly">Weekly</option>
-                <option value="monthly">Monthly</option>
-                <option value="quarterly">Quarterly</option>
-                <option value="yearly">Yearly</option>
+                {clients.length > 0 ? (
+                  clients.map((client) => (
+                    <option key={client.clientid} value={client.clientcode}>
+                      {client.clientname} - ({client.clientcode})
+                    </option>
+                  ))
+                ) : (
+                  <option value="QAW0001">QAW0001 (Default)</option>
+                )}
               </select>
+              <p className="text-xs text-muted-foreground mt-1">Currently selected: {selectedClientCode || "QAW0001"}</p>
+              <p className="text-xs text-primary mt-1">Strategy: {getStrategyName(formData.nuvamaCode)}</p>
+              {errors.nuvamaCode && <p className="mt-[5px] text-[12px] text-brown font-body">{errors.nuvamaCode}</p>}
             </div>
+          )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-[15px]">
-              <div className="p-[12px] rounded-sm border border-lightGray">
-                <label className="block text-[16px] font-semibold text-text-secondary mb-[5px] font-body">Start Date</label>
-                <input
-                  type="date"
-                  name="startDate"
-                  value={sipData.startDate}
-                  onChange={handleInputChange}
-                  min={getTomorrowDate()}
-                  className={`w-full p-[12px] border-2 rounded text-[14px] font-body ${errors.startDate ? "border-brown" : "border-lightGray focus:border-primary"
-                    } focus:outline-none transition-all`}
-                  required
-                />
-                {errors.startDate && <p className="mt-[5px] text-[12px] text-brown font-body">{errors.startDate}</p>}
-              </div>
-
+          {activeTab === 'newStrategy' && (
+            <div className="space-y-[15px]">
               <div className="p-[12px] rounded-sm border border-lightGray">
                 <label className="block text-[16px] font-semibold text-text-secondary mb-[5px] font-body">
-                  End Date (Optional)
+                  Account ID
                 </label>
-                <input
-                  type="date"
-                  name="endDate"
-                  value={sipData.endDate}
+                <select
+                  name="nuvamaCode"
+                  value={formData.nuvamaCode}
                   onChange={handleInputChange}
-                  min={sipData.startDate}
-                  className={`w-full p-[12px] border-2 rounded text-[14px] font-body ${errors.endDate ? "border-brown" : "border-lightGray focus:border-primary"
-                    } focus:outline-none transition-all`}
-                />
-                {errors.endDate && <p className="mt-[5px] text-[12px] text-brown font-body">{errors.endDate}</p>}
-                <p className="mt-[5px] text-[12px] text-darkGray font-body">Leave empty for indefinite SIP</p>
+                  className="w-full p-[12px] border-2 rounded text-[14px] font-body border-lightGray focus:border-primary focus:outline-none transition-all"
+                >
+                  {clients.length > 0 ? (
+                    clients.map((client) => (
+                      <option key={client.clientid} value={client.clientcode}>
+                        {client.clientname} - ({client.clientcode})
+                      </option>
+                    ))
+                  ) : (
+                    <option value="QAW0001">QAW0001 (Default)</option>
+                  )}
+                </select>
               </div>
-            </div>
-
-            <div className="p-[12px] rounded-sm border border-beige">
-              <div className="flex items-center mb-[10px]">
-                <Calendar className="w-[16px] h-[16px] text-primary mr-[5px]" />
-                <h3 className="text-[16px] font-semibold text-brown font-heading">SIP Summary</h3>
-              </div>
-              <div className="text-[14px] text-brown font-body">
-                {formData.amount && sipData.frequency && sipData.startDate ? (
-                  <div className="space-y-1">
-                    <p>
-                      <strong>Amount:</strong> ₹{formData.amount} will be deducted {sipData.frequency}
-                    </p>
-                    <p>
-                      <strong>Start Date:</strong> {new Date(sipData.startDate).toLocaleDateString()}
-                    </p>
-                    {sipData.endDate && (
-                      <p>
-                        <strong>End Date:</strong> {new Date(sipData.endDate).toLocaleDateString()}
-                      </p>
-                    )}
-                    {!sipData.endDate && (
-                      <p className="text-orange-600">
-                        <strong>Duration:</strong> Indefinite (until you cancel)
-                      </p>
+              
+              {loadingInvestments ? (
+                <div className="p-[12px] rounded-sm border border-lightGray">
+                  <div className="flex items-center justify-center py-4">
+                    <Loader className="h-5 w-5 animate-spin text-primary mr-2" />
+                    <span className="text-sm text-muted-foreground">Loading available strategies...</span>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="p-[12px] rounded-sm border border-lightGray">
+                    <label className="block text-[16px] font-semibold text-text-secondary mb-[5px] font-body">
+                      Select Strategy to Start
+                    </label>
+                    <select
+                      name="selectedStrategy"
+                      value={newStrategyData.selectedStrategy}
+                      onChange={handleInputChange}
+                      className={`w-full p-[12px] border-2 rounded text-[14px] font-body ${errors.selectedStrategy ? "border-brown" : "border-lightGray focus:border-primary"
+                        } focus:outline-none transition-all`}
+                      required
+                    >
+                      <option value="">Choose a strategy...</option>
+                      {getAvailableStrategies().map((strategyCode) => (
+                        <option key={strategyCode} value={strategyCode}>
+                          {strategy[strategyCode]} ({strategyCode})
+                        </option>
+                      ))}
+                    </select>
+                    {errors.selectedStrategy && (
+                      <p className="mt-[5px] text-[12px] text-brown font-body">{errors.selectedStrategy}</p>
                     )}
                   </div>
-                ) : (
-                  <p>Please fill in the SIP details to see the summary.</p>
-                )}
-              </div>
-            </div>
-          </>
-        )}
 
-        <div className="flex justify-center">
-          <button
-            type="button"
-            onClick={handlePayment}
-            disabled={loading || !formData.amount || !formData.nuvamaCode || !accountDetails || Object.values(errors).some(error => error)}
-            className={`px-[20px] py-[12px] text-[14px] font-semibold text-white bg-primary rounded-sm shadow font-body transition-all ${loading || !formData.amount || !formData.nuvamaCode || !accountDetails || Object.values(errors).some(error => error)
-              ? 'bg-darkGray cursor-not-allowed opacity-50'
-              : 'hover:bg-brown'
-              }`}
-          >
-            {loading ? (
-              <div className="flex items-center">
-                <Loader className="animate-spin h-[16px] w-[16px] mr-[5px]" />
-                {activeTab === 'sip' ? 'Setting up SIP...' : 'Processing Payment...'}
-              </div>
-            ) : (
-              activeTab === 'sip' ? 'Setup SIP' : 'Pay Now'
-            )}
-          </button>
-        </div>
-
-        {paymentStatus && (
-          <div className="p-[12px] rounded-sm border border-beige">
-            <div className="flex items-center">
-              <Info className="w-[16px] h-[16px] text-brown mr-[5px]" />
-              <p className="text-[14px] text-brown font-body">{paymentStatus}</p>
+                  <div className="p-[12px] rounded-sm border border-lightGray">
+                    <label className="block text-[16px] font-semibold text-text-secondary mb-[5px] font-body">
+                      Investment Amount (₹)
+                    </label>
+                    <input
+                      type="number"
+                      name="newStrategyAmount"
+                      value={newStrategyData.amount}
+                      onChange={handleNewStrategyAmountChange}
+                      min="100"
+                      className={`w-full p-[12px] text-[14px] font-semibold border-2 rounded font-body ${errors.amount ? "border-brown" : "border-lightGray focus:border-primary"
+                        } focus:outline-none transition-all`}
+                      placeholder="Enter amount (e.g., 1000.00)"
+                      required
+                    />
+                    {errors.amount && <p className="mt-[5px] text-[12px] text-brown font-body">{errors.amount}</p>}
+                    <p className="mt-[5px] text-[12px] text-darkGray font-body">Minimum: ₹100</p>
+                  </div>
+                </>
+              )}
             </div>
+          )}
+
+          {(activeTab === 'oneTime' || activeTab === 'sip') && (
+            <div className="p-[12px] rounded-sm border border-lightGray">
+              <label className="block text-[16px] font-semibold text-text-secondary mb-[5px] font-body">
+                {activeTab === "sip" ? "SIP Amount (₹)" : "Payment Amount (₹)"}
+              </label>
+              <input
+                type="number"
+                name="amount"
+                value={formData.amount}
+                onChange={handleInputChange}
+                min="100"
+                className={`w-full p-[12px] text-[14px] font-semibold border-2 rounded font-body ${errors.amount ? "border-brown" : "border-lightGray focus:border-primary"
+                  } focus:outline-none transition-all`}
+                placeholder="Enter amount (e.g., 1000.00)"
+                required
+              />
+              {errors.amount && <p className="mt-[5px] text-[12px] text-brown font-body">{errors.amount}</p>}
+              <p className="mt-[5px] text-[12px] text-darkGray font-body">Minimum: ₹100</p>
+            </div>
+          )}
+
+          {activeTab === "sip" && (
+            <>
+              <div className="p-[12px] rounded-sm border border-lightGray">
+                <label className="block text-[16px] font-semibold text-text-secondary mb-[5px] font-body">Frequency</label>
+                <select
+                  name="frequency"
+                  value={sipData.frequency}
+                  onChange={handleInputChange}
+                  className="w-full p-[12px] border-2 border-lightGray focus:border-primary rounded text-[14px] focus:outline-none font-body"
+                >
+                  <option value="daily">Daily</option>
+                  <option value="weekly">Weekly</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="quarterly">Quarterly</option>
+                  <option value="yearly">Yearly</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-[15px]">
+                <div className="p-[12px] rounded-sm border border-lightGray">
+                  <label className="block text-[16px] font-semibold text-text-secondary mb-[5px] font-body">Start Date</label>
+                  <input
+                    type="date"
+                    name="startDate"
+                    value={sipData.startDate}
+                    onChange={handleInputChange}
+                    min={getTomorrowDate()}
+                    className={`w-full p-[12px] border-2 rounded text-[14px] font-body ${errors.startDate ? "border-brown" : "border-lightGray focus:border-primary"
+                      } focus:outline-none transition-all`}
+                    required
+                  />
+                  {errors.startDate && <p className="mt-[5px] text-[12px] text-brown font-body">{errors.startDate}</p>}
+                  <p className="mt-[5px] text-[12px] text-darkGray font-body">
+                    Earliest date: {new Date(getTomorrowDate()).toLocaleDateString()}
+                  </p>
+                </div>
+
+                <div className="p-[12px] rounded-sm border border-lightGray">
+                  <label className="block text-[16px] font-semibold text-text-secondary mb-[5px] font-body">
+                    End Date (Optional)
+                  </label>
+                  <input
+                    type="date"
+                    name="endDate"
+                    value={sipData.endDate}
+                    onChange={handleInputChange}
+                    min={sipData.startDate}
+                    className={`w-full p-[12px] border-2 rounded text-[14px] font-body ${errors.endDate ? "border-brown" : "border-lightGray focus:border-primary"
+                      } focus:outline-none transition-all`}
+                  />
+                  {errors.endDate && <p className="mt-[5px] text-[12px] text-brown font-body">{errors.endDate}</p>}
+                  <p className="mt-[5px] text-[12px] text-darkGray font-body">Leave empty for indefinite SIP</p>
+                </div>
+              </div>
+
+              <div className="p-[12px] rounded-sm border border-beige">
+                <div className="flex items-center mb-[10px]">
+                  <Calendar className="w-[16px] h-[16px] text-primary mr-[5px]" />
+                  <h3 className="text-[16px] font-semibold text-brown font-heading">SIP Summary</h3>
+                </div>
+                <div className="text-[14px] text-brown font-body">
+                  {formData.amount && sipData.frequency && sipData.startDate ? (
+                    <div className="space-y-1">
+                      <p>
+                        <strong>Amount:</strong> ₹{formData.amount} will be deducted {sipData.frequency}
+                      </p>
+                      <p>
+                        <strong>Start Date:</strong> {new Date(sipData.startDate).toLocaleDateString()}
+                      </p>
+                      {sipData.endDate && (
+                        <p>
+                          <strong>End Date:</strong> {new Date(sipData.endDate).toLocaleDateString()}
+                        </p>
+                      )}
+                      {!sipData.endDate && (
+                        <p className="text-orange-600">
+                          <strong>Duration:</strong> Indefinite (until you cancel)
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p>Please fill in the SIP details to see the summary.</p>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
+          <div className="flex justify-center">
+            <button
+              type="button"
+              onClick={handlePayment}
+              disabled={!isFormValid()}
+              className={`px-[20px] py-[12px] text-[14px] font-semibold text-white bg-primary rounded-sm shadow font-body transition-all ${!isFormValid()
+                ? 'bg-darkGray cursor-not-allowed opacity-50'
+                : 'hover:bg-brown'
+                }`}
+            >
+              {loading ? (
+                <div className="flex items-center">
+                  <Loader className="animate-spin h-[16px] w-[16px] mr-[5px]" />
+                  {activeTab === 'sip' ? 'Setting up SIP...' :
+                    activeTab === 'newStrategy' ? 'Starting New Strategy...' : 'Processing Payment...'}
+                </div>
+              ) : (
+                activeTab === 'sip' ? 'Setup SIP' :
+                  activeTab === 'newStrategy' ? 'Start New Strategy' : 'Pay Now'
+              )}
+            </button>
           </div>
-        )}
-      </form>
 
-    </ModalShell>
+          {paymentStatus && (
+            <div className="p-[12px] rounded-sm border border-beige">
+              <div className="flex items-center">
+                <Info className="w-[16px] h-[16px] text-brown mr-[5px]" />
+                <p className="text-[14px] text-brown font-body">{paymentStatus}</p>
+              </div>
+            </div>
+          )}
+
+          {process.env.NODE_ENV === 'development' && (
+            <div className="p-3 bg-gray-100 rounded text-xs space-y-1">
+              <p><strong>Debug Info:</strong></p>
+              <p>Active Tab: {activeTab}</p>
+              <p>Available Strategies: {getAvailableStrategies().join(', ') || 'None'}</p>
+              <p>User Investments: {userInvestments.join(', ') || 'None'}</p>
+              <p>Form Valid: {isFormValid().toString()}</p>
+              <p>Current Amount: {activeTab === 'newStrategy' ? newStrategyData.amount : formData.amount}</p>
+              <p>Selected Strategy: {newStrategyData.selectedStrategy || 'None'}</p>
+            </div>
+          )}
+        </form>
+
+      </ModalShell>
+
+      <SummaryModal />
+    </>
   );
 }
-
 
 function SwitchReallocationModal({
   isOpen,
@@ -1060,7 +1655,7 @@ function SwitchReallocationModal({
   selectedClientCode: string;
   selectedClientId: string;
   selectedEmailClient: string;
-  clients: { clientid: string; clientcode: string }[];
+  clients: { clientid: string; clientcode: string; clientname: string }[];
 }) {
   const [formData, setFormData] = useState({
     investedIn: selectedClientCode ? selectedClientCode.slice(0, 3) : "QGF",
@@ -1074,6 +1669,14 @@ function SwitchReallocationModal({
   const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle");
   const { toast } = useToast();
   const formRef = useRef<HTMLFormElement>(null);
+
+  // Strategy mapping
+  const strategy = {
+    'QFH': 'Qode Future Horizons',
+    'QAW': 'Qode All Weather',
+    'QTF': 'Qode Tactical Fund',
+    'QGF': 'Qode Growth Fund'
+  };
 
   useEffect(() => {
     setFormData((prev) => ({
@@ -1178,15 +1781,23 @@ function SwitchReallocationModal({
       <form ref={formRef} onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-foreground mb-2">Account ID *</label>
-          <input
+          <select
             name="nuvama-code"
-            type="text"
             value={formData.nuvamaCode}
-            onChange={(e) => setFormData({ ...formData, nuvamaCode: e.target.value })}
-            className="w-full p-3 border border-border rounded-md text-foreground bg-muted focus:ring-2 focus:ring-primary focus:border-primary"
+            onChange={(e) => setFormData({ ...formData, nuvamaCode: e.target.value, investedIn: e.target.value.slice(0, 3) })}
+            className="w-full p-3 border border-border rounded-md text-foreground focus:ring-2 focus:ring-primary focus:border-primary"
             required
-            disabled
-          />
+          >
+            {clients.length > 0 ? (
+              clients.map((client) => (
+                <option key={client.clientid} value={client.clientcode}>
+                  {client.clientname} - ({client.clientcode})
+                </option>
+              ))
+            ) : (
+              <option value="QAW0001">QAW0001 (Default)</option>
+            )}
+          </select>
           <p className="text-xs text-muted-foreground mt-1">Currently selected: {selectedClientCode}</p>
         </div>
 
@@ -1298,6 +1909,7 @@ function SwitchReallocationModal({
             {isSubmitting ? "Sending..." : "Request"}
           </button>
         </div>
+
       </form>
     </ModalShell>
   );
@@ -1507,7 +2119,7 @@ export default function InvestmentActionsPage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [refreshResult, setRefreshResult] = useState(null);
-  const { selectedClientCode, selectedClientId, clients, loading,selectedEmailClient } = useClient();
+  const { selectedClientCode, selectedClientId, clients, loading, selectedEmailClient, selectedClientMobile, selectedClientName } = useClient();
   const [cancelingSipId, setCancelingSipId] = useState(null);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [sipToCancel, setSipToCancel] = useState(null);
@@ -1870,6 +2482,71 @@ export default function InvestmentActionsPage() {
         </InfoCard>
 
         <InfoCard
+          title="Bank Transfer / RTGS"
+          icon={IndianRupee}
+          action={
+            <Button
+              onClick={() => {
+                // Copy bank details to clipboard
+                const bankDetails = `Qode Advisors LLP
+Account Number: 43377275922
+Bank: SBI Bank – Corporate Account Group Branch
+IFSC Code: SBIN0009995
+MICR Code: 40000213`;
+                navigator.clipboard.writeText(bankDetails).then(() => {
+                  toast({
+                    title: "Bank Details Copied",
+                    description: "Bank details have been copied to your clipboard.",
+                  });
+                }).catch(() => {
+                  toast({
+                    title: "Copy Failed",
+                    description: "Please manually copy the bank details.",
+                    variant: "destructive",
+                  });
+                });
+              }}
+              className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
+              aria-label="Copy Bank Details"
+            >
+              Copy Bank Details
+            </Button>
+          }
+        >
+          <div className="flex items-start gap-2">
+            <span className="mt-1 text-primary" aria-hidden="true">
+              •
+            </span>
+            <p>Transfer funds directly via RTGS or Net Banking to Qode's bank account.</p>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="mt-1 text-primary" aria-hidden="true">
+              •
+            </span>
+            <p>
+              <span className="font-semibold">Timeline:</span> Same day processing for bank transfers.
+            </p>
+          </div>
+          <div className="flex items-start gap-2">
+            <span className="mt-1 text-primary" aria-hidden="true">
+              •
+            </span>
+            <p>
+              <span className="font-semibold">Note:</span> If Transferred via NEFT, please inform Investor Relations Team. 
+            </p>
+          </div>
+          <div className="bg-muted p-3 rounded-md mt-3">
+            <p className="text-sm font-semibold text-foreground mb-2">Payable to: Qode Advisors LLP</p>
+            <div className="space-y-1 text-xs text-muted-foreground">
+              <p><span className="font-medium">Account Number:</span> 43377275922</p>
+              <p><span className="font-medium">Bank:</span> SBI Bank – Corporate Account Group Branch</p>
+              <p><span className="font-medium">IFSC Code:</span> SBIN0009995</p>
+              <p><span className="font-medium">MICR Code:</span> 40000213</p>
+            </div>
+          </div>
+        </InfoCard>
+
+        {/* <InfoCard
           title="Withdraw Funds"
           icon={Calendar}
           action={
@@ -1902,7 +2579,7 @@ export default function InvestmentActionsPage() {
               <span className="font-semibold">Timeline:</span> Standard T+10 days per PMS guidelines.
             </p>
           </div>
-        </InfoCard>
+        </InfoCard> */}
       </div>
 
       {/* Transactions Table */}
@@ -2368,6 +3045,9 @@ export default function InvestmentActionsPage() {
         selectedClientCode={selectedClientCode}
         selectedClientId={selectedClientId}
         clients={clients}
+        customer_name={selectedClientName}
+        customer_email={selectedEmailClient}
+        customer_phone={selectedClientMobile}
       />
       {/* <SipManagementModal
         isOpen={isSipManagementModalOpen}
@@ -2383,14 +3063,14 @@ export default function InvestmentActionsPage() {
         selectedEmailClient={selectedEmailClient} // Add this prop
         clients={clients}
       />
-      <WithdrawalModal
+      {/* <WithdrawalModal
         isOpen={isWithdrawalModalOpen}
         onClose={() => setIsWithdrawalModalOpen(false)}
         selectedClientCode={selectedClientCode}
         selectedClientId={selectedClientId}
         selectedEmailClient={selectedEmailClient} // Add this prop
         clients={clients}
-      />
+      /> */}
     </main>
   );
 }
