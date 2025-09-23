@@ -18,15 +18,15 @@ import { useToast } from "@/hooks/use-toast";
    ========================= */
 type FamAcc = {
   relation: string;
-  holderName: string;
+  holderName: string | null | undefined;
   clientcode: string;
   clientid: string;
   status: "Active" | "Pending KYC" | "Dormant";
   groupid?: string;
-  groupname?: string;
+  groupname?: string | null | undefined;
   groupemailid?: string;
   ownerid?: string;
-  ownername?: string;
+  ownername?: string | null | undefined;
   owneremailid?: string;
   accountname?: string;
   accountid?: string;
@@ -71,6 +71,16 @@ async function sendEmail(payload: {
   }
   return res.json().catch(() => ({}));
 }
+
+/* =========================
+   Helper: sanitizeName
+   ========================= */
+const sanitizeName = (name: string | null | undefined) => {
+  if (!name || name === "null" || name.includes("null")) {
+    return name?.replace(/\s*null\s*/g, "").trim() || "Unknown";
+  }
+  return name.trim();
+};
 
 /* =========================
    Skeleton
@@ -128,14 +138,14 @@ export default function FamilyAccountsSection() {
           const mapped: FamAcc[] = data.family.map((member: any) => ({
             clientid: member.clientid,
             clientcode: member.clientcode,
-            holderName: member.holderName,
+            holderName: sanitizeName(member.holderName), // Sanitize holderName
             relation: member.relation,
             status: member.status,
             groupid: member.groupid,
-            groupname: member.groupname,
+            groupname: sanitizeName(member.groupname), // Sanitize groupname
             groupemailid: member.groupemailid,
             ownerid: member.ownerid,
-            ownername: member.ownername,
+            ownername: sanitizeName(member.ownername), // Sanitize ownername
             owneremailid: member.email,
             accountname: member.accountname,
             accountid: member.clientcode,
@@ -186,10 +196,10 @@ export default function FamilyAccountsSection() {
     return familyAccounts.filter(acc => {
       const q = searchTerm.toLowerCase();
       const matchesSearch =
-        acc.holderName?.toLowerCase().includes(q) ||
+        sanitizeName(acc.holderName)?.toLowerCase().includes(q) ||
         acc.clientcode?.toLowerCase().includes(q) ||
-        acc.groupname?.toLowerCase().includes(q) ||
-        acc.ownername?.toLowerCase().includes(q) ||
+        sanitizeName(acc.groupname)?.toLowerCase().includes(q) ||
+        sanitizeName(acc.ownername)?.toLowerCase().includes(q) ||
         acc.email?.toLowerCase().includes(q) ||
         false;
       const matchesStatus = statusFilter === "All" || acc.status === statusFilter;
@@ -199,10 +209,10 @@ export default function FamilyAccountsSection() {
 
   const groupedAccounts = useMemo(() => {
     const groups = filteredAccounts.reduce((acc, member) => {
-      const groupKey = member.groupname || "Onwer Account";
+      const groupKey = sanitizeName(member.groupname) || "Owner Account";
       if (!acc[groupKey]) {
         acc[groupKey] = {
-          groupName: member.groupname,
+          groupName: sanitizeName(member.groupname),
           groupId: member.groupid,
           groupEmail: member.groupemailid,
           owners: {} as Record<
@@ -215,7 +225,7 @@ export default function FamilyAccountsSection() {
       if (!acc[groupKey].owners[ownerKey]) {
         acc[groupKey].owners[ownerKey] = {
           ownerId: member.ownerid || member.clientid,
-          ownerName: member.ownername || member.holderName,
+          ownerName: sanitizeName(member.ownername || member.holderName),
           ownerEmail: member.owneremailid,
           accounts: [],
         };
@@ -239,7 +249,7 @@ export default function FamilyAccountsSection() {
           if (b.relation === "Primary") return 1;
           if (a.head_of_family) return -1;
           if (b.head_of_family) return 1;
-          return a.holderName.localeCompare(b.holderName);
+          return sanitizeName(a.holderName).localeCompare(sanitizeName(b.holderName));
         });
       });
     });
@@ -438,7 +448,7 @@ export default function FamilyAccountsSection() {
                     <div className={`h-3 w-3 rounded-full ${isHeadOfFamily ? 'bg-blue-500' : 'bg-gray-500'}`} />
                     <div className="flex-1">
                       <div className="font-semibold text-md md:text-lg">
-                        {isHeadOfFamily ? (group.groupName || "Family Group") : "Account Owner"}
+                        {isHeadOfFamily ? (sanitizeName(group.groupName) || "Family Group") : "Account Owner"}
                       </div>
                       <div className="text-sm text-muted-foreground">
                         {isHeadOfFamily ? (
@@ -461,7 +471,7 @@ export default function FamilyAccountsSection() {
                   {!isGroupCollapsed && (
                     <div className="ml-4 md:ml-6">
                       {Object.entries(group.owners)
-                        .sort(([, a], [, b]) => (a.ownerName || "Unknown").localeCompare(b.ownerName || "Unknown"))
+                        .sort(([, a], [, b]) => (sanitizeName(a.ownerName) || "Unknown").localeCompare(sanitizeName(b.ownerName) || "Unknown"))
                         .map(([ownerKey, owner]) => {
                           const fullOwnerKey = `${groupKey}-${ownerKey}`;
                           const isOwnerCollapsed = collapsedOwners.has(fullOwnerKey);
@@ -485,7 +495,7 @@ export default function FamilyAccountsSection() {
                                   )}
                                   <div className="h-2 w-2 rounded-full bg-green-500"></div>
                                   <div className="flex-1">
-                                    <div className="font-medium">{owner.ownerName || 'Account Holder'}</div>
+                                    <div className="font-medium">{sanitizeName(owner.ownerName) || 'Account Holder'}</div>
                                     <div className="text-sm text-muted-foreground">
                                       {isHeadOfFamily ? (
                                         `Owner ID: ${owner.ownerId} | Email: ${owner.ownerEmail || "N/A"}`
@@ -529,7 +539,7 @@ export default function FamilyAccountsSection() {
                                               }`}></div>
                                               <div className="flex-1">
                                                 <div className="font-medium text-sm flex items-center gap-2">
-                                                  {account.holderName}
+                                                  {sanitizeName(account.holderName)}
                                                   {account.head_of_family && <Crown className="w-3 h-3 text-blue-600" />}
                                                 </div>
                                                 <div className="text-xs text-muted-foreground">

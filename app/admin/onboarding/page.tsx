@@ -150,7 +150,15 @@ function AdminDashboardContent() {
       const matchesSearch = !searchTerm || 
         client.ownerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         client.ownerEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.accounts.some(acc => acc.clientCode.toLowerCase().includes(searchTerm.toLowerCase()));
+        client.ownerId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        client.groupId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        client.groupName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        client.primaryClientCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        client.accounts.some(acc => 
+          acc.clientCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          acc.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          acc.clientId.toLowerCase().includes(searchTerm.toLowerCase())
+        );
       
       const matchesStatus = statusFilter === 'all' || client.onboardingStatus === statusFilter;
       
@@ -417,7 +425,7 @@ function AdminDashboardContent() {
                 const headOfFamily = owner.accounts.find(acc => acc.headOfFamily);
                 
                 return (
-                  <TableRow key={owner.ownerEmail}>
+                  <TableRow key={owner.ownerId}>
                     <TableCell>
                       <div className="flex items-center space-x-2">
                         {headOfFamily ? (
@@ -712,7 +720,7 @@ function AdminDashboardContent() {
               const headOfFamily = owner.accounts.find(acc => acc.headOfFamily);
               
               return (
-                <Card key={owner.ownerEmail} className="hover:shadow-md transition-shadow">
+                <Card key={owner.ownerId} className="hover:shadow-md transition-shadow">
                   <CardContent className="p-4">
                     <div className="space-y-3">
                       {/* Header */}

@@ -50,6 +50,14 @@ const formatCurrency = (value: number | undefined | null) => {
   }).format(numValue);
 };
 
+// Helper function to sanitize names and remove null/undefined
+const sanitizeName = (name: string | null | undefined) => {
+  if (!name || name === "null" || name.includes("null")) {
+    return name?.replace(/\s*null\s*/g, "").trim() || "Unknown";
+  }
+  return name.trim();
+};
+
 /* =========================
    Skeleton Component
    ========================= */
@@ -102,14 +110,14 @@ export default function FamilyPortfolioSection() {
         const mappedFamily: FamAccWithPortfolio[] = familyData.family.map((member: any) => ({
           clientid: member.clientid,
           clientcode: member.clientcode,
-          holderName: member.holderName,
+          holderName: sanitizeName(member.holderName), // Sanitize holderName
           relation: member.relation,
           status: member.status,
           groupid: member.groupid,
           groupname: member.groupname,
           groupemailid: member.groupemailid,
           ownerid: member.ownerid,
-          ownername: member.ownername,
+          ownername: sanitizeName(member.ownername), // Sanitize ownerName
           owneremailid: member.email,
           head_of_family: member.head_of_family,
         }));
@@ -171,10 +179,10 @@ export default function FamilyPortfolioSection() {
     return familyAccounts.filter(acc => {
       const q = searchTerm.toLowerCase();
       const matchesSearch =
-        acc.holderName?.toLowerCase().includes(q) ||
+        sanitizeName(acc.holderName)?.toLowerCase().includes(q) ||
         acc.clientcode?.toLowerCase().includes(q) ||
-        acc.groupname?.toLowerCase().includes(q) ||
-        acc.ownername?.toLowerCase().includes(q) ||
+        sanitizeName(acc.groupname)?.toLowerCase().includes(q) ||
+        sanitizeName(acc.ownername)?.toLowerCase().includes(q) ||
         false;
       const matchesStatus = statusFilter === "All" || acc.status === statusFilter;
       return matchesSearch && matchesStatus;
@@ -183,10 +191,10 @@ export default function FamilyPortfolioSection() {
 
   const groupedAccounts = useMemo(() => {
     const groups = filteredAccounts.reduce((acc, member) => {
-      const groupKey = isHeadOfFamily ? (member.groupname || "Family Group") : "Owner Portfolio";
+      const groupKey = isHeadOfFamily ? (sanitizeName(member.groupname) || "Family Group") : "Owner Portfolio";
       if (!acc[groupKey]) {
         acc[groupKey] = {
-          groupName: member.groupname,
+          groupName: sanitizeName(member.groupname),
           groupId: member.groupid,
           groupEmail: member.groupemailid,
           totalPortfolioValue: 0,
@@ -207,7 +215,7 @@ export default function FamilyPortfolioSection() {
       if (!acc[groupKey].owners[ownerKey]) {
         acc[groupKey].owners[ownerKey] = {
           ownerId: member.ownerid || member.clientid,
-          ownerName: isHeadOfFamily ? member.ownername : member.holderName,
+          ownerName: isHeadOfFamily ? sanitizeName(member.ownername) : sanitizeName(member.holderName),
           ownerEmail: member.owneremailid,
           totalPortfolioValue: 0,
           accounts: [],
@@ -250,7 +258,7 @@ export default function FamilyPortfolioSection() {
           if (b.head_of_family) return 1;
           if (a.relation === "Primary") return -1;
           if (b.relation === "Primary") return 1;
-          return a.holderName.localeCompare(b.holderName);
+          return sanitizeName(a.holderName).localeCompare(sanitizeName(b.holderName));
         });
       });
     });
@@ -369,7 +377,7 @@ export default function FamilyPortfolioSection() {
                     <div className={`h-3 w-3 rounded-full ${isHeadOfFamily ? 'bg-blue-500' : 'bg-gray-500'}`} />
                     <div className="flex-1">
                       <div className="font-semibold text-lg">
-                        {isHeadOfFamily ? (group.groupName || "Family Group") : "Owner Portfolio"}
+                        {isHeadOfFamily ? (sanitizeName(group.groupName) || "Family Group") : "Owner Portfolio"}
                       </div>
                       <div className="text-sm text-muted-foreground">
                         {isHeadOfFamily ? (
@@ -389,7 +397,7 @@ export default function FamilyPortfolioSection() {
                   {!isGroupCollapsed && (
                     <div className="ml-6 space-y-3">
                       {Object.entries(group.owners)
-                        .sort(([, a], [, b]) => (a.ownerName || "Unknown").localeCompare(b.ownerName || "Unknown"))
+                        .sort(([, a], [, b]) => (sanitizeName(a.ownerName) || "Unknown").localeCompare(sanitizeName(b.ownerName) || "Unknown"))
                         .map(([ownerKey, owner]) => {
                           const fullOwnerKey = `${groupKey}-${ownerKey}`;
                           const isOwnerCollapsed = collapsedOwners.has(fullOwnerKey);
@@ -408,7 +416,7 @@ export default function FamilyPortfolioSection() {
                                 )}
                                 <div className="h-2 w-2 rounded-full bg-green-500"></div>
                                 <div className="flex-1">
-                                  <div className="font-medium">{owner.ownerName || 'Account Holder'}</div>
+                                  <div className="font-medium">{sanitizeName(owner.ownerName) || 'Account Holder'}</div>
                                   <div className="text-sm text-muted-foreground">
                                     {owner.accounts.length} account{owner.accounts.length !== 1 ? 's' : ''}
                                   </div>
@@ -433,7 +441,7 @@ export default function FamilyPortfolioSection() {
                                       </div>
                                       <div className="flex-1">
                                         <div className="font-medium flex items-center gap-2">
-                                          {account.holderName}
+                                          {sanitizeName(account.holderName)}
                                           {account.head_of_family && isHeadOfFamily && (
                                             <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
                                               Head
