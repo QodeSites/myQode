@@ -282,11 +282,11 @@ export default function LoginPage() {
 
   const getStepTitle = () => {
     switch (currentStep) {
-      case 'username': return 'Welcome Back!'
+      case 'username': return 'Welcome!'
       case 'password': return 'Enter Password'
       case 'otp-verification': return 'Email Verification'
       case 'password-setup': return 'Set Your Password'
-      default: return 'Welcome Back!'
+      default: return 'Welcome!'
     }
   }
 
