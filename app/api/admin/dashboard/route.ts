@@ -11,6 +11,7 @@ interface AdminDashboardData {
 
 interface GroupedClientData {
   // Primary owner info
+  ownerId: string;
   ownerEmail: string;
   ownerName: string;
   groupId: string;
@@ -85,30 +86,30 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status') || 'all';
     const limit = parseInt(searchParams.get('limit') || '10000');
 
-    // Get all clients
+    // Get all clients with ownerid
     let clientQuery = `
       SELECT 
         id, clientid, clientcode, clientname, email, mobile, onboarding_status,
-        head_of_family, groupid, groupname, password_set_at, first_login_at,
+        head_of_family, groupid, groupname, ownerid, password_set_at, first_login_at,
         login_attempts, locked_until, created_at, updated_at,
         salutation, firstname, middlename, lastname
       FROM pms_clients_master
-      WHERE 1=1
+      WHERE ownerid IS NOT NULL
       ORDER BY created_at DESC
     `;
 
     const clientResult = await query(clientQuery, []);
     const allClients = clientResult.rows;
 
-    // Group clients by email (owner)
+    // Group clients by ownerid instead of email
     const clientGroups = new Map<string, any[]>();
     
     allClients.forEach((client: any) => {
-      const email = client.email.toLowerCase();
-      if (!clientGroups.has(email)) {
-        clientGroups.set(email, []);
+      const ownerId = client.ownerid;
+      if (!clientGroups.has(ownerId)) {
+        clientGroups.set(ownerId, []);
       }
-      clientGroups.get(email)!.push({
+      clientGroups.get(ownerId)!.push({
         ...client,
         clientname: `${client.salutation || ''} ${client.firstname} ${client.middlename || ''} ${client.lastname}`.trim(),
       });
@@ -135,7 +136,7 @@ export async function GET(request: NextRequest) {
 
     // Convert grouped clients to GroupedClientData
     const groupedClients: GroupedClientData[] = Array.from(clientGroups.entries())
-      .map(([email, accounts]) => {
+      .map(([ownerId, accounts]) => {
         // Find primary account (head of family or first account)
         const primaryAccount = accounts.find(acc => acc.head_of_family) || accounts[0];
         
@@ -162,7 +163,8 @@ export async function GET(request: NextRequest) {
           : null;
 
         const grouped: GroupedClientData = {
-          ownerEmail: email,
+          ownerId: ownerId,
+          ownerEmail: primaryAccount.email,
           ownerName: primaryAccount.clientname,
           groupId: primaryAccount.groupid,
           groupName: primaryAccount.groupname,
@@ -193,6 +195,7 @@ export async function GET(request: NextRequest) {
         const matchesSearch = !search || 
           group.ownerName.toLowerCase().includes(search.toLowerCase()) ||
           group.ownerEmail.toLowerCase().includes(search.toLowerCase()) ||
+          group.ownerId.toLowerCase().includes(search.toLowerCase()) ||
           group.accounts.some(acc => acc.clientCode.toLowerCase().includes(search.toLowerCase()));
         
         // Apply status filter
@@ -204,7 +207,7 @@ export async function GET(request: NextRequest) {
       .slice(0, limit);
 
     // Calculate statistics
-    const allGroupedClients = Array.from(clientGroups.entries()).map(([email, accounts]) => {
+    const allGroupedClients = Array.from(clientGroups.entries()).map(([ownerId, accounts]) => {
       const completedCount = accounts.filter(acc => acc.onboarding_status === 'completed').length;
       const pendingCount = accounts.filter(acc => acc.onboarding_status === 'pending').length;
       
@@ -272,7 +275,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Admin impersonation endpoint (unchanged)
+// Admin impersonation endpoint (unchanged from original)
 export async function POST(request: NextRequest) {
   try {
     const { action, clientCode } = await request.json();
@@ -287,7 +290,7 @@ export async function POST(request: NextRequest) {
 
       // Get client data for impersonation with role information
       const clientResult = await query(
-        `SELECT clientid, clientcode, email, groupid, head_of_family, 
+        `SELECT clientid, clientcode, email, groupid, head_of_family, ownerid,
                 salutation, firstname, middlename, lastname
          FROM pms_clients_master 
          WHERE clientcode = $1`,
@@ -302,7 +305,7 @@ export async function POST(request: NextRequest) {
       }
 
       const targetClient = clientResult.rows[0];
-      const { groupid, email, head_of_family } = targetClient;
+      const { groupid, email, head_of_family, ownerid } = targetClient;
 
       // Get associated client codes based on role (same logic as login)
       let associatedResult;
@@ -314,10 +317,10 @@ export async function POST(request: NextRequest) {
           [groupid]
         );
       } else {
-        // If target is not head of family, get only accounts with this email
+        // If target is not head of family, get only accounts with this ownerid
         associatedResult = await query(
-          'SELECT clientid, clientcode FROM pms_clients_master WHERE email = $1',
-          [email]
+          'SELECT clientid, clientcode FROM pms_clients_master WHERE ownerid = $1',
+          [ownerid]
         );
       }
 
@@ -337,7 +340,8 @@ export async function POST(request: NextRequest) {
           clientcode: targetClient.clientcode,
           email: targetClient.email,
           groupid: targetClient.groupid,
-          head_of_family: targetClient.head_of_family
+          head_of_family: targetClient.head_of_family,
+          ownerid: targetClient.ownerid
         },
         targetClientName: `${targetClient.salutation || ''} ${targetClient.firstname} ${targetClient.middlename || ''} ${targetClient.lastname}`.trim()
       })).toString('base64');

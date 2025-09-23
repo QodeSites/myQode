@@ -35,7 +35,11 @@ import {
   FileText,
   UserCog,
   Building2,
-  Hash
+  Hash,
+  Download,
+  Grid,
+  List,
+  MoreHorizontal
 } from "lucide-react";
 import {
   Dialog,
@@ -45,8 +49,26 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 interface GroupedClientData {
+  ownerId: string;
   ownerEmail: string;
   ownerName: string;
   groupId: string;
@@ -117,6 +139,7 @@ function AdminDashboardContent() {
   const [showAccountsDialog, setShowAccountsDialog] = useState(false);
   const [impersonating, setImpersonating] = useState(false);
   const [message, setMessage] = useState('');
+  const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards');
 
   useEffect(() => {
     fetchDashboardData();
@@ -182,6 +205,103 @@ function AdminDashboardContent() {
     }
   };
 
+  const exportToCSV = (data: any[], filename: string, type: 'owners' | 'accounts') => {
+    let csvContent = '';
+    let headers: string[] = [];
+    
+    if (type === 'owners') {
+      headers = [
+        'Owner ID',
+        'Owner Name',
+        'Owner Email', 
+        'Group ID',
+        'Group Name',
+        'Total Accounts',
+        'Onboarding Status',
+        'Total Queries',
+        'Pending Queries',
+        'Total Logins',
+        'Primary Client Code',
+        'Created Date',
+        'Last Activity'
+      ];
+      
+      csvContent = headers.join(',') + '\n';
+      
+      data.forEach(owner => {
+        const ownerQueries = getOwnerQueries(owner.ownerEmail);
+        const pendingQueries = ownerQueries.filter(q => q.status === 'pending').length;
+        
+        const row = [
+          `"${owner.ownerId}"`,
+          `"${owner.ownerName}"`,
+          `"${owner.ownerEmail}"`,
+          `"${owner.groupId}"`,
+          `"${owner.groupName}"`,
+          owner.totalAccounts,
+          owner.onboardingStatus,
+          owner.totalQueries,
+          pendingQueries,
+          owner.totalLogins,
+          `"${owner.primaryClientCode}"`,
+          new Date(owner.createdAt).toLocaleDateString(),
+          owner.lastActivity ? new Date(owner.lastActivity).toLocaleDateString() : 'Never'
+        ].join(',');
+        
+        csvContent += row + '\n';
+      });
+    } else {
+      // Export all accounts
+      headers = [
+        'Owner ID',
+        'Owner Name',
+        'Owner Email',
+        'Client ID',
+        'Client Code',
+        'Client Name', 
+        'Onboarding Status',
+        'Head of Family',
+        'Login Count',
+        'Last Login',
+        'Created Date'
+      ];
+      
+      csvContent = headers.join(',') + '\n';
+      
+      data.forEach(owner => {
+        owner.accounts.forEach((account: ClientAccount) => {
+          const row = [
+            `"${owner.ownerId}"`,
+            `"${owner.ownerName}"`,
+            `"${owner.ownerEmail}"`,
+            `"${account.clientId}"`,
+            `"${account.clientCode}"`,
+            `"${account.clientName}"`,
+            account.onboardingStatus,
+            account.headOfFamily ? 'Yes' : 'No',
+            account.loginCount,
+            account.lastLogin ? new Date(account.lastLogin).toLocaleDateString() : 'Never',
+            new Date(account.createdAt).toLocaleDateString()
+          ].join(',');
+          
+          csvContent += row + '\n';
+        });
+      });
+    }
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${filename}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    setMessage(`Successfully exported ${data.length} ${type} to CSV`);
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'completed':
@@ -236,6 +356,174 @@ function AdminDashboardContent() {
             {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
           </div>
         </div>
+      </CardContent>
+    </Card>
+  );
+
+  // Owners List Table Component
+  const OwnersListTable = () => (
+    <Card>
+      <CardHeader>
+        <div className="flex justify-between items-center">
+          <div>
+            <CardTitle className="flex items-center space-x-2">
+              <Users className="h-5 w-5 text-blue-500" />
+              <span>Owner View - List Format</span>
+            </CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Manage owners with their grouped accounts
+            </p>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm">
+                <Download className="h-4 w-4 mr-2" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuLabel>Export Options</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => exportToCSV(filteredClients, 'owners-list', 'owners')}>
+                <FileText className="h-4 w-4 mr-2" />
+                Export Owners CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportToCSV(filteredClients, 'all-accounts-list', 'accounts')}>
+                <Users className="h-4 w-4 mr-2" />
+                Export All Accounts CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Owner</TableHead>
+                <TableHead>Owner ID</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-center">Accounts</TableHead>
+                <TableHead className="text-center">Queries</TableHead>
+                <TableHead className="text-center">Logins</TableHead>
+                <TableHead>Last Activity</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredClients.map((owner) => {
+                const ownerQueries = getOwnerQueries(owner.ownerEmail);
+                const headOfFamily = owner.accounts.find(acc => acc.headOfFamily);
+                
+                return (
+                  <TableRow key={owner.ownerEmail}>
+                    <TableCell>
+                      <div className="flex items-center space-x-2">
+                        {headOfFamily ? (
+                          <Crown className="h-4 w-4 text-blue-600" />
+                        ) : (
+                          <User className="h-4 w-4 text-gray-600" />
+                        )}
+                        <div>
+                          <div className="font-medium text-sm">{owner.ownerName}</div>
+                          <div className="text-xs text-muted-foreground">{owner.ownerEmail}</div>
+                          <div className="text-xs text-muted-foreground">
+                            Code: {owner.primaryClientCode}
+                          </div>
+                        </div>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm font-mono">{owner.ownerId}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Group: {owner.groupId}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {getStatusBadge(owner.onboardingStatus)}
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        {owner.accounts.filter(acc => acc.onboardingStatus === 'completed').length}/{owner.totalAccounts} complete
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <div className="font-semibold">{owner.totalAccounts}</div>
+                      <div className="text-xs text-muted-foreground">{owner.groupName}</div>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <div className="font-semibold">{ownerQueries.length}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {ownerQueries.filter(q => q.status === 'pending').length} pending
+                      </div>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <div className="font-semibold">{owner.totalLogins}</div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-sm">
+                        {owner.lastActivity 
+                          ? new Date(owner.lastActivity).toLocaleDateString()
+                          : 'No activity'
+                        }
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Created: {new Date(owner.createdAt).toLocaleDateString()}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSelectedClient(owner);
+                              setShowAccountsDialog(true);
+                            }}
+                          >
+                            <Hash className="h-4 w-4 mr-2" />
+                            View Accounts
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSelectedClient(owner);
+                              setShowQueriesDialog(true);
+                            }}
+                          >
+                            <FileText className="h-4 w-4 mr-2" />
+                            View Queries
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            onClick={() => {
+                              setSelectedClient(owner);
+                              setShowImpersonateDialog(true);
+                            }}
+                            className="text-orange-600"
+                          >
+                            <UserCog className="h-4 w-4 mr-2" />
+                            Impersonate
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </div>
+        
+        {filteredClients.length === 0 && !loading && (
+          <div className="text-center py-12">
+            <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No owners found</h3>
+            <p className="text-muted-foreground">Try adjusting your search or filter criteria.</p>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -346,6 +634,28 @@ function AdminDashboardContent() {
                 <SelectItem value="mixed">Mixed</SelectItem>
               </SelectContent>
             </Select>
+
+            {/* View Mode Toggle */}
+            <div className="flex border rounded-lg">
+              <Button
+                variant={viewMode === 'cards' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('cards')}
+                className="rounded-r-none"
+              >
+                <Grid className="h-4 w-4 mr-2" />
+                Cards
+              </Button>
+              <Button
+                variant={viewMode === 'list' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('list')}
+                className="rounded-l-none"
+              >
+                <List className="h-4 w-4 mr-2" />
+                List
+              </Button>
+            </div>
           </div>
 
           {message && (
@@ -357,167 +667,216 @@ function AdminDashboardContent() {
         </CardContent>
       </Card>
 
-      {/* Owners Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredClients.map((owner) => {
-          const ownerQueries = getOwnerQueries(owner.ownerEmail);
-          const headOfFamily = owner.accounts.find(acc => acc.headOfFamily);
-          
-          return (
-            <Card key={owner.ownerEmail} className="hover:shadow-md transition-shadow">
-              <CardContent className="p-4">
-                <div className="space-y-3">
-                  {/* Header */}
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center space-x-2">
-                      {headOfFamily ? (
-                        <Crown className="h-4 w-4 text-blue-600" />
-                      ) : (
-                        <User className="h-4 w-4 text-gray-600" />
-                      )}
-                      <div>
-                        <h3 className="font-semibold text-sm">{owner.ownerName}</h3>
-                        <p className="text-xs text-muted-foreground">{owner.ownerEmail}</p>
-                      </div>
-                    </div>
-                    {getStatusBadge(owner.onboardingStatus)}
-                  </div>
+      {/* Content based on view mode */}
+      {viewMode === 'list' ? (
+        <OwnersListTable />
+      ) : (
+        <>
+          {/* Export Button for Card View */}
+          <div className="flex justify-between items-center">
+            <div>
+              <h3 className="text-lg font-semibold flex items-center space-x-2">
+                <Grid className="h-5 w-5 text-blue-500" />
+                <span>Owner View - Card Format</span>
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Visual overview of owners with their grouped accounts
+              </p>
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline">
+                  <Download className="h-4 w-4 mr-2" />
+                  Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuLabel>Export Options</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => exportToCSV(filteredClients, 'owners-cards', 'owners')}>
+                  <FileText className="h-4 w-4 mr-2" />
+                  Export Owners CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => exportToCSV(filteredClients, 'all-accounts-cards', 'accounts')}>
+                  <Users className="h-4 w-4 mr-2" />
+                  Export All Accounts CSV
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
 
-                  {/* Stats Row */}
-                  <div className="grid grid-cols-4 gap-2 text-center">
-                    <div className="bg-muted/50 rounded p-2">
-                      <div className="text-lg font-bold">{owner.totalAccounts}</div>
-                      <div className="text-xs text-muted-foreground">Accounts</div>
-                    </div>
-                    <div className="bg-muted/50 rounded p-2">
-                      <div className="text-lg font-bold">{owner.totalLogins}</div>
-                      <div className="text-xs text-muted-foreground">Logins</div>
-                    </div>
-                    <div className="bg-muted/50 rounded p-2">
-                      <div className="text-lg font-bold">{ownerQueries.length}</div>
-                      <div className="text-xs text-muted-foreground">Queries</div>
-                    </div>
-                    <div className="bg-muted/50 rounded p-2">
-                      <div className="text-lg font-bold">
-                        {ownerQueries.filter(q => q.status === 'pending').length}
-                      </div>
-                      <div className="text-xs text-muted-foreground">Pending</div>
-                    </div>
-                  </div>
-
-                  {/* Account Status Breakdown */}
-                  <div className="space-y-1 text-xs">
-                    <div className="flex justify-between items-center">
-                      <span className="font-medium">Account Status:</span>
-                      <div className="flex space-x-1">
-                        {owner.accounts.filter(acc => acc.onboardingStatus === 'completed').length > 0 && (
-                          <Badge variant="outline" className="text-xs bg-green-50 text-green-700">
-                            {owner.accounts.filter(acc => acc.onboardingStatus === 'completed').length} Complete
-                          </Badge>
-                        )}
-                        {owner.accounts.filter(acc => acc.onboardingStatus === 'pending').length > 0 && (
-                          <Badge variant="outline" className="text-xs bg-orange-50 text-orange-700">
-                            {owner.accounts.filter(acc => acc.onboardingStatus === 'pending').length} Pending
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Details */}
-                  <div className="space-y-1 text-xs text-muted-foreground">
-                    <div className="flex justify-between">
-                      <span>Group:</span>
-                      <span className="truncate ml-2">{owner.groupName}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Primary Code:</span>
-                      <span className="font-mono">{owner.primaryClientCode}</span>
-                    </div>
-                    {owner.lastActivity && (
-                      <div className="flex justify-between">
-                        <span>Last Activity:</span>
-                        <span>{new Date(owner.lastActivity).toLocaleDateString()}</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Recent Queries Preview */}
-                  {ownerQueries.length > 0 && (
-                    <div className="border-t pt-2">
-                      <p className="text-xs font-medium mb-1">Recent Queries:</p>
-                      <div className="space-y-1">
-                        {ownerQueries.slice(0, 2).map((query) => (
-                          <div key={query.id} className="flex items-center justify-between text-xs">
-                            <span className="truncate">{query.subject}</span>
-                            {getQueryTypeBadge(query.type)}
+          {/* Owners Grid - Existing card view */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredClients.map((owner) => {
+              const ownerQueries = getOwnerQueries(owner.ownerEmail);
+              const headOfFamily = owner.accounts.find(acc => acc.headOfFamily);
+              
+              return (
+                <Card key={owner.ownerEmail} className="hover:shadow-md transition-shadow">
+                  <CardContent className="p-4">
+                    <div className="space-y-3">
+                      {/* Header */}
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center space-x-2">
+                          {headOfFamily ? (
+                            <Crown className="h-4 w-4 text-blue-600" />
+                          ) : (
+                            <User className="h-4 w-4 text-gray-600" />
+                          )}
+                          <div>
+                            <h3 className="font-semibold text-sm">{owner.ownerName}</h3>
+                            <p className="text-xs text-muted-foreground">{owner.ownerEmail}</p>
                           </div>
-                        ))}
-                        {ownerQueries.length > 2 && (
-                          <p className="text-xs text-muted-foreground">
-                            +{ownerQueries.length - 2} more queries
-                          </p>
+                        </div>
+                        {getStatusBadge(owner.onboardingStatus)}
+                      </div>
+
+                      {/* Stats Row */}
+                      <div className="grid grid-cols-4 gap-2 text-center">
+                        <div className="bg-muted/50 rounded p-2">
+                          <div className="text-lg font-bold">{owner.totalAccounts}</div>
+                          <div className="text-xs text-muted-foreground">Accounts</div>
+                        </div>
+                        <div className="bg-muted/50 rounded p-2">
+                          <div className="text-lg font-bold">{owner.totalLogins}</div>
+                          <div className="text-xs text-muted-foreground">Logins</div>
+                        </div>
+                        <div className="bg-muted/50 rounded p-2">
+                          <div className="text-lg font-bold">{ownerQueries.length}</div>
+                          <div className="text-xs text-muted-foreground">Queries</div>
+                        </div>
+                        <div className="bg-muted/50 rounded p-2">
+                          <div className="text-lg font-bold">
+                            {ownerQueries.filter(q => q.status === 'pending').length}
+                          </div>
+                          <div className="text-xs text-muted-foreground">Pending</div>
+                        </div>
+                      </div>
+
+                      {/* Account Status Breakdown */}
+                      <div className="space-y-1 text-xs">
+                        <div className="flex justify-between items-center">
+                          <span className="font-medium">Account Status:</span>
+                          <div className="flex space-x-1">
+                            {owner.accounts.filter(acc => acc.onboardingStatus === 'completed').length > 0 && (
+                              <Badge variant="outline" className="text-xs bg-green-50 text-green-700">
+                                {owner.accounts.filter(acc => acc.onboardingStatus === 'completed').length} Complete
+                              </Badge>
+                            )}
+                            {owner.accounts.filter(acc => acc.onboardingStatus === 'pending').length > 0 && (
+                              <Badge variant="outline" className="text-xs bg-orange-50 text-orange-700">
+                                {owner.accounts.filter(acc => acc.onboardingStatus === 'pending').length} Pending
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Details */}
+                      <div className="space-y-1 text-xs text-muted-foreground">
+                        <div className="flex justify-between">
+                          <span>Owner ID:</span>
+                          <span className="font-mono">{owner.ownerId}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Group:</span>
+                          <span className="truncate ml-2">{owner.groupName}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Group ID:</span>
+                          <span className="font-mono">{owner.groupId}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Primary Code:</span>
+                          <span className="font-mono">{owner.primaryClientCode}</span>
+                        </div>
+                        {owner.lastActivity && (
+                          <div className="flex justify-between">
+                            <span>Last Activity:</span>
+                            <span>{new Date(owner.lastActivity).toLocaleDateString()}</span>
+                          </div>
                         )}
                       </div>
-                    </div>
-                  )}
 
-                  {/* Actions */}
-                  <div className="flex space-x-1 pt-2 border-t">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setSelectedClient(owner);
-                        setShowAccountsDialog(true);
-                      }}
-                      className="flex-1 text-xs"
-                    >
-                      <Hash className="h-3 w-3 mr-1" />
-                      Accounts
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setSelectedClient(owner);
-                        setShowImpersonateDialog(true);
-                      }}
-                      className="flex-1 text-xs"
-                    >
-                      <UserCog className="h-3 w-3 mr-1" />
-                      Login
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setSelectedClient(owner);
-                        setShowQueriesDialog(true);
-                      }}
-                      className="flex-1 text-xs"
-                    >
-                      <FileText className="h-3 w-3 mr-1" />
-                      Queries
-                    </Button>
-                  </div>
-                </div>
+                      {/* Recent Queries Preview */}
+                      {ownerQueries.length > 0 && (
+                        <div className="border-t pt-2">
+                          <p className="text-xs font-medium mb-1">Recent Queries:</p>
+                          <div className="space-y-1">
+                            {ownerQueries.slice(0, 2).map((query) => (
+                              <div key={query.id} className="flex items-center justify-between text-xs">
+                                <span className="truncate">{query.subject}</span>
+                                {getQueryTypeBadge(query.type)}
+                              </div>
+                            ))}
+                            {ownerQueries.length > 2 && (
+                              <p className="text-xs text-muted-foreground">
+                                +{ownerQueries.length - 2} more queries
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Actions */}
+                      <div className="flex space-x-1 pt-2 border-t">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedClient(owner);
+                            setShowAccountsDialog(true);
+                          }}
+                          className="flex-1 text-xs"
+                        >
+                          <Hash className="h-3 w-3 mr-1" />
+                          Accounts
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedClient(owner);
+                            setShowImpersonateDialog(true);
+                          }}
+                          className="flex-1 text-xs"
+                        >
+                          <UserCog className="h-3 w-3 mr-1" />
+                          Login
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setSelectedClient(owner);
+                            setShowQueriesDialog(true);
+                          }}
+                          className="flex-1 text-xs"
+                        >
+                          <FileText className="h-3 w-3 mr-1" />
+                          Queries
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+
+          {filteredClients.length === 0 && !loading && (
+            <Card>
+              <CardContent className="text-center py-12">
+                <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No owners found</h3>
+                <p className="text-muted-foreground">Try adjusting your search or filter criteria.</p>
               </CardContent>
             </Card>
-          );
-        })}
-      </div>
-
-      {filteredClients.length === 0 && !loading && (
-        <Card>
-          <CardContent className="text-center py-12">
-            <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No owners found</h3>
-            <p className="text-muted-foreground">Try adjusting your search or filter criteria.</p>
-          </CardContent>
-        </Card>
+          )}
+        </>
       )}
 
+      {/* All existing dialogs remain the same */}
       {/* Accounts Detail Dialog */}
       <Dialog open={showAccountsDialog} onOpenChange={setShowAccountsDialog}>
         <DialogContent className="max-w-2xl max-h-[80vh]">
