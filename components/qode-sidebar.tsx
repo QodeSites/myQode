@@ -24,6 +24,8 @@ import {
   Info,
   X,
   ChevronDown,
+  Crown,
+  User,
 } from "lucide-react"
 import { useClient } from "@/contexts/ClientContext"
 import {
@@ -31,8 +33,10 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Badge } from "@/components/ui/badge"
 
 function NavLink({
   href,
@@ -69,16 +73,23 @@ type QodeSidebarProps = {
   onClose?: () => void
 }
 
-
-
-
 export default function QodeSidebar({ open = false, onClose }: QodeSidebarProps) {
   const pathname = usePathname()
   const [openAccordions, setOpenAccordions] = useState<string[]>([])
   const [isPending, startTransition] = useTransition()
-  const { clients, selectedClientCode, setSelectedClient } = useClient()
+  const { 
+    clients, 
+    selectedClientCode, 
+    selectedClientHolderName, 
+    isHeadOfFamily,
+    setSelectedClient 
+  } = useClient()
 
   const handleClientSelect = (clientCode: string) => setSelectedClient(clientCode)
+
+  // Get the display name (same logic as header)
+  const selectedClient = clients.find(c => c.clientcode === selectedClientCode)
+  const displayName = selectedClientHolderName || selectedClient?.holderName || selectedClient?.clientname || selectedClientCode || (clients[0]?.holderName || clients[0]?.clientname || clients[0]?.clientcode) || "Select Account"
 
   // 1) Open proper accordion from path (unchanged)
   useEffect(() => {
@@ -121,6 +132,109 @@ export default function QodeSidebar({ open = false, onClose }: QodeSidebarProps)
       window.location.href = "/login"
     })
   }
+
+  // Reusable mobile account dropdown component (matches header styling)
+  const MobileAccountDropdown = () => (
+    <DropdownMenu>
+      <DropdownMenuTrigger className="inline-flex w-full items-center justify-between gap-2 rounded-md border bg-card px-3 py-2 text-sm text-foreground hover:bg-accent transition-colors">
+        <div className="flex items-center gap-2">
+          {/* Role indicator icon */}
+          {isHeadOfFamily ? (
+            <Crown className="h-4 w-4 text-blue-600 shrink-0" />
+          ) : (
+            <User className="h-4 w-4 text-gray-600 shrink-0" />
+          )}
+          <span className="font-medium text-primary truncate max-w-[120px] sm:max-w-[160px]">
+            {displayName}
+          </span>
+        </div>
+        <ChevronDown className="size-4 text-muted-foreground shrink-0" />
+      </DropdownMenuTrigger>
+      
+      <DropdownMenuContent align="end" className="min-w-64 z-[200]">
+        {/* Header with role indicator */}
+        <DropdownMenuLabel className="flex items-center gap-2 text-sm">
+          {isHeadOfFamily ? (
+            <>
+              <Users className="h-4 w-4 text-blue-600" />
+              <span>Family Accounts ({clients.length})</span>
+              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+                Head of Family
+              </Badge>
+            </>
+          ) : (
+            <>
+              <User className="h-4 w-4 text-gray-600" />
+              <span>My Accounts ({clients.length})</span>
+              <Badge variant="outline" className="bg-gray-50 text-gray-700 border-gray-200 text-xs">
+                Owner
+              </Badge>
+            </>
+          )}
+        </DropdownMenuLabel>
+        
+        <DropdownMenuSeparator />
+        
+        {clients.length > 0 ? (
+          clients.map((client) => (
+            <DropdownMenuItem
+              key={client.clientid}
+              onClick={() => handleClientSelect(client.clientcode)}
+              className={`cursor-pointer ${
+                selectedClientCode === client.clientcode ? "bg-accent" : ""
+              }`}
+            >
+              <div className="flex items-center gap-2 w-full">
+                {/* Client role indicator */}
+                <div className="flex items-center gap-1 shrink-0">
+                  {client.head_of_family ? (
+                    <Crown className="h-3 w-3 text-blue-600" />
+                  ) : isHeadOfFamily ? (
+                    <div className="h-2 w-2 rounded-full bg-gray-400" />
+                  ) : (
+                    <User className="h-3 w-3 text-gray-600" />
+                  )}
+                </div>
+                
+                {/* Client details */}
+                <div className="flex flex-col flex-1 min-w-0">
+                  <span className="font-medium truncate">
+                    {client.holderName || client.clientname || client.clientcode}
+                  </span>
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <span className="truncate">{client.clientcode}</span>
+                    {isHeadOfFamily && client.relation && (
+                      <>
+                        <span>•</span>
+                        <span className="truncate">{client.relation}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Selected indicator */}
+                {selectedClientCode === client.clientcode && (
+                  <div className="h-2 w-2 rounded-full bg-primary shrink-0" />
+                )}
+              </div>
+            </DropdownMenuItem>
+          ))
+        ) : (
+          <DropdownMenuItem disabled>No accounts found</DropdownMenuItem>
+        )}
+        
+        {/* Role explanation */}
+        <DropdownMenuSeparator />
+        <div className="px-2 py-1 text-xs text-muted-foreground">
+          {isHeadOfFamily ? (
+            "As head of family, you can view all family accounts"
+          ) : (
+            "Owner account access only"
+          )}
+        </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
 
   const SidebarContent = (
     <nav className="h-full flex flex-col gap-1">
@@ -277,48 +391,8 @@ export default function QodeSidebar({ open = false, onClose }: QodeSidebarProps)
 
       {/* Mobile-only: account dropdown + logout */}
       <div className="flex gap-2 mb-15 mt-auto flex-col md:hidden">
-        <div className="w-full inline-flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm text-foreground">
-          <DropdownMenu>
-            {/* Make trigger full-width for consistent dropdown sizing */}
-            <DropdownMenuTrigger className="inline-flex w-full items-center justify-between gap-2 rounded-md border bg-card px-3 py-2 text-sm text-foreground">
-              <span className="font-medium text-primary truncate max-w-[70%]">
-                {selectedClientCode || (clients[0]?.clientcode ?? "Select Account")}
-              </span>
-              <ChevronDown className="size-4 text-muted-foreground shrink-0" />
-            </DropdownMenuTrigger>
-
-            <DropdownMenuContent
-              align="end"
-              side="bottom"
-              className="w-[min(80vw,22rem)] max-h-64 overflow-y-auto z-[200]"
-            >
-              <DropdownMenuLabel className="text-sm text-muted-foreground sticky top-0 bg-popover">
-                Accounts ({clients.length})
-              </DropdownMenuLabel>
-
-              {clients.length > 0 ? (
-                clients.map((client) => (
-                  <DropdownMenuItem
-                    key={client.clientid}
-                    onClick={() => handleClientSelect(client.clientcode)}
-                    className={cn(
-                      "cursor-pointer h-10",
-                      selectedClientCode === client.clientcode && "bg-accent"
-                    )}
-                  >
-                    <div className="flex flex-col">
-                      <span className="font-medium">{client.clientcode}</span>
-                      <span className="text-xs text-muted-foreground">{client.clientid}</span>
-                    </div>
-                  </DropdownMenuItem>
-                ))
-              ) : (
-                <DropdownMenuItem disabled>No accounts found</DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-
+        <MobileAccountDropdown />
+        
         <button
           onClick={logout}
           disabled={isPending}
@@ -388,6 +462,7 @@ export default function QodeSidebar({ open = false, onClose }: QodeSidebarProps)
                 <NavLink
                   href="/experience/portfolio-snapshot"
                   icon={<BookOpen className="h-4 w-4" />}
+                  onClick={onClose}
                 >
                   Portfolio Snapshot
                 </NavLink>
@@ -491,47 +566,7 @@ export default function QodeSidebar({ open = false, onClose }: QodeSidebarProps)
 
       {/* Mobile-only: account dropdown + logout */}
       <div className="flex gap-2 mb-5 mt-auto flex-col md:hidden">
-        <div className="w-full inline-flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm text-foreground">
-          <DropdownMenu>
-            {/* Make trigger full-width for consistent dropdown sizing */}
-            <DropdownMenuTrigger className="inline-flex w-full items-center justify-between gap-2 rounded-md border bg-card px-3 py-2 text-sm text-foreground">
-              <span className="font-medium text-primary truncate max-w-[70%]">
-                {selectedClientCode || (clients[0]?.clientcode ?? "Select Account")}
-              </span>
-              <ChevronDown className="size-4 text-muted-foreground shrink-0" />
-            </DropdownMenuTrigger>
-
-            <DropdownMenuContent
-              align="end"
-              side="bottom"
-              className="w-[min(80vw,22rem)] max-h-64 overflow-y-auto z-[200]"
-            >
-              <DropdownMenuLabel className="text-sm text-muted-foreground sticky top-0 bg-popover">
-                Accounts ({clients.length})
-              </DropdownMenuLabel>
-
-              {clients.length > 0 ? (
-                clients.map((client) => (
-                  <DropdownMenuItem
-                    key={client.clientid}
-                    onClick={() => handleClientSelect(client.clientcode)}
-                    className={cn(
-                      "cursor-pointer h-10",
-                      selectedClientCode === client.clientcode && "bg-accent"
-                    )}
-                  >
-                    <div className="flex flex-col">
-                      <span className="font-medium">{client.clientcode}</span>
-                      <span className="text-xs text-muted-foreground">{client.clientid}</span>
-                    </div>
-                  </DropdownMenuItem>
-                ))
-              ) : (
-                <DropdownMenuItem disabled>No accounts found</DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        <MobileAccountDropdown />
 
         <button
           onClick={logout}
@@ -543,7 +578,6 @@ export default function QodeSidebar({ open = false, onClose }: QodeSidebarProps)
       </div>
     </nav>
   )
-
 
   return (
     <>
@@ -569,7 +603,7 @@ export default function QodeSidebar({ open = false, onClose }: QodeSidebarProps)
         {/* Drawer panel */}
         <aside
           className={cn(
-            // fixed so it doesn’t “float” with page scroll; right-anchored drawer
+            // fixed so it doesn't "float" with page scroll; right-anchored drawer
             "fixed right-0 top-0 h-full w-72 max-w-[85vw] rounded-l-2xl border-l bg-sidebar shadow-xl",
             // pad for your fixed header height (adjust 64px if your header differs)
             "pt-[calc(env(safe-area-inset-top)+64px)] pb-[calc(env(safe-area-inset-bottom)+16px)] px-4",
