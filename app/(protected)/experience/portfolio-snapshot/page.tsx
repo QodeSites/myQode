@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChevronDown, ChevronRight, Crown, User, TrendingUp } from "lucide-react";
+import { ChevronDown, ChevronRight, Crown, User, TrendingUp, Calendar, Mail, Hash } from "lucide-react";
 
 /* =========================
    Types
@@ -25,6 +25,8 @@ type FamAccWithPortfolio = {
   ownername?: string;
   owneremailid?: string;
   head_of_family?: boolean;
+  email?: string;
+  mobile?: string;
   // Portfolio data
   portfolioValue?: number;
   reportDate?: string;
@@ -91,6 +93,7 @@ export default function FamilyPortfolioSection() {
   // Collapse states
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [collapsedOwners, setCollapsedOwners] = useState<Set<string>>(new Set());
+  const [collapsedAccounts, setCollapsedAccounts] = useState<Set<string>>(new Set());
 
   /* =========================
      Fetch Family & Portfolio Data
@@ -120,6 +123,8 @@ export default function FamilyPortfolioSection() {
           ownername: sanitizeName(member.ownername), // Sanitize ownerName
           owneremailid: member.email,
           head_of_family: member.head_of_family,
+          email: member.email,
+          mobile: member.mobile,
         }));
 
         // Extract all nuvama codes for portfolio fetch
@@ -298,6 +303,13 @@ export default function FamilyPortfolioSection() {
       return n;
     });
 
+  const toggleAccountCollapse = (k: string) =>
+    setCollapsedAccounts(prev => {
+      const n = new Set(prev);
+      n.has(k) ? n.delete(k) : n.add(k);
+      return n;
+    });
+
   if (loading || portfolioLoading) {
     return <FamilyPortfolioSkeleton />;
   }
@@ -360,14 +372,14 @@ export default function FamilyPortfolioSection() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-0 md:space-y-2">
           {sortedGroupEntries.map(([groupKey, group]) => {
             const isGroupCollapsed = collapsedGroups.has(groupKey);
             const totalAccounts = Object.values(group.owners).reduce((sum, owner) => sum + owner.accounts.length, 0);
 
             return (
-              <Card key={groupKey} className="overflow-hidden border-l-4 border-primary">
-                <CardContent className="p-4">
+              <Card key={groupKey} className="overflow-hidden py-0 p-0 md:p-6">
+                <CardContent className="p-2 md:p-6">
                   {/* Group header with total portfolio value */}
                   <div
                     className="flex items-center gap-3 mb-4 cursor-pointer hover:bg-muted/50 rounded p-2 -m-2"
@@ -376,7 +388,7 @@ export default function FamilyPortfolioSection() {
                     {isGroupCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     <div className={`h-3 w-3 rounded-full ${isHeadOfFamily ? 'bg-blue-500' : 'bg-gray-500'}`} />
                     <div className="flex-1">
-                      <div className="font-semibold text-lg">
+                      <div className="font-semibold text-md md:text-lg">
                         {isHeadOfFamily ? (sanitizeName(group.groupName) || "Family Group") : "Owner Portfolio"}
                       </div>
                       <div className="text-sm text-muted-foreground">
@@ -388,14 +400,14 @@ export default function FamilyPortfolioSection() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="font-bold text-xl text-primary">{formatCurrency(group.totalPortfolioValue)}</div>
-                      <div className="text-sm text-muted-foreground">Total Value</div>
+                      <div className="font-bold text-lg md:text-xl text-primary">{formatCurrency(group.totalPortfolioValue)}</div>
+                      <div className="text-xs md:text-sm text-muted-foreground">Total Value</div>
                     </div>
                   </div>
 
                   {/* Owners */}
                   {!isGroupCollapsed && (
-                    <div className="ml-6 space-y-3">
+                    <div className="ml-4 md:ml-6">
                       {Object.entries(group.owners)
                         .sort(([, a], [, b]) => (sanitizeName(a.ownerName) || "Unknown").localeCompare(sanitizeName(b.ownerName) || "Unknown"))
                         .map(([ownerKey, owner]) => {
@@ -403,68 +415,140 @@ export default function FamilyPortfolioSection() {
                           const isOwnerCollapsed = collapsedOwners.has(fullOwnerKey);
 
                           return (
-                            <div key={fullOwnerKey} className="border-l-2 border-accent pl-4">
+                            <div key={fullOwnerKey} className="relative mb-4">
+                              {/* Tree Line for Owner */}
+                              <div className="absolute left-0 top-0 bottom-0 w-px bg-border"></div>
+                              <div className="absolute left-0 top-6 w-4 h-px bg-border"></div>
+
                               {/* Owner Level */}
-                              <div
-                                className="flex items-center gap-3 mb-2 cursor-pointer hover:bg-muted/50 rounded p-2 -m-2"
-                                onClick={() => toggleOwnerCollapse(fullOwnerKey)}
-                              >
-                                {isOwnerCollapsed ? (
-                                  <ChevronRight className="h-3 w-3" />
-                                ) : (
-                                  <ChevronDown className="h-3 w-3" />
-                                )}
-                                <div className="h-2 w-2 rounded-full bg-green-500"></div>
-                                <div className="flex-1">
-                                  <div className="font-medium">{sanitizeName(owner.ownerName) || 'Account Holder'}</div>
-                                  <div className="text-sm text-muted-foreground">
-                                    {owner.accounts.length} account{owner.accounts.length !== 1 ? 's' : ''}
+                              <div className="ml-4 md:ml-6">
+                                <div
+                                  className="flex items-center gap-3 mb-2 cursor-pointer hover:bg-muted/50 rounded p-1 -m-1"
+                                  onClick={() => toggleOwnerCollapse(fullOwnerKey)}
+                                >
+                                  {isOwnerCollapsed ? (
+                                    <ChevronRight className="h-3 w-3" />
+                                  ) : (
+                                    <ChevronDown className="h-3 w-3" />
+                                  )}
+                                  <div className="h-2 w-2 rounded-full bg-green-500"></div>
+                                  <div className="flex-1">
+                                    <div className="font-medium">{sanitizeName(owner.ownerName) || 'Account Holder'}</div>
+                                    <div className="text-sm text-muted-foreground">
+                                      {owner.accounts.length} account{owner.accounts.length !== 1 ? 's' : ''}
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="font-semibold text-md md:text-lg text-primary">{formatCurrency(owner.totalPortfolioValue)}</div>
+                                    <div className="text-xs text-muted-foreground">Owner Total</div>
                                   </div>
                                 </div>
-                                <div className="text-right">
-                                  <div className="font-semibold text-lg">{formatCurrency(owner.totalPortfolioValue)}</div>
-                                  <div className="text-xs text-muted-foreground">Owner Total</div>
-                                </div>
-                              </div>
 
-                              {/* Accounts */}
-                              {!isOwnerCollapsed && (
-                                <div className="ml-6 space-y-2">
-                                  {owner.accounts.map((account, accountIdx) => (
-                                    <div key={`${account.clientid}-${accountIdx}`} className="flex items-center gap-3 p-3 bg-muted/20 rounded-lg">
-                                      <div className="flex items-center gap-1">
-                                        {account.head_of_family ? (
-                                          <Crown className="h-3 w-3 text-blue-600" />
-                                        ) : (
-                                          <div className={`h-2 w-2 rounded-full ${account.relation === 'Primary' ? 'bg-orange-500' : 'bg-gray-400'}`}></div>
-                                        )}
-                                      </div>
-                                      <div className="flex-1">
-                                        <div className="font-medium flex items-center gap-2">
-                                          {sanitizeName(account.holderName)}
-                                          {account.head_of_family && isHeadOfFamily && (
-                                            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
-                                              Head
-                                            </Badge>
-                                          )}
+                                {/* Accounts */}
+                                {!isOwnerCollapsed && (
+                                  <div className="ml-4 md:ml-6">
+                                    {owner.accounts.map((account, accountIdx) => {
+                                      const accountKey = `${fullOwnerKey}-${account.clientid}`;
+                                      const isAccountCollapsed = collapsedAccounts.has(accountKey);
+
+                                      return (
+                                        <div key={`${account.clientid}-${accountIdx}`} className="relative mb-3">
+                                          {/* Tree Line for Account */}
+                                          <div className="absolute left-0 top-0 bottom-0 w-px bg-border opacity-50"></div>
+                                          <div className="absolute left-0 top-6 w-3 h-px bg-border opacity-50"></div>
+
+                                          {/* Account Level - Main Card */}
+                                          <div className="ml-2 md:ml-4">
+                                            <div
+                                              className="flex items-center gap-3 mb-2 cursor-pointer hover:bg-muted/50 rounded p-2 -m-1"
+                                              onClick={() => toggleAccountCollapse(accountKey)}
+                                            >
+                                              {isAccountCollapsed ? (
+                                                <ChevronRight className="h-2 w-2" />
+                                              ) : (
+                                                <ChevronDown className="h-2 w-2" />
+                                              )}
+                                              <div className="flex items-center gap-1">
+                                                {account.head_of_family ? (
+                                                  <Crown className="h-3 w-3 text-blue-600" />
+                                                ) : (
+                                                  <div className={`h-2 w-2 rounded-full ${account.relation === 'Primary' ? 'bg-orange-500' : 'bg-gray-400'}`}></div>
+                                                )}
+                                              </div>
+                                              <div className="flex-1">
+                                                <div className="font-medium text-sm md:text-base flex items-center gap-2">
+                                                  {sanitizeName(account.holderName)}
+                                                  {account.head_of_family && isHeadOfFamily && (
+                                                    <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
+                                                      Head
+                                                    </Badge>
+                                                  )}
+                                                </div>
+                                                <div className="text-xs md:text-sm text-muted-foreground">
+                                                  {account.clientcode} | {account.relation}
+                                                  {account.reportDate && (
+                                                    <span className="ml-1 md:ml-2">• Updated: {new Date(account.reportDate).toLocaleDateString()}</span>
+                                                  )}
+                                                </div>
+                                              </div>
+                                              <div className="text-right">
+                                                <div className="font-bold text-sm md:text-lg text-primary">{formatCurrency(account.portfolioValue)}</div>
+                                                <Badge variant="outline" className={`text-xs ${getStatusColor(account.status)}`}>
+                                                  {account.status}
+                                                </Badge>
+                                              </div>
+                                            </div>
+
+                                            {/* Account Details - Collapsible */}
+                                            {!isAccountCollapsed && (
+                                              <div className="ml-2 md:ml-4 p-3 bg-muted/20 rounded-lg text-xs md:text-sm border-l-2 border-primary/10">
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                  <div className="flex items-center gap-2">
+                                                    <Hash className="h-3 w-3 text-muted-foreground" />
+                                                    <div>
+                                                      <div className="text-muted-foreground">Client ID</div>
+                                                      <div className="font-medium">{account.clientid}</div>
+                                                    </div>
+                                                  </div>
+                                                  <div className="flex items-center gap-2">
+                                                    <Mail className="h-3 w-3 text-muted-foreground" />
+                                                    <div>
+                                                      <div className="text-muted-foreground">Email</div>
+                                                      <div className="font-medium truncate">{account.email || 'N/A'}</div>
+                                                    </div>
+                                                  </div>
+                                                  {account.reportDate && (
+                                                    <div className="flex items-center gap-2">
+                                                      <Calendar className="h-3 w-3 text-muted-foreground" />
+                                                      <div>
+                                                        <div className="text-muted-foreground">Last Updated</div>
+                                                        <div className="font-medium">{new Date(account.reportDate).toLocaleDateString('en-IN')}</div>
+                                                      </div>
+                                                    </div>
+                                                  )}
+                                                  <div className="flex items-center gap-2">
+                                                    <TrendingUp className="h-3 w-3 text-muted-foreground" />
+                                                    <div>
+                                                      <div className="text-muted-foreground">Portfolio Value</div>
+                                                      <div className="font-bold text-primary">{formatCurrency(account.portfolioValue)}</div>
+                                                    </div>
+                                                  </div>
+                                                  {account.mobile && (
+                                                    <div className="col-span-1 md:col-span-2">
+                                                      <div className="text-muted-foreground">Mobile</div>
+                                                      <div className="font-medium">{account.mobile}</div>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
                                         </div>
-                                        <div className="text-sm text-muted-foreground">
-                                          {account.clientcode} | {account.relation}
-                                          {account.reportDate && (
-                                            <span className="ml-2">• Updated: {new Date(account.reportDate).toLocaleDateString()}</span>
-                                          )}
-                                        </div>
-                                      </div>
-                                      <div className="text-right">
-                                        <div className="font-bold text-lg text-primary">{formatCurrency(account.portfolioValue)}</div>
-                                        <Badge variant="outline" className={`text-xs ${getStatusColor(account.status)}`}>
-                                          {account.status}
-                                        </Badge>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           );
                         })}
@@ -479,23 +563,23 @@ export default function FamilyPortfolioSection() {
 
       {/* Summary Card */}
       <Card className="bg-gradient-to-r from-primary/5 to-secondary/5">
-        <CardContent className="p-6">
-          <div className="flex justify-between items-center">
+        <CardContent className="p-4 md:p-6">
+          <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
             <div>
-              <h3 className="font-semibold text-lg">
+              <h3 className="font-semibold text-md md:text-lg">
                 {isHeadOfFamily ? "Total Family Portfolio" : "Total Portfolio Value"}
               </h3>
-              <p className="text-sm text-muted-foreground">
+              <p className="text-xs md:text-sm text-muted-foreground">
                 {isHeadOfFamily ? "Combined value across all family accounts" : "Combined value across all your accounts"}
               </p>
             </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold text-primary">
+            <div className="text-left md:text-right">
+              <div className="text-2xl md:text-3xl font-bold text-primary">
                 {formatCurrency(
                   Object.values(groupedAccounts).reduce((sum, group) => sum + group.totalPortfolioValue, 0)
                 )}
               </div>
-              <div className="text-sm text-muted-foreground">
+              <div className="text-xs md:text-sm text-muted-foreground">
                 {familyAccounts.filter(acc => acc.status === "Active").length} Active Account{familyAccounts.filter(acc => acc.status === "Active").length !== 1 ? 's' : ''}
               </div>
             </div>
