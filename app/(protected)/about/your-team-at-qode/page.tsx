@@ -423,7 +423,7 @@ export default function YourTeamAtQodePage() {
             <p className="mb-0">
               <strong>When to Contact:</strong> For reports, account queries, or operational clarifications.
             </p>
-            <div className="flex gap-2 items-center">
+            <div className="flex sm:flex-row flex-col gap-2 items-center">
             <Button
               className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-md border border-border bg-primary text-white px-4 py-4 text-center font-semibold md:w-auto cursor-pointer"
               onClick={() => window.location.href = `mailto:investor.relations@qodeinvest.com?subject=IR%20Support%20Request%20-%20${selectedClientCode || 'Account'}`}
