@@ -14,13 +14,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { SessionDebug } from '@/components/session-debug';
-import { 
-  Users, 
-  LogIn, 
-  MessageSquare, 
-  Crown, 
-  User, 
-  Activity, 
+import {
+  Users,
+  LogIn,
+  MessageSquare,
+  Crown,
+  User,
+  Activity,
   Calendar,
   AlertTriangle,
   Eye,
@@ -70,9 +70,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 interface GroupedClientData {
   ownerId: string;
   ownerEmail: string;
-  ownerName: string;
+  ownerName: string | null | undefined;
   groupId: string;
-  groupName: string;
+  groupName: string | null | undefined;
   totalAccounts: number;
   accounts: ClientAccount[];
   onboardingStatus: 'completed' | 'pending' | 'mixed';
@@ -87,7 +87,7 @@ interface GroupedClientData {
 interface ClientAccount {
   clientId: string;
   clientCode: string;
-  clientName: string;
+  clientName: string | null | undefined;
   onboardingStatus: string;
   headOfFamily: boolean;
   createdAt: string;
@@ -125,6 +125,16 @@ interface DashboardStatistics {
   uniqueLoginsThisWeek: number;
 }
 
+/* =========================
+   Helper: sanitizeName
+   ========================= */
+const sanitizeName = (name: string | null | undefined) => {
+  if (!name || name === "null" || name.includes("null")) {
+    return name?.replace(/\s*null\s*/g, "").trim() || "Unknown";
+  }
+  return name.trim();
+};
+
 function AdminDashboardContent() {
   const [clients, setClients] = useState<GroupedClientData[]>([]);
   const [allClients, setAllClients] = useState<GroupedClientData[]>([]);
@@ -145,35 +155,24 @@ function AdminDashboardContent() {
     fetchDashboardData();
   }, []);
 
-  const filteredClients = useMemo(() => {
-    return allClients.filter(client => {
-      const matchesSearch = !searchTerm || 
-        client.ownerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.ownerEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.ownerId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.groupId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.groupName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.primaryClientCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        client.accounts.some(acc => 
-          acc.clientCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          acc.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          acc.clientId.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-      
-      const matchesStatus = statusFilter === 'all' || client.onboardingStatus === statusFilter;
-      
-      return matchesSearch && matchesStatus;
-    });
-  }, [allClients, searchTerm, statusFilter]);
-
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
       const response = await fetch(`/api/admin/dashboard`);
       const data = await response.json();
-      
+
       if (data.success) {
-        setAllClients(data.data.clients);
+        // Sanitize names in the client data
+        const sanitizedClients = data.data.clients.map((client: GroupedClientData) => ({
+          ...client,
+          ownerName: sanitizeName(client.ownerName),
+          groupName: sanitizeName(client.groupName),
+          accounts: client.accounts.map((account: ClientAccount) => ({
+            ...account,
+            clientName: sanitizeName(account.clientName),
+          })),
+        }));
+        setAllClients(sanitizedClients);
         setQueries(data.data.queries);
         setStatistics(data.data.statistics);
       } else {
@@ -186,6 +185,27 @@ function AdminDashboardContent() {
       setLoading(false);
     }
   };
+
+  const filteredClients = useMemo(() => {
+    return allClients.filter(client => {
+      const matchesSearch = !searchTerm ||
+        sanitizeName(client.ownerName).toLowerCase().includes(searchTerm.toLowerCase()) ||
+        client.ownerEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        client.ownerId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        sanitizeName(client.groupName).toLowerCase().includes(searchTerm.toLowerCase()) ||
+        client.groupId.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        client.primaryClientCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        client.accounts.some(acc =>
+          acc.clientCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          sanitizeName(acc.clientName).toLowerCase().includes(searchTerm.toLowerCase()) ||
+          acc.clientId.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+
+      const matchesStatus = statusFilter === 'all' || client.onboardingStatus === statusFilter;
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [allClients, searchTerm, statusFilter]);
 
   const handleImpersonate = async (clientCode: string) => {
     setImpersonating(true);
@@ -216,12 +236,12 @@ function AdminDashboardContent() {
   const exportToCSV = (data: any[], filename: string, type: 'owners' | 'accounts') => {
     let csvContent = '';
     let headers: string[] = [];
-    
+
     if (type === 'owners') {
       headers = [
         'Owner ID',
         'Owner Name',
-        'Owner Email', 
+        'Owner Email',
         'Group ID',
         'Group Name',
         'Total Accounts',
@@ -233,19 +253,19 @@ function AdminDashboardContent() {
         'Created Date',
         'Last Activity'
       ];
-      
+
       csvContent = headers.join(',') + '\n';
-      
+
       data.forEach(owner => {
         const ownerQueries = getOwnerQueries(owner.ownerEmail);
         const pendingQueries = ownerQueries.filter(q => q.status === 'pending').length;
-        
+
         const row = [
           `"${owner.ownerId}"`,
-          `"${owner.ownerName}"`,
+          `"${sanitizeName(owner.ownerName)}"`,
           `"${owner.ownerEmail}"`,
           `"${owner.groupId}"`,
-          `"${owner.groupName}"`,
+          `"${sanitizeName(owner.groupName)}"`,
           owner.totalAccounts,
           owner.onboardingStatus,
           owner.totalQueries,
@@ -255,7 +275,7 @@ function AdminDashboardContent() {
           new Date(owner.createdAt).toLocaleDateString(),
           owner.lastActivity ? new Date(owner.lastActivity).toLocaleDateString() : 'Never'
         ].join(',');
-        
+
         csvContent += row + '\n';
       });
     } else {
@@ -266,32 +286,32 @@ function AdminDashboardContent() {
         'Owner Email',
         'Client ID',
         'Client Code',
-        'Client Name', 
+        'Client Name',
         'Onboarding Status',
         'Head of Family',
         'Login Count',
         'Last Login',
         'Created Date'
       ];
-      
+
       csvContent = headers.join(',') + '\n';
-      
+
       data.forEach(owner => {
         owner.accounts.forEach((account: ClientAccount) => {
           const row = [
             `"${owner.ownerId}"`,
-            `"${owner.ownerName}"`,
+            `"${sanitizeName(owner.ownerName)}"`,
             `"${owner.ownerEmail}"`,
             `"${account.clientId}"`,
             `"${account.clientCode}"`,
-            `"${account.clientName}"`,
+            `"${sanitizeName(account.clientName)}"`,
             account.onboardingStatus,
             account.headOfFamily ? 'Yes' : 'No',
             account.loginCount,
             account.lastLogin ? new Date(account.lastLogin).toLocaleDateString() : 'Never',
             new Date(account.createdAt).toLocaleDateString()
           ].join(',');
-          
+
           csvContent += row + '\n';
         });
       });
@@ -306,7 +326,7 @@ function AdminDashboardContent() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    
+
     setMessage(`Successfully exported ${data.length} ${type} to CSV`);
   };
 
@@ -345,7 +365,7 @@ function AdminDashboardContent() {
       'sip_success': 'bg-cyan-100 text-cyan-800',
       'default': 'bg-gray-100 text-gray-800'
     };
-    
+
     return <Badge className={colors[type as keyof typeof colors] || colors.default}>{type}</Badge>;
   };
 
@@ -423,7 +443,7 @@ function AdminDashboardContent() {
               {filteredClients.map((owner) => {
                 const ownerQueries = getOwnerQueries(owner.ownerEmail);
                 const headOfFamily = owner.accounts.find(acc => acc.headOfFamily);
-                
+
                 return (
                   <TableRow key={owner.ownerId}>
                     <TableCell>
@@ -434,7 +454,7 @@ function AdminDashboardContent() {
                           <User className="h-4 w-4 text-gray-600" />
                         )}
                         <div>
-                          <div className="font-medium text-sm">{owner.ownerName}</div>
+                          <div className="font-medium text-sm">{sanitizeName(owner.ownerName)}</div>
                           <div className="text-xs text-muted-foreground">{owner.ownerEmail}</div>
                           <div className="text-xs text-muted-foreground">
                             Code: {owner.primaryClientCode}
@@ -445,7 +465,7 @@ function AdminDashboardContent() {
                     <TableCell>
                       <div className="text-sm font-mono">{owner.ownerId}</div>
                       <div className="text-xs text-muted-foreground">
-                        Group: {owner.groupId}
+                        Group: {sanitizeName(owner.groupName)}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -456,7 +476,7 @@ function AdminDashboardContent() {
                     </TableCell>
                     <TableCell className="text-center">
                       <div className="font-semibold">{owner.totalAccounts}</div>
-                      <div className="text-xs text-muted-foreground">{owner.groupName}</div>
+                      <div className="text-xs text-muted-foreground">{sanitizeName(owner.groupName)}</div>
                     </TableCell>
                     <TableCell className="text-center">
                       <div className="font-semibold">{ownerQueries.length}</div>
@@ -469,7 +489,7 @@ function AdminDashboardContent() {
                     </TableCell>
                     <TableCell>
                       <div className="text-sm">
-                        {owner.lastActivity 
+                        {owner.lastActivity
                           ? new Date(owner.lastActivity).toLocaleDateString()
                           : 'No activity'
                         }
@@ -524,7 +544,7 @@ function AdminDashboardContent() {
             </TableBody>
           </Table>
         </div>
-        
+
         {filteredClients.length === 0 && !loading && (
           <div className="text-center py-12">
             <Users className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
@@ -559,7 +579,7 @@ function AdminDashboardContent() {
             Monitor owners, manage multiple accounts, and track queries
           </p>
         </div>
-        <Button 
+        <Button
           onClick={fetchDashboardData}
           variant="outline"
           className="flex items-center space-x-2"
@@ -630,7 +650,7 @@ function AdminDashboardContent() {
                 className="flex-1"
               />
             </div>
-            
+
             <Select value={statusFilter} onValueChange={(value: 'all' | 'pending' | 'completed' | 'mixed') => setStatusFilter(value)}>
               <SelectTrigger className="w-40">
                 <SelectValue />
@@ -718,7 +738,7 @@ function AdminDashboardContent() {
             {filteredClients.map((owner) => {
               const ownerQueries = getOwnerQueries(owner.ownerEmail);
               const headOfFamily = owner.accounts.find(acc => acc.headOfFamily);
-              
+
               return (
                 <Card key={owner.ownerId} className="hover:shadow-md transition-shadow">
                   <CardContent className="p-4">
@@ -732,7 +752,7 @@ function AdminDashboardContent() {
                             <User className="h-4 w-4 text-gray-600" />
                           )}
                           <div>
-                            <h3 className="font-semibold text-sm">{owner.ownerName}</h3>
+                            <h3 className="font-semibold text-sm">{sanitizeName(owner.ownerName)}</h3>
                             <p className="text-xs text-muted-foreground">{owner.ownerEmail}</p>
                           </div>
                         </div>
@@ -788,7 +808,7 @@ function AdminDashboardContent() {
                         </div>
                         <div className="flex justify-between">
                           <span>Group:</span>
-                          <span className="truncate ml-2">{owner.groupName}</span>
+                          <span className="truncate ml-2">{sanitizeName(owner.groupName)}</span>
                         </div>
                         <div className="flex justify-between">
                           <span>Group ID:</span>
@@ -884,14 +904,13 @@ function AdminDashboardContent() {
         </>
       )}
 
-      {/* All existing dialogs remain the same */}
       {/* Accounts Detail Dialog */}
       <Dialog open={showAccountsDialog} onOpenChange={setShowAccountsDialog}>
         <DialogContent className="max-w-2xl max-h-[80vh]">
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
               <Hash className="h-5 w-5 text-blue-500" />
-              <span>Owner Accounts - {selectedClient?.ownerName}</span>
+              <span>Owner Accounts - {sanitizeName(selectedClient?.ownerName)}</span>
             </DialogTitle>
             <DialogDescription>
               <div className="flex items-center space-x-4 text-sm">
@@ -900,7 +919,7 @@ function AdminDashboardContent() {
               </div>
             </DialogDescription>
           </DialogHeader>
-          
+
           <ScrollArea className="h-[400px] w-full">
             <div className="space-y-3 pr-4">
               {selectedClient?.accounts.map((account) => (
@@ -914,7 +933,7 @@ function AdminDashboardContent() {
                           <User className="h-4 w-4 text-gray-600" />
                         )}
                         <div>
-                          <h4 className="font-semibold text-sm">{account.clientName}</h4>
+                          <h4 className="font-semibold text-sm">{sanitizeName(account.clientName)}</h4>
                           <p className="text-xs text-muted-foreground font-mono">{account.clientCode}</p>
                         </div>
                       </div>
@@ -925,7 +944,7 @@ function AdminDashboardContent() {
                         )}
                       </div>
                     </div>
-                    
+
                     <div className="grid grid-cols-3 gap-2 mt-3 text-xs">
                       <div>
                         <span className="font-medium">Created:</span>
@@ -947,7 +966,7 @@ function AdminDashboardContent() {
               ))}
             </div>
           </ScrollArea>
-          
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAccountsDialog(false)}>
               Close
@@ -962,7 +981,7 @@ function AdminDashboardContent() {
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
               <FileText className="h-5 w-5 text-blue-500" />
-              <span>Owner Queries - {selectedClient?.ownerName}</span>
+              <span>Owner Queries - {sanitizeName(selectedClient?.ownerName)}</span>
             </DialogTitle>
             <DialogDescription>
               <div className="flex items-center space-x-4 text-sm">
@@ -971,7 +990,7 @@ function AdminDashboardContent() {
               </div>
             </DialogDescription>
           </DialogHeader>
-          
+
           <ScrollArea className="h-[500px] w-full">
             <div className="space-y-4 pr-4">
               {selectedClient && getOwnerQueries(selectedClient.ownerEmail).length > 0 ? (
@@ -991,7 +1010,7 @@ function AdminDashboardContent() {
                             {getQueryStatusBadge(query.status)}
                           </div>
                         </div>
-                        
+
                         <div className="grid grid-cols-2 gap-4 text-xs">
                           <div>
                             <span className="font-medium">Priority:</span>
@@ -1004,7 +1023,7 @@ function AdminDashboardContent() {
                             <span className="ml-2">{query.email_sent ? 'Yes' : 'No'}</span>
                           </div>
                         </div>
-                        
+
                         {query.data && Object.keys(query.data).length > 0 && (
                           <div className="bg-muted/50 rounded p-3">
                             <p className="font-medium text-xs mb-2">Query Details:</p>
@@ -1020,7 +1039,7 @@ function AdminDashboardContent() {
                             </div>
                           </div>
                         )}
-                        
+
                         {query.resolved_at && (
                           <div className="text-xs text-green-600">
                             <span className="font-medium">Resolved:</span>
@@ -1040,7 +1059,7 @@ function AdminDashboardContent() {
               )}
             </div>
           </ScrollArea>
-          
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowQueriesDialog(false)}>
               Close
@@ -1060,14 +1079,14 @@ function AdminDashboardContent() {
             <DialogDescription className="space-y-2">
               <p>You are about to impersonate:</p>
               <div className="bg-muted p-3 rounded">
-                <p><strong>Owner:</strong> {selectedClient?.ownerName}</p>
+                <p><strong>Owner:</strong> {sanitizeName(selectedClient?.ownerName)}</p>
                 <p><strong>Email:</strong> {selectedClient?.ownerEmail}</p>
                 <p><strong>Primary Code:</strong> {selectedClient?.primaryClientCode}</p>
                 <p><strong>Total Accounts:</strong> {selectedClient?.totalAccounts}</p>
               </div>
               <div className="bg-red-50 border border-red-200 p-3 rounded">
                 <p className="text-red-800 text-sm">
-                  <strong>Security Notice:</strong> This will give you access to all of this owner's accounts. 
+                  <strong>Security Notice:</strong> This will give you access to all of this owner's accounts.
                   Only proceed if this is for legitimate support purposes. All actions will be logged.
                 </p>
               </div>
