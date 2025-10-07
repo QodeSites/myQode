@@ -428,14 +428,14 @@ export default function InsightsArchivePage() {
       /> */}
 
       {/* Newsletter Modal */}
-      {/* <ContentModal
+ <ContentModal
         isOpen={isNewsletterModalOpen}
         onClose={() => setIsNewsletterModalOpen(false)}
         items={newsletters}
         currentIndex={currentNewsletterIndex}
         setCurrentIndex={setCurrentNewsletterIndex}
         modalTitle="Newsletter"
-      /> */}
+      /> 
 
       {/* Pitch Deck Modal */}
       {/* <ContentModal
