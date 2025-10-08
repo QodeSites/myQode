@@ -57,21 +57,23 @@ function ThumbCard({
     >
       {/* Preview content */}
       {url && type === "newsletter" ? (
-        <div className="mb-2 h-60 w-full rounded-sm border border-border bg-background overflow-hidden relative">
-          <iframe
-            src={url}
-            className="absolute top-0 left-0 w-full h-full border-0 pointer-events-none"
-            style={{
-              width: '300%',
-              height: '300%',
-              transform: 'scale(0.33)',
-              transformOrigin: 'top left'
-            }}
-            title={`Preview of ${title}`}
-            sandbox="allow-scripts allow-same-origin"
-            loading="lazy"
-          />
-        </div>
+  <div className="mb-2 h-60 w-full rounded-sm border border-border bg-background overflow-hidden relative">
+    <iframe
+      src={url}
+      className="absolute top-0 left-0 w-full h-full border-0 pointer-events-none newsletter-iframe"
+      style={{
+        width: '300%',
+        height: '300%',
+        transform: 'scale(0.33)',
+        transformOrigin: 'top left'
+      }}
+      title={`Preview of ${title}`}
+      sandbox="allow-scripts allow-same-origin"
+      loading="lazy"
+    />
+    {/* Overlay to hide top banner - adjust height as needed */}
+    <div className="absolute top-0 left-0 right-0 h-10 bg-white pointer-events-none" />
+  </div>
       ) : url && type === "pdf" ? (
         <div className="mb-2 h-60 w-full rounded-sm border border-border bg-background overflow-hidden relative">
           <iframe
@@ -322,14 +324,21 @@ export function ContentModal({
               )
             ) : (
               // Non-PDF content
-              <iframe
-                key={currentItem.url}
-                src={currentItem.url}
-                className="block h-full w-full border-0"
-                title={`${modalTitle}: ${currentItem.title}`}
-                allow="clipboard-read; clipboard-write; fullscreen"
-                sandbox="allow-scripts allow-same-origin allow-forms"
-              />
+              // Non-PDF content (newsletters)
+<div className="relative h-full w-full">
+  <iframe
+    key={currentItem.url}
+    src={currentItem.url}
+    className="block h-full w-full border-0"
+    title={`${modalTitle}: ${currentItem.title}`}
+    allow="clipboard-read; clipboard-write; fullscreen"
+    sandbox="allow-scripts allow-same-origin allow-forms"
+  />
+  {/* Overlay to hide awesomewrap banner - adjust height/position as needed */}
+  {modalTitle === "Newsletter" && (
+    <div className="absolute top-0 left-0 right-0 h-12 bg-white pointer-events-none" />
+  )}
+</div>
             )
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-gray-50">
