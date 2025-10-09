@@ -449,7 +449,7 @@ export default function PaymentSuccessPage() {
             {error || 'Your payment could not be processed. Please try again.'}
           </p>
           <Button
-            onClick={() => router.push('/dashboard')}
+            onClick={() => router.push('/portfolio/performance')}
             className="mt-6 inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
           >
             Back to Dashboard
@@ -580,7 +580,7 @@ export default function PaymentSuccessPage() {
 
           <div className="flex justify-center mt-6">
             <Button
-              onClick={() => router.push('/dashboard')}
+              onClick={() => router.push('/portfolio/performance')}
               className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
             >
               Back to Dashboard
@@ -598,7 +598,7 @@ export default function PaymentSuccessPage() {
             </a>.
           </p>
           <Button
-            onClick={() => router.push('/dashboard')}
+            onClick={() => router.push('/portfolio/performance')}
             className="mt-6 inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
           >
             Back to Dashboard

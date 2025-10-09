@@ -1,4 +1,4 @@
-// app/api/admin/dashboard/route.ts
+// app/api/admin/portfolio/performance/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import pool from '@/lib/db1';

@@ -111,7 +111,7 @@ export default function SipSuccessPage() {
   }, [subscriptionId, toast]);
 
   const handleBackToDashboard = () => {
-    router.push('/dashboard'); // Adjust the route as per your application
+    router.push('/portfolio/performance'); // Adjust the route as per your application
   };
 
   const renderStatusIcon = (status: string) => {

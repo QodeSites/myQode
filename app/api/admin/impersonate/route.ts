@@ -84,7 +84,7 @@ export async function GET(request: NextRequest) {
     const baseUrl = `${protocol}://${host}`;
     
     // Redirect to dashboard with correct base URL
-    return NextResponse.redirect(`${baseUrl}/dashboard`);
+    return NextResponse.redirect(`${baseUrl}/portfolio/performance`);
 
   } catch (error) {
     console.error('Impersonation error:', error);

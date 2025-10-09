@@ -180,7 +180,7 @@ export default function LoginPage() {
       }
 
       await refresh()
-      router.push('/dashboard')
+      router.push('/portfolio/performance')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Password setup failed')
     } finally {
@@ -211,7 +211,7 @@ export default function LoginPage() {
       if (!response.ok) throw new Error(data.error || 'Login failed')
 
       await refresh()
-      router.push('/dashboard')
+      router.push('/portfolio/performance')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')
     } finally {
