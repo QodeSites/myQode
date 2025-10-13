@@ -43,7 +43,7 @@ const initCashfree = () => {
   console.log("=== INITIALIZE CASHFREE SDK ===");
   const clientId = process.env.CASHFREE_APP_ID || process.env.CASHFREE_CLIENT_ID;
   const clientSecret = process.env.CASHFREE_SECRET_KEY;
-  const environment = CFEnvironment.SANDBOX;
+  const environment = process.env.CASHFREE_ENVIRONMENT === 'production' ? CFEnvironment.PRODUCTION : CFEnvironment.SANDBOX;
 
   if (!clientId || !clientSecret) {
     throw new Error("Cashfree credentials not found in environment variables");
@@ -52,7 +52,7 @@ const initCashfree = () => {
   try {
     console.log("Initializing Cashfree SDK with environment:", environment);
     console.log("Client ID:", clientId);
-    const cashfree = new Cashfree(CFEnvironment.SANDBOX, clientId, clientSecret);
+    const cashfree = new Cashfree(environment, clientId, clientSecret);
     console.log('cashfree instance:', cashfree);
     console.log("Cashfree SDK initialized successfully");
     return cashfree;
