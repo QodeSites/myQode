@@ -6,7 +6,7 @@
     "build": "next build",
     "dev": "next dev -p 2069",
     "lint": "next lint",
-    "start": "next start -p 2069",
+    "start": "next start -p 3010",
     "start:network": "next start -p 3010 -H 0.0.0.0"
   },
   "dependencies": {
