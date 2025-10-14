@@ -1,3 +1,4 @@
+// app/api/send-email/route.ts
 import { Resend } from 'resend';
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db1';
@@ -12,6 +13,7 @@ export async function POST(request: NextRequest) {
     const requestBody = await request.json();
     const {
       to,
+      cc, // NEW: CC support
       subject,
       html,
       from,
@@ -26,6 +28,7 @@ export async function POST(request: NextRequest) {
 
     console.log('Received inquiry request:', {
       to,
+      cc,
       subject,
       inquiry_type,
       nuvama_code,
@@ -52,8 +55,24 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Validate inquiry_type
-      const validInquiryTypes = ['strategy', 'discussion', 'switch', 'withdrawal', 'feedback', 'testimonial', 'raised_request','payment_confirmation','new_strategy_payment','payment_confirmation','payment_success','new_strategy_payment_success'];
+      // Validate inquiry_type - UPDATED with admin types
+      const validInquiryTypes = [
+        'strategy',
+        'discussion',
+        'switch',
+        'withdrawal',
+        'feedback',
+        'testimonial',
+        'raised_request',
+        'payment_confirmation',
+        'new_strategy_payment',
+        'payment_success',
+        'new_strategy_payment_success',
+        'sip_success',
+        'admin_response',      // NEW: For admin email responses
+        'admin_notification'   // NEW: For admin notifications
+      ];
+
       if (!validInquiryTypes.includes(inquiry_type)) {
         return NextResponse.json(
           { error: `Invalid inquiry_type. Must be one of: ${validInquiryTypes.join(', ')}` },
@@ -95,13 +114,23 @@ export async function POST(request: NextRequest) {
       inquiryId = rows[0].id;
     }
 
-    // Send email using Resend
-    const emailData = await resend.emails.send({
-      from: fromName ? `${fromName} <${from || 'onboarding@resend.dev'}>` : (from || 'onboarding@resend.dev'),
-      to: [to],
+    // Prepare email payload - UPDATED with CC support
+    const emailPayload: any = {
+      from: fromName
+        ? `${fromName} <investor.relations@qodeinvest.com>` // Changed this line
+        : 'investor.relations@qodeinvest.com', // Changed this line
+      to: Array.isArray(to) ? to : [to],
       subject,
       html,
-    });
+    };
+
+    // Add CC if provided
+    if (cc && Array.isArray(cc) && cc.length > 0) {
+      emailPayload.cc = cc;
+    }
+
+    // Send email using Resend
+    const emailData = await resend.emails.send(emailPayload);
 
     console.log('Email sent successfully via Resend:', emailData);
 
@@ -116,27 +145,27 @@ export async function POST(request: NextRequest) {
       await client.query('COMMIT');
     }
 
-    return NextResponse.json({ 
-      success: true, 
-      inquiry_id: inquiryId, 
+    return NextResponse.json({
+      success: true,
+      inquiry_id: inquiryId,
       emailData: {
         id: emailData.data?.id,
         status: 'sent'
       }
     });
-  } catch (error) {
+  } catch (error: any) {
     // Rollback transaction on error
     try {
       await client.query('ROLLBACK');
     } catch (rollbackError) {
       console.error('Rollback error:', rollbackError);
     }
-    
+
     console.error('Error processing inquiry:', error);
     return NextResponse.json(
-      { 
-        error: 'Failed to process inquiry', 
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined 
+      {
+        error: 'Failed to process inquiry',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
       },
       { status: 500 }
     );
@@ -199,10 +228,10 @@ export async function GET(request: NextRequest) {
 
     const { rows } = await client.query(query, params);
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       inquiries: rows,
-      count: rows.length 
+      count: rows.length
     });
   } catch (error) {
     console.error('Database query error:', error);
