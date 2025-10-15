@@ -39,7 +39,7 @@ import {
   X as CloseIcon,
   MessageCircle,
   AlertCircle,
-  ArrowRight
+  ArrowRight,
 } from "lucide-react";
 import {
   Dialog,
@@ -156,7 +156,8 @@ function QueryResolverContent() {
   const [newNote, setNewNote] = useState('');
   const [sendEmailOnResolve, setSendEmailOnResolve] = useState(true);
   const [processing, setProcessing] = useState(false);
-  
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false); // ADD THIS
+const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); // ADD THIS
   // Email state
   const [emailData, setEmailData] = useState<EmailData>({
     to: '',
@@ -343,6 +344,39 @@ function QueryResolverContent() {
       setProcessing(false);
     }
   };
+
+  const handleDeleteThread = async () => {
+  if (!threadToDelete) return;
+
+  setProcessing(true);
+  try {
+    const response = await fetch('/api/admin/queries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'delete',
+        threadId: threadToDelete.thread_id,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (data.success) {
+      setMessage('Thread deleted successfully');
+      setShowDeleteDialog(false);
+      setThreadToDelete(null);
+      setShowThreadDialog(false);
+      fetchThreadsData();
+    } else {
+      setMessage(`Failed to delete thread: ${data.error}`);
+    }
+  } catch (error) {
+    console.error('Delete error:', error);
+    setMessage('Failed to delete thread');
+  } finally {
+    setProcessing(false);
+  }
+};
 
   const handleAddNote = async () => {
     if (!selectedThread || !newNote.trim()) return;
@@ -711,7 +745,7 @@ function QueryResolverContent() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Thread Info</TableHead>
+                  {/* <TableHead>Thread Info</TableHead> */}
                   <TableHead>Client & Type</TableHead>
                   <TableHead>Subject</TableHead>
                   <TableHead>Status</TableHead>
@@ -727,7 +761,7 @@ function QueryResolverContent() {
                     className="cursor-pointer hover:bg-muted/50"
                     onClick={() => handleThreadClick(thread)}
                   >
-                    <TableCell>
+                    {/* <TableCell>
                       <div className="space-y-1">
                         <div className="flex items-center space-x-2">
                           <MessageCircle className="h-4 w-4 text-muted-foreground" />
@@ -745,7 +779,7 @@ function QueryResolverContent() {
                           {thread.thread_id.substring(0, 8)}...
                         </div>
                       </div>
-                    </TableCell>
+                    </TableCell> */}
                     <TableCell>
                       <div className="space-y-1">
                         <div className="flex items-center space-x-1">
@@ -793,41 +827,53 @@ function QueryResolverContent() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openReplyDialog(thread)}>
-                            <Mail className="h-4 w-4 mr-2" />
-                            Send Reply
-                          </DropdownMenuItem>
-                          {thread.status === 'pending' && (
-                            <>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setSelectedThread(thread);
-                                  setShowResolveDialog(true);
-                                }}
-                              >
-                                <CheckCircle className="h-4 w-4 mr-2" />
-                                Resolve Thread
-                              </DropdownMenuItem>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuLabel>Change Priority</DropdownMenuLabel>
-                              <DropdownMenuItem onClick={() => handleUpdatePriority(thread.thread_id, 'high')}>
-                                High Priority
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleUpdatePriority(thread.thread_id, 'medium')}>
-                                Medium Priority
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleUpdatePriority(thread.thread_id, 'low')}>
-                                Low Priority
-                              </DropdownMenuItem>
-                            </>
-                          )}
-                          {thread.status === 'resolved' && (
-                            <DropdownMenuItem onClick={() => handleReopenThread(thread.thread_id)}>
-                              <XCircle className="h-4 w-4 mr-2" />
-                              Reopen Thread
-                            </DropdownMenuItem>
-                          )}
-                        </DropdownMenuContent>
+  <DropdownMenuItem onClick={() => openReplyDialog(thread)}>
+    <Mail className="h-4 w-4 mr-2" />
+    Send Reply
+  </DropdownMenuItem>
+  {thread.status === 'pending' && (
+    <>
+      <DropdownMenuItem
+        onClick={() => {
+          setSelectedThread(thread);
+          setShowResolveDialog(true);
+        }}
+      >
+        <CheckCircle className="h-4 w-4 mr-2" />
+        Resolve Thread
+      </DropdownMenuItem>
+      <DropdownMenuSeparator />
+      <DropdownMenuLabel>Change Priority</DropdownMenuLabel>
+      <DropdownMenuItem onClick={() => handleUpdatePriority(thread.thread_id, 'high')}>
+        High Priority
+      </DropdownMenuItem>
+      <DropdownMenuItem onClick={() => handleUpdatePriority(thread.thread_id, 'medium')}>
+        Medium Priority
+      </DropdownMenuItem>
+      <DropdownMenuItem onClick={() => handleUpdatePriority(thread.thread_id, 'low')}>
+        Low Priority
+      </DropdownMenuItem>
+    </>
+  )}
+  {thread.status === 'resolved' && (
+    <DropdownMenuItem onClick={() => handleReopenThread(thread.thread_id)}>
+      <XCircle className="h-4 w-4 mr-2" />
+      Reopen Thread
+    </DropdownMenuItem>
+  )}
+  {/* ADD THIS SECTION */}
+  <DropdownMenuSeparator />
+  <DropdownMenuItem 
+    onClick={() => {
+      setThreadToDelete(thread);
+      setShowDeleteDialog(true);
+    }}
+    className="text-red-600 focus:text-red-600"
+  >
+    <AlertTriangle className="h-4 w-4 mr-2" />
+    Delete Thread
+  </DropdownMenuItem>
+</DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
                   </TableRow>
@@ -1010,6 +1056,72 @@ function QueryResolverContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Thread Dialog */}
+<Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle className="flex items-center space-x-2">
+        <AlertTriangle className="h-5 w-5 text-red-500" />
+        <span>Delete Conversation Thread</span>
+      </DialogTitle>
+      <DialogDescription>
+        This action cannot be undone. This will permanently delete the entire conversation thread and all associated messages and notes.
+      </DialogDescription>
+    </DialogHeader>
+
+    <div className="space-y-4">
+      <Alert className="border-red-200 bg-red-50">
+        <AlertTriangle className="h-4 w-4 text-red-600" />
+        <AlertDescription className="text-red-800">
+          <strong>Warning:</strong> You are about to delete:
+        </AlertDescription>
+      </Alert>
+
+      <div className="bg-muted p-4 rounded text-sm space-y-2">
+        <p><strong>Thread:</strong> {threadToDelete?.subject}</p>
+        <p><strong>Client:</strong> {threadToDelete?.nuvama_code} - {threadToDelete?.client_name}</p>
+        <p><strong>Status:</strong> {threadToDelete?.status}</p>
+        <p><strong>Total Messages:</strong> {threadToDelete?.total_messages}</p>
+        <p><strong>Created:</strong> {threadToDelete && new Date(threadToDelete.created_at).toLocaleString()}</p>
+      </div>
+
+      <p className="text-sm text-muted-foreground">
+        Type <strong>DELETE</strong> to confirm this action:
+      </p>
+      <Input
+        id="delete-confirmation"
+        placeholder="Type DELETE to confirm"
+        onChange={(e) => {
+          const btn = document.getElementById('confirm-delete-btn') as HTMLButtonElement;
+          if (btn) {
+            btn.disabled = e.target.value !== 'DELETE';
+          }
+        }}
+      />
+    </div>
+
+    <DialogFooter>
+      <Button 
+        variant="outline" 
+        onClick={() => {
+          setShowDeleteDialog(false);
+          setThreadToDelete(null);
+        }}
+      >
+        Cancel
+      </Button>
+      <Button
+        id="confirm-delete-btn"
+        onClick={handleDeleteThread}
+        disabled={processing}
+        className="bg-red-600 hover:bg-red-700"
+      >
+        {processing ? 'Deleting...' : 'Delete Permanently'}
+      </Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
 
       {/* Send Reply Dialog */}
       <Dialog open={showReplyDialog} onOpenChange={setShowReplyDialog}>

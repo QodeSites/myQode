@@ -66,6 +66,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import Link from "next/link";
 
 interface GroupedClientData {
   ownerId: string;
@@ -611,13 +612,15 @@ function AdminDashboardContent() {
             subtitle={`${statistics.pendingOnboarding} pending`}
             color="text-green-500"
           />
-          <StatCard
-            icon={MessageSquare}
-            title="Total Queries"
-            value={statistics.totalQueries}
-            subtitle={`${statistics.pendingQueries} pending`}
-            color="text-orange-500"
-          />
+          <Link href="/admin/queries" className="block hover:shadow-md transition-shadow">
+            <StatCard
+              icon={MessageSquare}
+              title="Total Queries"
+              value={statistics.totalQueries}
+              subtitle={`${statistics.pendingQueries} pending`}
+              color="text-orange-500"
+            />
+          </Link>
           <StatCard
             icon={LogIn}
             title="Total Logins"
@@ -906,7 +909,7 @@ function AdminDashboardContent() {
 
       {/* Accounts Detail Dialog */}
       <Dialog open={showAccountsDialog} onOpenChange={setShowAccountsDialog}>
-        <DialogContent className="max-w-2xl max-h-[80vh]">
+        <DialogContent className="max-w-3xl max-h-[80vh]">
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
               <Hash className="h-5 w-5 text-blue-500" />

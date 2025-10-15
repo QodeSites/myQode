@@ -68,11 +68,11 @@ interface QueryStatistics {
 async function sendQueryEmail(query: QueryMessage, action: 'resolved' | 'updated', note?: string) {
   try {
     console.log(`Sending ${action} email for query ${query.id} to ${query.user_email}`);
-    
-    const emailSubject = action === 'resolved' 
+
+    const emailSubject = action === 'resolved'
       ? `Query Resolved: ${query.subject}`
       : `Query Updated: ${query.subject}`;
-    
+
     const emailBody = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
@@ -99,19 +99,19 @@ async function sendQueryEmail(query: QueryMessage, action: 'resolved' | 'updated
         </div>
       </div>
     `;
-    
+
     const emailResult = await resend.emails.send({
       from: `Query Management System <investor.relations@qodeinvest.com>`,
       to: [query.user_email],
       subject: emailSubject,
       html: emailBody,
     });
-    
+
     if (emailResult.error) {
       console.error('Email send failed:', emailResult.error);
       return false;
     }
-    
+
     console.log('Email sent successfully:', emailResult);
     return true;
   } catch (error) {
@@ -122,7 +122,7 @@ async function sendQueryEmail(query: QueryMessage, action: 'resolved' | 'updated
 
 export async function GET(request: NextRequest) {
   const client = await pool.connect();
-  
+
   try {
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');
@@ -155,11 +155,11 @@ export async function GET(request: NextRequest) {
       `;
 
       const threadResult = await client.query(threadQuery, [threadId]);
-      
+
       // Get client info
       const clientCodes = [...new Set(threadResult.rows.map((r: any) => r.nuvama_code))];
       let clientMap = new Map<string, any>();
-      
+
       if (clientCodes.length > 0) {
         try {
           const placeholders = clientCodes.map((_, i) => `$${i + 1}`).join(',');
@@ -175,10 +175,10 @@ export async function GET(request: NextRequest) {
             WHERE clientcode IN (${placeholders})
           `;
           const clientsResult = await query(clientsQuery, clientCodes);
-          
+
           clientsResult.rows.forEach((c: any) => {
-            const fullName = c.clientname || 
-              `${c.salutation || ''} ${c.firstname} ${c.middlename || ''} ${c.lastname}`.trim() || 
+            const fullName = c.clientname ||
+              `${c.salutation || ''} ${c.firstname} ${c.middlename || ''} ${c.lastname}`.trim() ||
               'Unknown';
             clientMap.set(c.clientcode, fullName);
           });
@@ -201,19 +201,25 @@ export async function GET(request: NextRequest) {
     // Get all threads (grouped queries)
     const threadsQuery = `
       WITH thread_summary AS (
-        SELECT 
-          thread_id,
-          MIN(created_at) as first_message_at,
-          MAX(created_at) as last_message_at,
-          MAX(CASE WHEN is_client_message = false THEN created_at END) as last_admin_response,
-          SUM(CASE WHEN is_client_message = true AND created_at > COALESCE(
-            (SELECT MAX(created_at) FROM pms_clients_tracker.qode_microsite_inquiries i2 
-             WHERE i2.thread_id = qode_microsite_inquiries.thread_id 
-             AND i2.is_client_message = false), '1970-01-01'
-          ) THEN 1 ELSE 0 END) as unread_client_messages
-        FROM pms_clients_tracker.qode_microsite_inquiries
-        GROUP BY thread_id
-      ),
+  SELECT 
+    thread_id,
+    MIN(created_at) as first_message_at,
+    MAX(created_at) as last_message_at,
+    MAX(CASE WHEN is_client_message = false THEN created_at END) as last_admin_response,
+    -- Only count unread messages for pending threads
+    SUM(CASE 
+      WHEN is_client_message = true 
+      AND status = 'pending'  -- ADD THIS LINE
+      AND created_at > COALESCE(
+        (SELECT MAX(created_at) FROM pms_clients_tracker.qode_microsite_inquiries i2 
+         WHERE i2.thread_id = qode_microsite_inquiries.thread_id 
+         AND i2.is_client_message = false), '1970-01-01'
+      ) 
+      THEN 1 ELSE 0 
+    END) as unread_client_messages
+  FROM pms_clients_tracker.qode_microsite_inquiries
+  GROUP BY thread_id
+),
       original_queries AS (
         SELECT DISTINCT ON (thread_id)
           id, type, nuvama_code, client_id, user_email, subject, status, 
@@ -242,7 +248,7 @@ export async function GET(request: NextRequest) {
     // Get unique client codes
     const clientCodes = [...new Set(threads.map(t => t.nuvama_code))];
     let clientMap = new Map<string, any>();
-    
+
     if (clientCodes.length > 0) {
       try {
         const placeholders = clientCodes.map((_, i) => `$${i + 1}`).join(',');
@@ -259,10 +265,10 @@ export async function GET(request: NextRequest) {
           WHERE clientcode IN (${placeholders})
         `;
         const clientsResult = await query(clientsQuery, clientCodes);
-        
+
         clientsResult.rows.forEach((c: any) => {
-          const fullName = c.clientname || 
-            `${c.salutation || ''} ${c.firstname} ${c.middlename || ''} ${c.lastname}`.trim() || 
+          const fullName = c.clientname ||
+            `${c.salutation || ''} ${c.firstname} ${c.middlename || ''} ${c.lastname}`.trim() ||
             'Unknown';
           clientMap.set(c.clientcode, { name: fullName, email: c.email });
         });
@@ -320,7 +326,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const client = await pool.connect();
-  
+
   try {
     const body = await request.json();
     const { action, queryId, threadId, note, priority, sendEmail, adminEmail, emailData } = body;
@@ -330,43 +336,43 @@ export async function POST(request: NextRequest) {
 
     switch (action) {
       case 'sendResponse': {
-  if (!threadId || !emailData) {
-    return NextResponse.json(
-      { error: 'Thread ID and email data are required' },
-      { status: 400 }
-    );
-  }
+        if (!threadId || !emailData) {
+          return NextResponse.json(
+            { error: 'Thread ID and email data are required' },
+            { status: 400 }
+          );
+        }
 
-  await client.query('BEGIN');
+        await client.query('BEGIN');
 
-  try {
-    // Log what we received
-    console.log('📧 Received email data:', {
-      to: emailData.to,
-      cc: emailData.cc,
-      ccType: typeof emailData.cc,
-      ccIsArray: Array.isArray(emailData.cc),
-      ccLength: emailData.cc?.length,
-      subject: emailData.subject
-    });
+        try {
+          // Log what we received
+          console.log('📧 Received email data:', {
+            to: emailData.to,
+            cc: emailData.cc,
+            ccType: typeof emailData.cc,
+            ccIsArray: Array.isArray(emailData.cc),
+            ccLength: emailData.cc?.length,
+            subject: emailData.subject
+          });
 
-    // Get original thread details
-    const threadResult = await client.query(
-      `SELECT * FROM pms_clients_tracker.qode_microsite_inquiries 
+          // Get original thread details
+          const threadResult = await client.query(
+            `SELECT * FROM pms_clients_tracker.qode_microsite_inquiries 
        WHERE thread_id = $1 
        ORDER BY created_at ASC 
        LIMIT 1`,
-      [threadId]
-    );
+            [threadId]
+          );
 
-    if (threadResult.rows.length === 0) {
-      throw new Error('Thread not found');
-    }
+          if (threadResult.rows.length === 0) {
+            throw new Error('Thread not found');
+          }
 
-    const originalQuery = threadResult.rows[0];
+          const originalQuery = threadResult.rows[0];
 
-    // Prepare email HTML
-    const emailHtml = `
+          // Prepare email HTML
+          const emailHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
           <h2 style="color: #1a73e8; margin: 0;">Response to Your Query</h2>
@@ -388,106 +394,106 @@ export async function POST(request: NextRequest) {
       </div>
     `;
 
-    // Prepare email payload
-    const emailPayload: any = {
-      from: `Query Management System <investor.relations@qodeinvest.com>`,
-      to: Array.isArray(emailData.to) ? emailData.to : [emailData.to],
-      subject: emailData.subject,
-      html: emailHtml,
-    };
+          // Prepare email payload
+          const emailPayload: any = {
+            from: `Query Management System <investor.relations@qodeinvest.com>`,
+            to: Array.isArray(emailData.to) ? emailData.to : [emailData.to],
+            subject: emailData.subject,
+            html: emailHtml,
+          };
 
-    // Add CC if provided
-    if (emailData.cc && Array.isArray(emailData.cc) && emailData.cc.length > 0) {
-      emailPayload.cc = emailData.cc;
-      console.log('✅ Adding CC recipients:', emailData.cc);
-    } else {
-      console.log('ℹ️  No CC recipients provided');
-    }
+          // Add CC if provided
+          if (emailData.cc && Array.isArray(emailData.cc) && emailData.cc.length > 0) {
+            emailPayload.cc = emailData.cc;
+            console.log('✅ Adding CC recipients:', emailData.cc);
+          } else {
+            console.log('ℹ️  No CC recipients provided');
+          }
 
-    console.log('📤 Final email payload:', {
-      from: emailPayload.from,
-      to: emailPayload.to,
-      cc: emailPayload.cc || 'None',
-      subject: emailPayload.subject
-    });
+          console.log('📤 Final email payload:', {
+            from: emailPayload.from,
+            to: emailPayload.to,
+            cc: emailPayload.cc || 'None',
+            subject: emailPayload.subject
+          });
 
-    const emailResult = await resend.emails.send(emailPayload);
+          const emailResult = await resend.emails.send(emailPayload);
 
-    console.log('✅ Email API response:', emailResult);
+          console.log('✅ Email API response:', emailResult);
 
-    if (emailResult.error) {
-      throw new Error(`Email send failed: ${emailResult.error.message}`);
-    }
+          if (emailResult.error) {
+            throw new Error(`Email send failed: ${emailResult.error.message}`);
+          }
 
-    // Insert response as a new message in the thread
-    const insertResult = await client.query(
-      `INSERT INTO pms_clients_tracker.qode_microsite_inquiries 
+          // Insert response as a new message in the thread
+          const insertResult = await client.query(
+            `INSERT INTO pms_clients_tracker.qode_microsite_inquiries 
        (type, nuvama_code, client_id, user_email, subject, status, priority, data, 
         parent_inquiry_id, thread_id, is_client_message, email_sent, created_at, updated_at, last_updated_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW(), $13)
        RETURNING id`,
-      [
-        'admin_response',
-        originalQuery.nuvama_code,
-        originalQuery.client_id,
-        originalQuery.user_email,
-        emailData.subject,
-        originalQuery.status,
-        originalQuery.priority,
-        JSON.stringify({
-          message: emailData.message,
-          cc: emailData.cc || [],
-          sent_by: currentAdminEmail
-        }),
-        originalQuery.id,
-        threadId,
-        false,
-        true,
-        currentAdminEmail
-      ]
-    );
+            [
+              'admin_response',
+              originalQuery.nuvama_code,
+              originalQuery.client_id,
+              originalQuery.user_email,
+              emailData.subject,
+              originalQuery.status,
+              originalQuery.priority,
+              JSON.stringify({
+                message: emailData.message,
+                cc: emailData.cc || [],
+                sent_by: currentAdminEmail
+              }),
+              originalQuery.id,
+              threadId,
+              false,
+              true,
+              currentAdminEmail
+            ]
+          );
 
-    // Add note about the response
-    const ccInfo = emailData.cc && emailData.cc.length > 0 ? ` (CC: ${emailData.cc.join(', ')})` : '';
-    await client.query(
-      `INSERT INTO pms_clients_tracker.qode_inquiry_notes 
+          // Add note about the response
+          const ccInfo = emailData.cc && emailData.cc.length > 0 ? ` (CC: ${emailData.cc.join(', ')})` : '';
+          await client.query(
+            `INSERT INTO pms_clients_tracker.qode_inquiry_notes 
        (inquiry_id, admin_email, note_type, content)
        VALUES ($1, $2, 'note', $3)`,
-      [
-        originalQuery.id,
-        currentAdminEmail,
-        `Admin response sent to ${emailData.to}${ccInfo}\nSubject: ${emailData.subject}`
-      ]
-    );
+            [
+              originalQuery.id,
+              currentAdminEmail,
+              `Admin response sent to ${emailData.to}${ccInfo}\nSubject: ${emailData.subject}`
+            ]
+          );
 
-    // Update original query's updated_at
-    await client.query(
-      `UPDATE pms_clients_tracker.qode_microsite_inquiries 
+          // Update original query's updated_at
+          await client.query(
+            `UPDATE pms_clients_tracker.qode_microsite_inquiries 
        SET updated_at = NOW(), last_updated_by = $1 
        WHERE thread_id = $2`,
-      [currentAdminEmail, threadId]
-    );
+            [currentAdminEmail, threadId]
+          );
 
-    await client.query('COMMIT');
+          await client.query('COMMIT');
 
-    console.log('✅ Transaction committed successfully');
+          console.log('✅ Transaction committed successfully');
 
-    return NextResponse.json({
-      success: true,
-      message: 'Response sent successfully',
-      response_id: insertResult.rows[0].id,
-      email_details: {
-        to: emailPayload.to,
-        cc: emailPayload.cc || [],
-        email_id: emailResult.data?.id
+          return NextResponse.json({
+            success: true,
+            message: 'Response sent successfully',
+            response_id: insertResult.rows[0].id,
+            email_details: {
+              to: emailPayload.to,
+              cc: emailPayload.cc || [],
+              email_id: emailResult.data?.id
+            }
+          });
+        } catch (error) {
+          await client.query('ROLLBACK');
+          console.error('❌ Error in sendResponse:', error);
+          throw error;
+        }
       }
-    });
-  } catch (error) {
-    await client.query('ROLLBACK');
-    console.error('❌ Error in sendResponse:', error);
-    throw error;
-  }
-}
 
       case 'resolve': {
         if (!threadId || !note) {
@@ -684,6 +690,60 @@ export async function POST(request: NextRequest) {
         }
       }
 
+      case 'delete': {
+        if (!threadId) {
+          return NextResponse.json(
+            { error: 'Thread ID is required' },
+            { status: 400 }
+          );
+        }
+
+        await client.query('BEGIN');
+
+        try {
+          // Get all inquiry IDs in this thread
+          const threadInquiriesResult = await client.query(
+            `SELECT id FROM pms_clients_tracker.qode_microsite_inquiries 
+       WHERE thread_id = $1`,
+            [threadId]
+          );
+
+          const inquiryIds = threadInquiriesResult.rows.map(row => row.id);
+
+          if (inquiryIds.length === 0) {
+            throw new Error('Thread not found');
+          }
+
+          // Delete all notes associated with these inquiries
+          if (inquiryIds.length > 0) {
+            const placeholders = inquiryIds.map((_, i) => `$${i + 1}`).join(',');
+            await client.query(
+              `DELETE FROM pms_clients_tracker.qode_inquiry_notes 
+         WHERE inquiry_id IN (${placeholders})`,
+              inquiryIds
+            );
+          }
+
+          // Delete all messages in the thread
+          await client.query(
+            `DELETE FROM pms_clients_tracker.qode_microsite_inquiries 
+       WHERE thread_id = $1`,
+            [threadId]
+          );
+
+          await client.query('COMMIT');
+
+          return NextResponse.json({
+            success: true,
+            message: 'Thread and all associated data deleted successfully',
+            deleted_count: inquiryIds.length,
+          });
+        } catch (error) {
+          await client.query('ROLLBACK');
+          throw error;
+        }
+      }
+
       default:
         return NextResponse.json(
           { error: 'Invalid action' },
@@ -693,17 +753,17 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Admin queries action error:', error);
-    
+
     // Make sure we return JSON even on error
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    const errorDetails = process.env.NODE_ENV === 'development' 
+    const errorDetails = process.env.NODE_ENV === 'development'
       ? (error instanceof Error ? error.stack : undefined)
       : undefined;
-    
+
     return NextResponse.json(
-      { 
+      {
         success: false,
-        error: 'Failed to process query action', 
+        error: 'Failed to process query action',
         details: errorMessage,
         stack: errorDetails
       },
@@ -717,7 +777,7 @@ export async function POST(request: NextRequest) {
 // Helper function to calculate average resolution time
 function calculateAverageResolutionTime(threads: QueryMessage[]): string {
   const resolvedThreads = threads.filter(t => t.resolved_at && t.status === 'resolved');
-  
+
   if (resolvedThreads.length === 0) {
     return 'N/A';
   }

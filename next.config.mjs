@@ -46,7 +46,7 @@ export default withPWA({
   dest: 'public',
   register: true,
   skipWaiting: true,
-  disable: false, // Enable in all environments for testing
+  disable: process.env.NODE_ENV === 'development', // ✅ Disable in dev
   buildExcludes: [
     /middleware-manifest\.json$/,
     /build-manifest\.json$/,
