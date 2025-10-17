@@ -3,6 +3,8 @@ import { useState, useRef } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 
 const newsletters = [
+  { title: "September 2025", url: "https://mailchi.mp/5d3e07c80c7f/qode-august-2025-performance-insights-18237140", type: "newsletter" },
+  { title: "August 2025", url: "https://mailchi.mp/e4ca89368133/monthly-newsletter-january-edition-18236461", type: "newsletter" },
   { title: "July 2025", url: "https://mailchi.mp/f53d3709622f/monthly-newsletter-january-edition-18235640", type: "newsletter" },
   { title: "June 2025", url: "https://mailchi.mp/6e40021c045f/monthly-newsletter-january-edition-18235072", type: "newsletter" },
   { title: "May 2025", url: "https://mailchi.mp/eeb4214f0fd7/monthly-newsletter-january-edition-18234411", type: "newsletter" },
