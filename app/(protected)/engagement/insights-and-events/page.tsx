@@ -3,14 +3,18 @@ import { useState, useRef } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 
 const newsletters = [
-  { title: "September 2025", url: "https://mailchi.mp/5d3e07c80c7f/qode-august-2025-performance-insights-18237140", type: "newsletter" },
-  { title: "August 2025", url: "https://mailchi.mp/e4ca89368133/monthly-newsletter-january-edition-18236461", type: "newsletter" },
-  { title: "July 2025", url: "https://mailchi.mp/f53d3709622f/monthly-newsletter-january-edition-18235640", type: "newsletter" },
-  { title: "June 2025", url: "https://mailchi.mp/6e40021c045f/monthly-newsletter-january-edition-18235072", type: "newsletter" },
-  { title: "May 2025", url: "https://mailchi.mp/eeb4214f0fd7/monthly-newsletter-january-edition-18234411", type: "newsletter" },
-  { title: "April 2025", url: "https://mailchi.mp/5555619376ac/monthly-newsletter-january-edition-18233757", type: "newsletter" },
-  { title: "March 2025", url: "https://mailchi.mp/9071ba8e1e12/monthly-newsletter-january-edition-18233068", type: "newsletter" },
-  { title: "February 2025", url: "https://mailchi.mp/37c659c09be6/monthly-newsletter-january-edition-18232366", type: "newsletter" },
+  { title: "September 2025", url: "/newsletters/Qode_Newsletter_September_2025.pdf", type: "pdf" },
+  { title: "August 2025", url: "/newsletters/Qode_Newsletter_August_2025.pdf", type: "pdf" },
+  { title: "July 2025", url: "/newsletters/Qode_Newsletter_July_2025.pdf", type: "pdf" },
+  { title: "June 2025", url: "/newsletters/Qode_Newsletter_June_2025.pdf", type: "pdf" },
+  { title: "May 2025", url: "/newsletters/Qode_Newsletter_May_2025.pdf", type: "pdf" },
+  { title: "April 2025", url: "/newsletters/Qode_Newsletter_April_2025.pdf", type: "pdf" },
+  { title: "March 2025", url: "/newsletters/Qode_Newsletter_March_2025.pdf", type: "pdf" },
+  { title: "February 2025", url: "/newsletters/Qode_Newsletter_February_2025.pdf", type: "pdf" },
+];
+
+const perspectives = [
+  { title: "September 2025", url: "/perspectives/Qode_Perspective_September_2025.pdf", type: "pdf" },
 ];
 
 const pitchDecks = [
@@ -382,15 +386,22 @@ export function ContentModal({
 
 export default function InsightsArchivePage() {
   const [isNewsletterModalOpen, setIsNewsletterModalOpen] = useState(false);
+  const [isPerspectiveModalOpen, setIsPerspectiveModalOpen] = useState(false);
   const [isPitchDeckModalOpen, setIsPitchDeckModalOpen] = useState(false);
   const [isRecordingModalOpen, setIsRecordingModalOpen] = useState(false);
   const [currentNewsletterIndex, setCurrentNewsletterIndex] = useState(0);
+  const [currentPerspectiveIndex, setCurrentPerspectiveIndex] = useState(0);
   const [currentPitchDeckIndex, setCurrentPitchDeckIndex] = useState(0);
   const [currentRecordingIndex, setCurrentRecordingIndex] = useState(0);
 
   const openNewsletter = (index: number) => {
     setCurrentNewsletterIndex(index);
     setIsNewsletterModalOpen(true);
+  };
+
+  const openPerspective = (index: number) => {
+    setCurrentPerspectiveIndex(index);
+    setIsPerspectiveModalOpen(true);
   };
 
   const openPitchDeck = (index: number) => {
@@ -422,6 +433,14 @@ export default function InsightsArchivePage() {
         sectionId="newsletter"
       />
 
+      {/* Perspective Archive */}
+      <SectionBar title="Perspective Archive" />
+      <Slider
+        items={perspectives}
+        onItemClick={openPerspective}
+        sectionId="perspective"
+      />
+
       {/* Pitch Decks Archive */}
       {/* <SectionBar title="Fact Sheet Archive" />
       <Slider 
@@ -447,6 +466,16 @@ export default function InsightsArchivePage() {
         setCurrentIndex={setCurrentNewsletterIndex}
         modalTitle="Newsletter"
       /> 
+
+      {/* Perspective Modal */}
+      <ContentModal
+        isOpen={isPerspectiveModalOpen}
+        onClose={() => setIsPerspectiveModalOpen(false)}
+        items={perspectives}
+        currentIndex={currentPerspectiveIndex}
+        setCurrentIndex={setCurrentPerspectiveIndex}
+        modalTitle="Perspective"
+      />
 
       {/* Pitch Deck Modal */}
       {/* <ContentModal
