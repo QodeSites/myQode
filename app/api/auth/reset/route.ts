@@ -2,9 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import crypto from 'crypto'
-
-// TODO (recommended): switch to bcrypt
-// import bcrypt from 'bcrypt'
+import bcrypt from 'bcryptjs'
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,9 +12,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Token and newPassword are required' }, { status: 400 })
     }
 
-    // Basic password sanity checks (adjust to your policy)
+    // Password validation (matching your login mechanism)
     if (newPassword.length < 8) {
-      return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
+      return NextResponse.json({ error: 'Password must be at least 8 characters long' }, { status: 400 })
+    }
+
+    const hasUppercase = /[A-Z]/.test(newPassword)
+    const hasLowercase = /[a-z]/.test(newPassword)
+    const hasNumbers = /\d/.test(newPassword)
+    const hasSpecialChar = /[!@#$%^&*(),.?\":{}|<>]/.test(newPassword)
+
+    if (!hasUppercase || !hasLowercase || !hasNumbers || !hasSpecialChar) {
+      return NextResponse.json(
+        { error: 'Password must contain uppercase, lowercase, numbers, and special characters' },
+        { status: 400 }
+      )
+    }
+
+    if (newPassword === 'Qode@123') {
+      return NextResponse.json(
+        { error: 'Please choose a different password than the default one' },
+        { status: 400 }
+      )
     }
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
@@ -49,21 +66,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Token expired' }, { status: 400 })
     }
 
-    // ===== IMPORTANT =====
-    // Your current login SQL compares plaintext passwords. To stay compatible, we’ll store plaintext here.
-    // CHANGE THIS to bcrypt hash as soon as you update the login logic.
-    const passwordToStore = newPassword
-
-    // // Recommended (after you migrate login to bcrypt):
-    // const saltRounds = 12
-    // const passwordToStore = await bcrypt.hash(newPassword, saltRounds)
+    // Hash password with bcrypt (matching your login mechanism - 12 salt rounds)
+    const hashedPassword = await bcrypt.hash(newPassword, 12)
 
     // Update user password
     const upd = await query(
       `UPDATE pms_clients_master
           SET password = $1
         WHERE email = $2`,
-      [passwordToStore, email]
+      [hashedPassword, email]
     )
 
     if ((upd as any).rowCount === 0) {
@@ -75,7 +86,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No user found for token' }, { status: 400 })
     }
 
-    // Invalidate this token (and, optionally, all other active tokens for this email)
+    // Invalidate this token
     await query(
       `UPDATE password_reset_tokens
           SET used = TRUE
@@ -83,7 +94,7 @@ export async function POST(req: NextRequest) {
       [tokenHash]
     )
 
-    // Optional: also invalidate any other outstanding tokens for this email
+    // Invalidate all other outstanding tokens for this email
     await query(
       `UPDATE password_reset_tokens
           SET used = TRUE
