@@ -231,7 +231,7 @@ export default function ReferAnInvestorPage() {
       html: emailHtml,
       from: 'investor.relations@qodeinvest.com',
       fromName: 'Qode Investor Relations',
-      inquiry_type: 'feedback', // Changed from 'referral' to 'feedback' (valid type)
+      inquiry_type: 'investor_referral', // Changed from 'referral' to 'feedback' (valid type)
       nuvama_code: formDataSubmit.nuvamaCode,
       client_id: selectedClientId,
       user_email: userEmail,

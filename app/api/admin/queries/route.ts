@@ -25,19 +25,8 @@ interface QueryMessage {
   parent_inquiry_id: string | null;
   thread_id: string;
   is_client_message: boolean;
-  message_count: number;
   client_name?: string;
   owner_name?: string;
-}
-
-interface QueryThread {
-  thread_id: string;
-  original_query: QueryMessage;
-  messages: QueryMessage[];
-  total_messages: number;
-  last_message_at: string;
-  has_unread_admin: boolean;
-  client_name?: string;
 }
 
 interface QueryNote {
@@ -52,16 +41,14 @@ interface QueryNote {
 }
 
 interface QueryStatistics {
-  totalThreads: number;
-  pendingThreads: number;
-  resolvedThreads: number;
-  todayThreads: number;
-  thisWeekThreads: number;
-  highPriorityThreads: number;
-  threadsByType: Record<string, number>;
+  totalQueries: number;
+  pendingQueries: number;
+  resolvedQueries: number;
+  todayQueries: number;
+  thisWeekQueries: number;
+  highPriorityQueries: number;
+  queriesByType: Record<string, number>;
   avgResolutionTime: string;
-  totalMessages: number;
-  unreadAdminMessages: number;
 }
 
 // Helper function to send email notification
@@ -80,7 +67,7 @@ async function sendQueryEmail(query: QueryMessage, action: 'resolved' | 'updated
         </div>
         
         <div style="background: white; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
-          <p><strong>Thread ID:</strong> ${query.thread_id}</p>
+          <p><strong>Query ID:</strong> ${query.id}</p>
           <p><strong>Subject:</strong> ${query.subject}</p>
           <p><strong>Client Code:</strong> ${query.nuvama_code}</p>
           <p><strong>Status:</strong> ${query.status}</p>
@@ -127,7 +114,6 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const action = searchParams.get('action');
     const queryId = searchParams.get('queryId');
-    const threadId = searchParams.get('threadId');
 
     // Get query notes
     if (action === 'getNotes' && queryId) {
@@ -144,109 +130,21 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Get thread conversation
-    if (action === 'getThread' && threadId) {
-      const threadQuery = `
-        SELECT 
-          q.*
-        FROM pms_clients_tracker.qode_microsite_inquiries q
-        WHERE q.thread_id = $1
-        ORDER BY q.created_at ASC
-      `;
-
-      const threadResult = await client.query(threadQuery, [threadId]);
-
-      // Get client info
-      const clientCodes = [...new Set(threadResult.rows.map((r: any) => r.nuvama_code))];
-      let clientMap = new Map<string, any>();
-
-      if (clientCodes.length > 0) {
-        try {
-          const placeholders = clientCodes.map((_, i) => `$${i + 1}`).join(',');
-          const clientsQuery = `
-            SELECT 
-              clientcode,
-              clientname,
-              salutation,
-              firstname,
-              middlename,
-              lastname
-            FROM pms_clients_master
-            WHERE clientcode IN (${placeholders})
-          `;
-          const clientsResult = await query(clientsQuery, clientCodes);
-
-          clientsResult.rows.forEach((c: any) => {
-            const fullName = c.clientname ||
-              `${c.salutation || ''} ${c.firstname} ${c.middlename || ''} ${c.lastname}`.trim() ||
-              'Unknown';
-            clientMap.set(c.clientcode, fullName);
-          });
-        } catch (error) {
-          console.error('Error fetching client data:', error);
-        }
-      }
-
-      const messages = threadResult.rows.map((m: any) => ({
-        ...m,
-        client_name: clientMap.get(m.nuvama_code) || 'Unknown Client',
-      }));
-
-      return NextResponse.json({
-        success: true,
-        data: { messages },
-      });
-    }
-
-    // Get all threads (grouped queries)
-    const threadsQuery = `
-      WITH thread_summary AS (
-  SELECT 
-    thread_id,
-    MIN(created_at) as first_message_at,
-    MAX(created_at) as last_message_at,
-    MAX(CASE WHEN is_client_message = false THEN created_at END) as last_admin_response,
-    -- Only count unread messages for pending threads
-    SUM(CASE 
-      WHEN is_client_message = true 
-      AND status = 'pending'  -- ADD THIS LINE
-      AND created_at > COALESCE(
-        (SELECT MAX(created_at) FROM pms_clients_tracker.qode_microsite_inquiries i2 
-         WHERE i2.thread_id = qode_microsite_inquiries.thread_id 
-         AND i2.is_client_message = false), '1970-01-01'
-      ) 
-      THEN 1 ELSE 0 
-    END) as unread_client_messages
-  FROM pms_clients_tracker.qode_microsite_inquiries
-  GROUP BY thread_id
-),
-      original_queries AS (
-        SELECT DISTINCT ON (thread_id)
-          id, type, nuvama_code, client_id, user_email, subject, status, 
-          priority, data, email_sent, created_at, updated_at, resolved_at,
-          assigned_to, last_updated_by, parent_inquiry_id, thread_id, 
-          is_client_message
-        FROM pms_clients_tracker.qode_microsite_inquiries
-        WHERE parent_inquiry_id IS NULL OR id = thread_id
-        ORDER BY thread_id, created_at ASC
-      )
+    // Get all queries as individual threads
+    const queriesQuery = `
       SELECT 
-        oq.*,
-        ts.last_message_at,
-        ts.unread_client_messages,
-        CASE WHEN ts.unread_client_messages > 0 THEN true ELSE false END as has_unread
-      FROM original_queries oq
-      JOIN thread_summary ts ON oq.thread_id = ts.thread_id
+        q.*
+      FROM pms_clients_tracker.qode_microsite_inquiries q
       ORDER BY 
-        CASE WHEN oq.status = 'pending' THEN 0 ELSE 1 END,
-        ts.last_message_at DESC
+        CASE WHEN q.status = 'pending' THEN 0 ELSE 1 END,
+        q.created_at DESC
     `;
 
-    const threadsResult = await client.query(threadsQuery);
-    const threads: QueryMessage[] = threadsResult.rows;
+    const queriesResult = await client.query(queriesQuery);
+    const queries: QueryMessage[] = queriesResult.rows;
 
     // Get unique client codes
-    const clientCodes = [...new Set(threads.map(t => t.nuvama_code))];
+    const clientCodes = [...new Set(queries.map(q => q.nuvama_code))];
     let clientMap = new Map<string, any>();
 
     if (clientCodes.length > 0) {
@@ -277,11 +175,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Enrich threads with client information
-    const enrichedThreads = threads.map(t => ({
-      ...t,
-      client_name: clientMap.get(t.nuvama_code)?.name || 'Unknown Client',
-      owner_name: clientMap.get(t.nuvama_code)?.name || null,
+    // Enrich queries with client information
+    const enrichedQueries = queries.map(q => ({
+      ...q,
+      client_name: clientMap.get(q.nuvama_code)?.name || 'Unknown Client',
+      owner_name: clientMap.get(q.nuvama_code)?.name || null,
     }));
 
     // Calculate statistics
@@ -290,25 +188,23 @@ export async function GET(request: NextRequest) {
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
 
     const statistics: QueryStatistics = {
-      totalThreads: enrichedThreads.length,
-      pendingThreads: enrichedThreads.filter(t => t.status === 'pending').length,
-      resolvedThreads: enrichedThreads.filter(t => t.status === 'resolved').length,
-      todayThreads: enrichedThreads.filter(t => new Date(t.created_at) >= today).length,
-      thisWeekThreads: enrichedThreads.filter(t => new Date(t.created_at) >= weekAgo).length,
-      highPriorityThreads: enrichedThreads.filter(t => t.priority === 'high' && t.status === 'pending').length,
-      threadsByType: enrichedThreads.reduce((acc, t) => {
-        acc[t.type] = (acc[t.type] || 0) + 1;
+      totalQueries: enrichedQueries.length,
+      pendingQueries: enrichedQueries.filter(q => q.status === 'pending').length,
+      resolvedQueries: enrichedQueries.filter(q => q.status === 'resolved').length,
+      todayQueries: enrichedQueries.filter(q => new Date(q.created_at) >= today).length,
+      thisWeekQueries: enrichedQueries.filter(q => new Date(q.created_at) >= weekAgo).length,
+      highPriorityQueries: enrichedQueries.filter(q => q.priority === 'high' && q.status === 'pending').length,
+      queriesByType: enrichedQueries.reduce((acc, q) => {
+        acc[q.type] = (acc[q.type] || 0) + 1;
         return acc;
       }, {} as Record<string, number>),
-      avgResolutionTime: calculateAverageResolutionTime(enrichedThreads),
-      totalMessages: enrichedThreads.reduce((sum, t) => sum + (t.total_messages || 1), 0),
-      unreadAdminMessages: enrichedThreads.filter((t: any) => t.has_unread).length,
+      avgResolutionTime: calculateAverageResolutionTime(enrichedQueries),
     };
 
     return NextResponse.json({
       success: true,
       data: {
-        threads: enrichedThreads,
+        queries: enrichedQueries,
         statistics,
       },
     });
@@ -329,16 +225,16 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { action, queryId, threadId, note, priority, sendEmail, adminEmail, emailData } = body;
+    const { action, queryId, note, priority, sendEmail, emailData } = body;
 
     // Get admin email from session or request
     const currentAdminEmail = 'investor.relations@qodeinvest.com';
 
     switch (action) {
       case 'sendResponse': {
-        if (!threadId || !emailData) {
+        if (!queryId || !emailData) {
           return NextResponse.json(
-            { error: 'Thread ID and email data are required' },
+            { error: 'Query ID and email data are required' },
             { status: 400 }
           );
         }
@@ -346,53 +242,43 @@ export async function POST(request: NextRequest) {
         await client.query('BEGIN');
 
         try {
-          // Log what we received
-          console.log('📧 Received email data:', {
-            to: emailData.to,
-            cc: emailData.cc,
-            ccType: typeof emailData.cc,
-            ccIsArray: Array.isArray(emailData.cc),
-            ccLength: emailData.cc?.length,
-            subject: emailData.subject
-          });
+          console.log('📧 Sending response for query:', queryId);
 
-          // Get original thread details
-          const threadResult = await client.query(
+          // Get original query details
+          const queryResult = await client.query(
             `SELECT * FROM pms_clients_tracker.qode_microsite_inquiries 
-       WHERE thread_id = $1 
-       ORDER BY created_at ASC 
-       LIMIT 1`,
-            [threadId]
+             WHERE id = $1`,
+            [queryId]
           );
 
-          if (threadResult.rows.length === 0) {
-            throw new Error('Thread not found');
+          if (queryResult.rows.length === 0) {
+            throw new Error('Query not found');
           }
 
-          const originalQuery = threadResult.rows[0];
+          const originalQuery = queryResult.rows[0];
 
           // Prepare email HTML
           const emailHtml = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
-          <h2 style="color: #1a73e8; margin: 0;">Response to Your Query</h2>
-        </div>
-        
-        <div style="background: white; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
-          <p><strong>Subject:</strong> ${emailData.subject}</p>
-          <p><strong>Client Code:</strong> ${originalQuery.nuvama_code}</p>
-          
-          <div style="margin-top: 20px; padding: 15px; background: #f1f3f4; border-radius: 5px;">
-            ${emailData.message.replace(/\n/g, '<br>')}
-          </div>
-        </div>
-        
-        <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-size: 12px; color: #5f6368;">
-          <p style="margin: 0;">This is a response from the Query Management System.</p>
-          <p style="margin: 5px 0 0 0;">If you have further questions, please reply to this email.</p>
-        </div>
-      </div>
-    `;
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                <h2 style="color: #1a73e8; margin: 0;">Response to Your Query</h2>
+              </div>
+              
+              <div style="background: white; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+                <p><strong>Subject:</strong> ${emailData.subject}</p>
+                <p><strong>Client Code:</strong> ${originalQuery.nuvama_code}</p>
+                
+                <div style="margin-top: 20px; padding: 15px; background: #f1f3f4; border-radius: 5px;">
+                  ${emailData.message.replace(/\n/g, '<br>')}
+                </div>
+              </div>
+              
+              <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-size: 12px; color: #5f6368;">
+                <p style="margin: 0;">This is a response from the Query Management System.</p>
+                <p style="margin: 5px 0 0 0;">If you have further questions, please reply to this email.</p>
+              </div>
+            </div>
+          `;
 
           // Prepare email payload
           const emailPayload: any = {
@@ -405,51 +291,34 @@ export async function POST(request: NextRequest) {
           // Add CC if provided
           if (emailData.cc && Array.isArray(emailData.cc) && emailData.cc.length > 0) {
             emailPayload.cc = emailData.cc;
-            console.log('✅ Adding CC recipients:', emailData.cc);
-          } else {
-            console.log('ℹ️  No CC recipients provided');
           }
 
-          console.log('📤 Final email payload:', {
-            from: emailPayload.from,
-            to: emailPayload.to,
-            cc: emailPayload.cc || 'None',
-            subject: emailPayload.subject
-          });
-
           const emailResult = await resend.emails.send(emailPayload);
-
-          console.log('✅ Email API response:', emailResult);
 
           if (emailResult.error) {
             throw new Error(`Email send failed: ${emailResult.error.message}`);
           }
 
-          // Insert response as a new message in the thread
-          const insertResult = await client.query(
-            `INSERT INTO pms_clients_tracker.qode_microsite_inquiries 
-       (type, nuvama_code, client_id, user_email, subject, status, priority, data, 
-        parent_inquiry_id, thread_id, is_client_message, email_sent, created_at, updated_at, last_updated_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW(), $13)
-       RETURNING id`,
+          // Update query with response info
+          await client.query(
+            `UPDATE pms_clients_tracker.qode_microsite_inquiries 
+             SET updated_at = NOW(), 
+                 last_updated_by = $1,
+                 data = jsonb_set(
+                   COALESCE(data, '{}'::jsonb),
+                   '{admin_responses}',
+                   COALESCE(data->'admin_responses', '[]'::jsonb) || $2::jsonb
+                 )
+             WHERE id = $3`,
             [
-              'admin_response',
-              originalQuery.nuvama_code,
-              originalQuery.client_id,
-              originalQuery.user_email,
-              emailData.subject,
-              originalQuery.status,
-              originalQuery.priority,
-              JSON.stringify({
+              currentAdminEmail,
+              JSON.stringify([{
                 message: emailData.message,
                 cc: emailData.cc || [],
-                sent_by: currentAdminEmail
-              }),
-              originalQuery.id,
-              threadId,
-              false,
-              true,
-              currentAdminEmail
+                sent_by: currentAdminEmail,
+                sent_at: new Date().toISOString()
+              }]),
+              queryId
             ]
           );
 
@@ -457,31 +326,20 @@ export async function POST(request: NextRequest) {
           const ccInfo = emailData.cc && emailData.cc.length > 0 ? ` (CC: ${emailData.cc.join(', ')})` : '';
           await client.query(
             `INSERT INTO pms_clients_tracker.qode_inquiry_notes 
-       (inquiry_id, admin_email, note_type, content)
-       VALUES ($1, $2, 'note', $3)`,
+             (inquiry_id, admin_email, note_type, content)
+             VALUES ($1, $2, 'note', $3)`,
             [
-              originalQuery.id,
+              queryId,
               currentAdminEmail,
               `Admin response sent to ${emailData.to}${ccInfo}\nSubject: ${emailData.subject}`
             ]
           );
 
-          // Update original query's updated_at
-          await client.query(
-            `UPDATE pms_clients_tracker.qode_microsite_inquiries 
-       SET updated_at = NOW(), last_updated_by = $1 
-       WHERE thread_id = $2`,
-            [currentAdminEmail, threadId]
-          );
-
           await client.query('COMMIT');
-
-          console.log('✅ Transaction committed successfully');
 
           return NextResponse.json({
             success: true,
             message: 'Response sent successfully',
-            response_id: insertResult.rows[0].id,
             email_details: {
               to: emailPayload.to,
               cc: emailPayload.cc || [],
@@ -496,9 +354,9 @@ export async function POST(request: NextRequest) {
       }
 
       case 'resolve': {
-        if (!threadId || !note) {
+        if (!queryId || !note) {
           return NextResponse.json(
-            { error: 'Thread ID and resolution note are required' },
+            { error: 'Query ID and resolution note are required' },
             { status: 400 }
           );
         }
@@ -506,50 +364,48 @@ export async function POST(request: NextRequest) {
         await client.query('BEGIN');
 
         try {
-          // Get original query from thread
-          const threadResult = await client.query(
+          // Get query
+          const queryResult = await client.query(
             `SELECT * FROM pms_clients_tracker.qode_microsite_inquiries 
-             WHERE thread_id = $1 
-             ORDER BY created_at ASC 
-             LIMIT 1`,
-            [threadId]
+             WHERE id = $1`,
+            [queryId]
           );
 
-          if (threadResult.rows.length === 0) {
-            throw new Error('Thread not found');
+          if (queryResult.rows.length === 0) {
+            throw new Error('Query not found');
           }
 
-          const originalQuery = threadResult.rows[0];
+          const queryData = queryResult.rows[0];
 
-          // Update entire thread status to resolved
+          // Update query status to resolved
           await client.query(
             `UPDATE pms_clients_tracker.qode_microsite_inquiries 
              SET status = 'resolved', 
                  resolved_at = NOW(),
                  updated_at = NOW(),
                  last_updated_by = $1
-             WHERE thread_id = $2`,
-            [currentAdminEmail, threadId]
+             WHERE id = $2`,
+            [currentAdminEmail, queryId]
           );
 
-          // Add resolution note to original query
+          // Add resolution note
           await client.query(
             `INSERT INTO pms_clients_tracker.qode_inquiry_notes 
              (inquiry_id, admin_email, note_type, content, old_value, new_value)
              VALUES ($1, $2, 'status_change', $3, 'pending', 'resolved')`,
-            [originalQuery.id, currentAdminEmail, note]
+            [queryId, currentAdminEmail, note]
           );
 
           // Send email if requested
           if (sendEmail) {
-            await sendQueryEmail(originalQuery, 'resolved', note);
+            await sendQueryEmail(queryData, 'resolved', note);
           }
 
           await client.query('COMMIT');
 
           return NextResponse.json({
             success: true,
-            message: 'Thread resolved successfully',
+            message: 'Query resolved successfully',
           });
         } catch (error) {
           await client.query('ROLLBACK');
@@ -558,9 +414,9 @@ export async function POST(request: NextRequest) {
       }
 
       case 'reopen': {
-        if (!threadId) {
+        if (!queryId) {
           return NextResponse.json(
-            { error: 'Thread ID is required' },
+            { error: 'Query ID is required' },
             { status: 400 }
           );
         }
@@ -568,41 +424,30 @@ export async function POST(request: NextRequest) {
         await client.query('BEGIN');
 
         try {
-          // Get original query
-          const threadResult = await client.query(
-            `SELECT * FROM pms_clients_tracker.qode_microsite_inquiries 
-             WHERE thread_id = $1 
-             ORDER BY created_at ASC 
-             LIMIT 1`,
-            [threadId]
-          );
-
-          const originalQuery = threadResult.rows[0];
-
-          // Reopen entire thread
+          // Reopen query
           await client.query(
             `UPDATE pms_clients_tracker.qode_microsite_inquiries 
              SET status = 'pending', 
                  resolved_at = NULL,
                  updated_at = NOW(),
                  last_updated_by = $1
-             WHERE thread_id = $2`,
-            [currentAdminEmail, threadId]
+             WHERE id = $2`,
+            [currentAdminEmail, queryId]
           );
 
           // Add note
           await client.query(
             `INSERT INTO pms_clients_tracker.qode_inquiry_notes 
              (inquiry_id, admin_email, note_type, content, old_value, new_value)
-             VALUES ($1, $2, 'status_change', 'Thread reopened', 'resolved', 'pending')`,
-            [originalQuery.id, currentAdminEmail]
+             VALUES ($1, $2, 'status_change', 'Query reopened', 'resolved', 'pending')`,
+            [queryId, currentAdminEmail]
           );
 
           await client.query('COMMIT');
 
           return NextResponse.json({
             success: true,
-            message: 'Thread reopened successfully',
+            message: 'Query reopened successfully',
           });
         } catch (error) {
           await client.query('ROLLBACK');
@@ -625,7 +470,7 @@ export async function POST(request: NextRequest) {
           [queryId, currentAdminEmail, note]
         );
 
-        // Update thread updated_at
+        // Update query updated_at
         await client.query(
           `UPDATE pms_clients_tracker.qode_microsite_inquiries 
            SET updated_at = NOW(), last_updated_by = $1
@@ -640,9 +485,9 @@ export async function POST(request: NextRequest) {
       }
 
       case 'updatePriority': {
-        if (!threadId || !priority) {
+        if (!queryId || !priority) {
           return NextResponse.json(
-            { error: 'Thread ID and priority are required' },
+            { error: 'Query ID and priority are required' },
             { status: 400 }
           );
         }
@@ -650,32 +495,30 @@ export async function POST(request: NextRequest) {
         await client.query('BEGIN');
 
         try {
-          // Get original query
-          const threadResult = await client.query(
+          // Get query
+          const queryResult = await client.query(
             `SELECT * FROM pms_clients_tracker.qode_microsite_inquiries 
-             WHERE thread_id = $1 
-             ORDER BY created_at ASC 
-             LIMIT 1`,
-            [threadId]
+             WHERE id = $1`,
+            [queryId]
           );
 
-          const originalQuery = threadResult.rows[0];
-          const oldPriority = originalQuery.priority;
+          const queryData = queryResult.rows[0];
+          const oldPriority = queryData.priority;
 
-          // Update entire thread priority
+          // Update priority
           await client.query(
             `UPDATE pms_clients_tracker.qode_microsite_inquiries 
              SET priority = $1, updated_at = NOW(), last_updated_by = $2
-             WHERE thread_id = $3`,
-            [priority, currentAdminEmail, threadId]
+             WHERE id = $3`,
+            [priority, currentAdminEmail, queryId]
           );
 
           // Add note
           await client.query(
             `INSERT INTO pms_clients_tracker.qode_inquiry_notes 
              (inquiry_id, admin_email, note_type, content, old_value, new_value)
-             VALUES ($1, $2, 'priority_change', 'Thread priority updated', $3, $4)`,
-            [originalQuery.id, currentAdminEmail, oldPriority, priority]
+             VALUES ($1, $2, 'priority_change', 'Query priority updated', $3, $4)`,
+            [queryId, currentAdminEmail, oldPriority, priority]
           );
 
           await client.query('COMMIT');
@@ -691,9 +534,9 @@ export async function POST(request: NextRequest) {
       }
 
       case 'delete': {
-        if (!threadId) {
+        if (!queryId) {
           return NextResponse.json(
-            { error: 'Thread ID is required' },
+            { error: 'Query ID is required' },
             { status: 400 }
           );
         }
@@ -701,42 +544,25 @@ export async function POST(request: NextRequest) {
         await client.query('BEGIN');
 
         try {
-          // Get all inquiry IDs in this thread
-          const threadInquiriesResult = await client.query(
-            `SELECT id FROM pms_clients_tracker.qode_microsite_inquiries 
-       WHERE thread_id = $1`,
-            [threadId]
+          // Delete all notes associated with this query
+          await client.query(
+            `DELETE FROM pms_clients_tracker.qode_inquiry_notes 
+             WHERE inquiry_id = $1`,
+            [queryId]
           );
 
-          const inquiryIds = threadInquiriesResult.rows.map(row => row.id);
-
-          if (inquiryIds.length === 0) {
-            throw new Error('Thread not found');
-          }
-
-          // Delete all notes associated with these inquiries
-          if (inquiryIds.length > 0) {
-            const placeholders = inquiryIds.map((_, i) => `$${i + 1}`).join(',');
-            await client.query(
-              `DELETE FROM pms_clients_tracker.qode_inquiry_notes 
-         WHERE inquiry_id IN (${placeholders})`,
-              inquiryIds
-            );
-          }
-
-          // Delete all messages in the thread
+          // Delete the query
           await client.query(
             `DELETE FROM pms_clients_tracker.qode_microsite_inquiries 
-       WHERE thread_id = $1`,
-            [threadId]
+             WHERE id = $1`,
+            [queryId]
           );
 
           await client.query('COMMIT');
 
           return NextResponse.json({
             success: true,
-            message: 'Thread and all associated data deleted successfully',
-            deleted_count: inquiryIds.length,
+            message: 'Query and all associated data deleted successfully',
           });
         } catch (error) {
           await client.query('ROLLBACK');
@@ -754,7 +580,6 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Admin queries action error:', error);
 
-    // Make sure we return JSON even on error
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
     const errorDetails = process.env.NODE_ENV === 'development'
       ? (error instanceof Error ? error.stack : undefined)
@@ -775,20 +600,20 @@ export async function POST(request: NextRequest) {
 }
 
 // Helper function to calculate average resolution time
-function calculateAverageResolutionTime(threads: QueryMessage[]): string {
-  const resolvedThreads = threads.filter(t => t.resolved_at && t.status === 'resolved');
+function calculateAverageResolutionTime(queries: QueryMessage[]): string {
+  const resolvedQueries = queries.filter(q => q.resolved_at && q.status === 'resolved');
 
-  if (resolvedThreads.length === 0) {
+  if (resolvedQueries.length === 0) {
     return 'N/A';
   }
 
-  const totalTime = resolvedThreads.reduce((sum, t) => {
-    const created = new Date(t.created_at).getTime();
-    const resolved = new Date(t.resolved_at!).getTime();
+  const totalTime = resolvedQueries.reduce((sum, q) => {
+    const created = new Date(q.created_at).getTime();
+    const resolved = new Date(q.resolved_at!).getTime();
     return sum + (resolved - created);
   }, 0);
 
-  const avgMs = totalTime / resolvedThreads.length;
+  const avgMs = totalTime / resolvedQueries.length;
   const avgHours = avgMs / (1000 * 60 * 60);
 
   if (avgHours < 24) {

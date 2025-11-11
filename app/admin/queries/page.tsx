@@ -23,13 +23,9 @@ import {
   Clock,
   Mail,
   User,
-  Calendar,
   Filter,
   Download,
-  Eye,
-  Edit,
   Send,
-  FileText,
   TrendingUp,
   XCircle,
   UserCog,
@@ -37,7 +33,6 @@ import {
   History,
   Plus,
   X as CloseIcon,
-  MessageCircle,
   AlertCircle,
   ArrowRight,
 } from "lucide-react";
@@ -67,7 +62,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-interface QueryThread {
+interface Query {
   id: string;
   type: string;
   nuvama_code: string;
@@ -83,25 +78,9 @@ interface QueryThread {
   resolved_at: string | null;
   assigned_to: string | null;
   last_updated_by: string | null;
-  thread_id: string;
-  total_messages: number;
-  last_message_at: string;
-  has_unread: boolean;
-  client_name?: string;
-}
-
-interface QueryMessage {
-  id: string;
-  type: string;
-  nuvama_code: string;
-  subject: string;
-  status: string;
-  data: any;
-  email_sent: boolean;
-  created_at: string;
   parent_inquiry_id: string | null;
+  thread_id: string;
   is_client_message: boolean;
-  last_updated_by: string | null;
   client_name?: string;
 }
 
@@ -117,16 +96,14 @@ interface QueryNote {
 }
 
 interface QueryStatistics {
-  totalThreads: number;
-  pendingThreads: number;
-  resolvedThreads: number;
-  todayThreads: number;
-  thisWeekThreads: number;
-  highPriorityThreads: number;
-  threadsByType: Record<string, number>;
+  totalQueries: number;
+  pendingQueries: number;
+  resolvedQueries: number;
+  todayQueries: number;
+  thisWeekQueries: number;
+  highPriorityQueries: number;
+  queriesByType: Record<string, number>;
   avgResolutionTime: string;
-  totalMessages: number;
-  unreadAdminMessages: number;
 }
 
 interface EmailData {
@@ -137,27 +114,27 @@ interface EmailData {
 }
 
 function QueryResolverContent() {
-  const [threads, setThreads] = useState<QueryThread[]>([]);
-  const [filteredThreads, setFilteredThreads] = useState<QueryThread[]>([]);
-  const [threadMessages, setThreadMessages] = useState<QueryMessage[]>([]);
+  const [queries, setQueries] = useState<Query[]>([]);
+  const [filteredQueries, setFilteredQueries] = useState<Query[]>([]);
   const [statistics, setStatistics] = useState<QueryStatistics | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'resolved'>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
-  const [selectedThread, setSelectedThread] = useState<QueryThread | null>(null);
+  const [selectedQuery, setSelectedQuery] = useState<Query | null>(null);
   const [queryNotes, setQueryNotes] = useState<QueryNote[]>([]);
-  const [showThreadDialog, setShowThreadDialog] = useState(false);
+  const [showQueryDialog, setShowQueryDialog] = useState(false);
   const [showResolveDialog, setShowResolveDialog] = useState(false);
   const [showReplyDialog, setShowReplyDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [queryToDelete, setQueryToDelete] = useState<Query | null>(null);
   const [message, setMessage] = useState('');
   const [resolveNote, setResolveNote] = useState('');
   const [newNote, setNewNote] = useState('');
   const [sendEmailOnResolve, setSendEmailOnResolve] = useState(true);
   const [processing, setProcessing] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false); // ADD THIS
-const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); // ADD THIS
+  
   // Email state
   const [emailData, setEmailData] = useState<EmailData>({
     to: '',
@@ -168,42 +145,30 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
   const [ccInput, setCcInput] = useState('');
 
   useEffect(() => {
-    fetchThreadsData();
+    fetchQueriesData();
   }, []);
 
   useEffect(() => {
     applyFilters();
-  }, [threads, searchTerm, statusFilter, typeFilter, priorityFilter]);
+  }, [queries, searchTerm, statusFilter, typeFilter, priorityFilter]);
 
-  const fetchThreadsData = async () => {
+  const fetchQueriesData = async () => {
     try {
       setLoading(true);
       const response = await fetch('/api/admin/queries');
       const data = await response.json();
 
       if (data.success) {
-        setThreads(data.data.threads);
+        setQueries(data.data.queries);
         setStatistics(data.data.statistics);
       } else {
-        setMessage('Failed to load threads data');
+        setMessage('Failed to load queries data');
       }
     } catch (error) {
-      console.error('Failed to fetch threads:', error);
-      setMessage('Failed to load threads data');
+      console.error('Failed to fetch queries:', error);
+      setMessage('Failed to load queries data');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const fetchThreadConversation = async (threadId: string) => {
-    try {
-      const response = await fetch(`/api/admin/queries?action=getThread&threadId=${threadId}`);
-      const data = await response.json();
-      if (data.success) {
-        setThreadMessages(data.data.messages);
-      }
-    } catch (error) {
-      console.error('Failed to fetch thread conversation:', error);
     }
   };
 
@@ -220,42 +185,41 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
   };
 
   const applyFilters = () => {
-    let filtered = [...threads];
+    let filtered = [...queries];
 
     if (searchTerm) {
-      filtered = filtered.filter(t =>
-        t.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.nuvama_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.user_email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (t.client_name && t.client_name.toLowerCase().includes(searchTerm.toLowerCase()))
+      filtered = filtered.filter(q =>
+        q.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        q.nuvama_code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        q.user_email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        q.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (q.client_name && q.client_name.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
 
     if (statusFilter !== 'all') {
-      filtered = filtered.filter(t => t.status === statusFilter);
+      filtered = filtered.filter(q => q.status === statusFilter);
     }
 
     if (typeFilter !== 'all') {
-      filtered = filtered.filter(t => t.type === typeFilter);
+      filtered = filtered.filter(q => q.type === typeFilter);
     }
 
     if (priorityFilter !== 'all') {
-      filtered = filtered.filter(t => t.priority === priorityFilter);
+      filtered = filtered.filter(q => q.priority === priorityFilter);
     }
 
-    setFilteredThreads(filtered);
+    setFilteredQueries(filtered);
   };
 
-  const handleThreadClick = async (thread: QueryThread) => {
-    setSelectedThread(thread);
-    await fetchThreadConversation(thread.thread_id);
-    await fetchQueryNotes(thread.id);
-    setShowThreadDialog(true);
+  const handleQueryClick = async (queryItem: Query) => {
+    setSelectedQuery(queryItem);
+    await fetchQueryNotes(queryItem.id);
+    setShowQueryDialog(true);
   };
 
   const handleSendReply = async () => {
-    if (!selectedThread || !emailData.to || !emailData.subject || !emailData.message) {
+    if (!selectedQuery || !emailData.to || !emailData.subject || !emailData.message) {
       setMessage('Please fill in all email fields');
       return;
     }
@@ -267,7 +231,7 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'sendResponse',
-          threadId: selectedThread.thread_id,
+          queryId: selectedQuery.id,
           emailData: {
             to: emailData.to,
             cc: emailData.cc.length > 0 ? emailData.cc : undefined,
@@ -277,12 +241,11 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
         }),
       });
 
-      // Check if response is JSON
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
         const text = await response.text();
         console.error('Non-JSON response:', text.substring(0, 200));
-        throw new Error('Server returned an error. Please check the console for details.');
+        throw new Error('Server returned an error.');
       }
 
       const data = await response.json();
@@ -295,10 +258,8 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
       setShowReplyDialog(false);
       setEmailData({ to: '', cc: [], subject: '', message: '' });
       
-      // Refresh thread conversation
-      await fetchThreadConversation(selectedThread.thread_id);
-      await fetchQueryNotes(selectedThread.id);
-      fetchThreadsData();
+      await fetchQueryNotes(selectedQuery.id);
+      fetchQueriesData();
     } catch (error) {
       console.error('Send reply error:', error);
       setMessage(error instanceof Error ? error.message : 'Failed to send reply');
@@ -307,8 +268,8 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
     }
   };
 
-  const handleResolveThread = async () => {
-    if (!selectedThread || !resolveNote.trim()) {
+  const handleResolveQuery = async () => {
+    if (!selectedQuery || !resolveNote.trim()) {
       setMessage('Please add a resolution note');
       return;
     }
@@ -320,7 +281,7 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'resolve',
-          threadId: selectedThread.thread_id,
+          queryId: selectedQuery.id,
           note: resolveNote,
           sendEmail: sendEmailOnResolve,
         }),
@@ -329,57 +290,57 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
       const data = await response.json();
 
       if (data.success) {
-        setMessage('Thread resolved successfully');
+        setMessage('Query resolved successfully');
         setShowResolveDialog(false);
         setResolveNote('');
-        setShowThreadDialog(false);
-        fetchThreadsData();
+        setShowQueryDialog(false);
+        fetchQueriesData();
       } else {
-        setMessage(`Failed to resolve thread: ${data.error}`);
+        setMessage(`Failed to resolve query: ${data.error}`);
       }
     } catch (error) {
       console.error('Resolve error:', error);
-      setMessage('Failed to resolve thread');
+      setMessage('Failed to resolve query');
     } finally {
       setProcessing(false);
     }
   };
 
-  const handleDeleteThread = async () => {
-  if (!threadToDelete) return;
+  const handleDeleteQuery = async () => {
+    if (!queryToDelete) return;
 
-  setProcessing(true);
-  try {
-    const response = await fetch('/api/admin/queries', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'delete',
-        threadId: threadToDelete.thread_id,
-      }),
-    });
+    setProcessing(true);
+    try {
+      const response = await fetch('/api/admin/queries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete',
+          queryId: queryToDelete.id,
+        }),
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    if (data.success) {
-      setMessage('Thread deleted successfully');
-      setShowDeleteDialog(false);
-      setThreadToDelete(null);
-      setShowThreadDialog(false);
-      fetchThreadsData();
-    } else {
-      setMessage(`Failed to delete thread: ${data.error}`);
+      if (data.success) {
+        setMessage('Query deleted successfully');
+        setShowDeleteDialog(false);
+        setQueryToDelete(null);
+        setShowQueryDialog(false);
+        fetchQueriesData();
+      } else {
+        setMessage(`Failed to delete query: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Delete error:', error);
+      setMessage('Failed to delete query');
+    } finally {
+      setProcessing(false);
     }
-  } catch (error) {
-    console.error('Delete error:', error);
-    setMessage('Failed to delete thread');
-  } finally {
-    setProcessing(false);
-  }
-};
+  };
 
   const handleAddNote = async () => {
-    if (!selectedThread || !newNote.trim()) return;
+    if (!selectedQuery || !newNote.trim()) return;
 
     setProcessing(true);
     try {
@@ -388,7 +349,7 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'addNote',
-          queryId: selectedThread.id,
+          queryId: selectedQuery.id,
           note: newNote,
         }),
       });
@@ -397,7 +358,7 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
 
       if (data.success) {
         setNewNote('');
-        fetchQueryNotes(selectedThread.id);
+        fetchQueryNotes(selectedQuery.id);
         setMessage('Note added successfully');
       } else {
         setMessage('Failed to add note');
@@ -410,7 +371,7 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
     }
   };
 
-  const handleUpdatePriority = async (threadId: string, priority: string) => {
+  const handleUpdatePriority = async (queryId: string, priority: string) => {
     setProcessing(true);
     try {
       const response = await fetch('/api/admin/queries', {
@@ -418,7 +379,7 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'updatePriority',
-          threadId,
+          queryId,
           priority,
         }),
       });
@@ -426,10 +387,10 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
       const data = await response.json();
 
       if (data.success) {
-        setMessage('Priority updated for entire thread');
-        fetchThreadsData();
-        if (selectedThread?.thread_id === threadId) {
-          fetchQueryNotes(selectedThread.id);
+        setMessage('Priority updated');
+        fetchQueriesData();
+        if (selectedQuery?.id === queryId) {
+          fetchQueryNotes(selectedQuery.id);
         }
       } else {
         setMessage('Failed to update priority');
@@ -442,7 +403,7 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
     }
   };
 
-  const handleReopenThread = async (threadId: string) => {
+  const handleReopenQuery = async (queryId: string) => {
     setProcessing(true);
     try {
       const response = await fetch('/api/admin/queries', {
@@ -450,42 +411,37 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'reopen',
-          threadId,
+          queryId,
         }),
       });
 
       const data = await response.json();
 
       if (data.success) {
-        setMessage('Thread reopened successfully');
-        fetchThreadsData();
+        setMessage('Query reopened successfully');
+        fetchQueriesData();
       } else {
-        setMessage('Failed to reopen thread');
+        setMessage('Failed to reopen query');
       }
     } catch (error) {
       console.error('Reopen error:', error);
-      setMessage('Failed to reopen thread');
+      setMessage('Failed to reopen query');
     } finally {
       setProcessing(false);
     }
   };
 
   const handleAddCc = () => {
-  console.log('🔵 Attempting to add CC:', ccInput);
-  
-  if (ccInput.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ccInput.trim())) {
-    const newCc = [...emailData.cc, ccInput.trim()];
-    setEmailData(prev => ({
-      ...prev,
-      cc: newCc
-    }));
-    setCcInput('');
-    console.log('✅ CC added successfully. New CC list:', newCc);
-  } else {
-    console.log('❌ Invalid email format');
-    setMessage('Please enter a valid email address');
-  }
-};
+    if (ccInput.trim() && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ccInput.trim())) {
+      setEmailData(prev => ({
+        ...prev,
+        cc: [...prev.cc, ccInput.trim()]
+      }));
+      setCcInput('');
+    } else {
+      setMessage('Please enter a valid email address');
+    }
+  };
 
   const handleRemoveCc = (email: string) => {
     setEmailData(prev => ({
@@ -494,33 +450,31 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
     }));
   };
 
-  const openReplyDialog = (thread: QueryThread) => {
-    setSelectedThread(thread);
+  const openReplyDialog = (queryItem: Query) => {
+    setSelectedQuery(queryItem);
     setEmailData({
-      to: thread.user_email,
+      to: queryItem.user_email,
       cc: [],
-      subject: `Re: ${thread.subject}`,
-      message: `Dear Client,\n\nRegarding your query: "${thread.subject}"\n\n`,
+      subject: `Re: ${queryItem.subject}`,
+      message: `Dear Client,\n\nRegarding your query: "${queryItem.subject}"\n\n`,
     });
     setShowReplyDialog(true);
   };
 
   const exportToCSV = () => {
     const csvContent = [
-      ['Thread ID', 'Type', 'Client Code', 'Client Name', 'Email', 'Subject', 'Status', 'Priority', 'Messages', 'Created', 'Last Message', 'Resolved'].join(','),
-      ...filteredThreads.map(t => [
-        t.thread_id,
-        t.type,
-        t.nuvama_code,
-        `"${t.client_name || 'Unknown'}"`,
-        t.user_email,
-        `"${t.subject}"`,
-        t.status,
-        t.priority,
-        t.total_messages,
-        new Date(t.created_at).toLocaleDateString(),
-        new Date(t.last_message_at).toLocaleDateString(),
-        t.resolved_at ? new Date(t.resolved_at).toLocaleDateString() : 'N/A'
+      ['Query ID', 'Type', 'Client Code', 'Client Name', 'Email', 'Subject', 'Status', 'Priority', 'Created', 'Resolved'].join(','),
+      ...filteredQueries.map(q => [
+        q.id,
+        q.type,
+        q.nuvama_code,
+        `"${q.client_name || 'Unknown'}"`,
+        q.user_email,
+        `"${q.subject}"`,
+        q.status,
+        q.priority,
+        new Date(q.created_at).toLocaleDateString(),
+        q.resolved_at ? new Date(q.resolved_at).toLocaleDateString() : 'N/A'
       ].join(','))
     ].join('\n');
 
@@ -528,13 +482,13 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `query-threads-${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `queries-${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
 
-    setMessage(`Exported ${filteredThreads.length} threads to CSV`);
+    setMessage(`Exported ${filteredQueries.length} queries to CSV`);
   };
 
   const getStatusBadge = (status: string) => {
@@ -564,11 +518,17 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
       'switch': 'bg-orange-100 text-orange-800',
       'withdrawal': 'bg-red-100 text-red-800',
       'feedback': 'bg-green-100 text-green-800',
+      'testimonial': 'bg-lime-100 text-lime-800',
+      'referral': 'bg-pink-100 text-pink-800',
+      'investor_referral': 'bg-pink-100 text-pink-800',
       'raised_request': 'bg-teal-100 text-teal-800',
-      'new_strategy_payment_success': 'bg-indigo-100 text-indigo-800',
+      'payment_confirmation': 'bg-yellow-100 text-yellow-800',
+      'new_strategy_payment': 'bg-violet-100 text-violet-800',
       'payment_success': 'bg-emerald-100 text-emerald-800',
+      'new_strategy_payment_success': 'bg-indigo-100 text-indigo-800',
       'sip_success': 'bg-cyan-100 text-cyan-800',
       'admin_response': 'bg-slate-100 text-slate-800',
+      'admin_notification': 'bg-gray-100 text-gray-800',
     };
     return <Badge className={colors[type as keyof typeof colors] || 'bg-gray-100 text-gray-800'}>{type}</Badge>;
   };
@@ -589,9 +549,9 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
   );
 
   const queryTypes = useMemo(() => {
-    const types = new Set(threads.map(t => t.type));
+    const types = new Set(queries.map(q => q.type));
     return Array.from(types);
-  }, [threads]);
+  }, [queries]);
 
   if (loading) {
     return (
@@ -610,9 +570,9 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold">Query Threads Dashboard</h2>
+          <h2 className="text-2xl font-bold">Queries Management</h2>
           <p className="text-muted-foreground mt-2">
-            Track complete conversation threads with clients
+            Manage and resolve client queries
           </p>
         </div>
         <div className="flex space-x-2">
@@ -620,7 +580,7 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
             <Download className="h-4 w-4 mr-2" />
             Export
           </Button>
-          <Button onClick={fetchThreadsData} variant="outline">
+          <Button onClick={fetchQueriesData} variant="outline">
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
@@ -632,38 +592,37 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <StatCard
             icon={MessageSquare}
-            title="Total Threads"
-            value={statistics.totalThreads}
-            subtitle={`${statistics.totalMessages} messages`}
+            title="Total Queries"
+            value={statistics.totalQueries}
             color="text-blue-500"
           />
           <StatCard
             icon={Clock}
             title="Pending"
-            value={statistics.pendingThreads}
-            subtitle={`${statistics.highPriorityThreads} high priority`}
+            value={statistics.pendingQueries}
+            subtitle={`${statistics.highPriorityQueries} high priority`}
             color="text-orange-500"
           />
           <StatCard
             icon={CheckCircle}
             title="Resolved"
-            value={statistics.resolvedThreads}
+            value={statistics.resolvedQueries}
             subtitle={`Avg: ${statistics.avgResolutionTime}`}
             color="text-green-500"
           />
           <StatCard
-            icon={AlertCircle}
-            title="Needs Response"
-            value={statistics.unreadAdminMessages}
-            subtitle="Unread client messages"
-            color="text-red-500"
-          />
-          <StatCard
             icon={TrendingUp}
             title="Today"
-            value={statistics.todayThreads}
-            subtitle={`${statistics.thisWeekThreads} this week`}
+            value={statistics.todayQueries}
+            subtitle={`${statistics.thisWeekQueries} this week`}
             color="text-purple-500"
+          />
+          <StatCard
+            icon={AlertCircle}
+            title="High Priority"
+            value={statistics.highPriorityQueries}
+            subtitle="Needs attention"
+            color="text-red-500"
           />
         </div>
       )}
@@ -673,7 +632,7 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
         <CardHeader>
           <CardTitle className="flex items-center space-x-2">
             <Filter className="h-5 w-5" />
-            <span>Thread Filters</span>
+            <span>Query Filters</span>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -681,7 +640,7 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
             <div className="flex items-center space-x-2 flex-1 min-w-64">
               <Search className="h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search threads, clients, subjects..."
+                placeholder="Search queries, clients, subjects..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="flex-1"
@@ -733,11 +692,11 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
         </CardContent>
       </Card>
 
-      {/* Threads Table */}
+      {/* Queries Table */}
       <Card>
         <CardHeader>
           <div className="flex justify-between items-center">
-            <CardTitle>Conversation Threads ({filteredThreads.length})</CardTitle>
+            <CardTitle>All Queries ({filteredQueries.length})</CardTitle>
           </div>
         </CardHeader>
         <CardContent>
@@ -745,78 +704,55 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
             <Table>
               <TableHeader>
                 <TableRow>
-                  {/* <TableHead>Thread Info</TableHead> */}
                   <TableHead>Client & Type</TableHead>
                   <TableHead>Subject</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Priority</TableHead>
-                  <TableHead>Activity</TableHead>
+                  <TableHead>Created</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredThreads.map((thread) => (
+                {filteredQueries.map((queryItem) => (
                   <TableRow 
-                    key={thread.thread_id}
+                    key={queryItem.id}
                     className="cursor-pointer hover:bg-muted/50"
-                    onClick={() => handleThreadClick(thread)}
+                    onClick={() => handleQueryClick(queryItem)}
                   >
-                    {/* <TableCell>
-                      <div className="space-y-1">
-                        <div className="flex items-center space-x-2">
-                          <MessageCircle className="h-4 w-4 text-muted-foreground" />
-                          <Badge variant="outline" className="text-xs">
-                            {thread.total_messages} {thread.total_messages === 1 ? 'message' : 'messages'}
-                          </Badge>
-                          {thread.has_unread && (
-                            <Badge className="bg-red-100 text-red-800 text-xs">
-                              <AlertCircle className="h-3 w-3 mr-1" />
-                              New
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="text-xs text-muted-foreground font-mono">
-                          {thread.thread_id.substring(0, 8)}...
-                        </div>
-                      </div>
-                    </TableCell> */}
                     <TableCell>
                       <div className="space-y-1">
                         <div className="flex items-center space-x-1">
                           <User className="h-3 w-3 text-muted-foreground" />
-                          <span className="font-medium text-sm">{thread.nuvama_code}</span>
+                          <span className="font-medium text-sm">{queryItem.nuvama_code}</span>
                         </div>
-                        <div className="text-xs text-muted-foreground">{thread.client_name || 'Unknown'}</div>
-                        <div className="text-xs text-muted-foreground">{thread.user_email}</div>
-                        {getQueryTypeBadge(thread.type)}
+                        <div className="text-xs text-muted-foreground">{queryItem.client_name || 'Unknown'}</div>
+                        <div className="text-xs text-muted-foreground">{queryItem.user_email}</div>
+                        {getQueryTypeBadge(queryItem.type)}
                       </div>
                     </TableCell>
                     <TableCell>
                       <div className="max-w-md">
-                        <div className="font-medium text-sm line-clamp-2">{thread.subject}</div>
-                        {thread.assigned_to && (
+                        <div className="font-medium text-sm line-clamp-2">{queryItem.subject}</div>
+                        {queryItem.assigned_to && (
                           <div className="text-xs text-muted-foreground mt-1">
                             <UserCog className="h-3 w-3 inline mr-1" />
-                            {thread.assigned_to}
+                            {queryItem.assigned_to}
                           </div>
                         )}
                       </div>
                     </TableCell>
                     <TableCell>
-                      {getStatusBadge(thread.status)}
-                      {thread.resolved_at && (
+                      {getStatusBadge(queryItem.status)}
+                      {queryItem.resolved_at && (
                         <div className="text-xs text-muted-foreground mt-1">
-                          {new Date(thread.resolved_at).toLocaleDateString()}
+                          {new Date(queryItem.resolved_at).toLocaleDateString()}
                         </div>
                       )}
                     </TableCell>
-                    <TableCell>{getPriorityBadge(thread.priority)}</TableCell>
+                    <TableCell>{getPriorityBadge(queryItem.priority)}</TableCell>
                     <TableCell>
                       <div className="text-sm">
-                        <div className="text-xs text-muted-foreground">Created:</div>
-                        <div>{new Date(thread.created_at).toLocaleDateString()}</div>
-                        <div className="text-xs text-muted-foreground mt-1">Last message:</div>
-                        <div>{new Date(thread.last_message_at).toLocaleDateString()}</div>
+                        {new Date(queryItem.created_at).toLocaleDateString()}
                       </div>
                     </TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>
@@ -827,53 +763,52 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-  <DropdownMenuItem onClick={() => openReplyDialog(thread)}>
-    <Mail className="h-4 w-4 mr-2" />
-    Send Reply
-  </DropdownMenuItem>
-  {thread.status === 'pending' && (
-    <>
-      <DropdownMenuItem
-        onClick={() => {
-          setSelectedThread(thread);
-          setShowResolveDialog(true);
-        }}
-      >
-        <CheckCircle className="h-4 w-4 mr-2" />
-        Resolve Thread
-      </DropdownMenuItem>
-      <DropdownMenuSeparator />
-      <DropdownMenuLabel>Change Priority</DropdownMenuLabel>
-      <DropdownMenuItem onClick={() => handleUpdatePriority(thread.thread_id, 'high')}>
-        High Priority
-      </DropdownMenuItem>
-      <DropdownMenuItem onClick={() => handleUpdatePriority(thread.thread_id, 'medium')}>
-        Medium Priority
-      </DropdownMenuItem>
-      <DropdownMenuItem onClick={() => handleUpdatePriority(thread.thread_id, 'low')}>
-        Low Priority
-      </DropdownMenuItem>
-    </>
-  )}
-  {thread.status === 'resolved' && (
-    <DropdownMenuItem onClick={() => handleReopenThread(thread.thread_id)}>
-      <XCircle className="h-4 w-4 mr-2" />
-      Reopen Thread
-    </DropdownMenuItem>
-  )}
-  {/* ADD THIS SECTION */}
-  <DropdownMenuSeparator />
-  <DropdownMenuItem 
-    onClick={() => {
-      setThreadToDelete(thread);
-      setShowDeleteDialog(true);
-    }}
-    className="text-red-600 focus:text-red-600"
-  >
-    <AlertTriangle className="h-4 w-4 mr-2" />
-    Delete Thread
-  </DropdownMenuItem>
-</DropdownMenuContent>
+                          <DropdownMenuItem onClick={() => openReplyDialog(queryItem)}>
+                            <Mail className="h-4 w-4 mr-2" />
+                            Send Reply
+                          </DropdownMenuItem>
+                          {queryItem.status === 'pending' && (
+                            <>
+                              <DropdownMenuItem
+                                onClick={() => {
+                                  setSelectedQuery(queryItem);
+                                  setShowResolveDialog(true);
+                                }}
+                              >
+                                <CheckCircle className="h-4 w-4 mr-2" />
+                                Resolve Query
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuLabel>Change Priority</DropdownMenuLabel>
+                              <DropdownMenuItem onClick={() => handleUpdatePriority(queryItem.id, 'high')}>
+                                High Priority
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleUpdatePriority(queryItem.id, 'medium')}>
+                                Medium Priority
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleUpdatePriority(queryItem.id, 'low')}>
+                                Low Priority
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                          {queryItem.status === 'resolved' && (
+                            <DropdownMenuItem onClick={() => handleReopenQuery(queryItem.id)}>
+                              <XCircle className="h-4 w-4 mr-2" />
+                              Reopen Query
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
+                            onClick={() => {
+                              setQueryToDelete(queryItem);
+                              setShowDeleteDialog(true);
+                            }}
+                            className="text-red-600 focus:text-red-600"
+                          >
+                            <AlertTriangle className="h-4 w-4 mr-2" />
+                            Delete Query
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
                   </TableRow>
@@ -882,95 +817,87 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
             </Table>
           </div>
 
-          {filteredThreads.length === 0 && (
+          {filteredQueries.length === 0 && (
             <div className="text-center py-12">
               <MessageSquare className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No threads found</h3>
+              <h3 className="text-lg font-semibold mb-2">No queries found</h3>
               <p className="text-muted-foreground">Try adjusting your filters or search criteria.</p>
             </div>
           )}
         </CardContent>
       </Card>
 
-      {/* Thread Conversation Dialog */}
-      <Dialog open={showThreadDialog} onOpenChange={setShowThreadDialog}>
-        <DialogContent className="max-w-6xl max-h-[90vh] overflow-hidden flex flex-col">
+      {/* Query Detail Dialog */}
+      <Dialog open={showQueryDialog} onOpenChange={setShowQueryDialog}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
-                <MessageCircle className="h-5 w-5 text-blue-500" />
-                <span>Conversation Thread</span>
-                <Badge variant="outline">{threadMessages.length} messages</Badge>
+                <MessageSquare className="h-5 w-5 text-blue-500" />
+                <span>Query Details</span>
               </div>
-              {selectedThread && getStatusBadge(selectedThread.status)}
+              {selectedQuery && getStatusBadge(selectedQuery.status)}
             </DialogTitle>
             <DialogDescription>
-              Complete conversation history with {selectedThread?.client_name || 'client'}
+              Query from {selectedQuery?.client_name || 'client'}
             </DialogDescription>
           </DialogHeader>
 
-          <Tabs defaultValue="conversation" className="flex-1 overflow-hidden flex flex-col">
+          <Tabs defaultValue="details" className="flex-1 overflow-hidden flex flex-col">
             <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="conversation">Conversation</TabsTrigger>
+              <TabsTrigger value="details">Query Details</TabsTrigger>
               <TabsTrigger value="notes">Internal Notes</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="conversation" className="flex-1 overflow-auto mt-4">
-              <ScrollArea className="h-[500px] pr-4">
+            <TabsContent value="details" className="flex-1 overflow-auto mt-4">
+              <ScrollArea className="h-[400px] pr-4">
                 <div className="space-y-4">
-                  {threadMessages.map((msg, idx) => (
-                    <Card key={msg.id} className={`${msg.is_client_message ? 'border-l-4 border-l-blue-500' : 'border-l-4 border-l-green-500 bg-muted/30'}`}>
-                      <CardContent className="p-4">
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-center space-x-2">
-                            {msg.is_client_message ? (
-                              <User className="h-4 w-4 text-blue-500" />
-                            ) : (
-                              <UserCog className="h-4 w-4 text-green-500" />
-                            )}
-                            <span className="font-medium text-sm">
-                              {msg.is_client_message ? `Client (${msg.nuvama_code})` : `Admin Response${msg.last_updated_by ? ` by ${msg.last_updated_by}` : ''}`}
-                            </span>
-                            {getQueryTypeBadge(msg.type)}
-                            {idx === threadMessages.length - 1 && (
-                              <Badge variant="outline" className="text-xs">Latest</Badge>
-                            )}
-                          </div>
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(msg.created_at).toLocaleString()}
-                          </span>
+                  <Card>
+                    <CardContent className="p-4 space-y-3">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground">Client Code</p>
+                          <p className="text-sm">{selectedQuery?.nuvama_code}</p>
                         </div>
-                        
-                        <div className="space-y-2">
-                          <div>
-                            <span className="font-medium text-sm">Subject: </span>
-                            <span className="text-sm">{msg.subject}</span>
-                          </div>
-                          
-                          {msg.data && typeof msg.data === 'object' && (
-                            <div className="bg-muted/50 p-3 rounded text-sm">
-                              {msg.data.message ? (
-                                <div className="whitespace-pre-wrap">{msg.data.message}</div>
-                              ) : (
-                                <pre className="text-xs overflow-x-auto whitespace-pre-wrap">
-                                  {JSON.stringify(msg.data, null, 2)}
-                                </pre>
-                              )}
-                            </div>
-                          )}
-                          
-                          <div className="flex items-center space-x-2 text-xs text-muted-foreground">
-                            {msg.email_sent && (
-                              <Badge variant="outline" className="text-xs">
-                                <Mail className="h-3 w-3 mr-1" />
-                                Email Sent
-                              </Badge>
-                            )}
-                          </div>
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground">Client Name</p>
+                          <p className="text-sm">{selectedQuery?.client_name}</p>
                         </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground">Email</p>
+                          <p className="text-sm">{selectedQuery?.user_email}</p>
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-muted-foreground">Priority</p>
+                          {selectedQuery && getPriorityBadge(selectedQuery.priority)}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground mb-1">Subject</p>
+                        <p className="text-sm font-medium">{selectedQuery?.subject}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground mb-1">Query Details</p>
+                        {selectedQuery?.data && typeof selectedQuery.data === 'object' && (
+                          <div className="bg-muted/50 p-3 rounded text-sm">
+                            <pre className="text-xs overflow-x-auto whitespace-pre-wrap">
+                              {JSON.stringify(selectedQuery.data, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 text-xs text-muted-foreground">
+                        <div>
+                          <p className="font-medium">Created</p>
+                          <p>{selectedQuery && new Date(selectedQuery.created_at).toLocaleString()}</p>
+                        </div>
+                        <div>
+                          <p className="font-medium">Last Updated</p>
+                          <p>{selectedQuery && new Date(selectedQuery.updated_at).toLocaleString()}</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
                 </div>
               </ScrollArea>
             </TabsContent>
@@ -995,7 +922,7 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
                   </CardContent>
                 </Card>
 
-                <ScrollArea className="h-[350px]">
+                <ScrollArea className="h-[300px]">
                   <div className="space-y-3 pr-4">
                     {queryNotes.length > 0 ? (
                       queryNotes.map((note) => (
@@ -1035,9 +962,9 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
           </Tabs>
 
           <DialogFooter className="mt-4">
-            {selectedThread?.status === 'pending' && (
+            {selectedQuery?.status === 'pending' && (
               <>
-                <Button variant="outline" onClick={() => openReplyDialog(selectedThread)}>
+                <Button variant="outline" onClick={() => openReplyDialog(selectedQuery)}>
                   <Mail className="h-4 w-4 mr-2" />
                   Send Reply
                 </Button>
@@ -1046,82 +973,81 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
                   className="bg-green-600 hover:bg-green-700"
                 >
                   <CheckCircle className="h-4 w-4 mr-2" />
-                  Resolve Thread
+                  Resolve Query
                 </Button>
               </>
             )}
-            <Button variant="outline" onClick={() => setShowThreadDialog(false)}>
+            <Button variant="outline" onClick={() => setShowQueryDialog(false)}>
               Close
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Thread Dialog */}
-<Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-  <DialogContent>
-    <DialogHeader>
-      <DialogTitle className="flex items-center space-x-2">
-        <AlertTriangle className="h-5 w-5 text-red-500" />
-        <span>Delete Conversation Thread</span>
-      </DialogTitle>
-      <DialogDescription>
-        This action cannot be undone. This will permanently delete the entire conversation thread and all associated messages and notes.
-      </DialogDescription>
-    </DialogHeader>
+      {/* Delete Query Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              <span>Delete Query</span>
+            </DialogTitle>
+            <DialogDescription>
+              This action cannot be undone. This will permanently delete the query and all associated notes.
+            </DialogDescription>
+          </DialogHeader>
 
-    <div className="space-y-4">
-      <Alert className="border-red-200 bg-red-50">
-        <AlertTriangle className="h-4 w-4 text-red-600" />
-        <AlertDescription className="text-red-800">
-          <strong>Warning:</strong> You are about to delete:
-        </AlertDescription>
-      </Alert>
+          <div className="space-y-4">
+            <Alert className="border-red-200 bg-red-50">
+              <AlertTriangle className="h-4 w-4 text-red-600" />
+              <AlertDescription className="text-red-800">
+                <strong>Warning:</strong> You are about to delete:
+              </AlertDescription>
+            </Alert>
 
-      <div className="bg-muted p-4 rounded text-sm space-y-2">
-        <p><strong>Thread:</strong> {threadToDelete?.subject}</p>
-        <p><strong>Client:</strong> {threadToDelete?.nuvama_code} - {threadToDelete?.client_name}</p>
-        <p><strong>Status:</strong> {threadToDelete?.status}</p>
-        <p><strong>Total Messages:</strong> {threadToDelete?.total_messages}</p>
-        <p><strong>Created:</strong> {threadToDelete && new Date(threadToDelete.created_at).toLocaleString()}</p>
-      </div>
+            <div className="bg-muted p-4 rounded text-sm space-y-2">
+              <p><strong>Subject:</strong> {queryToDelete?.subject}</p>
+              <p><strong>Client:</strong> {queryToDelete?.nuvama_code} - {queryToDelete?.client_name}</p>
+              <p><strong>Status:</strong> {queryToDelete?.status}</p>
+              <p><strong>Created:</strong> {queryToDelete && new Date(queryToDelete.created_at).toLocaleString()}</p>
+            </div>
 
-      <p className="text-sm text-muted-foreground">
-        Type <strong>DELETE</strong> to confirm this action:
-      </p>
-      <Input
-        id="delete-confirmation"
-        placeholder="Type DELETE to confirm"
-        onChange={(e) => {
-          const btn = document.getElementById('confirm-delete-btn') as HTMLButtonElement;
-          if (btn) {
-            btn.disabled = e.target.value !== 'DELETE';
-          }
-        }}
-      />
-    </div>
+            <p className="text-sm text-muted-foreground">
+              Type <strong>DELETE</strong> to confirm this action:
+            </p>
+            <Input
+              id="delete-confirmation"
+              placeholder="Type DELETE to confirm"
+              onChange={(e) => {
+                const btn = document.getElementById('confirm-delete-btn') as HTMLButtonElement;
+                if (btn) {
+                  btn.disabled = e.target.value !== 'DELETE';
+                }
+              }}
+            />
+          </div>
 
-    <DialogFooter>
-      <Button 
-        variant="outline" 
-        onClick={() => {
-          setShowDeleteDialog(false);
-          setThreadToDelete(null);
-        }}
-      >
-        Cancel
-      </Button>
-      <Button
-        id="confirm-delete-btn"
-        onClick={handleDeleteThread}
-        disabled={processing}
-        className="bg-red-600 hover:bg-red-700"
-      >
-        {processing ? 'Deleting...' : 'Delete Permanently'}
-      </Button>
-    </DialogFooter>
-  </DialogContent>
-</Dialog>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setShowDeleteDialog(false);
+                setQueryToDelete(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              id="confirm-delete-btn"
+              onClick={handleDeleteQuery}
+              disabled={processing}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {processing ? 'Deleting...' : 'Delete Permanently'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Send Reply Dialog */}
       <Dialog open={showReplyDialog} onOpenChange={setShowReplyDialog}>
@@ -1129,18 +1055,17 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
               <ArrowRight className="h-5 w-5 text-blue-500" />
-              <span>Reply to Thread</span>
+              <span>Reply to Query</span>
             </DialogTitle>
             <DialogDescription>
-              Send a response that will be added to this conversation thread
+              Send a response to this query
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4 flex-1 overflow-auto pr-2">
             <div className="bg-muted p-3 rounded text-sm">
-              <p><strong>Thread:</strong> {selectedThread?.subject}</p>
-              <p><strong>Client:</strong> {selectedThread?.nuvama_code} - {selectedThread?.client_name}</p>
-              <p><strong>Messages:</strong> {selectedThread?.total_messages}</p>
+              <p><strong>Subject:</strong> {selectedQuery?.subject}</p>
+              <p><strong>Client:</strong> {selectedQuery?.nuvama_code} - {selectedQuery?.client_name}</p>
             </div>
 
             <div className="space-y-2">
@@ -1220,30 +1145,29 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
         </DialogContent>
       </Dialog>
 
-      {/* Resolve Thread Dialog */}
+      {/* Resolve Query Dialog */}
       <Dialog open={showResolveDialog} onOpenChange={setShowResolveDialog}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
               <CheckCircle className="h-5 w-5 text-green-500" />
-              <span>Resolve Conversation Thread</span>
+              <span>Resolve Query</span>
             </DialogTitle>
             <DialogDescription>
-              Mark this entire conversation as resolved. All messages in this thread will be closed.
+              Mark this query as resolved
             </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
             <div className="bg-muted p-3 rounded text-sm">
-              <p><strong>Thread:</strong> {selectedThread?.subject}</p>
-              <p><strong>Client:</strong> {selectedThread?.nuvama_code}</p>
-              <p><strong>Total Messages:</strong> {selectedThread?.total_messages}</p>
+              <p><strong>Subject:</strong> {selectedQuery?.subject}</p>
+              <p><strong>Client:</strong> {selectedQuery?.nuvama_code}</p>
             </div>
 
             <div className="space-y-2">
               <Label>Resolution Notes *</Label>
               <Textarea
-                placeholder="Describe how this thread was resolved..."
+                placeholder="Describe how this query was resolved..."
                 value={resolveNote}
                 onChange={(e) => setResolveNote(e.target.value)}
                 rows={4}
@@ -1269,11 +1193,11 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
               Cancel
             </Button>
             <Button
-              onClick={handleResolveThread}
+              onClick={handleResolveQuery}
               disabled={processing || !resolveNote.trim()}
               className="bg-green-600 hover:bg-green-700"
             >
-              {processing ? 'Resolving...' : 'Resolve Thread'}
+              {processing ? 'Resolving...' : 'Resolve Query'}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -1285,7 +1209,7 @@ const [threadToDelete, setThreadToDelete] = useState<QueryThread | null>(null); 
 export default function QueryResolverPage() {
   return (
     <AdminAuthProvider>
-      <AdminLayout title="Query Threads Dashboard">
+      <AdminLayout title="Queries Management">
         <QueryResolverContent />
       </AdminLayout>
     </AdminAuthProvider>
