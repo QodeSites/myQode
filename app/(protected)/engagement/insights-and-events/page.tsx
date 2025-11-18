@@ -3,6 +3,7 @@ import { useState, useRef } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 
 const newsletters = [
+  { title: "October 2025", url: "/newsletters/Qode_Newsletter_October_2025.pdf", type: "pdf" },
   { title: "September 2025", url: "/newsletters/Qode_Newsletter_September_2025.pdf", type: "pdf" },
   { title: "August 2025", url: "/newsletters/Qode_Newsletter_August_2025.pdf", type: "pdf" },
   { title: "July 2025", url: "/newsletters/Qode_Newsletter_July_2025.pdf", type: "pdf" },
