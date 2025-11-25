@@ -128,14 +128,12 @@ export async function POST(request: NextRequest) {
       customer_phone,
     } = body;
 
-    // Validate required fields
+    // Validate required fields (account_number and ifsc_code validation skipped)
     const requiredFields = [
       'order_amount',
       'nuvama_code',
       'sip_details.frequency',
       'sip_details.start_date',
-      'account_number',
-      'ifsc_code',
       'customer_name',
       'customer_email',
       'customer_phone',
@@ -204,8 +202,8 @@ export async function POST(request: NextRequest) {
     console.log('Customer details for TPV:', {
       nuvama_code,
       client_name: customer_name,
-      account_masked: `***${account_number.slice(-4)}`,
-      ifsc_code,
+      account_masked: account_number ? `***${account_number.slice(-4)}` : 'N/A',
+      ifsc_code: ifsc_code || 'N/A',
       phone_number: customer_phone,
     });
 
@@ -273,9 +271,9 @@ export async function POST(request: NextRequest) {
         customer_name: String(customer_name),
         customer_email: String(customer_email),
         customer_phone: String(customer_phone),
-        customer_bank_account_number: String(account_number),
+        customer_bank_account_number: account_number ? String(account_number) : undefined,
         customer_bank_account_holder_name: String(customer_name),
-        customer_bank_ifsc: String(ifsc_code),
+        customer_bank_ifsc: ifsc_code ? String(ifsc_code) : undefined,
         customer_bank_code: String(customerBankCode),
         customer_bank_account_type: 'SAVINGS',
       },
@@ -318,7 +316,7 @@ export async function POST(request: NextRequest) {
           customer_details: {
             ...subscriptionRequest.customer_details,
             customer_phone: '***' + customer_phone.slice(-4),
-            customer_bank_account_number: `***${account_number.slice(-4)}`,
+            customer_bank_account_number: account_number ? `***${account_number.slice(-4)}` : 'N/A',
           },
         },
         null,
@@ -358,8 +356,8 @@ export async function POST(request: NextRequest) {
         subscriptionResponse.subscription_status || 'INITIALISED',
         subscriptionResponse.subscription_session_id,
         subscriptionResponse.cf_subscription_id,
-        account_number,
-        ifsc_code,
+        account_number || null,
+        ifsc_code || null,
         sip_details.frequency,
         actualStartDate.toISOString().split('T')[0],
         actualEndDate ? actualEndDate.toISOString().split('T')[0] : null,
@@ -382,8 +380,8 @@ export async function POST(request: NextRequest) {
         order_amount: parseFloat(order_amount.toString()),
         order_currency: 'INR',
         checkout_url: subscriptionResponse.subscription_session_id,
-        customer_bank_account_number: account_number,
-        customer_bank_ifsc: ifsc_code,
+        customer_bank_account_number: account_number || null,
+        customer_bank_ifsc: ifsc_code || null,
         customer_bank_code: String(customerBankCode),
         plan_details: subscriptionResponse.plan_details,
         subscription_first_charge_time: subscriptionResponse.subscription_first_charge_time,
@@ -401,8 +399,8 @@ export async function POST(request: NextRequest) {
         tpv_details: {
           nuvama_code,
           client_name: customer_name,
-          account_number_masked: `***${account_number.slice(-4)}`,
-          ifsc_code,
+          account_number_masked: account_number ? `***${account_number.slice(-4)}` : 'N/A',
+          ifsc_code: ifsc_code || 'N/A',
           tpv_enabled: true,
         },
       },
