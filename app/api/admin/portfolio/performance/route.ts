@@ -7,30 +7,36 @@ interface AdminDashboardData {
   clients: GroupedClientData[];
   queries: QueryData[];
   statistics: DashboardStatistics;
+  // New: Detailed lists for clickable stats
+  loginDetails: {
+    today: LoginDetail[];
+    thisWeek: LoginDetail[];
+    allTime: LoginDetail[];
+  };
+}
+
+interface LoginDetail {
+  clientCode: string;
+  clientName: string;
+  email: string;
+  lastLoginAt: string;
+  loginCount: number;
+  groupName: string | null;
 }
 
 interface GroupedClientData {
-  // Primary owner info
   ownerId: string;
   ownerEmail: string;
   ownerName: string;
   groupId: string;
   groupName: string;
-  
-  // Aggregated data across all accounts
   totalAccounts: number;
   accounts: ClientAccount[];
-  
-  // Status based on all accounts
   onboardingStatus: 'completed' | 'pending' | 'mixed';
-  
-  // Aggregated stats
   totalQueries: number;
   totalLogins: number;
   lastActivity: string | null;
   createdAt: string;
-  
-  // Primary account for actions (usually head of family or first account)
   primaryClientCode: string;
   primaryClientId: string;
 }
@@ -63,18 +69,17 @@ interface QueryData {
 }
 
 interface DashboardStatistics {
-  totalOwners: number;
-  totalAccounts: number;
-  activeOwners: number;
-  pendingOnboarding: number;
-  completedOnboarding: number;
-  mixedOnboarding: number;
-  totalQueries: number;
-  pendingQueries: number;
-  resolvedQueries: number;
+  totalClients: number;
+  totalPortfolioAccounts: number;
+  onboardingComplete: number;
+  onboardingPending: number;
+  onboardingPartial: number;
+  totalInquiries: number;
+  openInquiries: number;
+  resolvedInquiries: number;
   totalLogins: number;
-  uniqueLoginsToday: number;
-  uniqueLoginsThisWeek: number;
+  loginsToday: number;
+  loginsThisWeek: number;
 }
 
 export async function GET(request: NextRequest) {
@@ -86,22 +91,24 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status') || 'all';
     const limit = parseInt(searchParams.get('limit') || '10000');
 
-    // Get all clients with ownerid
+    // Get all clients with ownerid - now including login_count and last_login_at
     let clientQuery = `
-  SELECT 
-    id, clientid, clientcode, clientname, email, mobile, onboarding_status,
-    head_of_family, groupid, groupname, ownerid, password_set_at, first_login_at,
-    login_attempts, login_count, last_login_at, locked_until, created_at, updated_at,
-    salutation, firstname, middlename, lastname
-  FROM pms_clients_master
-  WHERE ownerid IS NOT NULL
-  ORDER BY created_at DESC
-`;
+      SELECT 
+        id, clientid, clientcode, clientname, email, mobile, onboarding_status,
+        head_of_family, groupid, groupname, ownerid, password_set_at, first_login_at,
+        login_attempts, locked_until, created_at, updated_at,
+        salutation, firstname, middlename, lastname,
+        COALESCE(login_count, 0) as login_count,
+        last_login_at
+      FROM pms_clients_master
+      WHERE ownerid IS NOT NULL
+      ORDER BY created_at DESC
+    `;
 
     const clientResult = await query(clientQuery, []);
     const allClients = clientResult.rows;
 
-    // Group clients by ownerid instead of email
+    // Group clients by ownerid
     const clientGroups = new Map<string, any[]>();
     
     allClients.forEach((client: any) => {
@@ -137,14 +144,10 @@ export async function GET(request: NextRequest) {
     // Convert grouped clients to GroupedClientData
     const groupedClients: GroupedClientData[] = Array.from(clientGroups.entries())
       .map(([ownerId, accounts]) => {
-        // Find primary account (head of family or first account)
         const primaryAccount = accounts.find(acc => acc.head_of_family) || accounts[0];
-        
-        // Calculate aggregated data
         const allQueries = accounts.flatMap(acc => queryMap.get(acc.clientcode) || []);
-        const totalLogins = accounts.reduce((sum, acc) => sum + (acc.login_attempts || 0), 0);
+        const totalLogins = accounts.reduce((sum, acc) => sum + (acc.login_count || 0), 0);
         
-        // Determine overall onboarding status
         const completedCount = accounts.filter(acc => acc.onboarding_status === 'completed').length;
         const pendingCount = accounts.filter(acc => acc.onboarding_status === 'pending').length;
         
@@ -157,7 +160,6 @@ export async function GET(request: NextRequest) {
           onboardingStatus = 'mixed';
         }
 
-        // Get last activity from queries
         const lastActivity = allQueries.length > 0 
           ? allQueries.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0].created_at
           : null;
@@ -176,7 +178,7 @@ export async function GET(request: NextRequest) {
             onboardingStatus: acc.onboarding_status,
             headOfFamily: acc.head_of_family,
             createdAt: acc.created_at,
-            loginCount: acc.login_count || 0,      // Changed from login_attempts
+            loginCount: acc.login_count || 0,
             lastLogin: acc.last_login_at,
           })),
           onboardingStatus,
@@ -191,14 +193,12 @@ export async function GET(request: NextRequest) {
         return grouped;
       })
       .filter(group => {
-        // Apply search filter
         const matchesSearch = !search || 
           group.ownerName.toLowerCase().includes(search.toLowerCase()) ||
           group.ownerEmail.toLowerCase().includes(search.toLowerCase()) ||
           group.ownerId.toLowerCase().includes(search.toLowerCase()) ||
           group.accounts.some(acc => acc.clientCode.toLowerCase().includes(search.toLowerCase()));
         
-        // Apply status filter
         const matchesStatus = status === 'all' || group.onboardingStatus === status;
         
         return matchesSearch && matchesStatus;
@@ -206,7 +206,6 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
       .slice(0, limit);
 
-    // Calculate statistics
     // Calculate statistics with proper login tracking
     const allGroupedClients = Array.from(clientGroups.entries()).map(([ownerId, accounts]) => {
       const completedCount = accounts.filter(acc => acc.onboarding_status === 'completed').length;
@@ -229,7 +228,7 @@ export async function GET(request: NextRequest) {
     });
 
     // Get accurate login statistics from database
-    const loginStatsResult = await query(`
+    const loginStatsResult = await client.query(`
       SELECT 
         COALESCE(SUM(login_count), 0)::int as total_logins,
         COUNT(*) FILTER (WHERE last_login_at >= CURRENT_DATE)::int as logins_today,
@@ -240,25 +239,84 @@ export async function GET(request: NextRequest) {
     
     const loginStats = loginStatsResult.rows[0];
 
+    // Get detailed login lists for clickable stats
+    const todayLoginsResult = await client.query(`
+      SELECT 
+        clientcode, 
+        CONCAT(COALESCE(salutation, ''), ' ', firstname, ' ', COALESCE(middlename, ''), ' ', lastname) as clientname,
+        email,
+        last_login_at,
+        COALESCE(login_count, 0) as login_count,
+        groupname
+      FROM pms_clients_master
+      WHERE ownerid IS NOT NULL 
+        AND last_login_at >= CURRENT_DATE
+      ORDER BY last_login_at DESC
+    `);
+
+    const weekLoginsResult = await client.query(`
+      SELECT 
+        clientcode, 
+        CONCAT(COALESCE(salutation, ''), ' ', firstname, ' ', COALESCE(middlename, ''), ' ', lastname) as clientname,
+        email,
+        last_login_at,
+        COALESCE(login_count, 0) as login_count,
+        groupname
+      FROM pms_clients_master
+      WHERE ownerid IS NOT NULL 
+        AND last_login_at >= CURRENT_DATE - INTERVAL '7 days'
+      ORDER BY last_login_at DESC
+    `);
+
+    const allLoginsResult = await client.query(`
+      SELECT 
+        clientcode, 
+        CONCAT(COALESCE(salutation, ''), ' ', firstname, ' ', COALESCE(middlename, ''), ' ', lastname) as clientname,
+        email,
+        last_login_at,
+        COALESCE(login_count, 0) as login_count,
+        groupname
+      FROM pms_clients_master
+      WHERE ownerid IS NOT NULL 
+        AND last_login_at IS NOT NULL
+      ORDER BY last_login_at DESC
+      LIMIT 100
+    `);
+
+    const formatLoginDetail = (row: any): LoginDetail => ({
+      clientCode: row.clientcode,
+      clientName: row.clientname?.replace(/\s+/g, ' ').trim() || 'Unknown',
+      email: row.email,
+      lastLoginAt: row.last_login_at,
+      loginCount: row.login_count,
+      groupName: row.groupname,
+    });
+
+    const loginDetails = {
+      today: todayLoginsResult.rows.map(formatLoginDetail),
+      thisWeek: weekLoginsResult.rows.map(formatLoginDetail),
+      allTime: allLoginsResult.rows.map(formatLoginDetail),
+    };
+
     const statistics: DashboardStatistics = {
-      totalOwners: allGroupedClients.length,
-      totalAccounts: allClients.length,
-      activeOwners: allGroupedClients.filter(g => g.onboardingStatus === 'completed').length,
-      pendingOnboarding: allGroupedClients.filter(g => g.onboardingStatus === 'pending').length,
-      completedOnboarding: allGroupedClients.filter(g => g.onboardingStatus === 'completed').length,
-      mixedOnboarding: allGroupedClients.filter(g => g.onboardingStatus === 'mixed').length,
-      totalQueries: queries.length,
-      pendingQueries: queries.filter((q: QueryData) => q.status === 'pending').length,
-      resolvedQueries: queries.filter((q: QueryData) => q.status === 'resolved').length,
+      totalClients: allGroupedClients.length,
+      totalPortfolioAccounts: allClients.length,
+      onboardingComplete: allGroupedClients.filter(g => g.onboardingStatus === 'completed').length,
+      onboardingPending: allGroupedClients.filter(g => g.onboardingStatus === 'pending').length,
+      onboardingPartial: allGroupedClients.filter(g => g.onboardingStatus === 'mixed').length,
+      totalInquiries: queries.length,
+      openInquiries: queries.filter((q: QueryData) => q.status === 'pending').length,
+      resolvedInquiries: queries.filter((q: QueryData) => q.status === 'resolved').length,
       totalLogins: loginStats.total_logins || 0,
-      uniqueLoginsToday: loginStats.logins_today || 0,
-      uniqueLoginsThisWeek: loginStats.logins_this_week || 0,
+      loginsToday: loginStats.logins_today || 0,
+      loginsThisWeek: loginStats.logins_this_week || 0,
     };
 
     const dashboardData: AdminDashboardData = {
       clients: groupedClients,
       queries,
       statistics,
+      loginDetails,
     };
 
     return NextResponse.json({
@@ -277,7 +335,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Admin impersonation endpoint (unchanged from original)
+// Admin impersonation endpoint
 export async function POST(request: NextRequest) {
   try {
     const { action, clientCode } = await request.json();
@@ -290,7 +348,6 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Get client data for impersonation with role information
       const clientResult = await query(
         `SELECT clientid, clientcode, email, groupid, head_of_family, ownerid,
                 salutation, firstname, middlename, lastname
@@ -309,17 +366,14 @@ export async function POST(request: NextRequest) {
       const targetClient = clientResult.rows[0];
       const { groupid, email, head_of_family, ownerid } = targetClient;
 
-      // Get associated client codes based on role (same logic as login)
       let associatedResult;
       
       if (head_of_family) {
-        // If target is head of family, get all accounts in the group
         associatedResult = await query(
           'SELECT clientid, clientcode FROM pms_clients_master WHERE groupid = $1',
           [groupid]
         );
       } else {
-        // If target is not head of family, get only accounts with this ownerid
         associatedResult = await query(
           'SELECT clientid, clientcode FROM pms_clients_master WHERE ownerid = $1',
           [ownerid]
@@ -331,7 +385,6 @@ export async function POST(request: NextRequest) {
         clientcode: row.clientcode
       }));
 
-      // Create comprehensive impersonation token with role information
       const impersonationToken = Buffer.from(JSON.stringify({
         adminImpersonation: true,
         clientCode,

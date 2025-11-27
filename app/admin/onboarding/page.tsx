@@ -151,6 +151,12 @@ function AdminDashboardContent() {
   const [impersonating, setImpersonating] = useState(false);
   const [message, setMessage] = useState('');
   const [viewMode, setViewMode] = useState<'cards' | 'list'>('cards');
+  // Add these new state variables after the existing ones
+  const [showLoginsDialog, setShowLoginsDialog] = useState(false);
+  const [loginsData, setLoginsData] = useState<any[]>([]);
+  const [loadingLogins, setLoadingLogins] = useState(false);
+
+  const [loginFilter, setLoginFilter] = useState<'all' | 'today' | 'week'>('all');
 
   useEffect(() => {
     fetchDashboardData();
@@ -185,6 +191,62 @@ function AdminDashboardContent() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Add this function after fetchDashboardData
+  // Add this function after fetchDashboardData
+  const fetchLoginsData = (filter: 'all' | 'today' | 'week' = 'all') => {
+    setLoadingLogins(true);
+    setLoginFilter(filter);
+
+    try {
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const startOfWeek = new Date(startOfToday);
+      startOfWeek.setDate(startOfWeek.getDate() - 7);
+
+      // Use existing data - filter accounts that have logged in
+      const loggedInAccounts = allClients.flatMap(owner =>
+        owner.accounts
+          .filter(acc => {
+            if (!acc.lastLogin) return false;
+
+            const lastLoginDate = new Date(acc.lastLogin);
+
+            if (filter === 'today') {
+              return lastLoginDate >= startOfToday;
+            } else if (filter === 'week') {
+              return lastLoginDate >= startOfWeek;
+            }
+            // 'all' - show accounts with any login count or last login
+            return acc.loginCount > 0 || acc.lastLogin;
+          })
+          .map(acc => ({
+            ...acc,
+            ownerName: owner.ownerName,
+            ownerEmail: owner.ownerEmail,
+            groupName: owner.groupName,
+          }))
+      ).sort((a, b) => {
+        // Sort by last login date, most recent first
+        if (!a.lastLogin) return 1;
+        if (!b.lastLogin) return -1;
+        return new Date(b.lastLogin).getTime() - new Date(a.lastLogin).getTime();
+      });
+
+      setLoginsData(loggedInAccounts);
+    } catch (error) {
+      console.error('Failed to fetch logins data:', error);
+    } finally {
+      setLoadingLogins(false);
+    }
+  };
+
+
+
+  const handleShowLogins = () => {
+    fetchLoginsData();
+    setShowLoginsDialog(true);
   };
 
   const filteredClients = useMemo(() => {
@@ -621,19 +683,33 @@ function AdminDashboardContent() {
               color="text-orange-500"
             />
           </Link>
-          <StatCard
-            icon={LogIn}
-            title="Total Logins"
-            value={statistics.totalLogins}
-            subtitle={`${statistics.uniqueLoginsThisWeek} this week`}
-            color="text-teal-500"
-          />
-          <StatCard
-            icon={TrendingUp}
-            title="Today's Logins"
-            value={statistics.uniqueLoginsToday}
-            color="text-indigo-500"
-          />
+          {/* Replace this StatCard */}
+          {/* Total Logins - Clickable */}
+          <div
+            onClick={() => handleShowLogins('all')}
+            className="cursor-pointer hover:shadow-md transition-shadow rounded-lg"
+          >
+            <StatCard
+              icon={LogIn}
+              title="Total Logins"
+              value={statistics.totalLogins}
+              subtitle={`${statistics.uniqueLoginsThisWeek} this week`}
+              color="text-teal-500"
+            />
+          </div>
+
+          {/* Today's Logins - Clickable */}
+          <div
+            onClick={() => handleShowLogins('today')}
+            className="cursor-pointer hover:shadow-md transition-shadow rounded-lg"
+          >
+            <StatCard
+              icon={TrendingUp}
+              title="Today's Logins"
+              value={statistics.uniqueLoginsToday}
+              color="text-indigo-500"
+            />
+          </div>
         </div>
       )}
 
@@ -1108,6 +1184,149 @@ function AdminDashboardContent() {
               className="bg-red-600 hover:bg-red-700"
             >
               {impersonating ? 'Impersonating...' : 'Confirm Impersonation'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Logins History Dialog */}
+      <Dialog open={showLoginsDialog} onOpenChange={setShowLoginsDialog}>
+        <DialogContent className="max-w-4xl max-h-[80vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center space-x-2">
+              <LogIn className="h-5 w-5 text-teal-500" />
+              <span>Login History</span>
+            </DialogTitle>
+            <DialogDescription>
+              <div className="flex items-center space-x-4 text-sm">
+                <span><strong>Total Logins:</strong> {statistics?.totalLogins || 0}</span>
+                <span><strong>Today:</strong> {statistics?.uniqueLoginsToday || 0}</span>
+                <span><strong>This Week:</strong> {statistics?.uniqueLoginsThisWeek || 0}</span>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+
+          {/* Filter Tabs */}
+          <div className="flex space-x-2 border-b pb-2">
+            <Button
+              variant={loginFilter === 'all' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => fetchLoginsData('all')}
+            >
+              <Users className="h-4 w-4 mr-2" />
+              All Logins
+            </Button>
+            <Button
+              variant={loginFilter === 'today' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => fetchLoginsData('today')}
+            >
+              <Calendar className="h-4 w-4 mr-2" />
+              Today ({statistics?.uniqueLoginsToday || 0})
+            </Button>
+            <Button
+              variant={loginFilter === 'week' ? 'default' : 'ghost'}
+              size="sm"
+              onClick={() => fetchLoginsData('week')}
+            >
+              <TrendingUp className="h-4 w-4 mr-2" />
+              This Week ({statistics?.uniqueLoginsThisWeek || 0})
+            </Button>
+          </div>
+
+          <ScrollArea className="h-[450px] w-full">
+            {loadingLogins ? (
+              <div className="space-y-3">
+                {Array(5).fill(0).map((_, i) => (
+                  <Skeleton key={i} className="h-16 w-full" />
+                ))}
+              </div>
+            ) : loginsData.length > 0 ? (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Client</TableHead>
+                      <TableHead>Owner</TableHead>
+                      <TableHead>Client Code</TableHead>
+                      <TableHead className="text-center">Login Count</TableHead>
+                      <TableHead>Last Login</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {loginsData.map((login, index) => (
+                      <TableRow key={`${login.clientCode}-${index}`}>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            {login.headOfFamily ? (
+                              <Crown className="h-4 w-4 text-blue-600" />
+                            ) : (
+                              <User className="h-4 w-4 text-gray-600" />
+                            )}
+                            <div>
+                              <div className="font-medium text-sm">{sanitizeName(login.clientName)}</div>
+                              <div className="text-xs text-muted-foreground">{sanitizeName(login.groupName)}</div>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="text-sm">{sanitizeName(login.ownerName)}</div>
+                          <div className="text-xs text-muted-foreground">{login.ownerEmail}</div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-mono text-sm">{login.clientCode}</span>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant="outline" className="bg-teal-50 text-teal-700">
+                            {login.loginCount}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          {login.lastLogin ? (
+                            <div>
+                              <div className="text-sm">
+                                {new Date(login.lastLogin).toLocaleDateString()}
+                              </div>
+                              <div className="text-xs text-muted-foreground">
+                                {new Date(login.lastLogin).toLocaleTimeString()}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground text-sm">Never</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            ) : (
+              <div className="text-center py-12">
+                <LogIn className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2">
+                  {loginFilter === 'today'
+                    ? 'No logins today'
+                    : loginFilter === 'week'
+                      ? 'No logins this week'
+                      : 'No login history'}
+                </h3>
+                <p className="text-muted-foreground">
+                  {loginFilter === 'today'
+                    ? 'No users have logged in today yet.'
+                    : loginFilter === 'week'
+                      ? 'No users have logged in this week.'
+                      : 'No users have logged in yet.'}
+                </p>
+              </div>
+            )}
+          </ScrollArea>
+
+          <DialogFooter className="flex justify-between items-center">
+            <div className="text-sm text-muted-foreground">
+              Showing {loginsData.length} {loginFilter === 'today' ? "today's" : loginFilter === 'week' ? "this week's" : ''} login{loginsData.length !== 1 ? 's' : ''}
+            </div>
+            <Button variant="outline" onClick={() => setShowLoginsDialog(false)}>
+              Close
             </Button>
           </DialogFooter>
         </DialogContent>
