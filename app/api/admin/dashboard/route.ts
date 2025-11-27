@@ -176,8 +176,8 @@ export async function GET(request: NextRequest) {
             onboardingStatus: acc.onboarding_status,
             headOfFamily: acc.head_of_family,
             createdAt: acc.created_at,
-            loginCount: acc.login_attempts || 0,
-            lastLogin: acc.first_login_at,
+            loginCount: acc.login_count || 0,      // Changed from login_attempts
+            lastLogin: acc.last_login_at,
           })),
           onboardingStatus,
           totalQueries: allQueries.length,
@@ -207,6 +207,7 @@ export async function GET(request: NextRequest) {
       .slice(0, limit);
 
     // Calculate statistics
+    // Calculate statistics with proper login tracking
     const allGroupedClients = Array.from(clientGroups.entries()).map(([ownerId, accounts]) => {
       const completedCount = accounts.filter(acc => acc.onboarding_status === 'completed').length;
       const pendingCount = accounts.filter(acc => acc.onboarding_status === 'pending').length;
@@ -223,9 +224,21 @@ export async function GET(request: NextRequest) {
       return {
         onboardingStatus,
         accounts,
-        totalLogins: accounts.reduce((sum, acc) => sum + (acc.login_attempts || 0), 0),
+        totalLogins: accounts.reduce((sum, acc) => sum + (acc.login_count || 0), 0),
       };
     });
+
+    // Get accurate login statistics from database
+    const loginStatsResult = await query(`
+      SELECT 
+        COALESCE(SUM(login_count), 0)::int as total_logins,
+        COUNT(*) FILTER (WHERE last_login_at >= CURRENT_DATE)::int as logins_today,
+        COUNT(*) FILTER (WHERE last_login_at >= CURRENT_DATE - INTERVAL '7 days')::int as logins_this_week
+      FROM pms_clients_master
+      WHERE ownerid IS NOT NULL
+    `);
+    
+    const loginStats = loginStatsResult.rows[0];
 
     const statistics: DashboardStatistics = {
       totalOwners: allGroupedClients.length,
@@ -237,20 +250,9 @@ export async function GET(request: NextRequest) {
       totalQueries: queries.length,
       pendingQueries: queries.filter((q: QueryData) => q.status === 'pending').length,
       resolvedQueries: queries.filter((q: QueryData) => q.status === 'resolved').length,
-      totalLogins: allGroupedClients.reduce((sum, g) => sum + g.totalLogins, 0),
-      uniqueLoginsToday: allClients.filter((c: any) => {
-        if (!c.first_login_at) return false;
-        const loginDate = new Date(c.first_login_at);
-        const today = new Date();
-        return loginDate.toDateString() === today.toDateString();
-      }).length,
-      uniqueLoginsThisWeek: allClients.filter((c: any) => {
-        if (!c.first_login_at) return false;
-        const loginDate = new Date(c.first_login_at);
-        const weekAgo = new Date();
-        weekAgo.setDate(weekAgo.getDate() - 7);
-        return loginDate >= weekAgo;
-      }).length,
+      totalLogins: loginStats.total_logins || 0,
+      uniqueLoginsToday: loginStats.logins_today || 0,
+      uniqueLoginsThisWeek: loginStats.logins_this_week || 0,
     };
 
     const dashboardData: AdminDashboardData = {

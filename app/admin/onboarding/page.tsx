@@ -607,7 +607,7 @@ function AdminDashboardContent() {
           />
           <StatCard
             icon={CheckCircle}
-            title="Active Owners"
+            title="Successful Account Setup"
             value={statistics.activeOwners}
             subtitle={`${statistics.pendingOnboarding} pending`}
             color="text-green-500"

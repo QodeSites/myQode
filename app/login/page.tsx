@@ -448,7 +448,14 @@ export default function LoginPage() {
                 name="username"
                 type="text"
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value.includes('@')) {
+                    setUsername(value.toLowerCase());
+                  } else {
+                    setUsername(value);
+                  }
+                }}
                 className="h-10 rounded-md border bg-background px-3 text-sm outline-none ring-0 focus:border-ring"
                 placeholder="you@example.com or Account ID"
                 disabled={isLoading || requirePasswordSetup}
@@ -732,7 +739,14 @@ export default function LoginPage() {
                 name="dev-email"
                 type="email"
                 value={userEmail}
-                onChange={(e) => setUserEmail(e.target.value)}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  if (value.includes('@')) {
+                    setUserEmail(value.toLowerCase());
+                  } else {
+                    setUserEmail(value);
+                  }
+                }}
                 className="h-10 rounded-md border bg-background px-3 text-sm outline-none ring-0 focus:border-ring"
                 placeholder="any@example.com"
                 disabled={isLoading}
@@ -805,7 +819,14 @@ export default function LoginPage() {
                   type="email"
                   required
                   value={fpEmail}
-                  onChange={(e) => setFpEmail(e.target.value)}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value.includes('@')) {
+                      setFpEmail(value.toLowerCase());
+                    } else {
+                      setFpEmail(value);
+                    }
+                  }}
                   className="h-10 rounded-md border bg-background px-3 text-sm outline-none ring-0 focus:border-ring"
                   placeholder="you@example.com"
                   disabled={fpSending}

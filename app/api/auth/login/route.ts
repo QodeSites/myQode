@@ -112,6 +112,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    await query(
+      `UPDATE pms_clients_master 
+       SET last_login_at = NOW(), 
+           login_count = COALESCE(login_count, 0) + 1
+       WHERE clientcode = $1`,
+      [user.clientcode]
+    )
+
     // Set session cookies with head of family information
     await setSessionCookies(user)
 
@@ -614,6 +622,15 @@ async function handleCompletePasswordSetup(email: string, otp: string, newPasswo
       clientid: row.clientid,
       clientcode: row.clientcode
     }))
+
+    // Track this as a login (password setup completion = first real login)
+    await query(
+      `UPDATE pms_clients_master 
+       SET last_login_at = NOW(), 
+           login_count = COALESCE(login_count, 0) + 1
+       WHERE email = $1`,
+      [email]
+    )
 
     return NextResponse.json({
       success: true,
