@@ -16,20 +16,20 @@ interface GroupedClientData {
   ownerName: string;
   groupId: string;
   groupName: string;
-  
+
   // Aggregated data across all accounts
   totalAccounts: number;
   accounts: ClientAccount[];
-  
+
   // Status based on all accounts
   onboardingStatus: 'completed' | 'pending' | 'mixed';
-  
+
   // Aggregated stats
   totalQueries: number;
   totalLogins: number;
   lastActivity: string | null;
   createdAt: string;
-  
+
   // Primary account for actions (usually head of family or first account)
   primaryClientCode: string;
   primaryClientId: string;
@@ -79,7 +79,7 @@ interface DashboardStatistics {
 
 export async function GET(request: NextRequest) {
   const client = await pool.connect();
-  
+
   try {
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
@@ -103,7 +103,7 @@ export async function GET(request: NextRequest) {
 
     // Group clients by ownerid instead of email
     const clientGroups = new Map<string, any[]>();
-    
+
     allClients.forEach((client: any) => {
       const ownerId = client.ownerid;
       if (!clientGroups.has(ownerId)) {
@@ -139,15 +139,15 @@ export async function GET(request: NextRequest) {
       .map(([ownerId, accounts]) => {
         // Find primary account (head of family or first account)
         const primaryAccount = accounts.find(acc => acc.head_of_family) || accounts[0];
-        
+
         // Calculate aggregated data
         const allQueries = accounts.flatMap(acc => queryMap.get(acc.clientcode) || []);
         const totalLogins = accounts.reduce((sum, acc) => sum + (acc.login_attempts || 0), 0);
-        
+
         // Determine overall onboarding status
         const completedCount = accounts.filter(acc => acc.onboarding_status === 'completed').length;
         const pendingCount = accounts.filter(acc => acc.onboarding_status === 'pending').length;
-        
+
         let onboardingStatus: 'completed' | 'pending' | 'mixed';
         if (completedCount === accounts.length) {
           onboardingStatus = 'completed';
@@ -158,7 +158,7 @@ export async function GET(request: NextRequest) {
         }
 
         // Get last activity from queries
-        const lastActivity = allQueries.length > 0 
+        const lastActivity = allQueries.length > 0
           ? allQueries.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0].created_at
           : null;
 
@@ -192,15 +192,15 @@ export async function GET(request: NextRequest) {
       })
       .filter(group => {
         // Apply search filter
-        const matchesSearch = !search || 
+        const matchesSearch = !search ||
           group.ownerName.toLowerCase().includes(search.toLowerCase()) ||
           group.ownerEmail.toLowerCase().includes(search.toLowerCase()) ||
           group.ownerId.toLowerCase().includes(search.toLowerCase()) ||
           group.accounts.some(acc => acc.clientCode.toLowerCase().includes(search.toLowerCase()));
-        
+
         // Apply status filter
         const matchesStatus = status === 'all' || group.onboardingStatus === status;
-        
+
         return matchesSearch && matchesStatus;
       })
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -211,7 +211,7 @@ export async function GET(request: NextRequest) {
     const allGroupedClients = Array.from(clientGroups.entries()).map(([ownerId, accounts]) => {
       const completedCount = accounts.filter(acc => acc.onboarding_status === 'completed').length;
       const pendingCount = accounts.filter(acc => acc.onboarding_status === 'pending').length;
-      
+
       let onboardingStatus: 'completed' | 'pending' | 'mixed';
       if (completedCount === accounts.length) {
         onboardingStatus = 'completed';
@@ -237,7 +237,7 @@ export async function GET(request: NextRequest) {
       FROM pms_clients_master
       WHERE ownerid IS NOT NULL
     `);
-    
+
     const loginStats = loginStatsResult.rows[0];
 
     const statistics: DashboardStatistics = {
@@ -311,7 +311,7 @@ export async function POST(request: NextRequest) {
 
       // Get associated client codes based on role (same logic as login)
       let associatedResult;
-      
+
       if (head_of_family) {
         // If target is head of family, get all accounts in the group
         associatedResult = await query(

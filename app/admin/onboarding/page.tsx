@@ -194,7 +194,6 @@ function AdminDashboardContent() {
   };
 
   // Add this function after fetchDashboardData
-  // Add this function after fetchDashboardData
   const fetchLoginsData = (filter: 'all' | 'today' | 'week' = 'all') => {
     setLoadingLogins(true);
     setLoginFilter(filter);
@@ -205,36 +204,74 @@ function AdminDashboardContent() {
       const startOfWeek = new Date(startOfToday);
       startOfWeek.setDate(startOfWeek.getDate() - 7);
 
-      // Use existing data - filter accounts that have logged in
-      const loggedInAccounts = allClients.flatMap(owner =>
-        owner.accounts
-          .filter(acc => {
-            if (!acc.lastLogin) return false;
+      // Group by owner email
+      const ownerLoginsMap = new Map<string, {
+        ownerEmail: string;
+        ownerName: string;
+        groupName: string;
+        totalLoginCount: number;
+        accountsLoggedIn: number;
+        totalAccounts: number;
+        lastLogin: string | null;
+        accounts: Array<{
+          clientCode: string;
+          clientName: string;
+          loginCount: number;
+          lastLogin: string | null;
+          headOfFamily: boolean;
+        }>;
+      }>();
 
-            const lastLoginDate = new Date(acc.lastLogin);
+      allClients.forEach(owner => {
+        const filteredAccounts = owner.accounts.filter(acc => {
+          if (!acc.lastLogin) return false;
 
-            if (filter === 'today') {
-              return lastLoginDate >= startOfToday;
-            } else if (filter === 'week') {
-              return lastLoginDate >= startOfWeek;
-            }
-            // 'all' - show accounts with any login count or last login
-            return acc.loginCount > 0 || acc.lastLogin;
-          })
-          .map(acc => ({
-            ...acc,
-            ownerName: owner.ownerName,
+          const lastLoginDate = new Date(acc.lastLogin);
+
+          if (filter === 'today') {
+            return lastLoginDate >= startOfToday;
+          } else if (filter === 'week') {
+            return lastLoginDate >= startOfWeek;
+          }
+          return acc.loginCount > 0 || acc.lastLogin;
+        });
+
+        if (filteredAccounts.length > 0) {
+          const totalLoginCount = filteredAccounts.reduce((sum, acc) => sum + (acc.loginCount || 0), 0);
+          const lastLoginDates = filteredAccounts
+            .filter(acc => acc.lastLogin)
+            .map(acc => new Date(acc.lastLogin!).getTime());
+          const lastLogin = lastLoginDates.length > 0
+            ? new Date(Math.max(...lastLoginDates)).toISOString()
+            : null;
+
+          ownerLoginsMap.set(owner.ownerEmail, {
             ownerEmail: owner.ownerEmail,
-            groupName: owner.groupName,
-          }))
-      ).sort((a, b) => {
-        // Sort by last login date, most recent first
+            ownerName: owner.ownerName || 'Unknown',
+            groupName: owner.groupName || 'Unknown',
+            totalLoginCount,
+            accountsLoggedIn: filteredAccounts.length,
+            totalAccounts: owner.totalAccounts,
+            lastLogin,
+            accounts: filteredAccounts.map(acc => ({
+              clientCode: acc.clientCode,
+              clientName: acc.clientName || 'Unknown',
+              loginCount: acc.loginCount || 0,
+              lastLogin: acc.lastLogin,
+              headOfFamily: acc.headOfFamily,
+            })),
+          });
+        }
+      });
+
+      // Convert to array and sort by last login
+      const groupedLogins = Array.from(ownerLoginsMap.values()).sort((a, b) => {
         if (!a.lastLogin) return 1;
         if (!b.lastLogin) return -1;
         return new Date(b.lastLogin).getTime() - new Date(a.lastLogin).getTime();
       });
 
-      setLoginsData(loggedInAccounts);
+      setLoginsData(groupedLogins);
     } catch (error) {
       console.error('Failed to fetch logins data:', error);
     } finally {
@@ -1190,8 +1227,9 @@ function AdminDashboardContent() {
       </Dialog>
 
       {/* Logins History Dialog */}
+      {/* Logins History Dialog */}
       <Dialog open={showLoginsDialog} onOpenChange={setShowLoginsDialog}>
-        <DialogContent className="max-w-4xl max-h-[80vh]">
+        <DialogContent className="max-w-6xl  max-h-[80vh]">
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
               <LogIn className="h-5 w-5 text-teal-500" />
@@ -1246,58 +1284,97 @@ function AdminDashboardContent() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Client</TableHead>
                       <TableHead>Owner</TableHead>
-                      <TableHead>Client Code</TableHead>
-                      <TableHead className="text-center">Login Count</TableHead>
+                      <TableHead>Group</TableHead>
+                      <TableHead className="text-center">Total Logins</TableHead>
+                      {/* <TableHead className="text-center">Accounts</TableHead> */}
                       <TableHead>Last Login</TableHead>
+                      {/* <TableHead>Details</TableHead> */}
                     </TableRow>
                   </TableHeader>
-                  <TableBody>
-                    {loginsData.map((login, index) => (
-                      <TableRow key={`${login.clientCode}-${index}`}>
-                        <TableCell>
-                          <div className="flex items-center space-x-2">
-                            {login.headOfFamily ? (
-                              <Crown className="h-4 w-4 text-blue-600" />
+                    <TableBody>
+                      {loginsData.map((owner, index) => (
+                        <TableRow key={`${owner.ownerEmail}-${index}`}>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium text-sm">{sanitizeName(owner.ownerName)}</div>
+                              <div className="text-xs text-muted-foreground">{owner.ownerEmail}</div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="text-sm">{sanitizeName(owner.groupName)}</span>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge className="bg-teal-100 text-teal-800">
+                              {owner.totalLoginCount}
+                            </Badge>
+                          </TableCell>
+                          {/* <TableCell className="text-center">
+                          <span className="text-sm">
+                            {owner.accountsLoggedIn}/{owner.totalAccounts}
+                          </span>
+                        </TableCell> */}
+                          <TableCell>
+                            {owner.lastLogin ? (
+                              <div>
+                                <div className="text-sm">
+                                  {new Date(owner.lastLogin).toLocaleDateString('en-IN', {
+                                    timeZone: 'Asia/Kolkata'
+                                  })}
+                                </div>
+                                {/* <div className="text-xs text-muted-foreground">
+                                  {new Date(owner.lastLogin).toLocaleTimeString('en-IN', {
+                                    timeZone: 'Asia/Kolkata',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                    second: '2-digit',
+                                    hour12: true
+                                  })}
+                                </div> */}
+                              </div>
                             ) : (
-                              <User className="h-4 w-4 text-gray-600" />
+                              <span className="text-muted-foreground text-sm">Never</span>
                             )}
-                            <div>
-                              <div className="font-medium text-sm">{sanitizeName(login.clientName)}</div>
-                              <div className="text-xs text-muted-foreground">{sanitizeName(login.groupName)}</div>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">{sanitizeName(login.ownerName)}</div>
-                          <div className="text-xs text-muted-foreground">{login.ownerEmail}</div>
-                        </TableCell>
-                        <TableCell>
-                          <span className="font-mono text-sm">{login.clientCode}</span>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant="outline" className="bg-teal-50 text-teal-700">
-                            {login.loginCount}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {login.lastLogin ? (
-                            <div>
-                              <div className="text-sm">
-                                {new Date(login.lastLogin).toLocaleDateString()}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {new Date(login.lastLogin).toLocaleTimeString()}
-                              </div>
-                            </div>
-                          ) : (
-                            <span className="text-muted-foreground text-sm">Never</span>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
+                          </TableCell>
+                          {/* <TableCell>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm">
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="w-72">
+                              <DropdownMenuLabel>Account Login Details</DropdownMenuLabel>
+                              <DropdownMenuSeparator />
+                              {owner.accounts.map((acc: any) => (
+                                <div key={acc.clientCode} className="px-2 py-1.5 text-xs">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center space-x-1">
+                                      {acc.headOfFamily ? (
+                                        <Crown className="h-3 w-3 text-blue-600" />
+                                      ) : (
+                                        <User className="h-3 w-3 text-gray-500" />
+                                      )}
+                                      <span className="font-mono">{acc.clientCode}</span>
+                                    </div>
+                                    <Badge variant="outline" className="text-xs">
+                                      {acc.loginCount} logins
+                                    </Badge>
+                                  </div>
+                                  <div className="text-muted-foreground mt-0.5 ml-4">
+                                    {acc.lastLogin
+                                      ? `Last: ${new Date(acc.lastLogin).toLocaleString()}`
+                                      : 'Never logged in'
+                                    }
+                                  </div>
+                                </div>
+                              ))}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell> */}
+                        </TableRow>
+                      ))}
+                    </TableBody>
                 </Table>
               </div>
             ) : (
@@ -1323,7 +1400,7 @@ function AdminDashboardContent() {
 
           <DialogFooter className="flex justify-between items-center">
             <div className="text-sm text-muted-foreground">
-              Showing {loginsData.length} {loginFilter === 'today' ? "today's" : loginFilter === 'week' ? "this week's" : ''} login{loginsData.length !== 1 ? 's' : ''}
+              Showing {loginsData.length} owner{loginsData.length !== 1 ? 's' : ''} with {loginsData.reduce((sum, o) => sum + o.totalLoginCount, 0)} total logins
             </div>
             <Button variant="outline" onClick={() => setShowLoginsDialog(false)}>
               Close
