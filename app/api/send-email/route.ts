@@ -70,7 +70,8 @@ export async function POST(request: NextRequest) {
         'new_strategy_payment_success',
         'sip_success',
         'admin_response',      // NEW: For admin email responses
-        'admin_notification'   // NEW: For admin notifications
+        'admin_notification',   // NEW: For admin notifications,
+        'investor_referral'
       ];
 
       if (!validInquiryTypes.includes(inquiry_type)) {
