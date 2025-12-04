@@ -1,0 +1,3 @@
+com.qodeinvest.myqode.test
+style WhiteBackgroundDialogTheme
+style WhiteBackgroundTheme

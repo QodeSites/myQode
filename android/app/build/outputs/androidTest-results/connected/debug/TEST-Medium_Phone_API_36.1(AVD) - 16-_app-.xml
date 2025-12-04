@@ -1,0 +1,15 @@
+<?xml version='1.0' encoding='UTF-8' ?>
+<testsuite name="com.getcapacitor.myapp.ExampleInstrumentedTest" tests="1" failures="1" errors="0" skipped="0" time="1.725" timestamp="2025-12-03T09:35:54" hostname="localhost">
+  <properties>
+    <property name="device" value="Medium_Phone_API_36.1(AVD) - 16" />
+    <property name="flavor" value="" />
+    <property name="project" value=":app" />
+  </properties>
+  <testcase name="useAppContext" classname="com.getcapacitor.myapp.ExampleInstrumentedTest" time="0.018">
+    <failure>org.junit.ComparisonFailure: expected:&lt;com.[getcapacitor.app]&gt; but was:&lt;com.[qodeinvest.myqode]&gt;
+at org.junit.Assert.assertEquals(Assert.java:117)
+at org.junit.Assert.assertEquals(Assert.java:146)
+at com.getcapacitor.myapp.ExampleInstrumentedTest.useAppContext(ExampleInstrumentedTest.java:24)
+</failure>
+  </testcase>
+</testsuite>

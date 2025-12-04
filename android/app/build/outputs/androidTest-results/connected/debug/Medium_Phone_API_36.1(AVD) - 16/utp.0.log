@@ -1,0 +1,48 @@
+INFO: Constructing runner from config.
+INFO: Configuring Android Instrumentation driver: android_instrumentation_runtime {
+  instrumentation_info {
+    app_package: "com.qodeinvest.myqode"
+    test_package: "com.qodeinvest.myqode.test"
+    test_runner_class: "androidx.test.runner.AndroidJUnitRunner"
+  }
+  instrumentation_args {
+    args_map {
+      key: "additionalTestOutputDir"
+      value: "/sdcard/Android/media/com.qodeinvest.myqode/additional_test_output"
+    }
+  }
+}
+am_instrument_timeout: 31536000
+
+INFO: Configuring AndroidTestApkInstallerPlugin: apks_to_install {
+  apk_paths: "C:\\Users\\tech\\Qode\\Desktop\\development\\qode-microsite\\android\\app\\build\\intermediates\\apk\\debug\\app-debug.apk"
+  install_options {
+  }
+  uninstall_after_test: true
+}
+apks_to_install {
+  apk_paths: "C:\\Users\\tech\\Qode\\Desktop\\development\\qode-microsite\\android\\app\\build\\intermediates\\apk\\androidTest\\debug\\app-debug-androidTest.apk"
+  install_options {
+  }
+  uninstall_after_test: true
+}
+
+INFO: No installables found in test fixture. Nothing to install.
+INFO: Installing [C:\Users\tech\Qode\Desktop\development\qode-microsite\android\app\build\intermediates\apk\debug\app-debug.apk] on device emulator-5554.
+INFO: Installing [C:\Users\tech\Qode\Desktop\development\qode-microsite\android\app\build\intermediates\apk\androidTest\debug\app-debug-androidTest.apk] on device emulator-5554.
+INFO: Start logcat streaming.
+INFO: Running Android Instrumentation driver.
+INFO: Copying files from device to host: /sdcard/Android/media/com.qodeinvest.myqode/additional_test_output to C:\Users\tech\Qode\Desktop\development\qode-microsite\android\app\build\outputs\connected_android_test_additional_output\debugAndroidTest\connected\Medium_Phone_API_36.1(AVD) - 16
+INFO: Stop logcat streaming.
+INFO: Uninstalling com.qodeinvest.myqode for device emulator-5554.
+INFO: Uninstalling com.qodeinvest.myqode.test for device emulator-5554.
+SEVERE: Execute com.getcapacitor.myapp.ExampleInstrumentedTest.useAppContext: FAILED
+org.junit.ComparisonFailure: org.junit.ComparisonFailure: expected:<com.[getcapacitor.app]> but was:<com.[qodeinvest.myqode]>
+at org.junit.Assert.assertEquals(Assert.java:117)
+at org.junit.Assert.assertEquals(Assert.java:146)
+at com.getcapacitor.myapp.ExampleInstrumentedTest.useAppContext(ExampleInstrumentedTest.java:24)
+
+org.junit.ComparisonFailure: expected:<com.[getcapacitor.app]> but was:<com.[qodeinvest.myqode]>
+at org.junit.Assert.assertEquals(Assert.java:117)
+at org.junit.Assert.assertEquals(Assert.java:146)
+at com.getcapacitor.myapp.ExampleInstrumentedTest.useAppContext(ExampleInstrumentedTest.java:24)

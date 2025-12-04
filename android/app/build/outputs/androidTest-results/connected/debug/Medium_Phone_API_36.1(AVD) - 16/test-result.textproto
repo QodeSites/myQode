@@ -1,0 +1,73 @@
+# 2025-12-03T09:35:54.700712200Z:
+test_suite_meta_data {
+  scheduled_test_case_count: 1
+}
+test_status: FAILED
+test_result {
+  test_case {
+    test_class: "ExampleInstrumentedTest"
+    test_package: "com.getcapacitor.myapp"
+    test_method: "useAppContext"
+    start_time {
+      seconds: 1764754552
+      nanos: 874000000
+    }
+    end_time {
+      seconds: 1764754552
+      nanos: 913000000
+    }
+  }
+  test_status: FAILED
+  error {
+    error_message: "org.junit.ComparisonFailure: expected:<com.[getcapacitor.app]> but was:<com.[qodeinvest.myqode]>\nat org.junit.Assert.assertEquals(Assert.java:117)\nat org.junit.Assert.assertEquals(Assert.java:146)\nat com.getcapacitor.myapp.ExampleInstrumentedTest.useAppContext(ExampleInstrumentedTest.java:24)\n"
+    error_type: "org.junit.ComparisonFailure"
+    stack_trace: "org.junit.ComparisonFailure: expected:<com.[getcapacitor.app]> but was:<com.[qodeinvest.myqode]>\nat org.junit.Assert.assertEquals(Assert.java:117)\nat org.junit.Assert.assertEquals(Assert.java:146)\nat com.getcapacitor.myapp.ExampleInstrumentedTest.useAppContext(ExampleInstrumentedTest.java:24)\n"
+  }
+  output_artifact {
+    label {
+      label: "logcat"
+      namespace: "android"
+    }
+    source_path {
+      path: "C:\\Users\\tech\\Qode\\Desktop\\development\\qode-microsite\\android\\app\\build\\outputs\\androidTest-results\\connected\\debug\\Medium_Phone_API_36.1(AVD) - 16\\logcat-com.getcapacitor.myapp.ExampleInstrumentedTest-useAppContext.txt"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info"
+      namespace: "android"
+    }
+    source_path {
+      path: "C:\\Users\\tech\\Qode\\Desktop\\development\\qode-microsite\\android\\app\\build\\outputs\\androidTest-results\\connected\\debug\\Medium_Phone_API_36.1(AVD) - 16\\device-info.pb"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.meminfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "C:\\Users\\tech\\Qode\\Desktop\\development\\qode-microsite\\android\\app\\build\\outputs\\androidTest-results\\connected\\debug\\Medium_Phone_API_36.1(AVD) - 16\\meminfo"
+    }
+  }
+  output_artifact {
+    label {
+      label: "device-info.cpuinfo"
+      namespace: "android"
+    }
+    source_path {
+      path: "C:\\Users\\tech\\Qode\\Desktop\\development\\qode-microsite\\android\\app\\build\\outputs\\androidTest-results\\connected\\debug\\Medium_Phone_API_36.1(AVD) - 16\\cpuinfo"
+    }
+  }
+}
+output_artifact {
+  label {
+    label: "test-results.log"
+    namespace: "com.google.testing.platform.runtime.android.driver.AndroidInstrumentationDriver"
+  }
+  source_path {
+    path: "C:\\Users\\tech\\Qode\\Desktop\\development\\qode-microsite\\android\\app\\build\\outputs\\androidTest-results\\connected\\debug\\Medium_Phone_API_36.1(AVD) - 16\\testlog\\test-results.log"
+  }
+  type: TEST_DATA
+  mime_type: "text/plain"
+}
