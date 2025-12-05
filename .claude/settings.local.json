@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(test:*)",
+      "Bash(rm:*)",
+      "Bash(powershell -Command \"Remove-Item -Path ''android'' -Recurse -Force\")",
+      "Bash(powershell -Command \"Remove-Item -Path ''ios'' -Recurse -Force\")",
+      "Bash(powershell:*)",
+      "Bash(npm i:*)",
+      "Bash(npx cap init)",
+      "Bash(npx cap init:*)",
+      "Bash(npx cap add android)",
+      "Bash(npx cap:*)",
+      "Bash(ipconfig:*)",
+      "Bash(findstr:*)",
+      "Bash(npm run dev:*)",
+      "Bash(timeout:*)",
+      "Bash(./gradlew clean:*)",
+      "Bash(cat:*)",
+      "Bash(keytool:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -32,7 +32,7 @@ export default function LoginPage() {
 
   const router = useRouter()
   const { refresh } = useClient()
-  
+
   // Check if in development
   const isDevelopment = process.env.NODE_ENV === 'development'
 
