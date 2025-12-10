@@ -934,6 +934,15 @@ export default function ReportingPortalPage(): JSX.Element {
             performance snapshots to tax packs, everything you need is organized in one place.
           </p>
 
+          {/* Inserted screenshot for Nuvama Dashboard */}
+          <div className="flex justify-center">
+            <img 
+              src="/nuvama-dashboard.png"
+              alt="Nuvama WealthSpectrum Dashboard screenshot"
+              className="rounded-lg shadow max-w-full border border-border"
+            />
+          </div>
+
           <div className="flex justify-center">
             <a
               href="https://eclientreporting.nuvamaassetservices.com/wealthspectrum/app/"

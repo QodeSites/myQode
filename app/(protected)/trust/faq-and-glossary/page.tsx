@@ -24,7 +24,7 @@ const sections: Section[] = [
       },
       {
         q: "Q4. How much amount of top-up can an investor do?",
-        a: "Top-ups can be made in multiples of ₹5 lakhs, provided the total portfolio value remains above the SEBI-mandated minimum of ₹50 lakhs.",
+        a: "Top-ups can be made in multiples of ₹1 lakhs, provided the total portfolio value remains above the SEBI-mandated minimum of ₹50 lakhs.",
       },
     ],
   },
