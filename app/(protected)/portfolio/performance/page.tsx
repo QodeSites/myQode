@@ -820,7 +820,7 @@ export default function DetailedPortfolio() {
 
             // Fetch benchmark data
             try {
-              const benchmarkUrl = `https://research.qodeinvest.com/api/getIndices?indices=BSE500&startDate=${incDate}&endDate=${latDate}`;
+              const benchmarkUrl = `/api/getIndices?indices=BSE500&startDate=${incDate}&endDate=${latDate}`;
               const benchmarkRes = await fetch(benchmarkUrl);
               const benchmarkRaw = await benchmarkRes.json();
 
