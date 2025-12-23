@@ -31,11 +31,12 @@ export default function LoginPage() {
   const [fpMsg, setFpMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const router = useRouter()
-  const { refresh } = useClient()
+  const { refresh ,selectedClientType, setSelectedClientType } = useClient()
 
   // Check if in development
-  const isDevelopment = process.env.NODE_ENV === 'development'
-
+  const isDevelopment = process.env.NODE_ENV !== 'development'
+  console.log(process.env.NODE_ENV)
+  console.log(isDevelopment,"====================isDevelopment")
   const checkPasswordStatus = async () => {
     if (!username.trim()) {
       setError('Please enter your email or Account ID')
@@ -66,6 +67,7 @@ export default function LoginPage() {
       if (data.requirePasswordSetup) {
         setRequirePasswordSetup(true)
         setUserEmail(data.email)
+        setSelectedClientType(data.clientType ?? data.clienttype)
         setCurrentStep('username')
         setError('Password setup required. Click "Send Verification Code" to continue.')
       } else {
@@ -110,7 +112,13 @@ export default function LoginPage() {
       }
 
       await refresh()
-      router.push('/portfolio/performance')
+      console.log(selectedClientType,"=======================byPassLogin")
+
+      if (selectedClientType === "DISCRETIONARY"){
+        router.push('/portfolio/performance')
+      } else {
+        router.push('/calculator')
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Dev bypass login failed')
     } finally {
@@ -230,7 +238,11 @@ export default function LoginPage() {
       }
 
       await refresh()
-      router.push('/portfolio/performance')
+      if (selectedClientType === "DISCRETIONARY"){
+        router.push('/portfolio/performance')
+      } else {
+        router.push('/calculator')
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Password setup failed')
     } finally {
@@ -254,6 +266,7 @@ export default function LoginPage() {
 
     setIsLoading(true)
     setError('')
+    console.log(selectedClientType,"=======================selectedClientTyperegularlogin0")
 
     try {
       localStorage.removeItem('selectedClientCode')
@@ -276,7 +289,12 @@ export default function LoginPage() {
       if (!response.ok) throw new Error(data.error || 'Login failed')
 
       await refresh()
-      router.push('/portfolio/performance')
+      console.log(selectedClientType,"=======================selectedClientTyperegularlogin")
+      if (selectedClientType === "DISCRETIONARY"){
+        router.push('/portfolio/performance')
+      } else {
+        router.push('/calculator')
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')
     } finally {

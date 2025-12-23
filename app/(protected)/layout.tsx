@@ -15,6 +15,7 @@ export const metadata = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
     const cookieStore = await cookies();
     const isAuthed = cookieStore.get("qode-auth")?.value === "1";
+    
 
     if (!isAuthed) {
         redirect("/login");

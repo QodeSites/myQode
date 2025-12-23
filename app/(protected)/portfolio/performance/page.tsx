@@ -42,7 +42,7 @@ const latoFontStyle = `
    - Smooth slide-up exit
    - Honors prefers-reduced-motion
    ========================= */
-function FullscreenLoader({
+export function FullscreenLoader({
   brand = "Qode",
   subtitle = "Preparing your portfolio…",
 }: {

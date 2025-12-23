@@ -83,9 +83,10 @@ export default function QodeSidebar({ open = false, onClose }: QodeSidebarProps)
     selectedClientCode,
     selectedClientHolderName,
     isHeadOfFamily,
-    setSelectedClient
+    setSelectedClient,
+    selectedClientType
   } = useClient()
-
+  console.log(clients,selectedClientType,"=====================SelectedClientType")
   const handleClientSelect = (clientCode: string) => setSelectedClient(clientCode)
 
   // Get the display name (same logic as header)

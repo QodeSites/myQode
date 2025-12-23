@@ -47,15 +47,30 @@ export async function GET() {
 
     // First, fetch all client codes based on the email
     const clientCodesResult = await query(
-      `SELECT clientcode 
+      `SELECT *
        FROM pms_clients_master 
        WHERE email = $1`,
       [email]
     );
 
+    // Fix: Ensure rows returned, check properly for distributor, and avoid errors
+    const rows = clientCodesResult.rows || clientCodesResult;
+    if (Array.isArray(rows) && rows.length > 0 && rows[0].clienttype === 'DISTRIBUTORS') {
+      console.log(email,"==================email1")
+      return NextResponse.json({
+        success: true,
+        clients: clientCodesResult.rows,
+        family: [],
+        message: '',
+        isHeadOfFamily: false,
+      });
+    }
+    
+
     const clientCodes = clientCodesResult.rows.map(row => row.clientcode);
 
     if (!clientCodes.length) {
+      console.log(email,"==================email2")
       return NextResponse.json({
         success: true,
         clients: [],

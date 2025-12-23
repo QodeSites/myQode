@@ -448,10 +448,10 @@ async function setSessionCookies(user: ExtendedClientData) {
 async function handlePasswordStatusCheck(username: string) {
   try {
     const result = await query(
-      'SELECT password, email, clientname FROM pms_clients_master WHERE email = $1 OR clientcode = $1 LIMIT 1',
+      'SELECT password, email, clientname, clienttype FROM pms_clients_master WHERE email = $1 OR clientcode = $1 LIMIT 1',
       [username]
     )
-
+    console.log(result)
     if (result.rows.length === 0) {
       return NextResponse.json(
         { error: 'User not found' },
@@ -459,12 +459,13 @@ async function handlePasswordStatusCheck(username: string) {
       )
     }
 
-    const { password, email } = result.rows[0]
+    const { password, email, clientname , clienttype } = result.rows[0]
     const requirePasswordSetup = password === 'Qode@123' || !password
 
     return NextResponse.json({
       requirePasswordSetup,
-      email: requirePasswordSetup ? email : undefined
+      email: requirePasswordSetup ? email : undefined,
+      clienttype : clienttype
     })
 
   } catch (error) {
@@ -555,7 +556,6 @@ async function handleCompletePasswordSetup(email: string, otp: string, newPasswo
       }
     }
 
-    // Verify OTP and get user data
     const otpResult = await query(
       `SELECT email, groupid, clientid, clientcode, head_of_family 
        FROM pms_clients_master 
