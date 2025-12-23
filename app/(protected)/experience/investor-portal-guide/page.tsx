@@ -595,36 +595,23 @@ function useVideoTutorials() {
     setError(null);
 
     try {
-      const folderUrl = 'https://vault.qodeinvest.com/reports-tutorial/';
+      const folderUrl = `/api/list-folder?path=videos/reports-tutorial/`
 
       const response = await fetch(folderUrl);
       if (!response.ok) {
         throw new Error("Failed to fetch video tutorials");
       }
 
-      const htmlText = await response.text();
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(htmlText, "text/html");
-      const links = doc.querySelectorAll("a[href]");
-      const files: VideoFile[] = [];
+      const responseData = await response.json();
 
-      links.forEach((link) => {
-        const href = link.getAttribute("href");
-        const text = link.textContent?.trim();
+      const files: VideoFile[] =
+        (responseData?.data || [])
+          .filter((item: any) => item.filename && item.url)
+          .map((item: any) => ({
+            name: item.filename,
+            url: item.url,
+          }));
 
-        if (
-          href &&
-          text &&
-          !href.includes("../") &&
-          !href.endsWith("/") &&
-          text !== ".gitkeep" &&
-          text !== "Parent Directory"
-        ) {
-          const fileName = decodeURIComponent(text);
-          const fileUrl = `${folderUrl}${encodeURIComponent(fileName)}`;
-          files.push({ name: fileName, url: fileUrl });
-        }
-      });
 
       setVideoFiles(files);
     } catch (error) {
@@ -642,12 +629,10 @@ function useVideoTutorials() {
   return { videoFiles, loading, error, refetch: fetchVideoTutorials };
 }
 
-/* =========================
-   Snapshot Data Fetcher Hook
-   ========================= */
+
 function useSnapshotData() {
   const [snapshotData, setSnapshotData] = React.useState<SnapshotData>({});
-  const [loading, setLoading] = React.useState(true);
+  const [loading, setLoading] = React.useState<boolean>(true);
   const [error, setError] = React.useState<string | null>(null);
 
   const fetchSnapshotData = React.useCallback(async () => {
@@ -655,67 +640,45 @@ function useSnapshotData() {
     setError(null);
 
     try {
-      const baseUrl = 'https://vault.qodeinvest.com/reports-snapshot/';
+      const baseUrl = `/api/list-folder?path=images/reports-snapshot/`;
       const data: SnapshotData = {};
 
-      // Get all report names from the reports_available data
-      const reportNames = reports_available.flatMap(group =>
-        group.report_name.map(report => report.name)
-      );
-
-      // Fetch snapshots for each report
+      const reportNames =
+        (typeof reports_available !== "undefined"
+          ? reports_available.flatMap(group =>
+              group.report_name.map(report => report.name)
+            )
+          : []
+        );
       await Promise.allSettled(
         reportNames.map(async (reportName) => {
+          let folderName = reportName;
+          if (reportName === "Statement of Capital Gain/Loss") {
+            folderName = "Statement of Capital Gain Loss";
+          }
+
+          const folderUrl = `${baseUrl}${encodeURIComponent(folderName)}/`;
+
           try {
-            let folderName = reportName;
-
-            // Special case: Handle "Statement of Capital Gain/Loss" -> "Statement of Capital Gain Loss"
-            if (reportName === "Statement of Capital Gain/Loss") {
-              folderName = "Statement of Capital Gain Loss";
-            }
-
-            const folderUrl = `${baseUrl}${encodeURIComponent(folderName)}/`;
             const response = await fetch(folderUrl);
 
             if (!response.ok) {
-              console.warn(`No snapshots found for report: ${reportName}`);
               return;
             }
 
-            const htmlText = await response.text();
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(htmlText, "text/html");
-            const links = doc.querySelectorAll("a[href]");
-            const files: SnapshotFile[] = [];
-
-            links.forEach((link) => {
-              const href = link.getAttribute("href");
-              const text = link.textContent?.trim();
-
-              if (
-                href &&
-                text &&
-                !href.includes("../") &&
-                !href.endsWith("/") &&
-                text !== ".gitkeep" &&
-                text !== "Parent Directory" &&
-                (text.toLowerCase().endsWith('.png') ||
-                  text.toLowerCase().endsWith('.jpg') ||
-                  text.toLowerCase().endsWith('.jpeg') ||
-                  text.toLowerCase().endsWith('.gif') ||
-                  text.toLowerCase().endsWith('.webp'))
-              ) {
-                const fileName = decodeURIComponent(text);
-                const fileUrl = `${folderUrl}${encodeURIComponent(fileName)}`;
-                files.push({ name: fileName, url: fileUrl });
-              }
-            });
+            const responseData = await response.json();
+            const files: SnapshotFile[] =
+              (responseData?.data || [])
+              .filter((item: any) => item.filename && item.url)
+              .map((item: any) => ({
+                name: item.filename,
+                url: item.url,
+              }));
 
             if (files.length > 0) {
               data[reportName] = files;
             }
-          } catch (error) {
-            console.warn(`Failed to fetch snapshots for ${reportName}:`, error);
+          } catch (err) {
           }
         })
       );

@@ -59,7 +59,12 @@ export function ClientProvider({ children }: { children: ReactNode }) {
       });
       console.log('API response status:', response.status);
 
-      if (response.ok) {
+      if (response.status === 401) {
+        // Handle unauthenticated user
+        console.log('Unauthorized (401): clearing client state due to authentication error');
+        clearSelectedClient();
+        // Optionally, trigger a redirect or other action here if needed
+      } else if (response.ok) {
         const data = await response.json();
         console.log('Client data fetched:', data);
 
