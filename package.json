@@ -10,6 +10,8 @@
     "start:network": "next start -p 3010 -H 0.0.0.0"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.957.0",
+    "@aws-sdk/s3-request-presigner": "^3.957.0",
     "@capacitor/android": "^7.4.4",
     "@capacitor/app": "^7.1.0",
     "@hookform/resolvers": "^3.10.0",

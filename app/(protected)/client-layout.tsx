@@ -25,7 +25,7 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
     selectedClientType === null
   ) {
     return (
-        <FullscreenLoader brand="Qode" subtitle="Loading details…" />
+      <FullscreenLoader brand="Qode" subtitle="Loading details…" />
     );
   }
 

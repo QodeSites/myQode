@@ -25,7 +25,14 @@ type CalculatorRow = {
   strategy: string;
   inceptionDate: string | null;
   averageAum: string;
+  performanceFees: string;
+  performanceFeesGst: string;
+  fixedFees: string;
+  fixedFeesGst: string;
+  totalFees: string;
+  totalFeesGst: string;
   totalFeesCollected: string;
+  distributorPercentage: string;
   distributorShare: string;
   accountcode?: string;
 };
@@ -129,8 +136,26 @@ export default function Calculator() {
           body: JSON.stringify(reqBody),
         });
         if (!res.ok) throw new Error(`API error (${res.status}): ${await res.text()}`);
-        const apiRows: CalculatorRow[] = await res.json();
-        setRows(apiRows);
+        // Adapt incoming API to our UI columns
+        const apiRows = await res.json() as any[];
+        const mappedRows: CalculatorRow[] = apiRows.map((r) => ({
+          id: r.id,
+          clientName: r.clientName,
+          strategy: r.strategy,
+          inceptionDate: r.inceptionDate ?? null,
+          averageAum: r.averageAum,
+          performanceFees: r.performanceFees,
+          performanceFeesGst: r.performanceFeesGst,
+          fixedFees: r.fixedFees,
+          fixedFeesGst: r.fixedFeesGst,
+          totalFees: r.totalFees,
+          totalFeesGst: r.totalFeesGst,
+          totalFeesCollected: r.totalFeesCollected,
+          distributorPercentage: r.distributorPercentage,
+          distributorShare: r.distributorShare,
+          accountcode: r.accountcode,
+        }));
+        setRows(mappedRows);
       } catch (e: any) {
         setError(e.message || "Failed to load data");
         setRows([]);
@@ -141,16 +166,43 @@ export default function Calculator() {
   }, [selectedPeriod]);
 
   // Totals
-  const totalFees = rows.reduce(
-    (sum, row) => sum + (parseFloat(row.totalFeesCollected.replace(/,/g, "")) || 0), 0
-  );
-  const totalDistributorShare = rows.reduce(
-    (sum, row) => sum + (parseFloat(row.distributorShare.replace(/,/g, "")) || 0), 0
-  );
   const totalAum = rows.reduce(
     (sum, row) => sum + (parseFloat(row.averageAum.replace(/,/g, "")) || 0), 0
   );
   const avgAumPerClient = rows.length > 0 ? totalAum / rows.length : 0;
+
+  const totalPerfFees = rows.reduce(
+    (sum, row) => sum + (parseFloat(row.performanceFees.replace(/,/g, "")) || 0), 0
+  );
+
+  const totalFixedFees = rows.reduce(
+    (sum, row) => sum + (parseFloat(row.fixedFees.replace(/,/g, "")) || 0), 0
+  );
+  const totalPerfFeesGst = rows.reduce(
+    (sum, row) => sum + (parseFloat(row.performanceFeesGst?.replace(/,/g, "")) || 0), 0
+  );
+  const totalFixedFeesGst = rows.reduce(
+    (sum, row) => sum + (parseFloat(row.fixedFeesGst?.replace(/,/g, "")) || 0), 0
+  );
+  const totalFees = rows.reduce(
+    (sum, row) => sum + (parseFloat(row.totalFees?.replace(/,/g, "")) || 0), 0
+  );
+  const totalFeesGst = rows.reduce(
+    (sum, row) => sum + (parseFloat(row.totalFeesGst?.replace(/,/g, "")) || 0), 0
+  );
+  const totalFeesCollected = rows.reduce(
+    (sum, row) => sum + (parseFloat(row.totalFeesCollected?.replace(/,/g, "")) || 0), 0
+  );
+
+  const totalWithGst = totalFees + totalFeesGst;
+  // Use average of distributor percentage if not consistent for all rows
+  const distributorPercentage =
+    rows.length && rows[0].distributorPercentage
+      ? rows[0].distributorPercentage
+      : "—";
+  const totalDistributorShare = rows.reduce(
+    (sum, row) => sum + (parseFloat(row.distributorShare.replace(/,/g, "")) || 0), 0
+  );
 
   const formatNumber = (num: number) =>
     num.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -158,9 +210,9 @@ export default function Calculator() {
   // --- RENDER ---
 
   return (
-    <div className="flex flex-col gap-6 p-6 max-w-7xl mx-auto">
+    <div className="flex flex-col gap-2 space-y-6 w-full mx-auto">
       {/* Period Selector */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
         <label className="font-medium text-green-900 text-sm min-w-32">Period:</label>
         <div className="w-full sm:w-96">
           {periodsLoading ? (
@@ -188,7 +240,7 @@ export default function Calculator() {
       </div>
       {/* Selected Range Summary */}
       {selectedPeriod && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1">
           <span
             key={selectedPeriod.label}
             className="inline-flex items-center gap-1 bg-green-100 text-green-900 text-xs px-3 py-1.5 rounded-full"
@@ -214,8 +266,15 @@ export default function Calculator() {
               <TableHead className="text-white text-xs font-medium px-4 py-3">Client Name</TableHead>
               <TableHead className="text-white text-xs font-medium px-4 py-3">Strategy</TableHead>
               <TableHead className="text-white text-xs font-medium px-4 py-3">Inception Date</TableHead>
-              <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Daily Average AUM</TableHead>
-              <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Total Fees Collected</TableHead>
+              <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Daily Avg AUM</TableHead>
+              <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Perf. Fees</TableHead>
+              {/* <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Perf. Fees GST</TableHead> */}
+              <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Fixed Fees</TableHead>
+              {/* <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Fixed Fees GST</TableHead> */}
+              <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Total Fees</TableHead>
+              <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Total Fees GST</TableHead>
+              <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Total (Fees + GST)</TableHead>
+              <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Distributor %</TableHead>
               <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Distributor Share</TableHead>
             </TableRow>
           </TableHeader>
@@ -233,8 +292,32 @@ export default function Calculator() {
                 <TableCell className="px-4 py-3 text-sm text-right text-green-900">
                   {row.averageAum}
                 </TableCell>
+                <TableCell className="px-4 py-3 text-sm text-right text-green-900">
+                  {row.performanceFees}
+                </TableCell>
+                {/* <TableCell className="px-4 py-3 text-sm text-right text-green-900">
+                  {row.performanceFeesGst}
+                </TableCell> */}
+                <TableCell className="px-4 py-3 text-sm text-right text-green-900">
+                  {row.fixedFees}
+                </TableCell>
+                {/* <TableCell className="px-4 py-3 text-sm text-right text-green-900">
+                  {row.fixedFeesGst}
+                </TableCell> */}
                 <TableCell className="px-4 py-3 text-sm text-right text-green-900 font-medium">
-                  {row.totalFeesCollected}
+                  {row.totalFees}
+                </TableCell>
+                <TableCell className="px-4 py-3 text-sm text-right text-green-900 font-medium">
+                  {row.totalFeesGst}
+                </TableCell>
+                <TableCell className="px-4 py-3 text-sm text-right text-green-900 font-medium">
+                  {formatNumber(
+                    (parseFloat(row.totalFees?.replace(/,/g, "")) || 0) +
+                    (parseFloat(row.totalFeesGst?.replace(/,/g, "")) || 0)
+                  )}
+                </TableCell>
+                <TableCell className="px-4 py-3 text-sm text-right text-green-900 font-medium">
+                  {row.distributorPercentage}
                 </TableCell>
                 <TableCell className="px-4 py-3 text-sm text-right text-green-900 font-medium">
                   {row.distributorShare}
@@ -251,9 +334,30 @@ export default function Calculator() {
                 {rows.length > 0 ? formatNumber(avgAumPerClient) : "—"}
               </TableCell>
               <TableCell className="px-4 py-4 text-right text-green-900">
+                {formatNumber(totalPerfFees)}
+              </TableCell>
+              {/* <TableCell className="px-4 py-4 text-right text-green-900">
+                {formatNumber(totalPerfFeesGst)}
+              </TableCell> */}
+              <TableCell className="px-4 py-4 text-right text-green-900">
+                {formatNumber(totalFixedFees)}
+              </TableCell>
+              {/* <TableCell className="px-4 py-4 text-right text-green-900">
+                {formatNumber(totalFixedFeesGst)}
+              </TableCell> */}
+              <TableCell className="px-4 py-4 text-right text-green-900 font-medium">
                 {formatNumber(totalFees)}
               </TableCell>
-              <TableCell className="px-4 py-4 text-right text-green-900">
+              <TableCell className="px-4 py-4 text-right text-green-900 font-medium">
+                {formatNumber(totalFeesGst)}
+              </TableCell>
+              <TableCell className="px-4 py-4 text-right text-green-900 font-medium">
+                {formatNumber(totalWithGst)}
+              </TableCell>
+              <TableCell className="px-4 py-4 text-right text-green-900 font-medium">
+                {distributorPercentage}
+              </TableCell>
+              <TableCell className="px-4 py-4 text-right text-green-900 font-medium">
                 {formatNumber(totalDistributorShare)}
               </TableCell>
             </TableRow>

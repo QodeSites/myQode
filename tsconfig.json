@@ -22,6 +22,6 @@
       "@/*": ["./*"]
     }
   },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "app/(protected)/experience/investor-portal-guide/page.tsx"],
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "app/(protected)/experience/investor-portal-guide/page.tsx", "app/api/list-folder/route.tsx'"],
   "exclude": ["node_modules"]
 }

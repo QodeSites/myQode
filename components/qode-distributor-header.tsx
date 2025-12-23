@@ -33,7 +33,7 @@ export default function QodeDistributorHeader({ setSidebarOpen }: HeaderProps) {
           {/* Left: Logo */}
           <div className="flex items-center">
             <Link href="/calculator">
-              <h1 className="font-serif text-2xl sm:text-3xl font-bold text-primary leading-none">
+              <h1 className="text-2xl sm:text-3xl font-bold text-primary leading-none">
                 <sub className="text-xs sm:text-sm">my</sub>Qode
               </h1>
             </Link>

@@ -202,7 +202,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     console.log('ClientProvider useEffect triggered');
     fetchClientData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [selectedClientType]);
 
   const setSelectedClient = (clientCode: string) => {
     const client = clients.find((c: ClientData) => c.clientcode === clientCode);

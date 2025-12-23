@@ -16,7 +16,6 @@ interface CalculatorRequest {
     endDate: string;   // required: 'YYYY-MM-DD'
 }
 
-// Master list of period mappings based on the provided image
 const PERIOD_DATE_MAPPING = [
     {
         type: "Quarter",
@@ -135,7 +134,7 @@ export async function GET() {
     // Get maximum inception date (the latest one)
     let maxInceptionDateObj: Date | null = null;
     if (clientInceptionDates.length) {
-        maxInceptionDateObj = new Date(Math.max.apply(null, clientInceptionDates));
+        maxInceptionDateObj = new Date(Math.max(...clientInceptionDates.map(x => x.getTime())));
     }
     console.log(maxInceptionDateObj);
 
@@ -207,14 +206,12 @@ export async function GET() {
 // Returns array of calc rows
 export async function POST(req: Request) {
     try {
-        // Await the cookies() call, as per Next.js guidance for async dynamic route handlers
         const cookieStore = await cookies();
         const userContextCookie = cookieStore.get('qode-user-context');
 
         let userContext: UserContext | null = null;
         let email: string | null = null;
 
-        // Parse user context
         if (userContextCookie?.value) {
             try {
                 userContext = JSON.parse(userContextCookie.value);
@@ -227,7 +224,6 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'No user context' }, { status: 401 });
         }
 
-        // Parse POST body for date range
         let body: CalculatorRequest;
         try {
             body = await req.json();
@@ -238,7 +234,7 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
         }
 
-        // Get distributor (the user)
+        // Distributor info
         const distributorResult = await query(
             `SELECT * FROM pms_clients_master WHERE email = $1`,
             [email]
@@ -250,7 +246,7 @@ export async function POST(req: Request) {
         const intermediaryName = distributor.clientname;
         const fees_percentage: number = parseFloat(distributor.intermediary_fee_percentage) || 0;
 
-        // Find clients for whom this user is an intermediary
+        // Related clients
         const clientsResult = await query(
             `SELECT * FROM pms_clients_master WHERE intermediaryname = $1`,
             [intermediaryName]
@@ -262,7 +258,7 @@ export async function POST(req: Request) {
             return NextResponse.json([], { status: 200 });
         }
 
-        // List of client codes for the query
+        // Client codes
         const wsClientCodes = clientRows.map((row: any) => row.clientcode);
 
         const aumResult = await query1(
@@ -275,7 +271,7 @@ export async function POST(req: Request) {
         );
         console.log(aumResult.rows,"===========================aumResult");
 
-        // Fetch each account's inception date (the earliest valuedate)
+        // Inception dates
         const inceptionResult = await query1(
             `SELECT accountcode, MIN(valuedate) as inception_date
              FROM pms_clients_tracker.pms_aum
@@ -285,35 +281,58 @@ export async function POST(req: Request) {
         );
         console.log(inceptionResult.rows,"===========================inceptionResult");
 
-        // Fetch transactions (fees)
-        const feesResult = await query1(
-            `SELECT ws_account_code as accountcode, client_name as clientname, SUM(net_amount) as total_fees_collected
+        // Fetch fees, split by Performance and Management
+        const feesQuery = `
+            SELECT
+                ws_account_code as accountcode,
+                client_name as clientname,
+                SUM(CASE WHEN tran_desc = 'Performance Fees' THEN net_amount ELSE 0 END) as performance_fees,
+                SUM(CASE WHEN tran_desc = 'Management Fees' THEN net_amount ELSE 0 END) as fixed_fees,
+                SUM(net_amount) as total_fees_collected
             FROM pms_clients_tracker.pms_transactions
             WHERE ws_account_code = ANY($1)
               AND tran_desc IN ('Performance Fees','Management Fees')
               AND trandate BETWEEN $2 AND $3
             GROUP BY ws_account_code, client_name
-            `,
+        `;
+
+        const feesResult = await query1(
+            feesQuery,
             [wsClientCodes, body.startDate, body.endDate]
         );
         console.log(feesResult.rows,"===========================feesResult");
 
-        // Helper to map client code to data
         const aumMap = new Map<string, any>();
         aumResult.rows.forEach((row: any) => aumMap.set(row.accountcode, row.average_aum));
         const inceptionMap = new Map<string, any>();
         inceptionResult.rows.forEach((row: any) => inceptionMap.set(row.accountcode, row.inception_date));
 
-        // Prepare response
+        const GST_RATE = 0.18;
+
         const response = feesResult.rows.map((row: any, idx: number) => {
             const accountcode = row.accountcode;
             const clientname = row.clientname;
-            const totalFees = parseFloat(row.total_fees_collected) || 0;
-            const distributorShare = totalFees * (fees_percentage / 100);
+
+            const perfFeesRaw = parseFloat(row.performance_fees) || 0;
+            const fixedFeesRaw = parseFloat(row.fixed_fees) || 0;
+            const totalFeesRaw = parseFloat(row.total_fees_collected) || 0;
+
+            // GST calculations
+            const gstOnPerf = perfFeesRaw * GST_RATE;
+            const gstOnFixed = fixedFeesRaw * GST_RATE;
+            const gstOnTotal = totalFeesRaw * GST_RATE;
+
+            const perfFeesBeforeGst = perfFeesRaw - gstOnPerf;
+            const fixedFeesBeforeGst = fixedFeesRaw - gstOnFixed;
+            const totalFeesBeforeGst = totalFeesRaw - gstOnTotal;
+
+            // Distributor share on GST-deducted total
+            const distributorShare = totalFeesRaw * (fees_percentage/100);
+
             return {
                 id: idx + 1,
                 clientName: clientname,
-                strategy: accountcode, // Strategy might not be available from current tables
+                strategy: accountcode,
                 inceptionDate: inceptionMap.get(accountcode)
                     ? (() => {
                         const d = inceptionMap.get(accountcode);
@@ -322,11 +341,26 @@ export async function POST(req: Request) {
                         return `${dd}-${mm}-${yyyy}`;
                     })()
                     : null,
-                averageAum: aumMap.get(accountcode) 
+                averageAum: aumMap.get(accountcode)
                     ? Number(aumMap.get(accountcode)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                     : "0.00",
-                totalFeesCollected: totalFees.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+
+                // Performance Fees
+                performanceFees: perfFeesBeforeGst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                performanceFeesGst: gstOnPerf.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+
+                // Fixed Fees
+                fixedFees: fixedFeesBeforeGst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                fixedFeesGst: gstOnFixed.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+
+                // Totals
+                totalFees: totalFeesBeforeGst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                totalFeesGst: gstOnTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                totalFeesCollected : totalFeesRaw.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+
+                distributorPercentage: fees_percentage.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
                 distributorShare: distributorShare.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+
                 accountcode
             };
         });

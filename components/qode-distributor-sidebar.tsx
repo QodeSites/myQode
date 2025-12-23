@@ -59,7 +59,7 @@ export default function DistributorQodeSidebar({ open = false, onClose }: QodeSi
   return (
     <>
       {/* Desktop sidebar */}
-      <aside className="hidden lg:block sticky top-20 h-fit w-74 shrink-0 rounded-2xl border-r bg-sidebar/90 p-4">
+      <aside className="hidden lg:block sticky top-20 h-fit w-74 shrink-0 rounded-2xl border-r bg-sidebar/90 p-2">
         {SidebarContent}
       </aside>
 

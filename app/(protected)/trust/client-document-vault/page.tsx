@@ -8,8 +8,9 @@ import { Button } from "@/components/ui/button";
 interface DocFile {
   name: string;
   url: string;
-  size?: string;
+  size?: string | number;
   lastModified?: string;
+  section: string;
 }
 
 interface DocSection {
@@ -24,6 +25,7 @@ interface DocSection {
   hasError?: boolean;
 }
 
+// Static template for section mapping, but we only use this once for rendering UI structure:
 const DOC_TEMPLATES = [
   {
     id: "pms-agreement",
@@ -48,10 +50,17 @@ const DOC_TEMPLATES = [
   },
 ];
 
+// Map folderName to section id
+const FOLDER_TO_ID: Record<string, string> = {
+  "PMS Agreement": "pms-agreement",
+  "Account Opening Documents": "account-opening-docs",
+  "CML": "cml",
+};
+
 export default function AccountDocumentsPage() {
   const { selectedClientId, clientLoading, clients } = useClient();
-  const [docSections, setDocSections] = useState<DocSection[]>(() =>
-    // Initialize once with empty files
+
+  const [docSections, setDocSections] = useState<DocSection[]>(
     DOC_TEMPLATES.map((template) => ({
       ...template,
       files: [],
@@ -60,140 +69,10 @@ export default function AccountDocumentsPage() {
       hasError: false,
     }))
   );
-  const [fetchedClientIds, setFetchedClientIds] = useState<Set<string>>(new Set());
-  // Cache successful clientId mappings for each client name
-  const [clientIdMappings, setClientIdMappings] = useState<Map<string, string>>(new Map());
 
-  // Get all client IDs for the same client name as the selected client
-  const getRelatedClientIds = useCallback((currentClientId: string): string[] => {
-    const currentClient = clients.find(c => c.clientid === currentClientId);
-    if (!currentClient) return [currentClientId];
-    
-    // Find all clients with the same name
-    const relatedClients = clients.filter(c => c.clientname === currentClient.clientname);
-    return relatedClients.map(c => c.clientid);
-  }, [clients]);
+  const [hadFetchError, setHadFetchError] = useState<boolean>(false);
 
-  // Function to try fetching from multiple client IDs
-  const tryFetchWithFallback = useCallback(async (
-    sectionId: string, 
-    folderName: string, 
-    primaryClientId: string
-  ): Promise<DocFile[]> => {
-    const currentClient = clients.find(c => c.clientid === primaryClientId);
-    if (!currentClient) throw new Error("Client not found");
-
-    const clientName = currentClient.clientname;
-    
-    // Check if we already have a successful mapping for this client name
-    const cachedClientId = clientIdMappings.get(clientName);
-    const clientIdsToTry = cachedClientId 
-      ? [cachedClientId] // Try cached one first
-      : getRelatedClientIds(primaryClientId);
-
-    // If we have a cached mapping but it's not in our current list, add the primary client ID
-    if (cachedClientId && !clientIdsToTry.includes(primaryClientId)) {
-      clientIdsToTry.unshift(primaryClientId);
-    }
-
-    let lastError: Error | null = null;
-
-    for (const clientId of clientIdsToTry) {
-      try {
-        console.log(`Trying to fetch documents for clientId: ${clientId} (client: ${clientName})`);
-        
-        const folderUrl = `https://vault.qodeinvest.com/client-documents/ClientList/${clientId}/${encodeURIComponent(folderName)}`;
-        const response = await fetch(folderUrl);
-        
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: Failed to fetch from ${clientId}`);
-        }
-
-        const htmlText = await response.text();
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(htmlText, "text/html");
-        const links = doc.querySelectorAll("a[href]");
-        const files: DocFile[] = [];
-
-        links.forEach((link) => {
-          const href = link.getAttribute("href");
-          const text = link.textContent?.trim();
-
-          if (
-            href &&
-            text &&
-            !href.includes("../") &&
-            !href.endsWith("/") &&
-            text.includes(".") &&
-            text !== ".gitkeep"
-          ) {
-            const fileName = decodeURIComponent(text);
-            const fileUrl = `${folderUrl}/${encodeURIComponent(fileName)}`;
-            files.push({ name: fileName, url: fileUrl });
-          }
-        });
-
-        // Success! Cache this client ID for future requests
-        if (files.length > 0 || clientId === primaryClientId) {
-          console.log(`Successfully fetched ${files.length} files using clientId: ${clientId}`);
-          setClientIdMappings(prev => new Map(prev).set(clientName, clientId));
-          return files;
-        }
-      } catch (error) {
-        console.log(`Failed to fetch from clientId ${clientId}:`, error);
-        lastError = error as Error;
-        continue; // Try next client ID
-      }
-    }
-
-    // If we get here, all attempts failed
-    throw lastError || new Error("All client ID attempts failed");
-  }, [clients, clientIdMappings, getRelatedClientIds]);
-
-  // Function to fetch files for a specific folder with fallback logic
-  const fetchFolderFiles = useCallback(async (sectionId: string, folderName: string, clientId: string) => {
-    if (!clientId) return;
-
-    // Set loading state and clear error
-    setDocSections((prev) =>
-      prev.map((section) =>
-        section.id === sectionId 
-          ? { ...section, loading: true, hasError: false } 
-          : section
-      )
-    );
-
-    try {
-      const files = await tryFetchWithFallback(sectionId, folderName, clientId);
-      
-      // Successfully fetched - update files and clear error
-      setDocSections((prev) =>
-        prev.map((section) =>
-          section.id === sectionId
-            ? { ...section, files, loading: false, hasError: false }
-            : section
-        )
-      );
-    } catch (error) {
-      console.error("Error fetching folder files:", error);
-      
-      // On error, keep existing files and set error flag
-      setDocSections((prev) =>
-        prev.map((section) =>
-          section.id === sectionId
-            ? { 
-                ...section, 
-                loading: false, 
-                hasError: true 
-                // Keep existing files - don't modify files array
-              }
-            : section
-        )
-      );
-    }
-  }, [tryFetchWithFallback]);
-
-  // Update disabled state when client loading or selection changes
+  // Update sections' disabled state on loading/client change
   useEffect(() => {
     setDocSections((prev) =>
       prev.map((section) => ({
@@ -203,38 +82,82 @@ export default function AccountDocumentsPage() {
     );
   }, [clientLoading, selectedClientId]);
 
-  // Fetch files when a new client is selected
+  // Fetch and organize all files for the client
+  const fetchAndDistributeFiles = useCallback(
+    async (clientId: string) => {
+      // Set all loading true, clear hasError
+      setDocSections((prev) =>
+        prev.map((section) => ({ ...section, loading: true, hasError: false }))
+      );
+      setHadFetchError(false);
+
+      try {
+        const apiUrl = `/api/list-folder?path=docs/client-documents/${clientId}/`;
+        const response = await fetch(apiUrl);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const responseData = await response.json();
+
+        // Defensive: response.data?.data (response.data.data)
+        const files: DocFile[] =
+          responseData?.data?.map((item: any) => ({
+            name: item.filename,
+            url: item.url,
+            size: item.size,
+            lastModified: item.lastModified,
+            section: item.section,
+          })) || [];
+
+        // Group files by folder name/section
+        const grouped: Record<string, DocFile[]> = {};
+        for (const file of files) {
+          if (!grouped[file.section]) grouped[file.section] = [];
+          grouped[file.section].push(file);
+        }
+
+        setDocSections((prev) =>
+          prev.map((section) => ({
+            ...section,
+            loading: false,
+            hasError: false,
+            // Only use files for this section.folderName/section
+            files: grouped[section.folderName] ? grouped[section.folderName] : [],
+          }))
+        );
+      } catch (error) {
+        setHadFetchError(true);
+        setDocSections((prev) =>
+          prev.map((section) => ({
+            ...section,
+            loading: false,
+            hasError: true,
+            // Don't clear files
+          }))
+        );
+      }
+    },
+    []
+  );
+
+  // Re-fetch whenever client changes
   useEffect(() => {
-    if (
-      selectedClientId &&
-      !clientLoading &&
-      !fetchedClientIds.has(selectedClientId)
-    ) {
-      // Mark this client as being fetched
-      setFetchedClientIds(prev => new Set([...prev, selectedClientId]));
-      
-      // Fetch files for all sections
-      docSections.forEach((section) => {
-        fetchFolderFiles(section.id, section.folderName, selectedClientId);
-      });
+    if (selectedClientId && !clientLoading) {
+      fetchAndDistributeFiles(selectedClientId);
     }
-  }, [selectedClientId, clientLoading, fetchedClientIds, fetchFolderFiles, docSections]);
+  }, [selectedClientId, clientLoading, fetchAndDistributeFiles]);
+
+  // Retry handler for a single section (force full fetch for simplicity)
+  const retryFetch = () => {
+    if (selectedClientId) {
+      fetchAndDistributeFiles(selectedClientId);
+    }
+  };
 
   const toggleSection = (sectionId: string) => {
-    const section = docSections.find((s) => s.id === sectionId);
-    if (!section || section.disabled) return;
-
     setDocSections((prev) =>
       prev.map((s) =>
         s.id === sectionId ? { ...s, expanded: !s.expanded } : s
       )
     );
-  };
-
-  const retryFetch = (sectionId: string, folderName: string) => {
-    if (selectedClientId) {
-      fetchFolderFiles(sectionId, folderName, selectedClientId);
-    }
   };
 
   return (
@@ -324,7 +247,7 @@ export default function AccountDocumentsPage() {
                         <div className="flex items-center gap-2">
                           {section.hasError && (
                             <Button
-                              onClick={() => retryFetch(section.id, section.folderName)}
+                              onClick={() => retryFetch()}
                               variant="outline"
                               size="sm"
                               disabled={section.loading}
@@ -358,7 +281,7 @@ export default function AccountDocumentsPage() {
                       </div>
                     ) : section.files.length === 0 ? (
                       <div className="p-4 text-center text-sm text-muted-foreground">
-                        {section.hasError 
+                        {section.hasError
                           ? "Failed to load files. Please try again."
                           : "No files found in this section."
                         }
@@ -377,11 +300,13 @@ export default function AccountDocumentsPage() {
                                   <p className="text-sm font-medium truncate">
                                     {file.name}
                                   </p>
-                                  {file.size && (
+                                  {/* {file.size && (
                                     <p className="text-xs text-muted-foreground">
-                                      {file.size}
+                                      {typeof file.size === "number"
+                                        ? `${(file.size / 1024 / 1024).toFixed(2)} MB`
+                                        : file.size}
                                     </p>
-                                  )}
+                                  )} */}
                                 </div>
                               </div>
                               <Link
