@@ -212,7 +212,7 @@ export default function Calculator() {
   return (
     <div className="flex flex-col gap-2 space-y-6 w-full mx-auto">
       {/* Period Selector */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 mb-2">
         <label className="font-medium text-green-900 text-sm min-w-32">Period:</label>
         <div className="w-full sm:w-96">
           {periodsLoading ? (
@@ -240,7 +240,7 @@ export default function Calculator() {
       </div>
       {/* Selected Range Summary */}
       {selectedPeriod && (
-        <div className="flex flex-wrap gap-1">
+        <div className="flex flex-wrap gap-1 mb-2">
           <span
             key={selectedPeriod.label}
             className="inline-flex items-center gap-1 bg-green-100 text-green-900 text-xs px-3 py-1.5 rounded-full"
@@ -258,113 +258,119 @@ export default function Calculator() {
       {loading && <div className="text-green-900">Loading...</div>}
 
       {/* Table */}
-      <div className="rounded-lg border shadow-sm bg-white overflow-hidden">
-        <Table>
-          <TableHeader>
-            <TableRow className="bg-green-900 hover:bg-green-900">
-              <TableHead className="text-white text-xs font-medium px-4 py-3">#</TableHead>
-              <TableHead className="text-white text-xs font-medium px-4 py-3">Client Name</TableHead>
-              <TableHead className="text-white text-xs font-medium px-4 py-3">Strategy</TableHead>
-              <TableHead className="text-white text-xs font-medium px-4 py-3">Inception Date</TableHead>
-              <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Daily Avg AUM</TableHead>
-              <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Perf. Fees</TableHead>
-              {/* <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Perf. Fees GST</TableHead> */}
-              <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Fixed Fees</TableHead>
-              {/* <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Fixed Fees GST</TableHead> */}
-              <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Total Fees</TableHead>
-              <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Total Fees GST</TableHead>
-              <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Total (Fees + GST)</TableHead>
-              <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Distributor %</TableHead>
-              <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Distributor Share</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow key={row.id} className="odd:bg-white even:bg-gray-50">
-                <TableCell className="px-4 py-3 text-sm text-green-900">{row.id}</TableCell>
-                <TableCell className="px-4 py-3 text-sm text-green-900 font-medium">
-                  {row.clientName}
+      <div className="mb-1 rounded-lg border shadow-sm bg-white overflow-hidden">
+        {rows.length === 0 ? (
+          <div className="p-8 text-center text-lg text-green-900 font-semibold">
+            Not enough Data!
+          </div>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-green-900 hover:bg-green-900">
+                <TableHead className="text-white text-xs font-medium px-4 py-3">#</TableHead>
+                <TableHead className="text-white text-xs font-medium px-4 py-3">Client Name</TableHead>
+                <TableHead className="text-white text-xs font-medium px-4 py-3">Strategy</TableHead>
+                <TableHead className="text-white text-xs font-medium px-4 py-3">Inception Date</TableHead>
+                <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Daily Avg AUM</TableHead>
+                <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Perf. Fees</TableHead>
+                {/* <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Perf. Fees GST</TableHead> */}
+                <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Fixed Fees</TableHead>
+                {/* <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Fixed Fees GST</TableHead> */}
+                <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Total Fees</TableHead>
+                <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Total Fees GST</TableHead>
+                <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Total (Fees + GST)</TableHead>
+                <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Distributor %</TableHead>
+                <TableHead className="text-white text-xs font-medium px-4 py-3 text-right">Distributor Share</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={row.id} className="odd:bg-white even:bg-gray-50">
+                  <TableCell className="px-4 py-3 text-sm text-green-900">{row.id}</TableCell>
+                  <TableCell className="px-4 py-3 text-sm text-green-900 font-medium">
+                    {row.clientName}
+                  </TableCell>
+                  <TableCell className="px-4 py-3 text-sm text-green-900">{row.strategy}</TableCell>
+                  <TableCell className="px-4 py-3 text-sm text-green-900">
+                    {row.inceptionDate ?? "—"}
+                  </TableCell>
+                  <TableCell className="px-4 py-3 text-sm text-right text-green-900">
+                    {row.averageAum}
+                  </TableCell>
+                  <TableCell className="px-4 py-3 text-sm text-right text-green-900">
+                    {row.performanceFees}
+                  </TableCell>
+                  {/* <TableCell className="px-4 py-3 text-sm text-right text-green-900">
+                    {row.performanceFeesGst}
+                  </TableCell> */}
+                  <TableCell className="px-4 py-3 text-sm text-right text-green-900">
+                    {row.fixedFees}
+                  </TableCell>
+                  {/* <TableCell className="px-4 py-3 text-sm text-right text-green-900">
+                    {row.fixedFeesGst}
+                  </TableCell> */}
+                  <TableCell className="px-4 py-3 text-sm text-right text-green-900 font-medium">
+                    {row.totalFees}
+                  </TableCell>
+                  <TableCell className="px-4 py-3 text-sm text-right text-green-900 font-medium">
+                    {row.totalFeesGst}
+                  </TableCell>
+                  <TableCell className="px-4 py-3 text-sm text-right text-green-900 font-medium">
+                    {formatNumber(
+                      (parseFloat(row.totalFees?.replace(/,/g, "")) || 0) +
+                      (parseFloat(row.totalFeesGst?.replace(/,/g, "")) || 0)
+                    )}
+                  </TableCell>
+                  <TableCell className="px-4 py-3 text-sm text-right text-green-900 font-medium">
+                    {row.distributorPercentage}
+                  </TableCell>
+                  <TableCell className="px-4 py-3 text-sm text-right text-green-900 font-medium">
+                    {row.distributorShare}
+                  </TableCell>
+                </TableRow>
+              ))}
+
+              {/* Total Row */}
+              <TableRow className="bg-green-50 font-bold border-t-2 border-green-200">
+                <TableCell colSpan={4} className="px-4 py-4 text-green-900">
+                  Total
                 </TableCell>
-                <TableCell className="px-4 py-3 text-sm text-green-900">{row.strategy}</TableCell>
-                <TableCell className="px-4 py-3 text-sm text-green-900">
-                  {row.inceptionDate ?? "—"}
+                <TableCell className="px-4 py-4 text-right text-green-900">
+                  {rows.length > 0 ? formatNumber(avgAumPerClient) : "—"}
                 </TableCell>
-                <TableCell className="px-4 py-3 text-sm text-right text-green-900">
-                  {row.averageAum}
+                <TableCell className="px-4 py-4 text-right text-green-900">
+                  {formatNumber(totalPerfFees)}
                 </TableCell>
-                <TableCell className="px-4 py-3 text-sm text-right text-green-900">
-                  {row.performanceFees}
-                </TableCell>
-                {/* <TableCell className="px-4 py-3 text-sm text-right text-green-900">
-                  {row.performanceFeesGst}
+                {/* <TableCell className="px-4 py-4 text-right text-green-900">
+                  {formatNumber(totalPerfFeesGst)}
                 </TableCell> */}
-                <TableCell className="px-4 py-3 text-sm text-right text-green-900">
-                  {row.fixedFees}
+                <TableCell className="px-4 py-4 text-right text-green-900">
+                  {formatNumber(totalFixedFees)}
                 </TableCell>
-                {/* <TableCell className="px-4 py-3 text-sm text-right text-green-900">
-                  {row.fixedFeesGst}
+                {/* <TableCell className="px-4 py-4 text-right text-green-900">
+                  {formatNumber(totalFixedFeesGst)}
                 </TableCell> */}
-                <TableCell className="px-4 py-3 text-sm text-right text-green-900 font-medium">
-                  {row.totalFees}
+                <TableCell className="px-4 py-4 text-right text-green-900 font-medium">
+                  {formatNumber(totalFees)}
                 </TableCell>
-                <TableCell className="px-4 py-3 text-sm text-right text-green-900 font-medium">
-                  {row.totalFeesGst}
+                <TableCell className="px-4 py-4 text-right text-green-900 font-medium">
+                  {formatNumber(totalFeesGst)}
                 </TableCell>
-                <TableCell className="px-4 py-3 text-sm text-right text-green-900 font-medium">
-                  {formatNumber(
-                    (parseFloat(row.totalFees?.replace(/,/g, "")) || 0) +
-                    (parseFloat(row.totalFeesGst?.replace(/,/g, "")) || 0)
-                  )}
+                <TableCell className="px-4 py-4 text-right text-green-900 font-medium">
+                  {formatNumber(totalWithGst)}
                 </TableCell>
-                <TableCell className="px-4 py-3 text-sm text-right text-green-900 font-medium">
-                  {row.distributorPercentage}
+                <TableCell className="px-4 py-4 text-right text-green-900 font-medium">
+                  {distributorPercentage}
                 </TableCell>
-                <TableCell className="px-4 py-3 text-sm text-right text-green-900 font-medium">
-                  {row.distributorShare}
+                <TableCell className="px-4 py-4 text-right text-green-900 font-medium">
+                  {formatNumber(totalDistributorShare)}
                 </TableCell>
               </TableRow>
-            ))}
-
-            {/* Total Row */}
-            <TableRow className="bg-green-50 font-bold border-t-2 border-green-200">
-              <TableCell colSpan={4} className="px-4 py-4 text-green-900">
-                Total
-              </TableCell>
-              <TableCell className="px-4 py-4 text-right text-green-900">
-                {rows.length > 0 ? formatNumber(avgAumPerClient) : "—"}
-              </TableCell>
-              <TableCell className="px-4 py-4 text-right text-green-900">
-                {formatNumber(totalPerfFees)}
-              </TableCell>
-              {/* <TableCell className="px-4 py-4 text-right text-green-900">
-                {formatNumber(totalPerfFeesGst)}
-              </TableCell> */}
-              <TableCell className="px-4 py-4 text-right text-green-900">
-                {formatNumber(totalFixedFees)}
-              </TableCell>
-              {/* <TableCell className="px-4 py-4 text-right text-green-900">
-                {formatNumber(totalFixedFeesGst)}
-              </TableCell> */}
-              <TableCell className="px-4 py-4 text-right text-green-900 font-medium">
-                {formatNumber(totalFees)}
-              </TableCell>
-              <TableCell className="px-4 py-4 text-right text-green-900 font-medium">
-                {formatNumber(totalFeesGst)}
-              </TableCell>
-              <TableCell className="px-4 py-4 text-right text-green-900 font-medium">
-                {formatNumber(totalWithGst)}
-              </TableCell>
-              <TableCell className="px-4 py-4 text-right text-green-900 font-medium">
-                {distributorPercentage}
-              </TableCell>
-              <TableCell className="px-4 py-4 text-right text-green-900 font-medium">
-                {formatNumber(totalDistributorShare)}
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
+            </TableBody>
+          </Table>
+        )}
       </div>
-      <div className="mt-6 p-3 rounded bg-yellow-50 text-yellow-900 text-sm font-medium border border-yellow-200">
+      <div className="mt-1 p-3 rounded bg-yellow-50 text-yellow-900 text-sm font-medium border border-yellow-200">
         <span className="font-semibold">Note:</span> We charge fixed fees on a quarterly basis, and performance fees on a yearly basis. Please raise an invoice for the value displayed.
       </div>
     </div>
