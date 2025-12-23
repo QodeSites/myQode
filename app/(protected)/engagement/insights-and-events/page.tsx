@@ -1,63 +1,27 @@
 "use client";
-import { useState, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
 
-const newsletters = [
-  { title: "November 2025", url: "/newsletters/Qode_Newsletter_November_2025.pdf", type: "pdf" },
-  { title: "October 2025", url: "/newsletters/Qode_Newsletter_October_2025.pdf", type: "pdf" },
-  { title: "September 2025", url: "/newsletters/Qode_Newsletter_September_2025.pdf", type: "pdf" },
-  { title: "August 2025", url: "/newsletters/Qode_Newsletter_August_2025.pdf", type: "pdf" },
-  { title: "July 2025", url: "/newsletters/Qode_Newsletter_July_2025.pdf", type: "pdf" },
-  { title: "June 2025", url: "/newsletters/Qode_Newsletter_June_2025.pdf", type: "pdf" },
-  { title: "May 2025", url: "/newsletters/Qode_Newsletter_May_2025.pdf", type: "pdf" },
-  { title: "April 2025", url: "/newsletters/Qode_Newsletter_April_2025.pdf", type: "pdf" },
-  { title: "March 2025", url: "/newsletters/Qode_Newsletter_March_2025.pdf", type: "pdf" },
-  { title: "February 2025", url: "/newsletters/Qode_Newsletter_February_2025.pdf", type: "pdf" },
-];
-
-const perspectives = [
-  { title: "November 2025", url: "/perspectives/Qode_Perspective_November_2025.pdf", type: "pdf" },
-  { title: "September 2025", url: "/perspectives/Qode_Perspective_September_2025.pdf", type: "pdf" },
-];
-
-const pitchDecks = [
-  { title: "July 2025", url: "/QodePitchDescks/Qode_Presentation_July_2025.pdf", type: "pdf" },
-  { title: "June 2025", url: "/QodePitchDescks/Qode Presentation_June_2025.pdf", type: "pdf" },
-  { title: "May 2025", url: "/QodePitchDescks/Qode Presentation_May 2025.pdf", type: "pdf" },
-  { title: "April 2025", url: "/QodePitchDescks/Qode Presentation_April_2025.pdf", type: "pdf" },
-  { title: "March 2025", url: "/QodePitchDescks/Qode_Presentation_March_2025.pdf", type: "pdf" },
-  { title: "February 2025", url: "/QodePitchDescks/Qode_Presentation_Feb_2025.pdf", type: "pdf" },
-  { title: "January 2025", url: "/QodePitchDescks/Qode_Presentation_Jan_2025.pdf", type: "pdf" },
-  { title: "December 2024", url: "/QodePitchDescks/Qode_Presentation_Dec_2024.pdf", type: "pdf" },
-  { title: "November 2024", url: "/QodePitchDescks/Qode Presentation_Nov 2024.pdf", type: "pdf" },
-];
-
-const recordings = [
-  { title: "Recording 1", url: "#", type: "video" },
-  { title: "Recording 2", url: "#", type: "video" },
-  { title: "Recording 3", url: "#", type: "video" },
-  { title: "Recording 4", url: "#", type: "video" },
-  { title: "Recording 5", url: "#", type: "video" },
-];
+// Remove static array list, will fetch below
 
 function SectionBar({ title }: { title: string }) {
   return (
     <div className="mt-6 mb-3 rounded-sm bg-primary px-3 py-2 text-center">
       <h2 className="text-sm font-semibold tracking-wide text-white">{title}</h2>
     </div>
-  )
+  );
 }
 
 function ThumbCard({
   title,
   onClick,
   url,
-  type = "default"
+  type = "default",
 }: {
-  title: string
-  onClick?: () => void
-  url?: string
-  type?: string
+  title: string;
+  onClick?: () => void;
+  url?: string;
+  type?: string;
 }) {
   return (
     <button
@@ -66,33 +30,33 @@ function ThumbCard({
     >
       {/* Preview content */}
       {url && type === "newsletter" ? (
-  <div className="mb-2 h-60 w-full rounded-sm border border-border bg-background overflow-hidden relative">
-    <iframe
-      src={url}
-      className="absolute top-0 left-0 w-full h-full border-0 pointer-events-none newsletter-iframe"
-      style={{
-        width: '300%',
-        height: '300%',
-        transform: 'scale(0.33)',
-        transformOrigin: 'top left'
-      }}
-      title={`Preview of ${title}`}
-      sandbox="allow-scripts allow-same-origin"
-      loading="lazy"
-    />
-    {/* Overlay to hide top banner - adjust height as needed */}
-    <div className="absolute top-0 left-0 right-0 h-10 bg-white pointer-events-none" />
-  </div>
+        <div className="mb-2 h-60 w-full rounded-sm border border-border bg-background overflow-hidden relative">
+          <iframe
+            src={url}
+            className="absolute top-0 left-0 w-full h-full border-0 pointer-events-none newsletter-iframe"
+            style={{
+              width: "300%",
+              height: "300%",
+              transform: "scale(0.33)",
+              transformOrigin: "top left",
+            }}
+            title={`Preview of ${title}`}
+            sandbox="allow-scripts allow-same-origin"
+            loading="lazy"
+          />
+          {/* Overlay to hide top banner - adjust height as needed */}
+          <div className="absolute top-0 left-0 right-0 h-10 bg-white pointer-events-none" />
+        </div>
       ) : url && type === "pdf" ? (
         <div className="mb-2 h-60 w-full rounded-sm border border-border bg-background overflow-hidden relative">
           <iframe
             src={url}
             className="absolute top-0 left-0 w-full h-full border-0 pointer-events-none"
             style={{
-              width: '150%',
-              height: '150%',
-              transform: 'scale(0.67)',
-              transformOrigin: 'top left'
+              width: "150%",
+              height: "150%",
+              transform: "scale(0.67)",
+              transformOrigin: "top left",
             }}
             title={`Preview of ${title}`}
             loading="lazy"
@@ -103,31 +67,33 @@ function ThumbCard({
           <span className="text-muted-foreground text-sm">No preview</span>
         </div>
       )}
-      <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground">{title}</span>
+      <span className="text-xs font-medium text-muted-foreground group-hover:text-foreground">
+        {title}
+      </span>
       {type === "pdf" && (
         <span className="text-xs text-blue-600 mt-1">PDF</span>
       )}
     </button>
-  )
+  );
 }
 
 function Slider({
   items,
   onItemClick,
-  sectionId
+  sectionId,
 }: {
-  items: Array<{ title: string; url?: string; type: string }>
-  onItemClick: (index: number) => void
-  sectionId: string
+  items: Array<{ title: string; url?: string; type: string }>;
+  onItemClick: (index: number) => void;
+  sectionId: string;
 }) {
   const sliderRef = useRef<HTMLDivElement>(null);
 
-  const scroll = (direction: 'left' | 'right') => {
+  const scroll = (direction: "left" | "right") => {
     if (sliderRef.current) {
       const scrollAmount = 300;
       sliderRef.current.scrollBy({
-        left: direction === 'left' ? -scrollAmount : scrollAmount,
-        behavior: 'smooth'
+        left: direction === "left" ? -scrollAmount : scrollAmount,
+        behavior: "smooth",
       });
     }
   };
@@ -136,7 +102,7 @@ function Slider({
     <div className="relative">
       {/* Left scroll button */}
       <button
-        onClick={() => scroll('left')}
+        onClick={() => scroll("left")}
         className="absolute left-0 top-1/2 transform -translate-y-1/2 z-10 bg-white/90 hover:bg-white border border-gray-300 rounded-full p-2 shadow-md transition-colors"
         aria-label="Scroll left"
       >
@@ -147,7 +113,7 @@ function Slider({
       <div
         ref={sliderRef}
         className="flex overflow-x-auto scrollbar-hide gap-4 px-12 py-2"
-        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
       >
         {items.map((item, index) => (
           <ThumbCard
@@ -162,7 +128,7 @@ function Slider({
 
       {/* Right scroll button */}
       <button
-        onClick={() => scroll('right')}
+        onClick={() => scroll("right")}
         className="absolute right-0 top-1/2 transform -translate-y-1/2 z-10 bg-white/90 hover:bg-white border border-gray-300 rounded-full p-2 shadow-md transition-colors"
         aria-label="Scroll right"
       >
@@ -332,22 +298,21 @@ export function ContentModal({
                 />
               )
             ) : (
-              // Non-PDF content
               // Non-PDF content (newsletters)
-<div className="relative h-full w-full">
-  <iframe
-    key={currentItem.url}
-    src={currentItem.url}
-    className="block h-full w-full border-0"
-    title={`${modalTitle}: ${currentItem.title}`}
-    allow="clipboard-read; clipboard-write; fullscreen"
-    sandbox="allow-scripts allow-same-origin allow-forms"
-  />
-  {/* Overlay to hide awesomewrap banner - adjust height/position as needed */}
-  {modalTitle === "Newsletter" && (
-    <div className="absolute top-0 left-0 right-0 h-12 bg-white pointer-events-none" />
-  )}
-</div>
+              <div className="relative h-full w-full">
+                <iframe
+                  key={currentItem.url}
+                  src={currentItem.url}
+                  className="block h-full w-full border-0"
+                  title={`${modalTitle}: ${currentItem.title}`}
+                  allow="clipboard-read; clipboard-write; fullscreen"
+                  sandbox="allow-scripts allow-same-origin allow-forms"
+                />
+                {/* Overlay to hide awesomewrap banner - adjust height/position as needed */}
+                {modalTitle === "Newsletter" && (
+                  <div className="absolute top-0 left-0 right-0 h-12 bg-white pointer-events-none" />
+                )}
+              </div>
             )
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-gray-50">
@@ -386,7 +351,6 @@ export function ContentModal({
   );
 }
 
-
 export default function InsightsArchivePage() {
   const [isNewsletterModalOpen, setIsNewsletterModalOpen] = useState(false);
   const [isPerspectiveModalOpen, setIsPerspectiveModalOpen] = useState(false);
@@ -396,6 +360,49 @@ export default function InsightsArchivePage() {
   const [currentPerspectiveIndex, setCurrentPerspectiveIndex] = useState(0);
   const [currentPitchDeckIndex, setCurrentPitchDeckIndex] = useState(0);
   const [currentRecordingIndex, setCurrentRecordingIndex] = useState(0);
+
+  // New: Fetched data states
+  const [newsletters, setNewsletters] = useState<Array<{title: string, url: string, type: string}>>([]);
+  const [perspectives, setPerspectives] = useState<Array<{title: string, url: string, type: string}>>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let isMounted = true;
+    setLoading(true);
+
+    // Fetch both in parallel
+    Promise.all([
+      fetch("/api/list-folder?path=docs/newsletters")
+        .then((res) => res.json())
+        .then((json) => {
+          // The response is { data: [ { filename, url, section } ] }
+          if (!Array.isArray(json.data)) return [];
+          // Use .section for title (fallback to filename if section not present)
+          return json.data.map((item: any) => ({
+            title: item.section || item.filename,
+            url: item.url,
+            type: "pdf",
+          }));
+        }),
+      fetch("/api/list-folder?path=docs/prespectives")
+        .then((res) => res.json())
+        .then((json) => {
+          if (!Array.isArray(json.data)) return [];
+          return json.data.map((item: any) => ({
+            title: item.section || item.filename,
+            url: item.url,
+            type: "pdf",
+          }));
+        })
+    ]).then(([newsletterData, perspectiveData]) => {
+      if (!isMounted) return;
+      setNewsletters(newsletterData);
+      setPerspectives(perspectiveData);
+      setLoading(false);
+    }).catch(() => setLoading(false));
+
+    return () => { isMounted = false; }
+  }, []);
 
   const openNewsletter = (index: number) => {
     setCurrentNewsletterIndex(index);
@@ -430,19 +437,27 @@ export default function InsightsArchivePage() {
 
       {/* Newsletter Archive */}
       <SectionBar title="Newsletter Archive" />
-      <Slider
-        items={newsletters}
-        onItemClick={openNewsletter}
-        sectionId="newsletter"
-      />
+      {loading ? (
+        <div className="text-center py-8 text-gray-500">Loading...</div>
+      ) : (
+        <Slider
+          items={newsletters}
+          onItemClick={openNewsletter}
+          sectionId="newsletter"
+        />
+      )}
 
       {/* Perspective Archive */}
       <SectionBar title="Perspective Archive" />
-      <Slider
-        items={perspectives}
-        onItemClick={openPerspective}
-        sectionId="perspective"
-      />
+      {loading ? (
+        <div className="text-center py-8 text-gray-500">Loading...</div>
+      ) : (
+        <Slider
+          items={perspectives}
+          onItemClick={openPerspective}
+          sectionId="perspective"
+        />
+      )}
 
       {/* Pitch Decks Archive */}
       {/* <SectionBar title="Fact Sheet Archive" />
@@ -461,14 +476,14 @@ export default function InsightsArchivePage() {
       /> */}
 
       {/* Newsletter Modal */}
- <ContentModal
+      <ContentModal
         isOpen={isNewsletterModalOpen}
         onClose={() => setIsNewsletterModalOpen(false)}
         items={newsletters}
         currentIndex={currentNewsletterIndex}
         setCurrentIndex={setCurrentNewsletterIndex}
         modalTitle="Newsletter"
-      /> 
+      />
 
       {/* Perspective Modal */}
       <ContentModal
@@ -500,5 +515,5 @@ export default function InsightsArchivePage() {
         modalTitle="Recording"
       /> */}
     </main>
-  )
+  );
 }
