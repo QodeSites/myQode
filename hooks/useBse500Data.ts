@@ -44,7 +44,7 @@ export function useBse500Data(equityCurve: EquityCurvePoint[]): UseBse500DataRes
         });
 
         const response = await fetch(
-          `https://research.qodeinvest.com/api/getIndices?${queryParams.toString()}`
+          `/api/getIndices?${queryParams.toString()}`
         );
         if (!response.ok) {
           throw new Error("Failed to fetch BSE500 data");
