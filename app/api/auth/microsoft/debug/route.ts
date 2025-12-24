@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { validateMicrosoftConfig } from '@/lib/auth-config'
 
 export async function GET() {
-  if (process.env.NODE_ENV !== 'development') {
+  if (process.env.NODE_ENV === 'production') {
     return NextResponse.json({ error: 'Debug endpoint only available in development' }, { status: 403 })
   }
 

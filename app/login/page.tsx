@@ -34,9 +34,7 @@ export default function LoginPage() {
   const { refresh ,selectedClientType, setSelectedClientType } = useClient()
 
   // Check if in development
-  const isDevelopment = process.env.NODE_ENV !== 'development'
-  console.log(process.env.NODE_ENV)
-  console.log(isDevelopment,"====================isDevelopment")
+  const isDevelopment = process.env.NODE_ENV === 'development'
   const checkPasswordStatus = async () => {
     if (!username.trim()) {
       setError('Please enter your email or Account ID')
