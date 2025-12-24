@@ -32,7 +32,7 @@ export default function QodeDistributorHeader({ setSidebarOpen }: HeaderProps) {
         <div className="mx-auto flex items-center justify-between gap-4">
           {/* Left: Logo */}
           <div className="flex items-center">
-            <Link href="/calculator">
+            <Link href="/distributor/fees-distribution">
               <h1 className="text-2xl sm:text-3xl font-bold text-primary leading-none">
                 <sub className="text-xs sm:text-sm">my</sub>Qode
               </h1>

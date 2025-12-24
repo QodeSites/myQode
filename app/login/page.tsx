@@ -92,14 +92,14 @@ export default function LoginPage() {
     try {
       localStorage.removeItem('selectedClientCode')
       localStorage.removeItem('selectedClientId')
-      
+
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
-          action: 'dev-bypass-login', 
+        body: JSON.stringify({
+          action: 'dev-bypass-login',
           username: userEmail.trim()
         }),
         credentials: 'include',
@@ -112,12 +112,24 @@ export default function LoginPage() {
       }
 
       await refresh()
-      console.log(selectedClientType,"=======================byPassLogin")
 
-      if (selectedClientType === "DISCRETIONARY"){
-        router.push('/portfolio/performance')
+      // Fetch client data to determine client type
+      const clientDataResponse = await fetch('/api/auth/client-data', {
+        credentials: 'include',
+      })
+      const clientData = await clientDataResponse.json()
+
+      if (clientData.success && clientData.clients && clientData.clients.length > 0) {
+        const clientType = clientData.clients[0].clienttype
+
+        if (clientType === "DISTRIBUTORS") {
+          window.location.href = '/distributor/fees-distribution'
+        } else {
+          window.location.href = '/portfolio/performance'
+        }
       } else {
-        router.push('/calculator')
+        // Fallback to portfolio/performance if we can't determine
+        window.location.href = '/portfolio/performance'
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Dev bypass login failed')
@@ -215,18 +227,18 @@ export default function LoginPage() {
     try {
       localStorage.removeItem('selectedClientCode')
       localStorage.removeItem('selectedClientId')
-      
+
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
-          action: 'complete-password-setup', 
-          username: userEmail, 
+        body: JSON.stringify({
+          action: 'complete-password-setup',
+          username: userEmail,
           otp: otp.trim(),
           newPassword,
-          confirmPassword 
+          confirmPassword
         }),
         credentials: 'include',
       })
@@ -238,10 +250,24 @@ export default function LoginPage() {
       }
 
       await refresh()
-      if (selectedClientType === "DISCRETIONARY"){
-        router.push('/portfolio/performance')
+
+      // Fetch client data to determine client type
+      const clientDataResponse = await fetch('/api/auth/client-data', {
+        credentials: 'include',
+      })
+      const clientData = await clientDataResponse.json()
+
+      if (clientData.success && clientData.clients && clientData.clients.length > 0) {
+        const clientType = clientData.clients[0].clienttype
+
+        if (clientType === "DISTRIBUTORS") {
+          window.location.href = '/distributor/fees-distribution'
+        } else {
+          window.location.href = '/portfolio/performance'
+        }
       } else {
-        router.push('/calculator')
+        // Fallback to portfolio/performance if we can't determine
+        window.location.href = '/portfolio/performance'
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Password setup failed')
@@ -252,13 +278,13 @@ export default function LoginPage() {
 
   const handleRegularLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     // In dev mode, password is optional
     if (!isDevelopment && (!username || !password)) {
       setError('Username and password are required')
       return
     }
-    
+
     if (!username) {
       setError('Please enter your email or Account ID')
       return
@@ -271,14 +297,14 @@ export default function LoginPage() {
     try {
       localStorage.removeItem('selectedClientCode')
       localStorage.removeItem('selectedClientId')
-      
+
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
-          username, 
+        body: JSON.stringify({
+          username,
           password: isDevelopment ? '' : password // Send empty password in dev mode
         }),
         credentials: 'include',
@@ -289,11 +315,24 @@ export default function LoginPage() {
       if (!response.ok) throw new Error(data.error || 'Login failed')
 
       await refresh()
-      console.log(selectedClientType,"=======================selectedClientTyperegularlogin")
-      if (selectedClientType === "DISCRETIONARY"){
-        router.push('/portfolio/performance')
+
+      // Fetch client data to determine client type
+      const clientDataResponse = await fetch('/api/auth/client-data', {
+        credentials: 'include',
+      })
+      const clientData = await clientDataResponse.json()
+
+      if (clientData.success && clientData.clients && clientData.clients.length > 0) {
+        const clientType = clientData.clients[0].clienttype
+
+        if (clientType === "DISTRIBUTORS") {
+          window.location.href = '/distributor/fees-distribution'
+        } else {
+          window.location.href = '/portfolio/performance'
+        }
       } else {
-        router.push('/calculator')
+        // Fallback to portfolio/performance if we can't determine
+        window.location.href = '/portfolio/performance'
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')

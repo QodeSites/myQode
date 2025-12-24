@@ -42,7 +42,7 @@ export default function DistributorQodeSidebar({ open = false, onClose }: QodeSi
 
   const SidebarContent = (
     <nav className="h-full flex flex-col gap-1">
-      <NavLink href="/calculator" icon={<Calculator className="h-4 w-4" />}>
+      <NavLink href="/distributor/fees-distribution" icon={<Calculator className="h-4 w-4" />}>
         Distributor Fee Calculator
       </NavLink>
     </nav>
@@ -50,7 +50,7 @@ export default function DistributorQodeSidebar({ open = false, onClose }: QodeSi
 
   const SidebarContentMobile = ({ onClose }: { onClose?: () => void }) => (
     <nav className="h-full flex flex-col gap-1 mt-5">
-      <NavLink href="/calculator" icon={<Calculator className="h-4 w-4" />} onClick={onClose}>
+      <NavLink href="/distributor/fees-distribution" icon={<Calculator className="h-4 w-4" />} onClick={onClose}>
         Calculator
       </NavLink>
     </nav>
