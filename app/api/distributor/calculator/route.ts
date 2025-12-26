@@ -307,7 +307,7 @@ export async function POST(req: Request) {
         const inceptionMap = new Map<string, any>();
         inceptionResult.rows.forEach((row: any) => inceptionMap.set(row.accountcode, row.inception_date));
 
-        const GST_RATE = 0.18;
+        const GST_RATE = 18;
 
         const response = feesResult.rows.map((row: any, idx: number) => {
             const accountcode = row.accountcode;
@@ -318,9 +318,9 @@ export async function POST(req: Request) {
             const totalFeesRaw = parseFloat(row.total_fees_collected) || 0;
 
             // GST calculations
-            const gstOnPerf = perfFeesRaw * GST_RATE;
-            const gstOnFixed = fixedFeesRaw * GST_RATE;
-            const gstOnTotal = totalFeesRaw * GST_RATE;
+            const gstOnPerf = (perfFeesRaw * GST_RATE) / 118;
+            const gstOnFixed = (fixedFeesRaw * GST_RATE) / 118;
+            const gstOnTotal = (totalFeesRaw * GST_RATE) / 118;
 
             const perfFeesBeforeGst = perfFeesRaw - gstOnPerf;
             const fixedFeesBeforeGst = fixedFeesRaw - gstOnFixed;
