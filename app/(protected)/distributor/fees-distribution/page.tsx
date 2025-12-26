@@ -35,6 +35,7 @@ type CalculatorRow = {
   distributorPercentage: string;
   distributorShare: string;
   accountcode?: string;
+  billgroup?: string; // <-- billgroup made optional for safety
 };
 
 type Period = {
@@ -154,6 +155,7 @@ export default function Calculator() {
           distributorPercentage: r.distributorPercentage,
           distributorShare: r.distributorShare,
           accountcode: r.accountcode,
+          billgroup : r.billGroup,
         }));
         setRows(mappedRows);
       } catch (e: any) {
@@ -250,6 +252,30 @@ export default function Calculator() {
               {selectedPeriod.label} ({selectedPeriod.startDate} - {selectedPeriod.endDate})
             </span>
           </span>
+        </div>
+      )}
+
+      {/* --- New Section: Client Name & Billgroup Overview --- */}
+      {rows.length > 0 && (
+        <div className="mb-1 rounded-lg border shadow-sm bg-white overflow-hidden">
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-green-900 hover:bg-green-900">
+                <TableHead className="text-white text-xs font-medium px-4 py-3">#</TableHead>
+                <TableHead className="text-white text-xs font-medium px-4 py-3">Client Name</TableHead>
+                <TableHead className="text-white text-xs font-medium px-4 py-3">Billgroup</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={row.id} className="odd:bg-white even:bg-gray-50">
+                  <TableCell className="px-4 py-3 text-sm text-green-900">{row.id}</TableCell>
+                  <TableCell className="px-4 py-3 text-sm text-green-900 font-medium">{row.clientName}</TableCell>
+                  <TableCell className="px-4 py-3 text-sm text-green-900">{row.billgroup || "—"}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       )}
 

@@ -59,24 +59,24 @@ const PERIOD_DATE_MAPPING = [
         startDate: "1-Oct-25",
         endDate: "31-Dec-25"
     },
-    {
-        type: "Quarter",
-        label: "Q4 FY2026",
-        startDate: "1-Jan-26",
-        endDate: "31-Mar-26"
-    },
+    // {
+    //     type: "Quarter",
+    //     label: "Q4 FY2026",
+    //     startDate: "1-Jan-26",
+    //     endDate: "31-Mar-26"
+    // },
     {
         type: "Year",
         label: "FY 2025",
         startDate: "1-Apr-24",
         endDate: "31-Mar-25"
     },
-    {
-        type: "Year",
-        label: "FY 2026",
-        startDate: "1-Apr-25",
-        endDate: "31-Mar-26"
-    }
+    // {
+    //     type: "Year",
+    //     label: "FY 2026",
+    //     startDate: "1-Apr-25",
+    //     endDate: "31-Mar-26"
+    // }
 ];
 
 // Helper: Converts '1-Apr-24' to Date object
@@ -252,14 +252,19 @@ export async function POST(req: Request) {
             [intermediaryName]
         );
         const clientRows = clientsResult.rows;
-        console.log(intermediaryName,clientRows,"============================clientRows");
+        console.log(intermediaryName, clientRows, "============================clientRows");
 
         if (!clientRows.length) {
             return NextResponse.json([], { status: 200 });
         }
 
         // Client codes
+        // Also get billgroup for each client
         const wsClientCodes = clientRows.map((row: any) => row.clientcode);
+        const billGroupMap = new Map<string, any>();
+        clientRows.forEach((row: any) => {
+            billGroupMap.set(row.clientcode, row.billgroup);
+        });
 
         const aumResult = await query1(
             `SELECT accountcode, AVG(aum) as average_aum
@@ -269,7 +274,7 @@ export async function POST(req: Request) {
              GROUP BY accountcode`,
             [wsClientCodes, body.startDate, body.endDate]
         );
-        console.log(aumResult.rows,"===========================aumResult");
+        console.log(aumResult.rows, "===========================aumResult");
 
         // Inception dates
         const inceptionResult = await query1(
@@ -279,7 +284,7 @@ export async function POST(req: Request) {
              GROUP BY accountcode`,
             [wsClientCodes]
         );
-        console.log(inceptionResult.rows,"===========================inceptionResult");
+        console.log(inceptionResult.rows, "===========================inceptionResult");
 
         // Fetch fees, split by Performance and Management
         const feesQuery = `
@@ -300,7 +305,7 @@ export async function POST(req: Request) {
             feesQuery,
             [wsClientCodes, body.startDate, body.endDate]
         );
-        console.log(feesResult.rows,"===========================feesResult");
+        console.log(feesResult.rows, "===========================feesResult");
 
         const aumMap = new Map<string, any>();
         aumResult.rows.forEach((row: any) => aumMap.set(row.accountcode, row.average_aum));
@@ -310,8 +315,10 @@ export async function POST(req: Request) {
         const GST_RATE = 18;
 
         const response = feesResult.rows.map((row: any, idx: number) => {
+
             const accountcode = row.accountcode;
             const clientname = row.clientname;
+            const billgroup = billGroupMap.get(accountcode) || null;
 
             const perfFeesRaw = parseFloat(row.performance_fees) || 0;
             const fixedFeesRaw = parseFloat(row.fixed_fees) || 0;
@@ -327,12 +334,13 @@ export async function POST(req: Request) {
             const totalFeesBeforeGst = totalFeesRaw - gstOnTotal;
 
             // Distributor share on GST-deducted total
-            const distributorShare = totalFeesRaw * (fees_percentage/100);
+            const distributorShare = totalFeesRaw * (fees_percentage / 100);
 
             return {
                 id: idx + 1,
                 clientName: clientname,
                 strategy: accountcode,
+                billGroup: billgroup,
                 inceptionDate: inceptionMap.get(accountcode)
                     ? (() => {
                         const d = inceptionMap.get(accountcode);
@@ -356,7 +364,7 @@ export async function POST(req: Request) {
                 // Totals
                 totalFees: totalFeesBeforeGst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
                 totalFeesGst: gstOnTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                totalFeesCollected : totalFeesRaw.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                totalFeesCollected: totalFeesRaw.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
 
                 distributorPercentage: fees_percentage.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
                 distributorShare: distributorShare.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
