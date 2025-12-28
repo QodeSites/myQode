@@ -72,6 +72,27 @@ function formatRangeLabel(period: Period) {
   return `${period.label} (${period.startDate} - ${period.endDate})`;
 }
 
+// Parse billgroup string like "QODEPMS MF1.5 PF15 H10 Q NEW" into fee structure
+function parseBillgroupFees(billgroup: string | undefined): {
+  managementFees: string;
+  performanceFees: string;
+  hurdleRate: string;
+} | null {
+  if (!billgroup) return null;
+
+  const mfMatch = billgroup.match(/MF([\d.]+)/);
+  const pfMatch = billgroup.match(/PF([\d.]+)/);
+  const hMatch = billgroup.match(/H([\d.]+)/);
+
+  if (!mfMatch && !pfMatch && !hMatch) return null;
+
+  return {
+    managementFees: mfMatch ? `${mfMatch[1]}%` : "—",
+    performanceFees: pfMatch ? `${pfMatch[1]}%` : "—",
+    hurdleRate: hMatch ? `${hMatch[1]}%` : "—",
+  };
+}
+
 // --- Main Component ---
 
 export default function Calculator() {
@@ -255,7 +276,7 @@ export default function Calculator() {
         </div>
       )}
 
-      {/* --- New Section: Client Name & Billgroup Overview --- */}
+      {/* --- New Section: Client Name & Fees Structure Overview --- */}
       {rows.length > 0 && (
         <div className="mb-1 rounded-lg border shadow-sm bg-white overflow-hidden">
           <Table>
@@ -263,17 +284,30 @@ export default function Calculator() {
               <TableRow className="bg-green-900 hover:bg-green-900">
                 <TableHead className="text-white text-xs font-medium px-4 py-3">#</TableHead>
                 <TableHead className="text-white text-xs font-medium px-4 py-3">Client Name</TableHead>
-                <TableHead className="text-white text-xs font-medium px-4 py-3">Billgroup</TableHead>
+                <TableHead className="text-white text-xs font-medium px-4 py-3">Fees Structure</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {rows.map((row) => (
-                <TableRow key={row.id} className="odd:bg-white even:bg-gray-50">
-                  <TableCell className="px-4 py-3 text-sm text-green-900">{row.id}</TableCell>
-                  <TableCell className="px-4 py-3 text-sm text-green-900 font-medium">{row.clientName}</TableCell>
-                  <TableCell className="px-4 py-3 text-sm text-green-900">{row.billgroup || "—"}</TableCell>
-                </TableRow>
-              ))}
+              {rows.map((row) => {
+                const feeStructure = parseBillgroupFees(row.billgroup);
+                return (
+                  <TableRow key={row.id} className="odd:bg-white even:bg-gray-50">
+                    <TableCell className="px-4 py-3 text-sm text-green-900">{row.id}</TableCell>
+                    <TableCell className="px-4 py-3 text-sm text-green-900 font-medium">{row.clientName}</TableCell>
+                    <TableCell className="px-4 py-3 text-sm text-green-900">
+                      {feeStructure ? (
+                        <div className="space-y-0.5">
+                          <div>Management Fees: {feeStructure.managementFees}</div>
+                          <div>Performance Fees: {feeStructure.performanceFees}</div>
+                          <div>Hurdle Rate: {feeStructure.hurdleRate}</div>
+                        </div>
+                      ) : (
+                        <span>{row.billgroup || "—"}</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
