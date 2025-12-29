@@ -4,7 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Eye, EyeOff, X, ArrowLeft, Mail, Lock, Shield, Zap } from 'lucide-react'
 import { useClient } from '@/contexts/ClientContext'
-
+import api from '@/lib/api/axios'
+import { tokenStore } from '@/lib/api/token-store'
 type LoginStep = 'username' | 'password' | 'otp-verification' | 'password-setup' | 'dev-bypass'
 
 export default function LoginPage() {
@@ -45,20 +46,13 @@ export default function LoginPage() {
     setError('')
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          action: 'check-password-status', 
-          username: username.trim() 
-        }),
+      const { data } = await api.post('/api/auth/login', {
+        action: 'check-password-status',
+        username: username.trim()
       })
+      console.log(data,"================datalogin")
 
-      const data = await response.json()
-
-      if (!response.ok) {
+      if (data.error) {
         throw new Error(data.error || 'Failed to check password status')
       }
 
@@ -91,21 +85,14 @@ export default function LoginPage() {
       localStorage.removeItem('selectedClientCode')
       localStorage.removeItem('selectedClientId')
 
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'dev-bypass-login',
-          username: userEmail.trim()
-        }),
-        credentials: 'include',
+      const response = await api.post('/api/auth/login', {
+        action: 'dev-bypass-login',
+        username: userEmail.trim()
       })
 
-      const data = await response.json()
-
-      if (!response.ok) {
+      console.log(response,"===========responselogin")
+      const data = response.data
+      if (data.error) {
         throw new Error(data.error || 'Dev bypass login failed')
       }
 
@@ -121,13 +108,13 @@ export default function LoginPage() {
         const clientType = clientData.clients[0].clienttype
 
         if (clientType === "DISTRIBUTORS") {
-          window.location.href = '/distributor/fees-distribution'
+           window.location.href = '/distributor/fees-distribution'
         } else {
           window.location.href = '/portfolio/performance'
         }
       } else {
         // Fallback to portfolio/performance if we can't determine
-        window.location.href = '/portfolio/performance'
+         window.location.href = '/portfolio/performance'
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Dev bypass login failed')
@@ -182,21 +169,16 @@ export default function LoginPage() {
     setError('')
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          action: 'verify-setup-otp', 
-          username: userEmail, 
-          otp: otp.trim() 
-        }),
-      })
+      const response = await api.post('/api/auth/login', { 
+        action: 'verify-setup-otp', 
+        username: userEmail, 
+        otp: otp.trim()} 
+      )
+      
 
-      const data = await response.json()
+      const data = await response.data
 
-      if (!response.ok) {
+      if (!data.ok) {
         throw new Error(data.error || 'Invalid verification code')
       }
 
@@ -226,28 +208,21 @@ export default function LoginPage() {
       localStorage.removeItem('selectedClientCode')
       localStorage.removeItem('selectedClientId')
 
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'complete-password-setup',
-          username: userEmail,
-          otp: otp.trim(),
-          newPassword,
-          confirmPassword
-        }),
-        credentials: 'include',
+      const response = await api.post('/api/auth/login', {
+        action: 'complete-password-setup',
+        username: userEmail,
+        otp: otp.trim(),
+        newPassword,
+        confirmPassword
       })
 
-      const data = await response.json()
+      const data = response.data;
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Password setup failed')
+      if (!data || data.error) {
+        throw new Error(data?.error || 'Password setup failed');
       }
 
-      await refresh()
+      await refresh();
 
       // Fetch client data to determine client type
       const clientDataResponse = await fetch('/api/auth/client-data', {
@@ -264,7 +239,6 @@ export default function LoginPage() {
           window.location.href = '/portfolio/performance'
         }
       } else {
-        // Fallback to portfolio/performance if we can't determine
         window.location.href = '/portfolio/performance'
       }
     } catch (err) {
@@ -296,25 +270,20 @@ export default function LoginPage() {
       localStorage.removeItem('selectedClientCode')
       localStorage.removeItem('selectedClientId')
 
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username,
-          password: isDevelopment ? '' : password // Send empty password in dev mode
-        }),
-        credentials: 'include',
+      const response = await api.post('/api/auth/login',{
+        username,
+        password: isDevelopment ? '' : password // Send empty password in dev mode
       })
+      console.log(response,"===============response1")
 
-      const data = await response.json()
+      const data = await response.data
+      console.log(data.success,"======data.statusText")
 
-      if (!response.ok) throw new Error(data.error || 'Login failed')
-
-      await refresh()
-
-      // Fetch client data to determine client type
+      if (!data.success) throw new Error(data.error || 'Login failed')
+      console.log(data,"=====data.ok")
+    
+      tokenStore.set(data.accessToken);
+      
       const clientDataResponse = await fetch('/api/auth/client-data', {
         credentials: 'include',
       })
@@ -333,6 +302,7 @@ export default function LoginPage() {
         window.location.href = '/portfolio/performance'
       }
     } catch (err) {
+      console.log(err)
       setError(err instanceof Error ? err.message : 'Login failed')
     } finally {
       setIsLoading(false)

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { cookies } from 'next/headers'
 import bcrypt from 'bcryptjs'
+import { signAccessToken } from '@/lib/auth/jwt';
+import { generateRefreshToken, hashToken } from "@/lib/auth/refresh-token";
+import { tokenStore } from "@/lib/api/token-store";
 
 interface ClientData {
   clientid: string;
@@ -19,6 +22,7 @@ interface ExtendedClientData {
 export async function POST(request: NextRequest) {
   try {
     const { username, password, action, otp, newPassword, confirmPassword } = await request.json()
+    const clientType = request.headers.get("x-client-type");
     const isDevelopment = process.env.NODE_ENV === 'development'
 
     // DEV MODE: Bypass authentication for any email in development
@@ -51,7 +55,7 @@ export async function POST(request: NextRequest) {
 
     // DEV MODE: Skip password validation entirely - login with just email/clientcode
     if (isDevelopment && username && !password) {
-      return await handleDevPasswordlessLogin(username)
+      return await handleDevPasswordlessLogin(username,clientType)
     }
 
     // Regular login flow - requires password
@@ -87,7 +91,7 @@ export async function POST(request: NextRequest) {
 
     // Proceed with regular login - get extended user data
     const initialResult = await query(
-      `SELECT clientid, clientcode, email, groupid, password, head_of_family 
+      `SELECT id, clientid, clientcode, clienttype, email, groupid, password, head_of_family 
        FROM pms_clients_master 
        WHERE (email = $1 OR clientcode = $1)`,
       [username]
@@ -146,11 +150,47 @@ export async function POST(request: NextRequest) {
       clientcode: row.clientcode
     }))
 
+    
+    const accessToken = await signAccessToken({
+      sub: user.clientcode,
+      scope: ["research:run", "portfolio:read"],
+    });
+    console.log(accessToken,'=======accessToken')
+
+    const refreshToken = generateRefreshToken();
+
+    await query(
+      `INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, revoked) VALUES ($1, $2, $3, $4, false)`,
+      [
+        crypto.randomUUID(),
+        user.clientcode,
+        hashToken(refreshToken),
+        new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      ]
+    );
+    // Set session cookies
+    if (clientType === "web") {
+      const cookieStore = await cookies()
+      cookieStore.set({
+        name: "refresh_token",
+        value: refreshToken,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        path: "/api/auth/refresh",
+        maxAge: 60 * 60 * 24 * 30,
+      });
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Login successful',
+      message: 'Development: Passwordless login successful',
       clients: clientData,
-      isHeadOfFamily: user.head_of_family
+      accessToken:accessToken,
+      refreshToken:refreshToken,
+      isHeadOfFamily: true,
+      isDev: true,
+      devUser: user.email
     })
 
   } catch (error) {
@@ -163,7 +203,8 @@ export async function POST(request: NextRequest) {
 }
 
 // DEV MODE: Passwordless login - login to any account without password
-async function handleDevPasswordlessLogin(username: string) {
+async function handleDevPasswordlessLogin(username: string, clientType: string) {
+  
   try {
     if (!username || !username.trim()) {
       return NextResponse.json(
@@ -177,11 +218,12 @@ async function handleDevPasswordlessLogin(username: string) {
 
     // Try to find existing user by email or clientcode
     let userResult = await query(
-      `SELECT clientid, clientcode, email, groupid, head_of_family 
+      `SELECT id, clientid, clientcode, email, groupid, head_of_family 
        FROM pms_clients_master 
        WHERE email = $1 OR clientcode = $1 LIMIT 1`,
       [trimmedUsername]
     )
+    const clientcode = userResult.rows[0].clientid
 
     let user;
 
@@ -252,12 +294,45 @@ async function handleDevPasswordlessLogin(username: string) {
       maxAge: 60 * 60 * 24
     })
 
-    console.log(`[DEV] Passwordless login successful for: ${user.email}`)
+    console.log(`[DEV] Passwordless login successful for: ${user.email} ${clientcode}`)
+
+    const accessToken = await signAccessToken({
+      sub: clientcode,
+      scope: ["research:run", "portfolio:read"],
+    });
+    console.log(accessToken,'======accessToken')
+
+    const refreshToken = generateRefreshToken();
+
+    await query(
+      `INSERT INTO refresh_tokens (id, user_id, token_hash, expires_at, revoked) VALUES ($1, $2, $3, $4, false)`,
+      [
+        crypto.randomUUID(),
+        clientcode,
+        hashToken(refreshToken),
+        new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      ]
+    );
+    
+
+    if (clientType === "web") {
+      cookieStore.set({
+        name: "refresh_token",
+        value: refreshToken,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+        path: "/api/auth/refresh",
+        maxAge: 60 * 60 * 24 * 30,
+      });
+    }
 
     return NextResponse.json({
       success: true,
       message: 'Development: Passwordless login successful',
       clients: clientData,
+      accessToken:accessToken,
+      refreshToken:refreshToken,
       isHeadOfFamily: true,
       isDev: true,
       devUser: user.email

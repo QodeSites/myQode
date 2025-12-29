@@ -38,6 +38,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
+import api from "@/lib/api/axios"
 
 function NavLink({
   href,
@@ -131,7 +132,7 @@ export default function QodeSidebar({ open = false, onClose }: QodeSidebarProps)
 
   async function logout() {
     startTransition(async () => {
-      await fetch("/api/logout", { method: "POST" })
+      await api.post("/api/logout")
       window.location.href = "/login"
     })
   }

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronDown, ChevronRight, Crown, User, TrendingUp, Calendar, Mail, Hash } from "lucide-react";
+import api from "@/lib/api/axios";
 
 /* =========================
    Types
@@ -135,13 +136,11 @@ export default function FamilyPortfolioSection() {
         setPortfolioLoading(true);
 
         // Fetch portfolio data for all accounts
-        const portfolioRes = await fetch("/api/portfolio-details", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ nuvama_codes: nuvamaCodes }),
+        const portfolioRes = await api.post("/api/portfolio-details", {
+          nuvama_codes: nuvamaCodes,
         });
 
-        const portfolioData = await portfolioRes.json();
+        const portfolioData = portfolioRes.data;
 
         if (portfolioData.success && portfolioData.data) {
           // Create a map of portfolio data by account_code

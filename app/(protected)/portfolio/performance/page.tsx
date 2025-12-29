@@ -29,6 +29,7 @@ import {
   ResponsiveContainer
 } from "recharts";
 import { Button } from "@/components/ui/button";
+import api from "@/lib/api/axios";
 
 // Import Lato font
 const latoFontStyle = `
@@ -1205,8 +1206,9 @@ const createConsolidatedData = useCallback(
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ nuvama_codes: [selectedAccount] }),
         });
+        console.log(portfolioRes,"=====portfolioRes")
 
-        const portfolioData = await portfolioRes.json();
+        const portfolioData = portfolioRes.data;
 
         if (portfolioData.success && portfolioData.data && portfolioData.data.length > 0) {
           setCurrentData(portfolioData.data[0]);

@@ -5,6 +5,7 @@ import Link from "next/link"
 import { MenuIcon, User } from "lucide-react"
 import { useClient } from "@/contexts/ClientContext"
 import { Button } from "./ui/button"
+import api from "@/lib/api/axios"
 
 type HeaderProps = { setSidebarOpen: (open: boolean) => void }
 
@@ -18,7 +19,7 @@ export default function QodeDistributorHeader({ setSidebarOpen }: HeaderProps) {
 
   async function logout() {
     startTransition(async () => {
-      await fetch("/api/logout", { method: "POST" })
+      await api.post("/api/logout")
       window.location.href = "/login"
     })
   }

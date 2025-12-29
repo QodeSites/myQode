@@ -14,6 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import api from "@/lib/api/axios"
 
 type HeaderProps = { setSidebarOpen: (open: boolean) => void }
 
@@ -33,12 +34,14 @@ export default function QodeHeader({ setSidebarOpen }: HeaderProps) {
   
   const handleClientSelect = (clientCode: string) => setSelectedClient(clientCode)
 
+
   async function logout() {
     startTransition(async () => {
-      await fetch("/api/logout", { method: "POST" })
+      await api.post("/api/logout")
       window.location.href = "/login"
     })
   }
+
 
   // Get current selected client for additional info
   const selectedClient = clients.find(c => c.clientcode === selectedClientCode)
