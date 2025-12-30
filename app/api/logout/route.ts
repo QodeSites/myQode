@@ -22,29 +22,24 @@ export async function POST(req: Request) {
         path: "/api/auth/refresh",
         maxAge: 0,
       });
+
+      cookieStore.set('qode-auth', '', {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        expires: new Date(0) // Set to past date to expire immediately
+      })
+      
+      cookieStore.set('qode-clients', '', {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        expires: new Date(0) // Set to past date to expire immediately
+      })
     } else {
       const body = await req.json();
       refreshToken = body.refreshToken;
     }
-    
-    // Clear all auth cookies with explicit options to ensure they're properly removed
-    cookieStore.set('qode-auth', '', {
-      httpOnly: true,
-      sameSite: 'lax',
-      path: '/',
-      expires: new Date(0) // Set to past date to expire immediately
-    })
-    
-    cookieStore.set('qode-clients', '', {
-      httpOnly: true,
-      sameSite: 'lax',
-      path: '/',
-      expires: new Date(0) // Set to past date to expire immediately
-    })
-    
-    // Alternative: Use delete method (your original approach is also fine)
-    // cookieStore.delete('qode-auth')
-    // cookieStore.delete('qode-clients')
     
     console.log('Successfully cleared auth cookies')
     

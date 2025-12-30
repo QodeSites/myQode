@@ -1,4 +1,4 @@
-import { SignJWT, jwtVerify, importPKCS8, importSPKI, errors as joseErrors } from "jose";
+import { SignJWT, jwtVerify, importPKCS8, importSPKI, errors as joseErrors, JWTExpired } from "jose";
 
 const ALG = "RS256";
 
@@ -44,6 +44,15 @@ export async function signAccessToken(payload: {
     .sign(privateKey);
 }
 
+/**
+ * Verifies the JWT access token.
+ * Throws a custom error string 'JWT_EXPIRED' if the token is expired.
+ * Throws 'JWT_INVALID' on other JWT errors.
+ *
+ * @param {string} token
+ * @returns {Promise<any>}
+ * @throws {string}
+ */
 export async function verifyToken(token: string) {
   const publicKey = await getPublicKey();
   const issuer = process.env.JWT_ISSUER;
@@ -62,6 +71,21 @@ export async function verifyToken(token: string) {
     });
     return payload;
   } catch (err: any) {
-    throw err;
+    // Native: rewrite JWT expiration error to string for easier handling
+    if (
+      err &&
+      (err.name === "JWTExpired" ||
+        err.code === "ERR_JWT_EXPIRED" ||
+        err.message?.includes('"exp" claim timestamp check failed'))
+    ) {
+      // Optionally, attach payload or additional info as needed
+      const customError: any = new Error("JWT_EXPIRED");
+      customError.code = "JWT_EXPIRED";
+      throw customError;
+    }
+    // All other errors are invalid token
+    const customError: any = new Error("JWT_INVALID");
+    customError.code = "JWT_INVALID";
+    throw customError;
   }
 }
