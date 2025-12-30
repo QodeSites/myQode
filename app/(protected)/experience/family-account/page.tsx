@@ -12,6 +12,7 @@ import { ChevronDown, ChevronRight, Crown, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ModalShell from "@/components/ModalShell";
 import { useToast } from "@/hooks/use-toast";
+import api from "@/lib/api/axios";
 
 /* =========================
    Types
@@ -132,8 +133,8 @@ export default function FamilyAccountsSection() {
   useEffect(() => {
     const fetchFamilyAccounts = async () => {
       try {
-        const res = await fetch("/api/auth/client-data");
-        const data = await res.json();
+        const res = await api.get("/api/auth/client-data");
+        const data = await res.data;
         if (data.success && data.family) {
           const mapped: FamAcc[] = data.family.map((member: any) => ({
             clientid: member.clientid,

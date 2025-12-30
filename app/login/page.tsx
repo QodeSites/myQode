@@ -99,22 +99,20 @@ export default function LoginPage() {
       await refresh()
 
       // Fetch client data to determine client type
-      const clientDataResponse = await fetch('/api/auth/client-data', {
-        credentials: 'include',
-      })
-      const clientData = await clientDataResponse.json()
+      const clientDataResponse = await api.get('/api/auth/client-data')
+      const clientData = await clientDataResponse.data
 
       if (clientData.success && clientData.clients && clientData.clients.length > 0) {
         const clientType = clientData.clients[0].clienttype
 
         if (clientType === "DISTRIBUTORS") {
-           window.location.href = '/distributor/fees-distribution'
+           router.push('/distributor/fees-distribution')
         } else {
-          window.location.href = '/portfolio/performance'
+          router.push('/portfolio/performance')
         }
       } else {
         // Fallback to portfolio/performance if we can't determine
-         window.location.href = '/portfolio/performance'
+         router.push('/portfolio/performance')
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Dev bypass login failed')
@@ -225,21 +223,19 @@ export default function LoginPage() {
       await refresh();
 
       // Fetch client data to determine client type
-      const clientDataResponse = await fetch('/api/auth/client-data', {
-        credentials: 'include',
-      })
-      const clientData = await clientDataResponse.json()
+      const clientDataResponse = await api.get('/api/auth/client-data')
+      const clientData = await clientDataResponse.data
 
       if (clientData.success && clientData.clients && clientData.clients.length > 0) {
         const clientType = clientData.clients[0].clienttype
 
         if (clientType === "DISTRIBUTORS") {
-          window.location.href = '/distributor/fees-distribution'
+          router.push('/distributor/fees-distribution')
         } else {
-          window.location.href = '/portfolio/performance'
+          router.push('/portfolio/performance')
         }
       } else {
-        window.location.href = '/portfolio/performance'
+        router.push('/portfolio/performance')
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Password setup failed')
@@ -283,23 +279,23 @@ export default function LoginPage() {
       console.log(data,"=====data.ok")
     
       tokenStore.set(data.accessToken);
+      console.log(tokenStore.get(),"===========login set ")
       
-      const clientDataResponse = await fetch('/api/auth/client-data', {
-        credentials: 'include',
-      })
-      const clientData = await clientDataResponse.json()
+      await refresh()
+      
+      console.log(selectedClientType,"===========selectedClientTypereferesh")
+      
 
-      if (clientData.success && clientData.clients && clientData.clients.length > 0) {
-        const clientType = clientData.clients[0].clienttype
+      if (selectedClientType) {
 
-        if (clientType === "DISTRIBUTORS") {
-          window.location.href = '/distributor/fees-distribution'
+        if (selectedClientType === "DISTRIBUTORS") {
+          router.push('/distributor/fees-distribution')
         } else {
-          window.location.href = '/portfolio/performance'
+          router.push('/portfolio/performance')
         }
       } else {
         // Fallback to portfolio/performance if we can't determine
-        window.location.href = '/portfolio/performance'
+        router.push('/portfolio/performance')
       }
     } catch (err) {
       console.log(err)

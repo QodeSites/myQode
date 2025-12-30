@@ -4,6 +4,7 @@ import { Analytics } from "@vercel/analytics/next"
 import "@/app/globals.css"
 import { Lato, Playfair_Display } from "next/font/google"
 import { Suspense } from "react"
+import { AuthProvider } from "@/contexts/AuthContext"
 import { ClientProvider } from "@/contexts/ClientContext"
 
 const lato = Lato({

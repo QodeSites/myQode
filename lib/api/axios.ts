@@ -37,12 +37,16 @@ api.interceptors.response.use(
   res => res,
   async error => {
     const originalRequest = error.config;
+    console.log(originalRequest,originalRequest._retry,"========================originalRequest")
+    console.log(error.response?.status === 401 && !originalRequest._retry,isRefreshing,"====error.response?.data.status === 401 && !originalRequest._retry")
 
-    if (error.response?.data.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && !originalRequest._retry) {
       if (isRefreshing) {
+        console.log("isRefreshing is true, queuing the request", { originalRequest, failedQueue });
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
         }).then(token => {
+          console.log("Token received from processQueue for retry:", token, "=====______token");
           originalRequest.headers.Authorization = `Bearer ${token}`;
           return api(originalRequest);
         });
@@ -62,6 +66,7 @@ api.interceptors.response.use(
         }
         tokenStore.set(newToken);
         processQueue(null, newToken);
+        console.log("new token hit")
 
         originalRequest.headers.Authorization = `Bearer ${newToken}`;
         return api(originalRequest);

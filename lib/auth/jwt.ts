@@ -1,4 +1,4 @@
-import { SignJWT, jwtVerify, importPKCS8, importSPKI, errors as joseErrors, JWTExpired } from "jose";
+import { SignJWT, jwtVerify, importPKCS8, importSPKI, errors as joseErrors } from "jose";
 
 const ALG = "RS256";
 

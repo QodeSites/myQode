@@ -958,8 +958,8 @@ const createConsolidatedData = useCallback(
   useEffect(() => {
     const fetchFamilyAccounts = async () => {
       try {
-        const familyRes = await fetch("/api/auth/client-data");
-        const familyData = await familyRes.json();
+        const familyRes = await api.get("/api/auth/client-data");
+        const familyData = await familyRes.data;
 
         if (familyData.success && familyData.family) {
           const accounts: FamilyAccount[] = familyData.family.map((member: any) => ({

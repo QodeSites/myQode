@@ -1,7 +1,14 @@
-// contexts/ClientContext.tsx
 "use client"
-
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  ReactNode
+} from "react";
+import api from "@/lib/api/axios";
+import { tokenStore } from "@/lib/api/token-store";
 
 interface ClientData {
   clientid: string;
@@ -14,216 +21,218 @@ interface ClientData {
   head_of_family?: boolean;
   groupid?: string;
   groupname?: string;
-  clienttype: string; // Make clienttype required and always a string
+  clienttype: string;
 }
 
 interface ClientContextType {
-  clients: ClientData[]
-  selectedClientCode: string
-  selectedClientId: string
-  selectedClientMobile: string
-  selectedClientName: string
-  selectedClientHolderName: string
-  isHeadOfFamily: boolean
-  setSelectedClient: (clientCode: string) => void
-  loading: boolean
-  refresh: () => void
-  selectedEmailClient: string
-  setSelectedEmailClient: (email: string) => void
-  selectedClientType: string
-  setSelectedClientType: (type: string) => void
-  clientLoading: boolean
+  clients: ClientData[];
+  selectedClientCode: string;
+  selectedClientId: string;
+  selectedClientMobile: string;
+  selectedClientName: string;
+  selectedClientHolderName: string;
+  selectedClientType: string;
+  selectedEmailClient: string;
+  isHeadOfFamily: boolean;
+  loading: boolean;
+  unauthorized: boolean;
+  setSelectedClient: (clientCode: string) => Promise<void>;
+  refresh: () => Promise<void>;
+  setSelectedEmailClient: (email: string) => void;
+  setSelectedClientType: (type: string) => void;
+  clearAllClientData?: () => Promise<void>;
 }
 
-const ClientContext = createContext<ClientContextType | undefined>(undefined)
+const ClientContext = createContext<ClientContextType | undefined>(undefined);
+
+const STORAGE_KEYS = {
+  code: "selectedClientCode",
+  id: "selectedClientId",
+  email: "selectedEmailClient",
+  mobile: "selectedClientMobile",
+  name: "selectedClientName",
+  type: "selectedClientType",
+  holderName: "selectedClientHolderName"
+} as const;
+
+type StorageKey = keyof typeof STORAGE_KEYS;
+
+function getClientStorage(keys: StorageKey[]): Record<string, string> {
+  const result: Record<string, string> = {};
+  keys.forEach((key) => {
+    const val = localStorage.getItem(STORAGE_KEYS[key]);
+    if (val !== null && val !== undefined) {
+      result[STORAGE_KEYS[key]] = val;
+    }
+  });
+  return result;
+}
+
+function clearClientStorage() {
+  Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key));
+}
+
+function setClientStorage(obj: Partial<Record<StorageKey, string>>) {
+  Object.entries(obj).forEach(([k, v]) => {
+    localStorage.setItem(STORAGE_KEYS[k as StorageKey], v ?? "");
+  });
+}
 
 export function ClientProvider({ children }: { children: ReactNode }) {
-  const [clients, setClients] = useState<ClientData[]>([])
-  const [selectedClientCode, setSelectedClientCode] = useState<string>('')
-  const [selectedClientId, setSelectedClientId] = useState<string>('')
-  const [selectedClientType, setSelectedClientType] = useState<string>('')
-  const [selectedEmailClient, setSelectedEmailClient] = useState<string>('')
-  const [selectedClientMobile, setSelectedClientMobile] = useState<string>('')
-  const [selectedClientName, setSelectedClientName] = useState<string>('')
-  const [selectedClientHolderName, setSelectedClientHolderName] = useState<string>('')
-  const [isHeadOfFamily, setIsHeadOfFamily] = useState<boolean>(false)
-  const [loading, setLoading] = useState(true)
+  const [clients, setClients] = useState<ClientData[]>([]);
+  const [selectedClientCode, setSelectedClientCode] = useState("");
+  const [selectedClientId, setSelectedClientId] = useState("");
+  const [selectedClientType, setSelectedClientType] = useState("");
+  const [selectedEmailClient, setSelectedEmailClient] = useState("");
+  const [selectedClientMobile, setSelectedClientMobile] = useState("");
+  const [selectedClientName, setSelectedClientName] = useState("");
+  const [selectedClientHolderName, setSelectedClientHolderName] = useState("");
+  const [isHeadOfFamily, setIsHeadOfFamily] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [unauthorized, setUnauthorized] = useState(false);
+  const initialized = useRef(false);
 
-  const fetchClientData = async () => {
-    try {
-      console.log('Fetching client data...');
-      setLoading(true);
-      const response = await fetch('/api/auth/client-data', {
-        method: 'GET',
-        credentials: 'include',
-      });
-      console.log('API response status:', response.status);
-
-      if (response.status === 401) {
-        // Handle unauthenticated user
-        console.log('Unauthorized (401): clearing client state due to authentication error');
-        clearSelectedClient();
-        // Optionally, trigger a redirect or other action here if needed
-      } else if (response.ok) {
-        const data = await response.json();
-        console.log('Client data fetched:', data);
-
-        setIsHeadOfFamily(data.isHeadOfFamily || false);
-
-        let availableClients: ClientData[] = [];
-
-        if (data.isHeadOfFamily && data.family?.length > 0) {
-          // For head of family, ensure clienttype is always a string (fallback empty string if missing)
-          availableClients = data.family.map((member: any) => ({
-            clientid: member.clientid,
-            clientcode: member.clientcode,
-            email: member.email,
-            clientname: member.clientname || member.holderName,
-            mobile: member.mobile,
-            holderName: member.holderName,
-            relation: member.relation,
-            head_of_family: member.head_of_family,
-            groupid: member.groupid,
-            groupname: member.groupname,
-            clienttype: typeof member.clienttype === 'string' ? member.clienttype : "",
-          }));
-          console.log('Head of family - available clients:', availableClients);
-        } else if (data.clients?.length > 0) {
-          availableClients = data.clients.map((client: any) => ({
-            clientid: client.clientid,
-            clientcode: client.clientcode,
-            email: client.email,
-            clientname: client.clientname,
-            mobile: client.mobile,
-            holderName: client.clientname,
-            relation: 'Individual Account',
-            head_of_family: !!client.head_of_family,
-            groupid: client.groupid,
-            groupname: client.groupname,
-            clienttype: typeof client.clienttype === 'string' ? client.clienttype : "",
-          }));
-          console.log('Individual member - available clients:', availableClients);
-        }
-
-        setClients(availableClients);
-
-        if (availableClients.length > 0) {
-          const savedClientCode = localStorage.getItem('selectedClientCode');
-          const savedClientId = localStorage.getItem('selectedClientId');
-
-          let clientToSelect: ClientData | null = null;
-
-          if (savedClientCode && savedClientId) {
-            clientToSelect = availableClients.find(
-              (client: ClientData) =>
-                client.clientcode === savedClientCode && client.clientid === savedClientId
-            ) || null;
-
-            if (clientToSelect) {
-              console.log('Found saved client in current data:', clientToSelect);
-            } else {
-              console.log('Saved client not found in current data, clearing localStorage');
-              clearLocalStorage();
-            }
-          }
-
-          if (!clientToSelect) {
-            if (data.isHeadOfFamily) {
-              clientToSelect = availableClients.find(c => c.head_of_family) || availableClients[0];
-            } else {
-              clientToSelect = availableClients[0];
-            }
-            console.log('Using default client:', clientToSelect);
-          }
-
-          updateSelectedClient(clientToSelect);
-
-        } else {
-          console.log('No clients available');
-          clearSelectedClient();
-        }
-      } else {
-        console.error('Failed to fetch client data:', response.status, response.statusText);
-        clearSelectedClient();
-      }
-    } catch (error) {
-      console.error('Failed to fetch client data:', error);
-      clearSelectedClient();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const clearLocalStorage = () => {
-    localStorage.removeItem('selectedClientCode');
-    localStorage.removeItem('selectedClientId');
-    localStorage.removeItem('selectedEmailClient');
-    localStorage.removeItem('selectedClientMobile');
-    localStorage.removeItem('selectedClientName');
-    localStorage.removeItem('selectedClientType');
-    localStorage.removeItem('selectedClientHolderName');
-  };
-
-  const clearSelectedClient = () => {
+  // Clear all stored data AND context state
+  const clearAllClientData = async () => {
     setClients([]);
-    setSelectedClientType('');
-    setSelectedClientCode('');
-    setSelectedClientId('');
-    setSelectedEmailClient('');
-    setSelectedClientMobile('');
-    setSelectedClientName('');
-    setSelectedClientHolderName('');
+    setSelectedClientCode("");
+    setSelectedClientId("");
+    setSelectedClientType("");
+    setSelectedEmailClient("");
+    setSelectedClientMobile("");
+    setSelectedClientName("");
+    setSelectedClientHolderName("");
     setIsHeadOfFamily(false);
-    clearLocalStorage();
+    setLoading(false);
+    setUnauthorized(false);
+    clearClientStorage();
   };
 
-  const updateSelectedClient = (client: ClientData) => {
+  const clearSelectedClient = async () => {
+    setClients([]);
+    setSelectedClientCode("");
+    setSelectedClientId("");
+    setSelectedClientType("");
+    setSelectedEmailClient("");
+    setSelectedClientMobile("");
+    setSelectedClientName("");
+    setSelectedClientHolderName("");
+    setIsHeadOfFamily(false);
+    clearClientStorage();
+  };
+
+  const updateSelectedClient = async (client: ClientData) => {
     setSelectedClientCode(client.clientcode);
     setSelectedClientId(client.clientid);
     setSelectedEmailClient(client.email);
     setSelectedClientMobile(client.mobile);
     setSelectedClientName(client.clientname);
-    setSelectedClientType(client.clienttype ?? "");
+    setSelectedClientType(client.clienttype);
     setSelectedClientHolderName(client.holderName || client.clientname);
 
-    // Always provide a string to localStorage, never undefined
-    localStorage.setItem('selectedClientCode', client.clientcode);
-    localStorage.setItem('selectedClientId', client.clientid);
-    localStorage.setItem('selectedEmailClient', client.email);
-    localStorage.setItem('selectedClientMobile', client.mobile);
-    localStorage.setItem('selectedClientName', client.clientname);
-    localStorage.setItem('selectedClientType', client.clienttype ?? "");
-    localStorage.setItem('selectedClientHolderName', client.holderName || client.clientname);
-
-    console.log('Updated selected client:', client);
+    setClientStorage({
+      code: client.clientcode,
+      id: client.clientid,
+      email: client.email,
+      mobile: client.mobile,
+      name: client.clientname,
+      type: client.clienttype,
+      holderName: client.holderName || client.clientname
+    });
   };
 
-  const refresh = async () => {
-    console.log('Manual refresh triggered');
-    await fetchClientData();
+  const fetchClientData = async () => {
+    try {
+      setLoading(true);
+      setUnauthorized(false);
+      const res = await api.get("/api/auth/client-data");
+      const data = res.data;
+
+      setIsHeadOfFamily(!!data.isHeadOfFamily);
+
+      let availableClients: ClientData[] = [];
+
+      if (data.isHeadOfFamily && data.family?.length) {
+        availableClients = data.family.map((m: any) => ({
+          clientid: m.clientid,
+          clientcode: m.clientcode,
+          email: m.email,
+          clientname: m.clientname || m.holderName,
+          mobile: m.mobile,
+          holderName: m.holderName,
+          relation: m.relation,
+          head_of_family: m.head_of_family,
+          groupid: m.groupid,
+          groupname: m.groupname,
+          clienttype: typeof m.clienttype === "string" ? m.clienttype : ""
+        }));
+      } else if (data.clients?.length) {
+        availableClients = data.clients.map((c: any) => ({
+          clientid: c.clientid,
+          clientcode: c.clientcode,
+          email: c.email,
+          clientname: c.clientname,
+          mobile: c.mobile,
+          holderName: c.clientname,
+          relation: "Individual Account",
+          head_of_family: !!c.head_of_family,
+          groupid: c.groupid,
+          groupname: c.groupname,
+          clienttype: typeof c.clienttype === "string" ? c.clienttype : ""
+        }));
+      }
+      setClients(availableClients);
+
+      if (!availableClients.length) {
+        await clearSelectedClient();
+        return;
+      }
+
+      const storage = getClientStorage(["code", "id"]);
+
+      let selected =
+        availableClients.find(
+          (c) =>
+            c.clientcode === storage[STORAGE_KEYS.code] &&
+            c.clientid === storage[STORAGE_KEYS.id]
+        ) ||
+        (data.isHeadOfFamily
+          ? availableClients.find((c) => c.head_of_family)
+          : availableClients[0]) ||
+        availableClients[0];
+
+      // Make sure to set the client type from selected, if present
+      setSelectedClientType(selected?.clienttype || "");
+      console.log(selected?.clienttype)
+
+      await updateSelectedClient(selected);
+    } catch (err: any) {
+      console.log(err,":ffffffffffffffffetch data")
+      if (err?.response?.status === 401) {
+        setUnauthorized(true);
+        // tokenStore.clear();
+      }
+      await clearSelectedClient();
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    console.log('ClientProvider useEffect triggered');
+    if (initialized.current) return;
+    initialized.current = true;
     fetchClientData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedClientType]);
+  }, []);
 
-  const setSelectedClient = (clientCode: string) => {
-    const client = clients.find((c: ClientData) => c.clientcode === clientCode);
-    if (client) {
-      console.log('Setting selected client:', client);
-      updateSelectedClient(client);
-    } else {
-      console.warn('Client not found for code:', clientCode);
-      if (clients.length > 0) {
-        const defaultClient = clients[0];
-        updateSelectedClient(defaultClient);
-        console.log('Fell back to first client:', defaultClient);
-      } else {
-        clearSelectedClient();
-      }
-    }
+  const setSelectedClient = async (clientCode: string) => {
+    const client = clients.find((c) => c.clientcode === clientCode);
+    if (client) await updateSelectedClient(client);
+  };
+
+  const refresh = async () => {
+    console.log("===============referesh hit")
+    await fetchClientData();
+    console.log(tokenStore.get(),"===========fetchClientData set ")
   };
 
   const value: ClientContextType = {
@@ -233,15 +242,16 @@ export function ClientProvider({ children }: { children: ReactNode }) {
     selectedClientMobile,
     selectedClientName,
     selectedClientHolderName,
-    isHeadOfFamily,
-    setSelectedClient,
-    loading,
-    refresh,
-    selectedEmailClient,
-    setSelectedEmailClient,
     selectedClientType,
-    setSelectedClientType ,
-    clientLoading: loading,
+    selectedEmailClient,
+    isHeadOfFamily,
+    loading,
+    unauthorized,
+    setSelectedClient,
+    refresh,
+    setSelectedEmailClient,
+    setSelectedClientType,
+    clearAllClientData // optional on context type
   };
 
   return (
@@ -251,10 +261,14 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   );
 }
 
+export async function clearAllClientData() {
+  clearClientStorage();
+}
+
 export function useClient() {
-  const context = useContext(ClientContext);
-  if (context === undefined) {
-    throw new Error('useClient must be used within a ClientProvider');
+  const ctx = useContext(ClientContext);
+  if (!ctx) {
+    throw new Error("useClient must be used within ClientProvider");
   }
-  return context;
+  return ctx;
 }

@@ -6,11 +6,8 @@ import QodeSidebar from "@/components/qode-sidebar";
 import QodeHeader from "@/components/qode-header";
 import DistributorQodeSidebar from "@/components/qode-distributor-sidebar";
 import QodeDistributorHeader from "@/components/qode-distributor-header";
-import { useClient } from "@/contexts/ClientContext";
 import { FullscreenLoader } from "./portfolio/performance/page";
-import { useRouter } from "next/navigation";
-import api from "@/lib/api/axios";
-import { tokenStore } from "@/lib/api/token-store";
+import { useClient } from "@/contexts/ClientContext";
 
 type ClientLayoutProps = {
   children: ReactNode;
@@ -20,30 +17,6 @@ type ClientLayoutProps = {
 export default function ClientLayout({ children }: ClientLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { selectedClientType } = useClient();
-  const router = useRouter();
-  const didBootstrap = useRef(false);
-
-  useEffect(() => {
-    // Prevent running bootstrapAuth twice (e.g. during React StrictMode or double rendering)
-    if (didBootstrap.current) return;
-    didBootstrap.current = true;
-
-    async function bootstrapAuth() {
-      try {
-        // Only attempt refresh if there is no access token set yet
-        if (!tokenStore.get()) {
-          const res = await api.post("/api/auth/refresh");
-          if (res.data && res.data.accessToken) {
-            tokenStore.set(res.data.accessToken);
-          }
-        }
-      } catch (err) {
-        router.push("/login");
-      }
-    }
-
-    bootstrapAuth();
-  }, [router]);
 
   if (
     selectedClientType === "" ||
