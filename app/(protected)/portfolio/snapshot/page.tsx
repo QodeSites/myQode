@@ -103,8 +103,8 @@ export default function FamilyPortfolioSection() {
     const fetchFamilyAndPortfolioData = async () => {
       try {
         // First fetch family data (already role-filtered by API)
-        const familyRes = await fetch("/api/auth/client-data");
-        const familyData = await familyRes.json();
+        const familyRes = await api.get("/api/auth/client-data");
+        const familyData = await familyRes.data;
 
         if (!familyData.success || !familyData.family) {
           console.error("No family data found:", familyData);
