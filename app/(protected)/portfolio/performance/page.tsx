@@ -30,6 +30,7 @@ import {
 } from "recharts";
 import { Button } from "@/components/ui/button";
 import api from "@/lib/api/axios";
+import { useClient } from "@/contexts/ClientContext";
 
 // Import Lato font
 const latoFontStyle = `
@@ -1067,6 +1068,7 @@ const createConsolidatedData = useCallback(
 
     const fetchPortfolioData = async () => {
       setLoading(true);
+      console.log("feetching porifolio")
       try {
         // Check if "All Accounts" is selected (family-level consolidation)
         if (selectedAccount === 'ALL_ACCOUNTS') {
@@ -1215,8 +1217,8 @@ const createConsolidatedData = useCallback(
         }
 
         // Fetch historical data for charts
-        const historyRes = await fetch(`/api/portfolio-history?nuvama_code=${selectedAccount}`);
-        const historyData = await historyRes.json();
+        const historyRes = await api.get(`/api/portfolio-history?nuvama_code=${selectedAccount}`);
+        const historyData = await historyRes.data;
 
         if (historyData.success && historyData.data) {
           const histDataArr = historyData.data;
@@ -1251,8 +1253,8 @@ const createConsolidatedData = useCallback(
             // Fetch benchmark data
             try {
               const benchmarkUrl = `/api/getIndices?indices=BSE500&startDate=${incDate}&endDate=${latDate}`;
-              const benchmarkRes = await fetch(benchmarkUrl);
-              const benchmarkRaw = await benchmarkRes.json();
+              const benchmarkRes = await api.get(benchmarkUrl);
+              const benchmarkRaw = await benchmarkRes.data;
 
               let benchArray: any[] = [];
               if (Array.isArray(benchmarkRaw)) {
@@ -1600,6 +1602,7 @@ const createConsolidatedData = useCallback(
   }, [clientsLoading]);
 
   if (clientsLoading) {
+    console.log(clientsLoading,"=========loader")
     return (
       <AnimatePresence mode="wait">
         <FullscreenLoader brand="Qode" subtitle="Preparing your portfolio…" />

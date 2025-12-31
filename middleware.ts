@@ -37,7 +37,7 @@ export async function middleware(request: NextRequest) {
     }
     // As per new requirement, Authorization comes from backend now (always check header).
     const authHeader = request.headers.get("authorization");
-    console.log('authHeader',authHeader,request.headers.get("x-client-type"))
+    console.log('authHeader',authHeader,request.nextUrl.pathname,request.headers.get("x-client-type"))
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
@@ -45,12 +45,16 @@ export async function middleware(request: NextRequest) {
 
     try {
       const payload = await verifyToken(token);
-      // continue request
     } catch (err: any) {
+      console.error("JWT verification failed:", {
+        message: err?.message,
+        code: err?.code,
+        stack: err?.stack,
+        err
+      });
       if (err.code === "JWT_EXPIRED") {
         return NextResponse.json({ error: "Token expired" }, { status: 401 });
       }
-    
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
     

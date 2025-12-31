@@ -28,7 +28,6 @@ import {
   TrendingUp,
   BarChart3,
 } from "lucide-react"
-import { useClient } from "@/contexts/ClientContext"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -39,6 +38,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Badge } from "@/components/ui/badge"
 import api from "@/lib/api/axios"
+import { useClient } from "@/contexts/ClientContext"
 
 function NavLink({
   href,
@@ -106,8 +106,8 @@ export default function QodeSidebar({ open = false, onClose }: QodeSidebarProps)
     }
     const toOpen = map[section]
     if (toOpen) {
-  setOpenAccordions([toOpen])
-}
+      setOpenAccordions([toOpen])
+    }
   }, [pathname])
 
   // 2) LOCK scroll when drawer is open
@@ -325,7 +325,7 @@ export default function QodeSidebar({ open = false, onClose }: QodeSidebarProps)
                 </NavLink>
               </li>
               <li>
-                <NavLink href="/experience/service-cadence" icon={<Clock className="h-4 w-4" />}>
+                <NavLink href="/experience/service-cadence" icon={<Users className="h-4 w-4" />}>
                   Service Cadence
                 </NavLink>
               </li>
