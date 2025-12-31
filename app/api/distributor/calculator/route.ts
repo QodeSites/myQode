@@ -307,6 +307,9 @@ export async function POST(req: Request) {
         );
         console.log(feesResult.rows, "===========================feesResult");
 
+        const feesMap = new Map<string, any>();
+        feesResult.rows.forEach((row: any) => feesMap.set(row.accountcode, row));
+
         const aumMap = new Map<string, any>();
         aumResult.rows.forEach((row: any) => aumMap.set(row.accountcode, row.average_aum));
         const inceptionMap = new Map<string, any>();
@@ -314,15 +317,21 @@ export async function POST(req: Request) {
 
         const GST_RATE = 18;
 
-        const response = feesResult.rows.map((row: any, idx: number) => {
-
-            const accountcode = row.accountcode;
-            const clientname = row.clientname;
+        // Instead of mapping over feesResult, map over aumResult
+        const response = aumResult.rows.map((aumRow: any, idx: number) => {
+            const accountcode = aumRow.accountcode;
+            // For the given accountcode, get all other details
+            const clientRow = clientRows.find((c: any) => c.clientcode === accountcode) || {};
+            const clientname = clientRow.clientname || '';
             const billgroup = billGroupMap.get(accountcode) || null;
+            const inceptionDateRaw = inceptionMap.get(accountcode);
 
-            const perfFeesRaw = parseFloat(row.performance_fees) || 0;
-            const fixedFeesRaw = parseFloat(row.fixed_fees) || 0;
-            const totalFeesRaw = parseFloat(row.total_fees_collected) || 0;
+            // For the given accountcode, get the fee breakdown (may be missing)
+            const feesRow = feesMap.get(accountcode) || {};
+
+            const perfFeesRaw = parseFloat(feesRow.performance_fees) || 0;
+            const fixedFeesRaw = parseFloat(feesRow.fixed_fees) || 0;
+            const totalFeesRaw = parseFloat(feesRow.total_fees_collected) || 0;
 
             // GST calculations
             const gstOnPerf = (perfFeesRaw * GST_RATE) / 118;
@@ -341,16 +350,16 @@ export async function POST(req: Request) {
                 clientName: clientname,
                 strategy: accountcode,
                 billGroup: billgroup,
-                inceptionDate: inceptionMap.get(accountcode)
+                inceptionDate: inceptionDateRaw
                     ? (() => {
-                        const d = inceptionMap.get(accountcode);
+                        const d = inceptionDateRaw;
                         // expects d in "yyyy-mm-dd" or "yyyy-mm-ddTHH:MM:SS" format
                         const [yyyy, mm, dd] = d.split('T')[0].split('-');
                         return `${dd}-${mm}-${yyyy}`;
                     })()
                     : null,
-                averageAum: aumMap.get(accountcode)
-                    ? Number(aumMap.get(accountcode)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                averageAum: aumRow.average_aum
+                    ? Number(aumRow.average_aum).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
                     : "0.00",
 
                 // Performance Fees
@@ -372,6 +381,7 @@ export async function POST(req: Request) {
                 accountcode
             };
         });
+
 
         return NextResponse.json(response, { status: 200 });
     } catch (error) {
