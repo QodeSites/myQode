@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useClient } from "@/contexts/ClientContext";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -105,6 +105,7 @@ type FamilyAccount = {
   relation: string;
   status: string;
   email?: string;
+  orbisData?: any[];
 };
 
 type PortfolioData = {
@@ -744,6 +745,8 @@ export default function DetailedPortfolio() {
   const [familyAccounts, setFamilyAccounts] = useState<FamilyAccount[]>([]);
   const [currentData, setCurrentData] = useState<PortfolioData | null>(null);
   const [historicalData, setHistoricalData] = useState<HistoricalData[]>([]);
+  const [orbisHistoricalData, setOrbisHistoricalData] = useState<HistoricalData[]>([]);
+  const [consolidatedHistoricalData, setConsolidatedHistoricalData] = useState<HistoricalData[]>([]);
   const [benchmarkData, setBenchmarkData] = useState<BenchmarkItem[]>([]);
   const [trailingReturns, setTrailingReturns] = useState<any>(null);
   const [trailingReturnsBenchmark, setTrailingReturnsBenchmark] = useState<any>(null);
@@ -751,7 +754,76 @@ export default function DetailedPortfolio() {
   const [loading, setLoading] = useState(true);
   const [monthlyPnl, setMonthlyPnl] = useState<MonthlyPnlData>({});
   const [quarterlyPnl, setQuarterlyPnl] = useState<QuarterlyPnlData>({});
+  const [orbisData, setOrbisData] = useState<any[]>([]);
+  const [dataView, setDataView] = useState<'nuvama' | 'orbis' | 'consolidated'>('nuvama');
   const benchmarkColor = "#9CA3AF";
+
+  // Helper function to create consolidated data from Orbis and Nuvama
+  const createConsolidatedData = useCallback((orbisData: any[], nuvamaData: HistoricalData[], nuvamaCode: string): HistoricalData[] => {
+    if (!orbisData || orbisData.length === 0) return nuvamaData;
+    if (!nuvamaData || nuvamaData.length === 0) {
+      // Convert Orbis data to HistoricalData format
+      return orbisData.map(item => ({
+        report_date: item.date,
+        nav: Number(item.nav),
+        portfolio_value: Number(item.market_value || 0),
+        drawdown_percent: 0,
+        cash_in_out: Number(item.net_capital_flow || 0)
+      }));
+    }
+
+    // Special case: QAW00026 should not be consolidated
+    // Return only Nuvama data for consolidated view (Orbis will be shown separately)
+    if (nuvamaCode === 'QAW00026') {
+      return nuvamaData;
+    }
+
+    // Get the latest Orbis entry (transfer point)
+    const sortedOrbis = [...orbisData].sort((a, b) =>
+      new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+    const latestOrbis = sortedOrbis[sortedOrbis.length - 1];
+    const orbisEndNav = Number(latestOrbis.nav);
+    const orbisEndValue = Number(latestOrbis.market_value || 0);
+    const orbisEndDate = new Date(latestOrbis.date);
+
+    // Convert Orbis data to HistoricalData format
+    const orbisHistorical: HistoricalData[] = sortedOrbis.map(item => ({
+      report_date: item.date,
+      nav: Number(item.nav),
+      portfolio_value: Number(item.market_value || 0),
+      drawdown_percent: 0,
+      cash_in_out: Number(item.net_capital_flow || 0)
+    }));
+
+    // Filter Nuvama data to only include dates after Orbis end date
+    const nuvamaAfterTransfer = nuvamaData.filter(item =>
+      new Date(item.report_date) > orbisEndDate
+    ).sort((a, b) =>
+      new Date(a.report_date).getTime() - new Date(b.report_date).getTime()
+    );
+
+    if (nuvamaAfterTransfer.length === 0) {
+      return orbisHistorical;
+    }
+
+    // Get the first Nuvama NAV after transfer
+    const firstNuvamaNav = Number(nuvamaAfterTransfer[0].nav);
+
+    // Calculate NAV adjustment factor
+    // The idea: Orbis ended at orbisEndNav, Nuvama started fresh at some NAV
+    // We need to normalize Nuvama NAVs to continue from where Orbis left off
+    const navAdjustmentFactor = firstNuvamaNav > 0 ? orbisEndNav / firstNuvamaNav : 1;
+
+    // Adjust Nuvama NAVs to continue from Orbis
+    const adjustedNuvama: HistoricalData[] = nuvamaAfterTransfer.map(item => ({
+      ...item,
+      nav: Number(item.nav) * navAdjustmentFactor
+    }));
+
+    // Combine both datasets
+    return [...orbisHistorical, ...adjustedNuvama];
+  }, []);
 
   // Fetch family accounts using same API as FamilyPortfolioSection
   useEffect(() => {
@@ -768,6 +840,7 @@ export default function DetailedPortfolio() {
             relation: member.relation,
             status: member.status,
             email: member.email,
+            orbisData: member.orbisData || [],
           }));
 
           setFamilyAccounts(accounts);
@@ -776,6 +849,8 @@ export default function DetailedPortfolio() {
           const firstActive = accounts.find(acc => acc.status === "Active");
           if (firstActive) {
             setSelectedAccount(firstActive.clientcode);
+            // Set orbis data for the selected account
+            setOrbisData(firstActive.orbisData || []);
           }
         }
       } catch (err) {
@@ -786,7 +861,24 @@ export default function DetailedPortfolio() {
     fetchFamilyAccounts();
   }, []);
 
-  // Fetch portfolio data when account is selected
+  // Update orbis data when account changes
+  useEffect(() => {
+    if (!selectedAccount) return;
+
+    const selectedAccountData = familyAccounts.find(acc => acc.clientcode === selectedAccount);
+    if (selectedAccountData) {
+      setOrbisData(selectedAccountData.orbisData || []);
+      // Auto-select view based on data availability
+      const hasOrbis = selectedAccountData.orbisData && selectedAccountData.orbisData.length > 0;
+      if (hasOrbis) {
+        setDataView('consolidated'); // Default to consolidated view if Orbis data exists
+      } else {
+        setDataView('nuvama'); // Default to Nuvama only if no Orbis data
+      }
+    }
+  }, [selectedAccount, familyAccounts]);
+
+  // Fetch portfolio data when account is selected or when orbisData changes
   useEffect(() => {
     if (!selectedAccount) return;
 
@@ -814,9 +906,31 @@ export default function DetailedPortfolio() {
           const histDataArr = historyData.data;
           setHistoricalData(histDataArr);
 
-          if (histDataArr.length > 0) {
-            const incDate = histDataArr[0].report_date;
-            const latDate = histDataArr[histDataArr.length - 1].report_date;
+          // Get current orbisData from the selected account
+          const selectedAccountData = familyAccounts.find(acc => acc.clientcode === selectedAccount);
+          const currentOrbisData = selectedAccountData?.orbisData || [];
+
+          // Convert Orbis data to historical format
+          const orbisHistorical = currentOrbisData.map(item => ({
+            report_date: item.date,
+            nav: Number(item.nav),
+            portfolio_value: Number(item.market_value || 0),
+            drawdown_percent: 0,
+            cash_in_out: Number(item.net_capital_flow || 0)
+          }));
+          setOrbisHistoricalData(orbisHistorical);
+
+          // Create consolidated data
+          const consolidated = createConsolidatedData(currentOrbisData, histDataArr, selectedAccount);
+          setConsolidatedHistoricalData(consolidated);
+
+          // Determine the date range for benchmark data
+          // Use consolidated data if it has orbis, otherwise use nuvama data
+          const dataForBenchmark = currentOrbisData.length > 0 ? consolidated : histDataArr;
+
+          if (dataForBenchmark.length > 0) {
+            const incDate = dataForBenchmark[0].report_date;
+            const latDate = dataForBenchmark[dataForBenchmark.length - 1].report_date;
 
             // Fetch benchmark data
             try {
@@ -864,17 +978,27 @@ export default function DetailedPortfolio() {
     };
 
     fetchPortfolioData();
-  }, [selectedAccount]);
+  }, [selectedAccount, familyAccounts, createConsolidatedData]);
+
+  // Get active historical data based on selected view
+  const getActiveHistoricalData = useCallback((): HistoricalData[] => {
+    if (dataView === 'orbis') return orbisHistoricalData;
+    if (dataView === 'consolidated') return consolidatedHistoricalData;
+    return historicalData; // nuvama
+  }, [dataView, orbisHistoricalData, consolidatedHistoricalData, historicalData]);
+
+  const activeHistoricalData = getActiveHistoricalData();
 
   // Compute monthly and quarterly PNL
   useEffect(() => {
-    if (historicalData.length === 0) {
+    const dataToUse = getActiveHistoricalData();
+    if (dataToUse.length === 0) {
       setMonthlyPnl({});
       setQuarterlyPnl({});
       return;
     }
 
-    const sorted = [...historicalData].sort((a, b) => new Date(a.report_date).getTime() - new Date(b.report_date).getTime());
+    const sorted = [...dataToUse].sort((a, b) => new Date(a.report_date).getTime() - new Date(b.report_date).getTime());
 
     const monthly: MonthlyPnlData = {};
     const quarterly: QuarterlyPnlData = {};
@@ -957,9 +1081,9 @@ export default function DetailedPortfolio() {
           const qPercent = quarterStartNav > 0 ? ((prevNav / quarterStartNav) - 1) * 100 : 0;
           const qCash = prevValue - quarterStartValue - quarterSumCash;
           const qk = `q${prevQuarter}`;
-          if (quarterly[year]) {
-            quarterly[year].percent[qk as keyof typeof quarterly[string]["percent"]] = qPercent.toFixed(2);
-            quarterly[year].cash[qk as keyof typeof quarterly[string]["cash"]] = qCash.toFixed(2);
+          if (quarterly[prevYear]) {
+            quarterly[prevYear].percent[qk as keyof typeof quarterly[string]["percent"]] = qPercent.toFixed(2);
+            quarterly[prevYear].cash[qk as keyof typeof quarterly[string]["cash"]] = qCash.toFixed(2);
           }
         }
 
@@ -1064,30 +1188,31 @@ export default function DetailedPortfolio() {
 
     setMonthlyPnl(monthly);
     setQuarterlyPnl(quarterly);
-  }, [historicalData]);
+  }, [getActiveHistoricalData]);
 
   // Enrich data with normalization and benchmark
   useEffect(() => {
-    if (historicalData.length === 0) {
+    const dataToUse = getActiveHistoricalData();
+    if (dataToUse.length === 0) {
       setEnrichedData([]);
       return;
     }
 
-    const firstNav = Number(historicalData[0].nav);
+    const firstNav = Number(dataToUse[0].nav);
     if (firstNav <= 0) {
-      setEnrichedData(historicalData);
+      setEnrichedData(dataToUse);
       return;
     }
 
     const sortedBench = benchmarkData.length > 0 ? [...benchmarkData].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()) : [];
-    const incDate = historicalData[0].report_date;
+    const incDate = dataToUse[0].report_date;
     const firstBenchItem = sortedBench.length > 0 ? findLatestBenchmarkBeforeOrOn(sortedBench, incDate) : null;
     const firstBench = firstBenchItem ? firstBenchItem.value : 0;
 
     let portPeak = firstNav;
     let benchPeak = firstBench > 0 ? 100 : 0; // normalized
 
-    const enriched = historicalData.map((item, index) => {
+    const enriched = dataToUse.map((item, index) => {
       const currentNav = Number(item.nav);
       if (currentNav > portPeak) portPeak = currentNav;
       const portDD = -((currentNav - portPeak) / portPeak * 100); // positive
@@ -1118,33 +1243,35 @@ export default function DetailedPortfolio() {
     });
 
     setEnrichedData(enriched);
-  }, [historicalData, benchmarkData]);
+  }, [getActiveHistoricalData, benchmarkData]);
 
   // Calculate trailing returns when historicalData changes
   useEffect(() => {
-    if (historicalData.length > 0) {
-      const mappedData = historicalData.map(item => ({
+    const dataToUse = getActiveHistoricalData();
+    if (dataToUse.length > 0) {
+      const mappedData = dataToUse.map(item => ({
         nav: Number(item.nav),
         date: item.report_date
       }));
-      const incDate = historicalData[0].report_date;
+      const incDate = dataToUse[0].report_date;
       const returns = calculateTrailingReturnsForData(mappedData, incDate);
       setTrailingReturns(returns);
     }
-  }, [historicalData]);
+  }, [getActiveHistoricalData]);
 
   // Calculate trailing returns for benchmark
   useEffect(() => {
-    if (benchmarkData.length > 0 && historicalData.length > 0) {
+    const dataToUse = getActiveHistoricalData();
+    if (benchmarkData.length > 0 && dataToUse.length > 0) {
       const mappedData = benchmarkData.map(item => ({
         nav: item.value,
         date: item.date
       }));
-      const incDate = historicalData[0].report_date;
+      const incDate = dataToUse[0].report_date;
       const returns = calculateTrailingReturnsForData(mappedData, incDate);
       setTrailingReturnsBenchmark(returns);
     }
-  }, [benchmarkData, historicalData]);
+  }, [benchmarkData, getActiveHistoricalData]);
 
   // Simulate initial load (clientsLoading or initial fetch)
   useEffect(() => {
@@ -1164,9 +1291,13 @@ export default function DetailedPortfolio() {
     );
   }
 
-  // Calculate metrics
-  const totalInvested = historicalData.reduce((sum, item) => sum + (Number(item.cash_in_out) || 0), 0);
-  const currentValue = currentData?.portfolio_value || 0;
+  // Calculate metrics using active data
+  const totalInvested = activeHistoricalData.reduce((sum, item) => sum + (Number(item.cash_in_out) || 0), 0);
+  const currentValue = dataView === 'nuvama'
+    ? (currentData?.portfolio_value || 0)
+    : activeHistoricalData.length > 0
+      ? activeHistoricalData[activeHistoricalData.length - 1].portfolio_value
+      : 0;
   const totalReturns = currentValue - totalInvested;
   const returnsPercent = totalInvested > 0 ? (totalReturns / totalInvested) * 100 : 0;
   const isPositiveReturnOverall = totalReturns >= 0;
@@ -1202,9 +1333,9 @@ export default function DetailedPortfolio() {
   const ddPadding = ddRange * 0.1;
   const drawdownDomain = [Math.floor(minDD - ddPadding), 0];
 
-  // Get inception and latest date
-  const inceptionDate = historicalData.length > 0 ? historicalData[0].report_date : null;
-  const latestDate = historicalData.length > 0 ? historicalData[historicalData.length - 1].report_date : null;
+  // Get inception and latest date using active data
+  const inceptionDate = activeHistoricalData.length > 0 ? activeHistoricalData[0].report_date : null;
+  const latestDate = activeHistoricalData.length > 0 ? activeHistoricalData[activeHistoricalData.length - 1].report_date : null;
 
   const periods = [
     { key: '1W', label: '1W' },
@@ -1235,52 +1366,96 @@ export default function DetailedPortfolio() {
           <style>{latoFontStyle}</style>
 
           {/* Header */}
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-foreground">Portfolio Details</h1>
-              <div className="flex flex-col gap-1 mt-1">
-                <p className="text-sm text-muted-foreground">
-                  {selectedAccountDetails && (
-                    <>
-                      {sanitizeName(selectedAccountDetails.holderName)} • {selectedAccount}
-                    </>
-                  )}
-                </p>
-                {inceptionDate && latestDate && (
-                  <div className="flex flex-wrap items-center gap-3 text-xs">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" style={{ color: colors.primary }} />
-                      <span className="text-muted-foreground">Inception:</span>
-                      <span className="font-medium" style={{ color: colors.primary }}>
-                        {formatDate(inceptionDate)}
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <h1 className="text-2xl md:text-3xl font-bold text-foreground">Portfolio Details</h1>
+                <div className="flex flex-col gap-1 mt-1">
+                  <p className="text-sm text-muted-foreground">
+                    {selectedAccountDetails && (
+                      <>
+                        {sanitizeName(selectedAccountDetails.holderName)} • {selectedAccount}
+                      </>
+                    )}
+                  </p>
+                  {inceptionDate && latestDate && (
+                    <div className="flex flex-wrap items-center gap-3 text-xs">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="h-3 w-3" style={{ color: colors.primary }} />
+                        <span className="text-muted-foreground">Inception:</span>
+                        <span className="font-medium" style={{ color: colors.primary }}>
+                          {formatDate(inceptionDate)}
+                        </span>
                       </span>
-                    </span>
-                    <span className="text-muted-foreground">•</span>
-                    <span className="flex items-center gap-1">
-                      <span className="text-muted-foreground">Data as of:</span>
-                      <span className="font-medium" style={{ color: colors.primary }}>
-                        {formatDate(latestDate)}
+                      <span className="text-muted-foreground">•</span>
+                      <span className="flex items-center gap-1">
+                        <span className="text-muted-foreground">Data as of:</span>
+                        <span className="font-medium" style={{ color: colors.primary }}>
+                          {formatDate(latestDate)}
+                        </span>
                       </span>
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-            <Select value={selectedAccount} onValueChange={setSelectedAccount}>
-              <SelectTrigger className="w-full md:w-80">
-                <SelectValue placeholder="Select Account" />
-              </SelectTrigger>
-              <SelectContent>
-                {familyAccounts.map(acc => (
-                  <SelectItem key={acc.clientcode} value={acc.clientcode}>
-                    <div className="flex items-center justify-between gap-3">
-                      <span>{sanitizeName(acc.holderName)}</span>
-                      <span className="text-xs text-muted-foreground">({acc.clientcode})</span>
                     </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+                  )}
+                </div>
+              </div>
+              <Select value={selectedAccount} onValueChange={setSelectedAccount}>
+                <SelectTrigger className="w-full md:w-80">
+                  <SelectValue placeholder="Select Account" />
+                </SelectTrigger>
+                <SelectContent>
+                  {familyAccounts.map(acc => (
+                    <SelectItem key={acc.clientcode} value={acc.clientcode}>
+                      <div className="flex items-center justify-between gap-3">
+                        <span>{sanitizeName(acc.holderName)}</span>
+                        <span className="text-xs text-muted-foreground">({acc.clientcode})</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Data View Selector - Only show if Orbis data exists */}
+            {orbisData && orbisData.length > 0 && (
+              <Card>
+                <CardContent className="pt-6">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div>
+                      <h3 className="text-sm font-semibold text-foreground">Data View</h3>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Select how you want to view your portfolio performance
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => setDataView('nuvama')}
+                        size="sm"
+                        variant={dataView === 'nuvama' ? 'gradient' : 'outline'}
+                        className="text-xs"
+                      >
+                        Nuvama Only
+                      </Button>
+                      <Button
+                        onClick={() => setDataView('orbis')}
+                        size="sm"
+                        variant={dataView === 'orbis' ? 'gradient' : 'outline'}
+                        className="text-xs"
+                      >
+                        Orbis Only
+                      </Button>
+                      <Button
+                        onClick={() => setDataView('consolidated')}
+                        size="sm"
+                        variant={dataView === 'consolidated' ? 'gradient' : 'outline'}
+                        className="text-xs"
+                      >
+                        Consolidated
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           {/* Metrics Cards */}
@@ -1351,7 +1526,7 @@ export default function DetailedPortfolio() {
             </Card>
           </div>
 
-          {historicalData.length > 0 && trailingReturns && (
+          {activeHistoricalData.length > 0 && trailingReturns && (
             <Card>
               <CardHeader>
                 <div className="flex justify-between items-center mb-4">
@@ -1472,7 +1647,7 @@ export default function DetailedPortfolio() {
             </Card>
           )}
 
-          {historicalData.length > 0 ? (
+          {activeHistoricalData.length > 0 ? (
             <>
               {/* NAV Chart */}
               <Card>
@@ -1586,6 +1761,66 @@ export default function DetailedPortfolio() {
                 <PnlTable quarterlyPnl={quarterlyPnl} monthlyPnl={monthlyPnl} />
               )}
 
+              {/* Orbis Data Section - Only show when viewing Orbis or Consolidated data */}
+              {orbisData && orbisData.length > 0 && dataView !== 'nuvama' && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Activity className="h-5 w-5 text-primary" />
+                      Orbis Fund Data
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse">
+                        <thead>
+                          <tr className="border-b border-border bg-muted/50">
+                            <th className="text-left py-3 px-4 text-sm font-semibold text-foreground">Date</th>
+                            <th className="text-right py-3 px-4 text-sm font-semibold text-foreground">NAV</th>
+                            <th className="text-right py-3 px-4 text-sm font-semibold text-foreground">Market Value</th>
+                            <th className="text-right py-3 px-4 text-sm font-semibold text-foreground">Unit Balance</th>
+                            <th className="text-right py-3 px-4 text-sm font-semibold text-foreground">Capital Investment</th>
+                            <th className="text-right py-3 px-4 text-sm font-semibold text-foreground">Capital Redemption</th>
+                            <th className="text-right py-3 px-4 text-sm font-semibold text-foreground">Management Fees</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {orbisData.map((item: any, index: number) => (
+                            <tr key={index} className="border-b border-border hover:bg-muted/50 transition-colors">
+                              <td className="py-3 px-4 text-sm">
+                                {item.date ? new Date(item.date).toLocaleDateString('en-IN', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric'
+                                }) : '-'}
+                              </td>
+                              <td className="py-3 px-4 text-sm text-right">
+                                {item.nav ? Number(item.nav).toFixed(4) : '-'}
+                              </td>
+                              <td className="py-3 px-4 text-sm text-right font-semibold">
+                                {item.market_value ? formatCurrency(Number(item.market_value)) : '-'}
+                              </td>
+                              <td className="py-3 px-4 text-sm text-right">
+                                {item.unit_balance ? Number(item.unit_balance).toFixed(2) : '-'}
+                              </td>
+                              <td className="py-3 px-4 text-sm text-right text-green-600">
+                                {item.capital_investment ? formatCurrency(Number(item.capital_investment)) : '-'}
+                              </td>
+                              <td className="py-3 px-4 text-sm text-right text-red-600">
+                                {item.capital_redemption ? formatCurrency(Number(item.capital_redemption)) : '-'}
+                              </td>
+                              <td className="py-3 px-4 text-sm text-right">
+                                {item.management_fees ? formatCurrency(Number(item.management_fees)) : '-'}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Cash Flows Table */}
               <Card>
                 <CardHeader>
@@ -1605,7 +1840,7 @@ export default function DetailedPortfolio() {
                         </tr>
                       </thead>
                       <tbody>
-                        {historicalData
+                        {activeHistoricalData
                           .filter(item => item.cash_in_out != null && Number(item.cash_in_out) !== 0)
                           .map((item, index) => {
                             const isInflow = item.cash_in_out > 0;
