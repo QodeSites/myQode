@@ -16,7 +16,8 @@ import {
   Calendar,
   ArrowUpRight,
   ArrowDownRight,
-  Activity
+  Activity,
+  Download
 } from "lucide-react";
 import {
   AreaChart,
@@ -431,6 +432,97 @@ const isNegativeReturn = (val: any) => typeof val === 'number' && val < 0;
 const formatReturn = (val: any) => val === '-' || val === null ? '-' : `${val.toFixed(2)}%`;
 
 /* =========================
+   CSV Download Function
+   ========================= */
+const downloadConsolidatedCSV = (
+  enrichedData: any[],
+  trailingReturns: any,
+  trailingReturnsBenchmark: any,
+  monthlyPnl: MonthlyPnlData,
+  quarterlyPnl: QuarterlyPnlData,
+  accountCode: string,
+  accountName: string,
+  dataView: string
+) => {
+  // Prepare CSV content
+  let csvContent = "data:text/csv;charset=utf-8,";
+
+  // Header section
+  csvContent += `Account Information\n`;
+  csvContent += `Account Code,${accountCode}\n`;
+  csvContent += `Account Name,${accountName}\n`;
+  csvContent += `Data View,${dataView}\n`;
+  csvContent += `Export Date,${new Date().toISOString()}\n`;
+  csvContent += `\n`;
+
+  // Historical Data Section
+  csvContent += `Historical Performance Data\n`;
+  csvContent += `Date,NAV,Portfolio Value,Cash In/Out,Normalized NAV,Drawdown %,Benchmark NAV,Benchmark Normalized,Benchmark Drawdown %\n`;
+  enrichedData.forEach((item) => {
+    csvContent += `${item.report_date},${item.nav},${item.portfolio_value},${item.cash_in_out || 0},${item.normalized_nav},${item.drawdown_percent},${item.benchmark_value || ''},${item.normalized_benchmark || ''},${item.benchmark_drawdown_percent || ''}\n`;
+  });
+  csvContent += `\n`;
+
+  // Trailing Returns Section
+  csvContent += `Trailing Returns\n`;
+  csvContent += `Period,Portfolio %,Benchmark %\n`;
+  const periods = ['1W', '10D', '1M', '3M', '6M', '1Y', 'Since Inception'];
+  periods.forEach((period) => {
+    const portVal = trailingReturns && trailingReturns[period] !== undefined ? trailingReturns[period] : '-';
+    const benchVal = trailingReturnsBenchmark && trailingReturnsBenchmark[period] !== undefined ? trailingReturnsBenchmark[period] : '-';
+    csvContent += `${period},${portVal},${benchVal}\n`;
+  });
+  csvContent += `\n`;
+
+  // Drawdown Metrics Section
+  if (enrichedData.length > 0) {
+    const portfolioCurrentDD = enrichedData[enrichedData.length - 1].drawdown_percent || 0;
+    const portfolioMaxDD = Math.max(...enrichedData.map(item => item.drawdown_percent || 0));
+    const benchmarkCurrentDD = enrichedData[enrichedData.length - 1].benchmark_drawdown_percent || 0;
+    const benchmarkMaxDD = Math.max(...enrichedData.map(item => item.benchmark_drawdown_percent || 0));
+
+    csvContent += `Drawdown Metrics\n`;
+    csvContent += `Metric,Portfolio %,Benchmark %\n`;
+    csvContent += `Current Drawdown,${portfolioCurrentDD.toFixed(2)},${benchmarkCurrentDD.toFixed(2)}\n`;
+    csvContent += `Maximum Drawdown,${portfolioMaxDD.toFixed(2)},${benchmarkMaxDD.toFixed(2)}\n`;
+    csvContent += `\n`;
+  }
+
+  // Quarterly PnL Section
+  csvContent += `Quarterly PnL\n`;
+  csvContent += `Year,Q1 %,Q1 Cash,Q2 %,Q2 Cash,Q3 %,Q3 Cash,Q4 %,Q4 Cash,Total %,Total Cash,Year Cash In/Out\n`;
+  Object.keys(quarterlyPnl).sort().forEach((year) => {
+    const qData = quarterlyPnl[year];
+    csvContent += `${year},${qData.percent.q1},${qData.cash.q1},${qData.percent.q2},${qData.cash.q2},${qData.percent.q3},${qData.cash.q3},${qData.percent.q4},${qData.cash.q4},${qData.percent.total},${qData.cash.total},${qData.yearCash}\n`;
+  });
+  csvContent += `\n`;
+
+  // Monthly PnL Section
+  csvContent += `Monthly PnL\n`;
+  csvContent += `Year,Month,Percent,Cash,Capital In/Out\n`;
+  const monthOrder = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  Object.keys(monthlyPnl).sort().forEach((year) => {
+    const yearData = monthlyPnl[year];
+    monthOrder.forEach((month) => {
+      if (yearData.months[month]) {
+        const mData = yearData.months[month];
+        csvContent += `${year},${month},${mData.percent},${mData.cash},${mData.capitalInOut}\n`;
+      }
+    });
+    csvContent += `${year},Total Year,${yearData.totalPercent},${yearData.totalCash},${yearData.totalCapitalInOut}\n`;
+  });
+
+  // Create download link
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement("a");
+  link.setAttribute("href", encodedUri);
+  link.setAttribute("download", `portfolio_debug_${accountCode}_${dataView}_${new Date().toISOString().split('T')[0]}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
+/* =========================
    PnlTable Component
    ========================= */
 interface PnlTableProps {
@@ -758,72 +850,91 @@ export default function DetailedPortfolio() {
   const [dataView, setDataView] = useState<'nuvama' | 'orbis' | 'consolidated'>('nuvama');
   const benchmarkColor = "#9CA3AF";
 
-  // Helper function to create consolidated data from Orbis and Nuvama
-  const createConsolidatedData = useCallback((orbisData: any[], nuvamaData: HistoricalData[], nuvamaCode: string): HistoricalData[] => {
-    if (!orbisData || orbisData.length === 0) return nuvamaData;
-    if (!nuvamaData || nuvamaData.length === 0) {
-      // Convert Orbis data to HistoricalData format
+const createConsolidatedData = useCallback(
+  (
+    orbisData: any[],
+    nuvamaData: HistoricalData[],
+    nuvamaCode: string
+  ): HistoricalData[] => {
+
+    if (!orbisData?.length) return nuvamaData;
+    if (!nuvamaData?.length) {
       return orbisData.map(item => ({
         report_date: item.date,
         nav: Number(item.nav),
         portfolio_value: Number(item.market_value || 0),
         drawdown_percent: 0,
-        cash_in_out: Number(item.net_capital_flow || 0)
+        cash_in_out: Number(item.net_capital_flow || 0),
       }));
     }
 
-    // Special case: QAW00026 should not be consolidated
-    // Return only Nuvama data for consolidated view (Orbis will be shown separately)
     if (nuvamaCode === 'QAW00026') {
       return nuvamaData;
     }
 
-    // Get the latest Orbis entry (transfer point)
-    const sortedOrbis = [...orbisData].sort((a, b) =>
-      new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
-    const latestOrbis = sortedOrbis[sortedOrbis.length - 1];
-    const orbisEndNav = Number(latestOrbis.nav);
-    const orbisEndValue = Number(latestOrbis.market_value || 0);
-    const orbisEndDate = new Date(latestOrbis.date);
-
-    // Convert Orbis data to HistoricalData format
-    const orbisHistorical: HistoricalData[] = sortedOrbis.map(item => ({
-      report_date: item.date,
-      nav: Number(item.nav),
-      portfolio_value: Number(item.market_value || 0),
-      drawdown_percent: 0,
-      cash_in_out: Number(item.net_capital_flow || 0)
-    }));
-
-    // Filter Nuvama data to only include dates after Orbis end date
-    const nuvamaAfterTransfer = nuvamaData.filter(item =>
-      new Date(item.report_date) > orbisEndDate
-    ).sort((a, b) =>
-      new Date(a.report_date).getTime() - new Date(b.report_date).getTime()
+    // Sort Orbis
+    const sortedOrbis = [...orbisData].sort(
+      (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
     );
 
-    if (nuvamaAfterTransfer.length === 0) {
-      return orbisHistorical;
+    const lastOrbis = sortedOrbis[sortedOrbis.length - 1];
+    const lastOrbisNav = Number(lastOrbis.nav);
+    const orbisEndDate = lastOrbis.date;
+
+
+    // Sort Nuvama
+    const sortedNuvama = [...nuvamaData].sort(
+      (a, b) =>
+        new Date(a.report_date).getTime() -
+        new Date(b.report_date).getTime()
+    );
+
+    // Find Nuvama data AFTER Orbis end date
+    const nuvamaAfterOrbis = sortedNuvama.filter(
+      item => new Date(item.report_date) > new Date(orbisEndDate)
+    );
+
+
+    if (nuvamaAfterOrbis.length === 0) {
+      // No Nuvama data after Orbis, just return rebased Orbis
+      return sortedOrbis.map(item => ({
+        report_date: item.date,
+        nav: Number(item.nav),
+        portfolio_value: Number(item.market_value || 0),
+        drawdown_percent: 0,
+        cash_in_out: Number(item.net_capital_flow || 0),
+      }));
     }
 
-    // Get the first Nuvama NAV after transfer
-    const firstNuvamaNav = Number(nuvamaAfterTransfer[0].nav);
+    // Get first Nuvama NAV after Orbis
+    const firstNuvamaAfterOrbis = nuvamaAfterOrbis[0];
+    const firstNuvamaNav = Number(firstNuvamaAfterOrbis.nav);
 
-    // Calculate NAV adjustment factor
-    // The idea: Orbis ended at orbisEndNav, Nuvama started fresh at some NAV
-    // We need to normalize Nuvama NAVs to continue from where Orbis left off
-    const navAdjustmentFactor = firstNuvamaNav > 0 ? orbisEndNav / firstNuvamaNav : 1;
+    // Calculate factor to rebase Orbis to match Nuvama scale
+    const factor = lastOrbisNav > 0 ? firstNuvamaNav / lastOrbisNav : 1;
 
-    // Adjust Nuvama NAVs to continue from Orbis
-    const adjustedNuvama: HistoricalData[] = nuvamaAfterTransfer.map(item => ({
-      ...item,
-      nav: Number(item.nav) * navAdjustmentFactor
+    // Rebase Orbis NAVs to align with Nuvama
+    const rebasedOrbis: HistoricalData[] = sortedOrbis.map(item => ({
+      report_date: item.date,
+      nav: Number(item.nav) * factor,
+      portfolio_value: Number(item.market_value || 0),
+      drawdown_percent: 0,
+      cash_in_out: Number(item.net_capital_flow || 0),
     }));
 
-    // Combine both datasets
-    return [...orbisHistorical, ...adjustedNuvama];
-  }, []);
+    // Keep Nuvama data as-is (no modification needed)
+    const intactNuvama: HistoricalData[] = nuvamaAfterOrbis.map(item => ({
+      ...item,
+      nav: Number(item.nav),
+    }));
+
+    const consolidated = [...rebasedOrbis, ...intactNuvama];
+    return consolidated;
+  },
+  []
+);
+
+
 
   // Fetch family accounts using same API as FamilyPortfolioSection
   useEffect(() => {
@@ -868,6 +979,25 @@ export default function DetailedPortfolio() {
     const selectedAccountData = familyAccounts.find(acc => acc.clientcode === selectedAccount);
     if (selectedAccountData) {
       setOrbisData(selectedAccountData.orbisData || []);
+
+      // Debug: Print first 20 NAV values from Orbis master sheet
+      const orbisDataArray = selectedAccountData.orbisData || [];
+      if (orbisDataArray.length > 0) {
+        console.log('=== ORBIS MASTER SHEET - First 20 NAV Values ===');
+        console.log(`Account: ${selectedAccount} (${selectedAccountData.holderName})`);
+        console.log(`Total Orbis Records: ${orbisDataArray.length}`);
+        console.log('---');
+
+        const recordsToShow = Math.min(20, orbisDataArray.length);
+        for (let i = 0; i < recordsToShow; i++) {
+          const record = orbisDataArray[i];
+          console.log(`[${i + 1}] Date: ${record.date || 'N/A'}, NAV: ${record.nav || 'N/A'}, Market Value: ${record.market_value || 'N/A'}`);
+        }
+        console.log('==============================================');
+      } else {
+        console.log(`No Orbis data available for account: ${selectedAccount}`);
+      }
+
       // Auto-select view based on data availability
       const hasOrbis = selectedAccountData.orbisData && selectedAccountData.orbisData.length > 0;
       if (hasOrbis) {
@@ -1398,21 +1528,46 @@ export default function DetailedPortfolio() {
                   )}
                 </div>
               </div>
-              <Select value={selectedAccount} onValueChange={setSelectedAccount}>
-                <SelectTrigger className="w-full md:w-80">
-                  <SelectValue placeholder="Select Account" />
-                </SelectTrigger>
-                <SelectContent>
-                  {familyAccounts.map(acc => (
-                    <SelectItem key={acc.clientcode} value={acc.clientcode}>
-                      <div className="flex items-center justify-between gap-3">
-                        <span>{sanitizeName(acc.holderName)}</span>
-                        <span className="text-xs text-muted-foreground">({acc.clientcode})</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+                <Select value={selectedAccount} onValueChange={setSelectedAccount}>
+                  <SelectTrigger className="w-full md:w-80">
+                    <SelectValue placeholder="Select Account" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {familyAccounts.map(acc => (
+                      <SelectItem key={acc.clientcode} value={acc.clientcode}>
+                        <div className="flex items-center justify-between gap-3">
+                          <span>{sanitizeName(acc.holderName)}</span>
+                          <span className="text-xs text-muted-foreground">({acc.clientcode})</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {enrichedData.length > 0 && (
+                  <Button
+                    onClick={() =>
+                      downloadConsolidatedCSV(
+                        enrichedData,
+                        trailingReturns,
+                        trailingReturnsBenchmark,
+                        monthlyPnl,
+                        quarterlyPnl,
+                        selectedAccount,
+                        selectedAccountDetails?.holderName || 'Unknown',
+                        dataView
+                      )
+                    }
+                    variant="outline"
+                    size="default"
+                    className="gap-2 whitespace-nowrap"
+                  >
+                    <Download className="h-4 w-4" />
+                    <span className="hidden sm:inline">Download Debug CSV</span>
+                    <span className="sm:hidden">CSV</span>
+                  </Button>
+                )}
+              </div>
             </div>
 
             {/* Data View Selector - Only show if Orbis data exists */}

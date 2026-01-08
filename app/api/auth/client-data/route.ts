@@ -104,6 +104,33 @@ export async function GET() {
       });
     }
 
+    // Fetch Orbis data for clients that have matching nuvama_code
+    const clientNuvamaCodes = clientCodes; // clientcode is the same as nuvama_code for matching
+    const orbisResult = await query(
+      `SELECT id, person_name, orbis_code, date, capital_amount, unit_balance,
+              market_value, nav, opening_unit_balance, units_allotted, units_redeemed,
+              closing_unit_balance, capital_investment, capital_redemption, management_fees,
+              other_fees, net_capital_flow, created_at, updated_at, nuvama_code
+       FROM orbis_master_sheet
+       WHERE nuvama_code = ANY($1::text[])
+       ORDER BY date ASC`,
+      [clientNuvamaCodes]
+    );
+
+    // Create a map of nuvama_code to orbis data for easy lookup
+    const orbisDataMap = new Map();
+    orbisResult.rows.forEach((row) => {
+      if (!orbisDataMap.has(row.nuvama_code)) {
+        orbisDataMap.set(row.nuvama_code, []);
+      }
+      orbisDataMap.get(row.nuvama_code).push(row);
+    });
+
+    // Attach orbis data to each client
+    allClientDetails.forEach((client: any) => {
+      client.orbisData = orbisDataMap.get(client.clientcode) || [];
+    });
+
     // Determine group ID and final head of family status from DB
     const groupId = allClientDetails[0].groupid;
     const finalIsHeadOfFamily = allClientDetails.some((c: any) => c.head_of_family === true) || isHeadOfFamily;
@@ -148,6 +175,27 @@ export async function GET() {
         const familyMap = new Map(familyResult.rows.map(member => [member.clientcode, member]));
         const orderedFamilyRows = familyClientCodes.map(code => familyMap.get(code)).filter(Boolean);
 
+        // Fetch Orbis data for all family members
+        const familyOrbisResult = await query(
+          `SELECT id, person_name, orbis_code, date, capital_amount, unit_balance,
+                  market_value, nav, opening_unit_balance, units_allotted, units_redeemed,
+                  closing_unit_balance, capital_investment, capital_redemption, management_fees,
+                  other_fees, net_capital_flow, created_at, updated_at, nuvama_code
+           FROM orbis_master_sheet
+           WHERE nuvama_code = ANY($1::text[])
+           ORDER BY date ASC`,
+          [familyClientCodes]
+        );
+
+        // Create a map of nuvama_code to orbis data for family members
+        const familyOrbisDataMap = new Map();
+        familyOrbisResult.rows.forEach((row) => {
+          if (!familyOrbisDataMap.has(row.nuvama_code)) {
+            familyOrbisDataMap.set(row.nuvama_code, []);
+          }
+          familyOrbisDataMap.get(row.nuvama_code).push(row);
+        });
+
         familyMembers = orderedFamilyRows.map((member) => {
           // Form holderName and fullName, handling null/undefined values
           const middleNamePart = member.middlename ? ` ${member.middlename}` : '';
@@ -190,6 +238,7 @@ export async function GET() {
             fullName: `${salutationPart}${member.firstname}${middleNamePart} ${member.lastname}`.trim(),
             relation: member.head_of_family ? 'Primary' : 'Family Member',
             status: 'Active',
+            orbisData: familyOrbisDataMap.get(member.clientcode) || [],
           };
         });
       }
@@ -248,6 +297,7 @@ export async function GET() {
           fullName: `${salutationPart}${member.firstname}${middleNamePart} ${member.lastname}`.trim(),
           relation: 'Individual Account',
           status: 'Active',
+          orbisData: member.orbisData || [],
         };
       });
 
