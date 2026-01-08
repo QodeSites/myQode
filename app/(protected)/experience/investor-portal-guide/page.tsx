@@ -559,13 +559,13 @@ function getFlatRows(data: ReportGroup[], videoFiles: VideoFile[], snapshotData:
     group.report_name.forEach((rn) => {
       // Find matching video file for this report
       let videoFile = videoFiles.find(file =>
-        file.name.toLowerCase() === rn.name.toLowerCase()
+        file.name.replace(/\.mp4$/, "").toLowerCase() === rn.name.toLowerCase()
       );
 
       // Special case: Handle "Statement of Capital Gain/Loss" -> "Statement of Capital Gain Loss"
       if (!videoFile && rn.name === "Statement of Capital Gain/Loss") {
         videoFile = videoFiles.find(file =>
-          file.name.toLowerCase() === "statement of capital gain loss"
+          file.name.replace(/\.mp4$/, "").toLowerCase() === "statement of capital gain loss"
         );
       }
 
