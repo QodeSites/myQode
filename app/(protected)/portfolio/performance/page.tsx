@@ -109,6 +109,15 @@ type FamilyAccount = {
   orbisData?: any[];
 };
 
+type GroupedFamilyMember = {
+  email: string;
+  holderName: string;
+  clientcodes: string[]; // Multiple Nuvama codes for this member
+  accounts: FamilyAccount[]; // All accounts for this member
+  relation: string;
+  status: string;
+};
+
 type PortfolioData = {
   account_code: string;
   portfolio_value: number;
@@ -835,6 +844,7 @@ export default function DetailedPortfolio() {
   const { clients, loading: clientsLoading, isHeadOfFamily } = useClient();
   const [selectedAccount, setSelectedAccount] = useState<string>("");
   const [familyAccounts, setFamilyAccounts] = useState<FamilyAccount[]>([]);
+  const [groupedFamilyMembers, setGroupedFamilyMembers] = useState<GroupedFamilyMember[]>([]);
   const [currentData, setCurrentData] = useState<PortfolioData | null>(null);
   const [historicalData, setHistoricalData] = useState<HistoricalData[]>([]);
   const [orbisHistoricalData, setOrbisHistoricalData] = useState<HistoricalData[]>([]);
@@ -956,6 +966,40 @@ const createConsolidatedData = useCallback(
 
           setFamilyAccounts(accounts);
 
+          // Group accounts by email to create family member consolidations
+          const memberMap = new Map<string, GroupedFamilyMember>();
+
+          accounts.forEach(account => {
+            const email = account.email || account.clientcode; // Fallback to clientcode if no email
+
+            if (!memberMap.has(email)) {
+              memberMap.set(email, {
+                email: email,
+                holderName: account.holderName,
+                clientcodes: [],
+                accounts: [],
+                relation: account.relation,
+                status: account.status,
+              });
+            }
+
+            const member = memberMap.get(email)!;
+            member.clientcodes.push(account.clientcode);
+            member.accounts.push(account);
+          });
+
+          const grouped = Array.from(memberMap.values());
+          setGroupedFamilyMembers(grouped);
+
+          console.log('👥 [FAMILY MEMBERS] Grouped family members:', grouped);
+          console.log('👥 [FAMILY MEMBERS] Members with multiple accounts:',
+            grouped.filter(m => m.clientcodes.length > 1).map(m => ({
+              name: m.holderName,
+              accounts: m.clientcodes.length,
+              codes: m.clientcodes
+            }))
+          );
+
           // Set first active account as default
           const firstActive = accounts.find(acc => acc.status === "Active");
           if (firstActive) {
@@ -1015,7 +1059,139 @@ const createConsolidatedData = useCallback(
     const fetchPortfolioData = async () => {
       setLoading(true);
       try {
-        // Fetch current portfolio data using same API as FamilyPortfolioSection
+        // Check if "All Accounts" is selected (family-level consolidation)
+        if (selectedAccount === 'ALL_ACCOUNTS') {
+          const accountCodes = familyAccounts.map((acc: FamilyAccount) => acc.clientcode);
+          console.log('🔍 [FAMILY LEVEL] Fetching consolidated NAV for ALL family accounts:', accountCodes);
+
+          const combinedNavRes = await fetch('https://qode360-backend.qodeinvest.com/api/v1/returns/client_combined_nav/', {
+            method: 'POST',
+            headers: { 'accept': 'application/json', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ account_code: accountCodes }),
+          });
+
+          console.log('📡 [API RESPONSE] Status:', combinedNavRes.status, combinedNavRes.statusText);
+          const combinedNavData = await combinedNavRes.json();
+          console.log('✅ [API DATA] Combined NAV API Response:', combinedNavData);
+          console.log('📊 [API DATA] Number of NAV records:', combinedNavData?.data?.length || 0);
+
+          if (combinedNavData && combinedNavData.data && Array.isArray(combinedNavData.data)) {
+            const historyRes = await fetch(`/api/portfolio-history?nuvama_codes=${accountCodes.join(',')}`);
+            const historyData = await historyRes.json();
+
+            if (historyData.success && historyData.data && historyData.isMultiAccount) {
+              const dateMap = new Map<string, { portfolioValues: number[]; cashFlows: number[] }>();
+              historyData.data.forEach((row: any) => {
+                const date = row.report_date;
+                if (!dateMap.has(date)) dateMap.set(date, { portfolioValues: [], cashFlows: [] });
+                const dateData = dateMap.get(date)!;
+                dateData.portfolioValues.push(Number(row.portfolio_value) || 0);
+                dateData.cashFlows.push(Number(row.cash_in_out) || 0);
+              });
+
+              const consolidatedData: HistoricalData[] = combinedNavData.data.map((item: any) => {
+                const date = item.valuedate;
+                const dateData = dateMap.get(date);
+                return {
+                  report_date: date,
+                  nav: Number(item.combined_nav) || 100,
+                  portfolio_value: dateData ? dateData.portfolioValues.reduce((sum, val) => sum + val, 0) : 0,
+                  cash_in_out: dateData ? dateData.cashFlows.reduce((sum, val) => sum + val, 0) : 0,
+                  drawdown_percent: 0,
+                };
+              }).sort((a: HistoricalData, b: HistoricalData) => new Date(a.report_date).getTime() - new Date(b.report_date).getTime());
+
+              console.log('✅ [SUCCESS] Using NAV from client_combined_nav API');
+              setHistoricalData(consolidatedData);
+              setOrbisHistoricalData([]);
+              setConsolidatedHistoricalData(consolidatedData);
+
+              const portfolioRes = await fetch("/api/portfolio-details", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ nuvama_codes: accountCodes }),
+              });
+              const portfolioData = await portfolioRes.json();
+              let totalCurrentValue = 0;
+              if (portfolioData.success && portfolioData.data && portfolioData.data.length > 0) {
+                totalCurrentValue = portfolioData.data.reduce((sum: number, item: any) => sum + (Number(item.portfolio_value) || 0), 0);
+              }
+              setCurrentData({ account_code: 'ALL_ACCOUNTS', portfolio_value: totalCurrentValue, report_date: new Date().toISOString() });
+            }
+          }
+          setLoading(false);
+          return;
+        }
+
+        // Check if a family member consolidation is selected (member-level consolidation)
+        if (selectedAccount.startsWith('MEMBER_')) {
+          const memberEmail = selectedAccount.replace('MEMBER_', '');
+          const member = groupedFamilyMembers.find(m => m.email === memberEmail);
+
+          if (member && member.clientcodes.length > 1) {
+            console.log('🔍 [MEMBER LEVEL] Fetching consolidated NAV for family member:', member.holderName);
+            console.log('🔍 [MEMBER LEVEL] Member has', member.clientcodes.length, 'accounts:', member.clientcodes);
+
+            const combinedNavRes = await fetch('https://qode360-backend.qodeinvest.com/api/v1/returns/client_combined_nav/', {
+              method: 'POST',
+              headers: { 'accept': 'application/json', 'Content-Type': 'application/json' },
+              body: JSON.stringify({ account_code: member.clientcodes }),
+            });
+
+            console.log('📡 [API RESPONSE] Status:', combinedNavRes.status, combinedNavRes.statusText);
+            const combinedNavData = await combinedNavRes.json();
+            console.log('✅ [API DATA] Combined NAV API Response:', combinedNavData);
+
+            if (combinedNavData && combinedNavData.data && Array.isArray(combinedNavData.data)) {
+              const historyRes = await fetch(`/api/portfolio-history?nuvama_codes=${member.clientcodes.join(',')}`);
+              const historyData = await historyRes.json();
+
+              if (historyData.success && historyData.data && historyData.isMultiAccount) {
+                const dateMap = new Map<string, { portfolioValues: number[]; cashFlows: number[] }>();
+                historyData.data.forEach((row: any) => {
+                  const date = row.report_date;
+                  if (!dateMap.has(date)) dateMap.set(date, { portfolioValues: [], cashFlows: [] });
+                  const dateData = dateMap.get(date)!;
+                  dateData.portfolioValues.push(Number(row.portfolio_value) || 0);
+                  dateData.cashFlows.push(Number(row.cash_in_out) || 0);
+                });
+
+                const consolidatedData: HistoricalData[] = combinedNavData.data.map((item: any) => {
+                  const date = item.valuedate;
+                  const dateData = dateMap.get(date);
+                  return {
+                    report_date: date,
+                    nav: Number(item.combined_nav) || 100,
+                    portfolio_value: dateData ? dateData.portfolioValues.reduce((sum, val) => sum + val, 0) : 0,
+                    cash_in_out: dateData ? dateData.cashFlows.reduce((sum, val) => sum + val, 0) : 0,
+                    drawdown_percent: 0,
+                  };
+                }).sort((a: HistoricalData, b: HistoricalData) => new Date(a.report_date).getTime() - new Date(b.report_date).getTime());
+
+                console.log('✅ [MEMBER SUCCESS] Using NAV from client_combined_nav API for member');
+                setHistoricalData(consolidatedData);
+                setOrbisHistoricalData([]);
+                setConsolidatedHistoricalData(consolidatedData);
+
+                const portfolioRes = await fetch("/api/portfolio-details", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ nuvama_codes: member.clientcodes }),
+                });
+                const portfolioData = await portfolioRes.json();
+                let totalCurrentValue = 0;
+                if (portfolioData.success && portfolioData.data && portfolioData.data.length > 0) {
+                  totalCurrentValue = portfolioData.data.reduce((sum: number, item: any) => sum + (Number(item.portfolio_value) || 0), 0);
+                }
+                setCurrentData({ account_code: selectedAccount, portfolio_value: totalCurrentValue, report_date: new Date().toISOString() });
+              }
+            }
+            setLoading(false);
+            return;
+          }
+        }
+
+        // Single account selected - existing logic
         const portfolioRes = await fetch("/api/portfolio-details", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1423,6 +1599,11 @@ const createConsolidatedData = useCallback(
 
   // Calculate metrics using active data
   const totalInvested = activeHistoricalData.reduce((sum, item) => sum + (Number(item.cash_in_out) || 0), 0);
+  // Sum of only capital inflows (positive cash flows)
+  const totalCapitalIn = activeHistoricalData.reduce((sum, item) => {
+    const cashFlow = Number(item.cash_in_out) || 0;
+    return sum + (cashFlow > 0 ? cashFlow : 0);
+  }, 0);
   const currentValue = dataView === 'nuvama'
     ? (currentData?.portfolio_value || 0)
     : activeHistoricalData.length > 0
@@ -1534,6 +1715,31 @@ const createConsolidatedData = useCallback(
                     <SelectValue placeholder="Select Account" />
                   </SelectTrigger>
                   <SelectContent>
+                    {/* Show All Accounts option if there are multiple family members */}
+                    {familyAccounts.length > 1 && (
+                      <SelectItem value="ALL_ACCOUNTS">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="font-semibold">All Accounts (Consolidated)</span>
+                        </div>
+                      </SelectItem>
+                    )}
+
+                    {/* Show consolidated member options for members with multiple accounts */}
+                    {groupedFamilyMembers.map(member => {
+                      if (member.clientcodes.length > 1) {
+                        return (
+                          <SelectItem key={`MEMBER_${member.email}`} value={`MEMBER_${member.email}`}>
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="font-medium">{sanitizeName(member.holderName)} - All Accounts</span>
+                              <span className="text-xs text-muted-foreground">(All Strategies)</span>
+                            </div>
+                          </SelectItem>
+                        );
+                      }
+                      return null;
+                    })}
+
+                    {/* Show individual accounts */}
                     {familyAccounts.map(acc => (
                       <SelectItem key={acc.clientcode} value={acc.clientcode}>
                         <div className="flex items-center justify-between gap-3">
@@ -1622,8 +1828,10 @@ const createConsolidatedData = useCallback(
                   <p className="text-sm font-medium text-muted-foreground">Amount Invested</p>
                   <Wallet className="h-4 w-4 text-blue-500" />
                 </div>
-                <div className="text-2xl font-bold text-foreground ">{formatCurrency(totalInvested)}</div>
-                <p className="text-xs text-muted-foreground mt-1">Total capital deployed</p>
+                <div className="text-2xl font-bold text-foreground ">{formatCurrency(totalCapitalIn)}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Net: {formatCurrency(totalInvested)}
+                </p>
               </CardContent>
             </Card>
 
