@@ -6,28 +6,56 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const nuvama_code = searchParams.get('nuvama_code');
-    
-    if (!nuvama_code) {
+    const nuvama_codes = searchParams.get('nuvama_codes'); // Support multiple codes
+
+    if (!nuvama_code && !nuvama_codes) {
       return NextResponse.json(
-        { success: false, error: "nuvama_code parameter is required" },
+        { success: false, error: "nuvama_code or nuvama_codes parameter is required" },
         { status: 400 }
       );
     }
 
+    // Handle multiple account codes
+    if (nuvama_codes) {
+      const codesArray = nuvama_codes.split(',').map(code => code.trim());
+
+      const query = `
+        SELECT
+          account_code,
+          report_date,
+          nav,
+          portfolio_value,
+          drawdown_percent,
+          cash_in_out
+        FROM public.pms_master_sheet
+        WHERE account_code = ANY($1)
+        ORDER BY report_date ASC, account_code ASC
+      `;
+
+      const result = await pool.query(query, [codesArray]);
+
+      return NextResponse.json({
+        success: true,
+        data: result.rows,
+        isMultiAccount: true
+      });
+    }
+
+    // Handle single account code (existing functionality)
     const query = `
-      SELECT 
-        report_date, 
-        nav, 
-        portfolio_value, 
-        drawdown_percent, 
+      SELECT
+        report_date,
+        nav,
+        portfolio_value,
+        drawdown_percent,
         cash_in_out
-      FROM public.pms_master_sheet 
-      WHERE account_code = $1 
+      FROM public.pms_master_sheet
+      WHERE account_code = $1
       ORDER BY report_date ASC
     `;
 
     const result = await pool.query(query, [nuvama_code]);
-    
+
     return NextResponse.json({
       success: true,
       data: result.rows

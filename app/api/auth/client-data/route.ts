@@ -126,9 +126,41 @@ export async function GET() {
       orbisDataMap.get(row.nuvama_code).push(row);
     });
 
-    // Attach orbis data to each client
+    // Attach orbis data to each client and calculate metrics
     allClientDetails.forEach((client: any) => {
-      client.orbisData = orbisDataMap.get(client.clientcode) || [];
+      const clientOrbisData = orbisDataMap.get(client.clientcode) || [];
+      client.orbisData = clientOrbisData;
+
+      // Calculate Orbis metrics from latest non-zero record
+      if (clientOrbisData.length > 0) {
+        // Sort by date to get records in descending order
+        const sortedOrbisData = [...clientOrbisData].sort(
+          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
+
+        // Find latest non-zero capital_amount
+        const latestCapitalRecord = sortedOrbisData.find(
+          record => Number(record.capital_amount) > 0
+        );
+
+        // Find latest non-zero market_value
+        const latestMarketRecord = sortedOrbisData.find(
+          record => Number(record.market_value) > 0
+        );
+
+        // Use the most recent date among the non-zero records
+        const latestDate = latestMarketRecord?.date || latestCapitalRecord?.date || sortedOrbisData[0].date;
+
+        client.orbisMetrics = {
+          latestCapitalAmount: latestCapitalRecord ? Number(latestCapitalRecord.capital_amount) : 0,
+          latestMarketValue: latestMarketRecord ? Number(latestMarketRecord.market_value) : 0,
+          latestDate: latestDate,
+          latestNav: latestMarketRecord ? Number(latestMarketRecord.nav) : (latestCapitalRecord ? Number(latestCapitalRecord.nav) : 0),
+          totalRecords: clientOrbisData.length
+        };
+      } else {
+        client.orbisMetrics = null;
+      }
     });
 
     // Determine group ID and final head of family status from DB
@@ -200,6 +232,38 @@ export async function GET() {
           // Form holderName and fullName, handling null/undefined values
           const middleNamePart = member.middlename ? ` ${member.middlename}` : '';
           const salutationPart = member.salutation ? `${member.salutation} ` : '';
+
+          const memberOrbisData = familyOrbisDataMap.get(member.clientcode) || [];
+
+          // Calculate Orbis metrics for family members from latest non-zero records
+          let orbisMetrics = null;
+          if (memberOrbisData.length > 0) {
+            const sortedOrbisData = [...memberOrbisData].sort(
+              (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+            );
+
+            // Find latest non-zero capital_amount
+            const latestCapitalRecord = sortedOrbisData.find(
+              record => Number(record.capital_amount) > 0
+            );
+
+            // Find latest non-zero market_value
+            const latestMarketRecord = sortedOrbisData.find(
+              record => Number(record.market_value) > 0
+            );
+
+            // Use the most recent date among the non-zero records
+            const latestDate = latestMarketRecord?.date || latestCapitalRecord?.date || sortedOrbisData[0].date;
+
+            orbisMetrics = {
+              latestCapitalAmount: latestCapitalRecord ? Number(latestCapitalRecord.capital_amount) : 0,
+              latestMarketValue: latestMarketRecord ? Number(latestMarketRecord.market_value) : 0,
+              latestDate: latestDate,
+              latestNav: latestMarketRecord ? Number(latestMarketRecord.nav) : (latestCapitalRecord ? Number(latestCapitalRecord.nav) : 0),
+              totalRecords: memberOrbisData.length
+            };
+          }
+
           return {
             id: member.id,
             clientid: member.clientid,
@@ -238,7 +302,8 @@ export async function GET() {
             fullName: `${salutationPart}${member.firstname}${middleNamePart} ${member.lastname}`.trim(),
             relation: member.head_of_family ? 'Primary' : 'Family Member',
             status: 'Active',
-            orbisData: familyOrbisDataMap.get(member.clientcode) || [],
+            orbisData: memberOrbisData,
+            orbisMetrics: orbisMetrics,
           };
         });
       }
@@ -298,6 +363,7 @@ export async function GET() {
           relation: 'Individual Account',
           status: 'Active',
           orbisData: member.orbisData || [],
+          orbisMetrics: member.orbisMetrics || null,
         };
       });
 

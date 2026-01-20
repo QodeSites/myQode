@@ -107,6 +107,13 @@ type FamilyAccount = {
   status: string;
   email?: string;
   orbisData?: any[];
+  orbisMetrics?: {
+    latestCapitalAmount: number;
+    latestMarketValue: number;
+    latestDate: string;
+    latestNav: number;
+    totalRecords: number;
+  } | null;
 };
 
 type GroupedFamilyMember = {
@@ -962,6 +969,7 @@ const createConsolidatedData = useCallback(
             status: member.status,
             email: member.email,
             orbisData: member.orbisData || [],
+            orbisMetrics: member.orbisMetrics || null,
           }));
 
           setFamilyAccounts(accounts);
@@ -1598,20 +1606,69 @@ const createConsolidatedData = useCallback(
   }
 
   // Calculate metrics using active data
-  const totalInvested = activeHistoricalData.reduce((sum, item) => sum + (Number(item.cash_in_out) || 0), 0);
-  // Sum of only capital inflows (positive cash flows)
-  const totalCapitalIn = activeHistoricalData.reduce((sum, item) => {
-    const cashFlow = Number(item.cash_in_out) || 0;
-    return sum + (cashFlow > 0 ? cashFlow : 0);
-  }, 0);
-  const currentValue = dataView === 'nuvama'
-    ? (currentData?.portfolio_value || 0)
-    : activeHistoricalData.length > 0
-      ? activeHistoricalData[activeHistoricalData.length - 1].portfolio_value
-      : 0;
+  // Get selected account details for Orbis metrics
+  const selectedAccountDetails = familyAccounts.find(acc => acc.clientcode === selectedAccount);
+  const hasOrbisMetrics = selectedAccountDetails?.orbisMetrics &&
+    orbisData &&
+    orbisData.length > 0;
+
+  // For Orbis-only or Consolidated views with Orbis data, use Orbis metrics
+  // For Nuvama-only, use cash flow summation
+  let totalInvested: number;
+  let totalCapitalIn: number;
+  let currentValue: number;
+
+  if (hasOrbisMetrics && (dataView === 'orbis' || dataView === 'consolidated')) {
+    // Use Orbis metrics: latest non-zero capital amount as amount invested
+    totalInvested = selectedAccountDetails!.orbisMetrics!.latestCapitalAmount;
+    totalCapitalIn = selectedAccountDetails!.orbisMetrics!.latestCapitalAmount;
+    currentValue = selectedAccountDetails!.orbisMetrics!.latestMarketValue;
+  } else {
+    // Original calculation for Nuvama data
+    totalInvested = activeHistoricalData.reduce((sum, item) => sum + (Number(item.cash_in_out) || 0), 0);
+    // Sum of only capital inflows (positive cash flows)
+    totalCapitalIn = activeHistoricalData.reduce((sum, item) => {
+      const cashFlow = Number(item.cash_in_out) || 0;
+      return sum + (cashFlow > 0 ? cashFlow : 0);
+    }, 0);
+    currentValue = dataView === 'nuvama'
+      ? (currentData?.portfolio_value || 0)
+      : activeHistoricalData.length > 0
+        ? activeHistoricalData[activeHistoricalData.length - 1].portfolio_value
+        : 0;
+  }
+
   const totalReturns = currentValue - totalInvested;
-  const returnsPercent = totalInvested > 0 ? (totalReturns / totalInvested) * 100 : 0;
-  const isPositiveReturnOverall = totalReturns >= 0;
+
+  // Calculate returns percentage using exact same logic as trailing returns "Since Inception"
+  let returnsPercent: number = 0;
+  if (activeHistoricalData.length >= 2) {
+    // Sort data by date
+    const sortedData = [...activeHistoricalData].sort(
+      (a, b) => new Date(a.report_date).getTime() - new Date(b.report_date).getTime()
+    );
+
+    const latest = sortedData[sortedData.length - 1];
+    const inceptionPoint = sortedData[0];
+
+    if (inceptionPoint && latest && Number(inceptionPoint.nav) > 0 && Number(latest.nav) > 0) {
+      const latestDate = new Date(latest.report_date);
+      const incDateForYears = new Date(inceptionPoint.report_date);
+      const daysDiff = (latestDate.getTime() - incDateForYears.getTime()) / (1000 * 60 * 60 * 24);
+      const years = daysDiff / 365.25;
+
+      if (years < 1) {
+        // Absolute return for <1Y
+        returnsPercent = ((Number(latest.nav) / Number(inceptionPoint.nav)) - 1) * 100;
+      } else {
+        // CAGR for >=1Y
+        returnsPercent = (Math.pow(Number(latest.nav) / Number(inceptionPoint.nav), 1 / years) - 1) * 100;
+      }
+    }
+  }
+
+  // Determine if return is positive based on the calculated percentage
+  const isPositiveReturnOverall = returnsPercent >= 0;
 
   // Portfolio DD metrics
   const portfolioCurrentDD = enrichedData.length > 0 ? enrichedData[enrichedData.length - 1].drawdown_percent : 0;
@@ -1621,8 +1678,7 @@ const createConsolidatedData = useCallback(
   const benchmarkCurrentDD = enrichedData.length > 0 ? enrichedData[enrichedData.length - 1].benchmark_drawdown_percent || 0 : 0;
   const benchmarkMaxDD = enrichedData.length > 0 ? Math.max(...enrichedData.map(item => item.benchmark_drawdown_percent || 0)) : 0;
 
-  // Get selected account details and extract strategy
-  const selectedAccountDetails = familyAccounts.find(acc => acc.clientcode === selectedAccount);
+  // Extract strategy (selectedAccountDetails already declared above)
   const strategyCode = selectedAccount?.substring(0, 3).toUpperCase() as keyof typeof strategyColorConfig;
   const colors = strategyColorConfig[strategyCode] || strategyColorConfig.QAW;
   const strategyName = strategyNames[strategyCode as keyof typeof strategyNames] || 'Portfolio';
@@ -1844,7 +1900,9 @@ const createConsolidatedData = useCallback(
                 </div>
                 <div className="text-2xl font-bold text-primary">{formatCurrency(currentValue)}</div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {currentData?.report_date && `As of ${new Date(currentData.report_date).toLocaleDateString('en-IN')}`}
+                  {hasOrbisMetrics && (dataView === 'orbis' || dataView === 'consolidated')
+                    ? selectedAccountDetails?.orbisMetrics?.latestDate && `As of ${new Date(selectedAccountDetails.orbisMetrics.latestDate).toLocaleDateString('en-IN')}`
+                    : currentData?.report_date && `As of ${new Date(currentData.report_date).toLocaleDateString('en-IN')}`}
                 </p>
               </CardContent>
             </Card>
@@ -1883,7 +1941,23 @@ const createConsolidatedData = useCallback(
                   ) : (
                     <TrendingDown className="h-3 w-3 text-red-500" />
                   )}
-                  <p className="text-xs text-muted-foreground">Percentage returns</p>
+                  <p className="text-xs text-muted-foreground">
+                    {(() => {
+                      if (activeHistoricalData.length >= 2) {
+                        const sortedData = [...activeHistoricalData].sort(
+                          (a, b) => new Date(a.report_date).getTime() - new Date(b.report_date).getTime()
+                        );
+                        const firstNavRecord = sortedData.find(r => Number(r.nav) > 0);
+                        const latestNavRecord = [...sortedData].reverse().find(r => Number(r.nav) > 0);
+                        if (!firstNavRecord || !latestNavRecord) return 'Absolute returns';
+                        const firstDate = new Date(firstNavRecord.report_date);
+                        const latestDate = new Date(latestNavRecord.report_date);
+                        const years = (latestDate.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+                        return years < 1 ? 'Absolute returns' : 'CAGR';
+                      }
+                      return 'Absolute returns';
+                    })()}
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -2002,7 +2076,10 @@ const createConsolidatedData = useCallback(
                 <div className="mt-3 pt-4 border-t border-border">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs text-muted-foreground">
                     <div>
-                      <p><strong>Returns:</strong> Periods under 1 year are presented as absolute, while those over 1 year are annualized (CAGR)</p>
+                      <p><strong>Returns:</strong> All returns are calculated using NAV-based methodology. Periods under 1 year show absolute returns, while those over 1 year use CAGR.</p>
+                      {hasOrbisMetrics && (dataView === 'orbis' || dataView === 'consolidated') && (
+                        <p className="mt-2"><strong>Orbis Data:</strong> Amount invested and current value shown are latest non-zero capital amount and market value from Orbis records.</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2122,66 +2199,6 @@ const createConsolidatedData = useCallback(
 
               {Object.keys(monthlyPnl).length > 0 && (
                 <PnlTable quarterlyPnl={quarterlyPnl} monthlyPnl={monthlyPnl} />
-              )}
-
-              {/* Orbis Data Section - Only show when viewing Orbis or Consolidated data */}
-              {orbisData && orbisData.length > 0 && dataView !== 'nuvama' && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Activity className="h-5 w-5 text-primary" />
-                      Orbis Fund Data
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse">
-                        <thead>
-                          <tr className="border-b border-border bg-muted/50">
-                            <th className="text-left py-3 px-4 text-sm font-semibold text-foreground">Date</th>
-                            <th className="text-right py-3 px-4 text-sm font-semibold text-foreground">NAV</th>
-                            <th className="text-right py-3 px-4 text-sm font-semibold text-foreground">Market Value</th>
-                            <th className="text-right py-3 px-4 text-sm font-semibold text-foreground">Unit Balance</th>
-                            <th className="text-right py-3 px-4 text-sm font-semibold text-foreground">Capital Investment</th>
-                            <th className="text-right py-3 px-4 text-sm font-semibold text-foreground">Capital Redemption</th>
-                            <th className="text-right py-3 px-4 text-sm font-semibold text-foreground">Management Fees</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {orbisData.map((item: any, index: number) => (
-                            <tr key={index} className="border-b border-border hover:bg-muted/50 transition-colors">
-                              <td className="py-3 px-4 text-sm">
-                                {item.date ? new Date(item.date).toLocaleDateString('en-IN', {
-                                  day: '2-digit',
-                                  month: 'short',
-                                  year: 'numeric'
-                                }) : '-'}
-                              </td>
-                              <td className="py-3 px-4 text-sm text-right">
-                                {item.nav ? Number(item.nav).toFixed(4) : '-'}
-                              </td>
-                              <td className="py-3 px-4 text-sm text-right font-semibold">
-                                {item.market_value ? formatCurrency(Number(item.market_value)) : '-'}
-                              </td>
-                              <td className="py-3 px-4 text-sm text-right">
-                                {item.unit_balance ? Number(item.unit_balance).toFixed(2) : '-'}
-                              </td>
-                              <td className="py-3 px-4 text-sm text-right text-green-600">
-                                {item.capital_investment ? formatCurrency(Number(item.capital_investment)) : '-'}
-                              </td>
-                              <td className="py-3 px-4 text-sm text-right text-red-600">
-                                {item.capital_redemption ? formatCurrency(Number(item.capital_redemption)) : '-'}
-                              </td>
-                              <td className="py-3 px-4 text-sm text-right">
-                                {item.management_fees ? formatCurrency(Number(item.management_fees)) : '-'}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </CardContent>
-                </Card>
               )}
 
               {/* Cash Flows Table */}
