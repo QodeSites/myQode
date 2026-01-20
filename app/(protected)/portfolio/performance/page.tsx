@@ -1806,7 +1806,7 @@ const createConsolidatedData = useCallback(
                     ))}
                   </SelectContent>
                 </Select>
-                {enrichedData.length > 0 && (
+                {/* {enrichedData.length > 0 && (
                   <Button
                     onClick={() =>
                       downloadConsolidatedCSV(
@@ -1828,7 +1828,7 @@ const createConsolidatedData = useCallback(
                     <span className="hidden sm:inline">Download Debug CSV</span>
                     <span className="sm:hidden">CSV</span>
                   </Button>
-                )}
+                )} */}
               </div>
             </div>
 
