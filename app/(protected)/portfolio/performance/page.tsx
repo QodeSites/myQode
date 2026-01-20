@@ -1618,11 +1618,29 @@ const createConsolidatedData = useCallback(
   let totalCapitalIn: number;
   let currentValue: number;
 
-  if (hasOrbisMetrics && (dataView === 'orbis' || dataView === 'consolidated')) {
-    // Use Orbis metrics: latest non-zero capital amount as amount invested
+  if (hasOrbisMetrics && dataView === 'orbis') {
+    // Use Orbis metrics for Orbis-only view
     totalInvested = selectedAccountDetails!.orbisMetrics!.latestCapitalAmount;
     totalCapitalIn = selectedAccountDetails!.orbisMetrics!.latestCapitalAmount;
     currentValue = selectedAccountDetails!.orbisMetrics!.latestMarketValue;
+  } else if (hasOrbisMetrics && dataView === 'consolidated') {
+    // For consolidated view, combine both Nuvama and Orbis data
+    // Get Orbis invested amount and current value
+    const orbisInvested = selectedAccountDetails!.orbisMetrics!.latestCapitalAmount;
+    const orbisCurrentValue = selectedAccountDetails!.orbisMetrics!.latestMarketValue;
+
+    // Get Nuvama invested amount and current value from historical data
+    const nuvamaInvested = historicalData.reduce((sum, item) => sum + (Number(item.cash_in_out) || 0), 0);
+    const nuvamaCapitalIn = historicalData.reduce((sum, item) => {
+      const cashFlow = Number(item.cash_in_out) || 0;
+      return sum + (cashFlow > 0 ? cashFlow : 0);
+    }, 0);
+    const nuvamaCurrentValue = currentData?.portfolio_value || 0;
+
+    // Combine both sources
+    totalInvested = orbisInvested + nuvamaInvested;
+    totalCapitalIn = orbisInvested + nuvamaCapitalIn; // Orbis uses net capital, Nuvama uses gross inflows
+    currentValue = orbisCurrentValue + nuvamaCurrentValue;
   } else {
     // Original calculation for Nuvama data
     totalInvested = activeHistoricalData.reduce((sum, item) => sum + (Number(item.cash_in_out) || 0), 0);
@@ -1876,57 +1894,61 @@ const createConsolidatedData = useCallback(
           </div>
 
           {/* Metrics Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Amount Invested */}
-            <Card>
-              <CardContent className="">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium text-muted-foreground">Amount Invested</p>
-                  <Wallet className="h-4 w-4 text-blue-500" />
-                </div>
-                <div className="text-2xl font-bold text-foreground ">{formatCurrency(totalCapitalIn)}</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Net: {formatCurrency(totalInvested)}
-                </p>
-              </CardContent>
-            </Card>
+          <div className={dataView === 'consolidated' ? "flex justify-center" : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"}>
+            {dataView !== 'consolidated' && (
+              <>
+                {/* Amount Invested */}
+                <Card>
+                  <CardContent className="">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-medium text-muted-foreground">Amount Invested</p>
+                      <Wallet className="h-4 w-4 text-blue-500" />
+                    </div>
+                    <div className="text-2xl font-bold text-foreground ">{formatCurrency(totalCapitalIn)}</div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Net: {formatCurrency(totalInvested)}
+                    </p>
+                  </CardContent>
+                </Card>
 
-            {/* Current Value */}
-            <Card>
-              <CardContent className="">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium text-muted-foreground">Current Value</p>
-                  <RupeeIcon className="h-4 w-4 text-green-500" />
-                </div>
-                <div className="text-2xl font-bold text-primary">{formatCurrency(currentValue)}</div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {hasOrbisMetrics && (dataView === 'orbis' || dataView === 'consolidated')
-                    ? selectedAccountDetails?.orbisMetrics?.latestDate && `As of ${new Date(selectedAccountDetails.orbisMetrics.latestDate).toLocaleDateString('en-IN')}`
-                    : currentData?.report_date && `As of ${new Date(currentData.report_date).toLocaleDateString('en-IN')}`}
-                </p>
-              </CardContent>
-            </Card>
+                {/* Current Value */}
+                <Card>
+                  <CardContent className="">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-medium text-muted-foreground">Current Value</p>
+                      <RupeeIcon className="h-4 w-4 text-green-500" />
+                    </div>
+                    <div className="text-2xl font-bold text-primary">{formatCurrency(currentValue)}</div>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {hasOrbisMetrics && dataView === 'orbis'
+                        ? selectedAccountDetails?.orbisMetrics?.latestDate && `As of ${new Date(selectedAccountDetails.orbisMetrics.latestDate).toLocaleDateString('en-IN')}`
+                        : currentData?.report_date && `As of ${new Date(currentData.report_date).toLocaleDateString('en-IN')}`}
+                    </p>
+                  </CardContent>
+                </Card>
 
-            {/* Returns (₹) */}
-            <Card>
-              <CardContent className="">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium text-muted-foreground">Total Returns</p>
-                  {isPositiveReturnOverall ? (
-                    <ArrowUpRight className="h-4 w-4 text-green-500" />
-                  ) : (
-                    <ArrowDownRight className="h-4 w-4 text-red-500" />
-                  )}
-                </div>
-                <div className={`text-2xl font-bold ${isPositiveReturnOverall ? 'text-green-600' : 'text-red-600'}`}>
-                  {isPositiveReturnOverall ? '+' : ''}{formatCurrency(totalReturns)}
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">Absolute returns</p>
-              </CardContent>
-            </Card>
+                {/* Returns (₹) */}
+                <Card>
+                  <CardContent className="">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-medium text-muted-foreground">Total Returns</p>
+                      {isPositiveReturnOverall ? (
+                        <ArrowUpRight className="h-4 w-4 text-green-500" />
+                      ) : (
+                        <ArrowDownRight className="h-4 w-4 text-red-500" />
+                      )}
+                    </div>
+                    <div className={`text-2xl font-bold ${isPositiveReturnOverall ? 'text-green-600' : 'text-red-600'}`}>
+                      {isPositiveReturnOverall ? '+' : ''}{formatCurrency(totalReturns)}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">Absolute returns</p>
+                  </CardContent>
+                </Card>
+              </>
+            )}
 
             {/* Returns (%) */}
-            <Card>
+            <Card className={dataView === 'consolidated' ? "w-full max-w-md" : ""}>
               <CardContent className="">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-sm font-medium text-muted-foreground">Returns %</p>
