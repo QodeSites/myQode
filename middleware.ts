@@ -1,32 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyJWT } from './lib/jwt';
 
-
 function isAppClient(request: NextRequest) {
+  console.log(request.headers,"=========headers")
   const ua = request.headers.get('user-agent') || '';
   return (
     ua.includes('ReactNative') ||
     ua.includes('Expo') ||
-    request.headers.get('x-client-type') === 'app'
+    request.headers.get('x-client-type') === 'native'
   );
 }
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
+  console.log(pathname,"==============pathname in middle ware")
 
-  // Allow login & auth routes
-  if (
+   // FIX: Do not NextResponse.next() if path has 'client-data'
+   if (
     pathname === '/admin/login' ||
     pathname.startsWith('/api/auth/')
   ) {
-    return NextResponse.next();
-  }
+    // If it is exactly the client-data API, do not allow
+    if (pathname.includes('client-data')) {
+      // fall through and require auth
+    } else {
+      console.log("====++++++++++")
+      return NextResponse.next();
+    }
+   }
 
-  if (!pathname.startsWith('/admin')) {
-    return NextResponse.next();
-  }
+  // if (!pathname.startsWith('/admin')) {
+  //   return NextResponse.next();
+  // }
+  console.log("=00000======")
 
   const isApp = isAppClient(request);
+  console.log(isApp,"=======")
 
   try {
     // 📱 APP → JWT via Authorization header
@@ -35,8 +44,10 @@ export async function middleware(request: NextRequest) {
       const token = authHeader?.replace('Bearer ', '');
 
       if (!token) throw new Error('Missing token');
+      console.log(token,"================token")
 
       const payload = await verifyJWT(token);
+      console.log(payload,"=======payload")
 
       console.log('📱 App authenticated', {
         user: payload.sub,
@@ -75,5 +86,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*'],
+  matcher: ['/admin/:path*','/api/auth/client-data'],
 };

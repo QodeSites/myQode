@@ -63,49 +63,35 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if password is set for this user
-    const passwordCheck = await query(
-      'SELECT password FROM pms_clients_master WHERE email = $1 OR clientcode = $1 LIMIT 1',
+    const { rows } = await query(
+      'SELECT * FROM pms_clients_master WHERE email = $1 LIMIT 1',
       [username]
     )
+    const user = rows[0];
 
-    if (passwordCheck.rows.length === 0) {
-      return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
-      )
-    }
-
-    const currentPassword = passwordCheck.rows[0].password
-    const isDefaultPassword = currentPassword === 'Qode@123' || !currentPassword
-
-    if (isDefaultPassword) {
-      return NextResponse.json(
-        { requirePasswordSetup: true, message: 'Password setup required' },
-        { status: 200 }
-      )
-    }
-
-    // Proceed with regular login - get extended user data
-    const initialResult = await query(
-      `SELECT clientid, clientcode, email, groupid, password, head_of_family 
-       FROM pms_clients_master 
-       WHERE (email = $1 OR clientcode = $1)`,
-      [username]
-    )
-
-    if (initialResult.rows.length === 0) {
+    if (!user) {
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
       )
     }
 
-    const user = initialResult.rows[0]
-    
-    // Verify password (assuming bcrypt for hashed passwords)
-    const isPasswordValid = await bcrypt.compare(password, user.password)
-    
-    if (!isPasswordValid) {
+    const apiRes = await fetch(
+      `${process.env.API_AUTH_URL}/auth/login/`,
+      {
+        method: "POST",
+        headers: new Headers({
+          "Content-Type": "application/json",
+          "X-Client-Type": request.headers.get("x-client-type") || "",
+          "X-Client-Id": request.headers.get("x-client-id") || "",
+        }),
+        body: JSON.stringify({ email: username, password }),
+      }
+    );
+
+    const apiJson = await apiRes.json();
+
+    if (!apiJson.success) {
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
@@ -150,7 +136,8 @@ export async function POST(request: NextRequest) {
       success: true,
       message: 'Login successful',
       clients: clientData,
-      isHeadOfFamily: user.head_of_family
+      isHeadOfFamily: user.head_of_family,
+      auth_data : apiRes
     })
 
   } catch (error) {

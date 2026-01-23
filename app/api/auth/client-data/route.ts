@@ -16,7 +16,6 @@ export async function GET() {
     const authCookie = cookieStore.get('qode-auth');
     const userContextCookie = cookieStore.get('qode-user-context');
     const headOfFamilyCookie = cookieStore.get('qode-head-of-family');
-
     if (authCookie?.value !== '1') {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
