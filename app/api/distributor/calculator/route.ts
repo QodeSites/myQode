@@ -4,11 +4,11 @@ import { query } from '@/lib/db';
 import { query as query1 } from '@/lib/db1';
 
 interface UserContext {
-    clientid: string;
-    clientcode: string;
-    email: string;
-    groupid: string;
-    head_of_family: boolean;
+  clientid: string;
+  clientcode: string;
+  email: string;
+  groupid: string;
+  head_of_family: boolean;
 }
 
 interface CalculatorRequest {
@@ -17,191 +17,146 @@ interface CalculatorRequest {
 }
 
 const PERIOD_DATE_MAPPING = [
-    {
-        type: "Quarter",
-        label: "Q1 FY2025",
-        startDate: "1-Apr-24",
-        endDate: "30-Jun-24"
-    },
-    {
-        type: "Quarter",
-        label: "Q2 FY2025",
-        startDate: "1-Jul-24",
-        endDate: "30-Sep-24"
-    },
-    {
-        type: "Quarter",
-        label: "Q3 FY2025",
-        startDate: "1-Oct-24",
-        endDate: "31-Dec-24"
-    },
-    {
-        type: "Quarter",
-        label: "Q4 FY2025",
-        startDate: "1-Jan-25",
-        endDate: "31-Mar-25"
-    },
-    {
-        type: "Quarter",
-        label: "Q1 FY2026",
-        startDate: "1-Apr-25",
-        endDate: "30-Jun-25"
-    },
-    {
-        type: "Quarter",
-        label: "Q2 FY2026",
-        startDate: "1-Jul-25",
-        endDate: "30-Sep-25"
-    },
-    {
-        type: "Quarter",
-        label: "Q3 FY2026",
-        startDate: "1-Oct-25",
-        endDate: "31-Dec-25"
-    },
-    // {
-    //     type: "Quarter",
-    //     label: "Q4 FY2026",
-    //     startDate: "1-Jan-26",
-    //     endDate: "31-Mar-26"
-    // },
-    {
-        type: "Year",
-        label: "FY 2025",
-        startDate: "1-Apr-24",
-        endDate: "31-Mar-25"
-    },
-    // {
-    //     type: "Year",
-    //     label: "FY 2026",
-    //     startDate: "1-Apr-25",
-    //     endDate: "31-Mar-26"
-    // }
+  {
+    type: "Quarter",
+    label: "Q1 FY2025",
+    startDate: "1-Apr-24",
+    endDate: "30-Jun-24",
+  },
+  {
+    type: "Quarter",
+    label: "Q2 FY2025",
+    startDate: "1-Jul-24",
+    endDate: "30-Sep-24",
+  },
+  {
+    type: "Quarter",
+    label: "Q3 FY2025",
+    startDate: "1-Oct-24",
+    endDate: "31-Dec-24",
+  },
+  {
+    type: "Quarter",
+    label: "Q4 FY2025",
+    startDate: "1-Jan-25",
+    endDate: "31-Mar-25",
+  },
+  {
+    type: "Quarter",
+    label: "Q1 FY2026",
+    startDate: "1-Apr-25",
+    endDate: "30-Jun-25",
+  },
+  {
+    type: "Quarter",
+    label: "Q2 FY2026",
+    startDate: "1-Jul-25",
+    endDate: "30-Sep-25",
+  },
+  {
+    type: "Quarter",
+    label: "Q3 FY2026",
+    startDate: "1-Oct-25",
+    endDate: "31-Dec-25",
+  },
+  {
+    type: "Year",
+    label: "FY 2025",
+    startDate: "1-Apr-24",
+    endDate: "31-Mar-25",
+  },
 ];
 
-// Helper: Converts '1-Apr-24' to Date object
+// Converts `1-Apr-24` → Date
 function parseCustomDateLabel(dateStr: string): Date {
-    const [d, m, y] = dateStr.split("-");
-    // Convert "24" -> "2024" (assume all in this century)
-    const fullYear = Number(y) + (Number(y) < 50 ? 2000 : 1900);
-    return new Date(`${d} ${m} ${fullYear}`);
+  const [d, m, y] = dateStr.split("-");
+  const fullYear = Number(y) + (Number(y) < 50 ? 2000 : 1900);
+  return new Date(`${d} ${m} ${fullYear}`);
 }
 
 export async function GET() {
-    const cookieStore = await cookies();
-    const userContextCookie = cookieStore.get('qode-user-context');
+  const cookieStore = await cookies();
+  const userContextCookie = cookieStore.get("qode-user-context");
 
-    let userContext: UserContext | null = null;
-    let email: string | null = null;
+  if (!userContextCookie?.value) {
+    return NextResponse.json({ error: "No user context" }, { status: 401 });
+  }
 
-    // Parse user context
-    if (userContextCookie?.value) {
-        try {
-            userContext = JSON.parse(userContextCookie.value);
-            email = userContext?.email || null;
-        } catch (error) {
-            console.error('Error parsing user context cookie:', error);
-            return NextResponse.json({ error: 'Invalid user context' }, { status: 400 });
-        }
-    } else {
-        return NextResponse.json({ error: 'No user context' }, { status: 401 });
-    }
+  let userContext: UserContext;
+  try {
+    userContext = JSON.parse(userContextCookie.value);
+  } catch {
+    return NextResponse.json({ error: "Invalid user context" }, { status: 400 });
+  }
 
-    // Get distributor info
-    const distributorResult = await query(
-        `SELECT * FROM pms_clients_master WHERE email = $1`,
-        [email]
-    );
-    if (!distributorResult.rows.length) {
-        return NextResponse.json({ error: 'Distributor not found' }, { status: 404 });
-    }
-    const distributor = distributorResult.rows[0];
-    const intermediaryName = distributor.clientname;
+  const email = userContext.email;
 
-    // Find clients for whom this user is an intermediary
-    const clientsResult = await query(
-        `SELECT * FROM pms_clients_master WHERE intermediaryname = $1`,
-        [intermediaryName]
-    );
-    const clientRows = clientsResult.rows;
+  // Get distributor
+  const distributorResult = await query(
+    `SELECT * FROM pms_clients_master WHERE email = $1`,
+    [email]
+  );
 
-    // Get all valid inception dates as numbers (yyyy-mm-dd)
-    const clientInceptionDates = clientRows
-        .map((row: any) => row.inceptiondate)
-        .filter(Boolean)
-        .map((date: any) => new Date(date));
-    console.log(clientInceptionDates,"======================clientInceptionDates")
-    // Get maximum inception date (the latest one)
-    let maxInceptionDateObj: Date | null = null;
-    if (clientInceptionDates.length) {
-        maxInceptionDateObj = new Date(Math.max(...clientInceptionDates.map(x => x.getTime())));
-    }
-    console.log(maxInceptionDateObj);
+  if (!distributorResult.rows.length) {
+    return NextResponse.json({ error: "Distributor not found" }, { status: 404 });
+  }
 
-    // ========== FILTER THE PERIOD_DATE_MAPPING BASED ON THE MAX INCEPTION DATE ==========
+  const intermediaryName = distributorResult.rows[0].clientname;
 
-    let filteredPeriods = [...PERIOD_DATE_MAPPING];
+  // Get all clients
+  const clientsResult = await query(
+    `SELECT inceptiondate FROM pms_clients_master WHERE intermediaryname = $1`,
+    [intermediaryName]
+  );
 
-    if (maxInceptionDateObj) {
-        // Only include periods such that period.startDate >= maxInceptionDateObj (as per original logic)
-        // OR, if between two startDates, take the most recent period whose startDate <= maxInceptionDateObj
-        // Also, keep all periods after that
-        let foundIndex: number | null = null;
-        for (let i = 0; i < PERIOD_DATE_MAPPING.length; i++) {
-            const start = parseCustomDateLabel(PERIOD_DATE_MAPPING[i].startDate);
+  const inceptionDates = clientsResult.rows
+    .map((r: any) => r.inceptiondate)
+    .filter(Boolean)
+    .map((d: any) => new Date(d));
 
-            if (start > maxInceptionDateObj) {
-                foundIndex = i - 1 >= 0 ? i - 1 : 0;
-                break;
-            } else if (i === PERIOD_DATE_MAPPING.length - 1) {
-                // If not found and at last, select last
-                foundIndex = i;
-            }
-        }
-        if (foundIndex !== null) {
-            filteredPeriods = PERIOD_DATE_MAPPING.slice(foundIndex);
-        } else {
-            filteredPeriods = PERIOD_DATE_MAPPING.filter(period => parseCustomDateLabel(period.startDate) >= maxInceptionDateObj!);
-        }
-    }
+  // ✅ EARLIEST inception date
+  const firstInceptionDate =
+    inceptionDates.length > 0
+      ? new Date(Math.min(...inceptionDates.map(d => d.getTime())))
+      : null;
 
-    // Determine suggested period (latest whose startDate <= maxInceptionDateObj or just the first remaining)
-    let suggestedPeriod: typeof PERIOD_DATE_MAPPING[0] | null = null;
-    if (filteredPeriods.length > 0 && maxInceptionDateObj) {
-        for (let i = 0; i < filteredPeriods.length; i++) {
-            const start = parseCustomDateLabel(filteredPeriods[i].startDate);
-            if (start <= maxInceptionDateObj) {
-                suggestedPeriod = filteredPeriods[i];
-            }
-        }
-        if (!suggestedPeriod) suggestedPeriod = filteredPeriods[0];
-    } else if (filteredPeriods.length > 0) {
-        suggestedPeriod = filteredPeriods[0];
-    }
+  // ✅ FILTER PERIODS
+  let filteredPeriods = PERIOD_DATE_MAPPING;
 
-    // The frontend can present 'filteredPeriods' as label, startDate, endDate for user selection.
-    // Return this mapping for selection
-    return NextResponse.json(
-        {
-            periods: filteredPeriods.map(p => ({
-                type: p.type,
-                label: p.label,
-                startDate: p.startDate,
-                endDate: p.endDate
-            })),
-            suggestedPeriod: suggestedPeriod
-                ? {
-                    type: suggestedPeriod.type,
-                    label: suggestedPeriod.label,
-                    startDate: suggestedPeriod.startDate,
-                    endDate: suggestedPeriod.endDate
-                }
-                : null,
-            maxInceptionDate: maxInceptionDateObj ? maxInceptionDateObj.toISOString().slice(0, 10) : null,
-        },
-        { status: 200 }
-    );
+  if (firstInceptionDate) {
+    filteredPeriods = PERIOD_DATE_MAPPING.filter(period => {
+      const end = parseCustomDateLabel(period.endDate);
+      return end >= firstInceptionDate;
+    });
+  }
+
+  // ✅ SUGGESTED PERIOD
+  let suggestedPeriod = null;
+
+  if (firstInceptionDate && filteredPeriods.length) {
+    suggestedPeriod =
+      filteredPeriods.find(period => {
+        const start = parseCustomDateLabel(period.startDate);
+        const end = parseCustomDateLabel(period.endDate);
+        return (
+          firstInceptionDate >= start &&
+          firstInceptionDate <= end
+        );
+      }) || filteredPeriods[0];
+  }
+
+  return NextResponse.json(
+    {
+      firstInceptionDate: firstInceptionDate
+        ? firstInceptionDate.toISOString().slice(0, 10)
+        : null,
+      periods: filteredPeriods,
+      suggestedPeriod,
+    },
+    { status: 200 }
+  );
 }
+
 
 // Returns array of calc rows
 export async function POST(req: Request) {
@@ -319,67 +274,67 @@ export async function POST(req: Request) {
 
         // Instead of mapping over feesResult, map over aumResult
         const response = aumResult.rows.map((aumRow: any, idx: number) => {
-            const accountcode = aumRow.accountcode;
-            // For the given accountcode, get all other details
-            const clientRow = clientRows.find((c: any) => c.clientcode === accountcode) || {};
-            const clientname = clientRow.clientname || '';
-            const billgroup = billGroupMap.get(accountcode) || null;
-            const inceptionDateRaw = inceptionMap.get(accountcode);
+                const accountcode = aumRow.accountcode;
+                // For the given accountcode, get all other details
+                const clientRow = clientRows.find((c: any) => c.clientcode === accountcode) || {};
+                const clientname = clientRow.clientname || '';
+                const billgroup = billGroupMap.get(accountcode) || null;
+                const inceptionDateRaw = inceptionMap.get(accountcode);
 
-            // For the given accountcode, get the fee breakdown (may be missing)
-            const feesRow = feesMap.get(accountcode) || {};
+                // For the given accountcode, get the fee breakdown (may be missing)
+                const feesRow = feesMap.get(accountcode) || {};
 
-            const perfFeesRaw = parseFloat(feesRow.performance_fees) || 0;
-            const fixedFeesRaw = parseFloat(feesRow.fixed_fees) || 0;
-            const totalFeesRaw = parseFloat(feesRow.total_fees_collected) || 0;
+                const perfFeesRaw = parseFloat(feesRow.performance_fees) || 0;
+                const fixedFeesRaw = parseFloat(feesRow.fixed_fees) || 0;
+                const totalFeesRaw = parseFloat(feesRow.total_fees_collected) || 0;
 
-            // GST calculations
-            const gstOnPerf = (perfFeesRaw * GST_RATE) / 118;
-            const gstOnFixed = (fixedFeesRaw * GST_RATE) / 118;
-            const gstOnTotal = (totalFeesRaw * GST_RATE) / 118;
+                // GST calculations
+                const gstOnPerf = (perfFeesRaw * GST_RATE) / 118;
+                const gstOnFixed = (fixedFeesRaw * GST_RATE) / 118;
+                const gstOnTotal = (totalFeesRaw * GST_RATE) / 118;
 
-            const perfFeesBeforeGst = perfFeesRaw - gstOnPerf;
-            const fixedFeesBeforeGst = fixedFeesRaw - gstOnFixed;
-            const totalFeesBeforeGst = totalFeesRaw - gstOnTotal;
+                const perfFeesBeforeGst = perfFeesRaw - gstOnPerf;
+                const fixedFeesBeforeGst = fixedFeesRaw - gstOnFixed;
+                const totalFeesBeforeGst = totalFeesRaw - gstOnTotal;
 
-            // Distributor share on GST-deducted total
-            const distributorShare = totalFeesRaw * (fees_percentage / 100);
+                // Distributor share on GST-deducted total
+                const distributorShare = totalFeesRaw * (fees_percentage / 100);
 
-            return {
-                id: idx + 1,
-                clientName: clientname,
-                strategy: accountcode,
-                billGroup: billgroup,
-                inceptionDate: inceptionDateRaw
-                    ? (() => {
-                        const d = inceptionDateRaw;
-                        // expects d in "yyyy-mm-dd" or "yyyy-mm-ddTHH:MM:SS" format
-                        const [yyyy, mm, dd] = d.split('T')[0].split('-');
-                        return `${dd}-${mm}-${yyyy}`;
-                    })()
-                    : null,
-                averageAum: aumRow.average_aum
-                    ? Number(aumRow.average_aum).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                    : "0.00",
+                return {
+                    id: idx + 1,
+                    clientName: clientname,
+                    strategy: accountcode,
+                    billGroup: billgroup,
+                    inceptionDate: inceptionDateRaw
+                        ? (() => {
+                            const d = inceptionDateRaw;
+                            // expects d in "yyyy-mm-dd" or "yyyy-mm-ddTHH:MM:SS" format
+                            const [yyyy, mm, dd] = d.split('T')[0].split('-');
+                            return `${dd}-${mm}-${yyyy}`;
+                        })()
+                        : null,
+                    averageAum: aumRow.average_aum
+                        ? Number(aumRow.average_aum).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                        : "0.00",
 
-                // Performance Fees
-                performanceFees: perfFeesBeforeGst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                performanceFeesGst: gstOnPerf.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                    // Performance Fees
+                    performanceFees: perfFeesBeforeGst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                    performanceFeesGst: gstOnPerf.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
 
-                // Fixed Fees
-                fixedFees: fixedFeesBeforeGst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                fixedFeesGst: gstOnFixed.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                    // Fixed Fees
+                    fixedFees: fixedFeesBeforeGst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                    fixedFeesGst: gstOnFixed.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
 
-                // Totals
-                totalFees: totalFeesBeforeGst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                totalFeesGst: gstOnTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                totalFeesCollected: totalFeesRaw.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                    // Totals
+                    totalFees: totalFeesBeforeGst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                    totalFeesGst: gstOnTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                    totalFeesCollected: totalFeesRaw.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
 
-                distributorPercentage: fees_percentage.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                distributorShare: distributorShare.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                    distributorPercentage: fees_percentage.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                    distributorShare: distributorShare.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
 
-                accountcode
-            };
+                    accountcode
+                };
         });
 
 
