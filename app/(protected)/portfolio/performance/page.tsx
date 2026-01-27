@@ -213,18 +213,18 @@ const strategyNames = {
 };
 
 const formatCurrency = (value: number | undefined | null) => {
-  if (value === undefined || value === null || isNaN(Number(value))) return "₹0.00";
-  const numValue = Number(value).toFixed(2);
+  if (value === undefined || value === null || isNaN(Number(value)) || !isFinite(Number(value))) return "₹0.00";
+  const numValue = Number(value);
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(Number(numValue));
+  }).format(numValue);
 };
 
 const formatPercent = (value: number | undefined | null) => {
-  if (value === undefined || value === null || isNaN(Number(value))) return "0.00%";
+  if (value === undefined || value === null || isNaN(Number(value)) || !isFinite(Number(value))) return "0.00%";
   return `${Number(value).toFixed(2)}%`;
 };
 
@@ -1067,23 +1067,29 @@ const createConsolidatedData = useCallback(
     const fetchPortfolioData = async () => {
       setLoading(true);
       try {
-        // Check if "All Accounts" is selected (family-level consolidation)
-        if (selectedAccount === 'ALL_ACCOUNTS') {
+        // Check if "Complete Family Portfolio" is selected (family-level consolidation with Orbis support)
+        if (selectedAccount === 'COMPLETE_FAMILY_PORTFOLIO') {
           const accountCodes = familyAccounts.map((acc: FamilyAccount) => acc.clientcode);
-          console.log('🔍 [FAMILY LEVEL] Fetching consolidated NAV for ALL family accounts:', accountCodes);
+          console.log('🔍 [COMPLETE FAMILY] Fetching consolidated NAV for ALL family accounts:', accountCodes);
 
+          // Check if any account has Orbis data
+          const accountsWithOrbis = familyAccounts.filter(acc => acc.orbisData && acc.orbisData.length > 0);
+          const hasAnyOrbisData = accountsWithOrbis.length > 0;
+
+          console.log(`📊 [COMPLETE FAMILY] Accounts with Orbis data: ${accountsWithOrbis.length}/${familyAccounts.length}`);
+
+          // Fetch combined NAV for all Nuvama accounts
           const combinedNavRes = await fetch('https://qode360-backend.qodeinvest.com/api/v1/returns/client_combined_nav/', {
             method: 'POST',
             headers: { 'accept': 'application/json', 'Content-Type': 'application/json' },
             body: JSON.stringify({ account_code: accountCodes }),
           });
 
-          console.log('📡 [API RESPONSE] Status:', combinedNavRes.status, combinedNavRes.statusText);
           const combinedNavData = await combinedNavRes.json();
-          console.log('✅ [API DATA] Combined NAV API Response:', combinedNavData);
-          console.log('📊 [API DATA] Number of NAV records:', combinedNavData?.data?.length || 0);
+          console.log('✅ [COMPLETE FAMILY] Combined NAV API Response received');
 
           if (combinedNavData && combinedNavData.data && Array.isArray(combinedNavData.data)) {
+            // Fetch Nuvama portfolio history
             const historyRes = await fetch(`/api/portfolio-history?nuvama_codes=${accountCodes.join(',')}`);
             const historyData = await historyRes.json();
 
@@ -1097,7 +1103,8 @@ const createConsolidatedData = useCallback(
                 dateData.cashFlows.push(Number(row.cash_in_out) || 0);
               });
 
-              const consolidatedData: HistoricalData[] = combinedNavData.data.map((item: any) => {
+              // Create Nuvama consolidated data
+              const nuvamaConsolidatedData: HistoricalData[] = combinedNavData.data.map((item: any) => {
                 const date = item.valuedate;
                 const dateData = dateMap.get(date);
                 return {
@@ -1109,13 +1116,71 @@ const createConsolidatedData = useCallback(
                 };
               }).sort((a: HistoricalData, b: HistoricalData) => new Date(a.report_date).getTime() - new Date(b.report_date).getTime());
 
-              console.log('✅ [SUCCESS] Using NAV from client_combined_nav API for ALL_ACCOUNTS');
-              setHistoricalData(consolidatedData);
-              setOrbisHistoricalData([]);
-              setConsolidatedHistoricalData(consolidatedData);
-              setOrbisData([]);
-              setDataView('consolidated'); // Default to consolidated view for ALL_ACCOUNTS
+              if (hasAnyOrbisData) {
+                // Consolidate all Orbis data across family members
+                const allOrbisData: any[] = [];
+                accountsWithOrbis.forEach(acc => {
+                  if (acc.orbisData) {
+                    allOrbisData.push(...acc.orbisData.map(item => ({
+                      ...item,
+                      clientcode: acc.clientcode
+                    })));
+                  }
+                });
 
+                // Group Orbis data by date and sum values
+                const orbisDateMap = new Map<string, { navs: number[]; marketValues: number[]; cashFlows: number[] }>();
+                allOrbisData.forEach(item => {
+                  const date = item.date;
+                  if (!orbisDateMap.has(date)) {
+                    orbisDateMap.set(date, { navs: [], marketValues: [], cashFlows: [] });
+                  }
+                  const data = orbisDateMap.get(date)!;
+                  data.navs.push(Number(item.nav) || 100);
+                  data.marketValues.push(Number(item.market_value) || 0);
+                  data.cashFlows.push(Number(item.net_capital_flow) || 0);
+                });
+
+                // Create consolidated Orbis data with averaged NAV
+                const orbisConsolidatedData: HistoricalData[] = Array.from(orbisDateMap.entries())
+                  .map(([date, data]) => {
+                    const portfolioValue = data.marketValues.reduce((sum, v) => {
+                      const val = Number(v) || 0;
+                      return sum + (isFinite(val) && val < 1e15 ? val : 0);
+                    }, 0);
+                    return {
+                      report_date: date,
+                      nav: data.navs.reduce((sum, v) => sum + v, 0) / data.navs.length, // Average NAV
+                      portfolio_value: portfolioValue,
+                      cash_in_out: data.cashFlows.reduce((sum, v) => sum + v, 0),
+                      drawdown_percent: 0,
+                    };
+                  })
+                  .sort((a, b) => new Date(a.report_date).getTime() - new Date(b.report_date).getTime());
+
+                // Merge Orbis + Nuvama using combined NAV API
+                const mergedConsolidated = createConsolidatedData(
+                  allOrbisData,
+                  nuvamaConsolidatedData,
+                  accountCodes[0] // Use first account code as reference
+                );
+
+                console.log('✅ [COMPLETE FAMILY] Created consolidated data with Orbis + Nuvama');
+                setHistoricalData(nuvamaConsolidatedData);
+                setOrbisHistoricalData(orbisConsolidatedData);
+                setConsolidatedHistoricalData(mergedConsolidated);
+                setOrbisData(allOrbisData);
+                setDataView('nuvama'); // Default to Nuvama view
+              } else {
+                console.log('✅ [COMPLETE FAMILY] Using NAV from client_combined_nav API (Nuvama only)');
+                setHistoricalData(nuvamaConsolidatedData);
+                setOrbisHistoricalData([]);
+                setConsolidatedHistoricalData([]);
+                setOrbisData([]);
+                setDataView('nuvama'); // Default to Nuvama view
+              }
+
+              // Get current portfolio value
               const portfolioRes = await fetch("/api/portfolio-details", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -1126,114 +1191,17 @@ const createConsolidatedData = useCallback(
               if (portfolioData.success && portfolioData.data && portfolioData.data.length > 0) {
                 totalCurrentValue = portfolioData.data.reduce((sum: number, item: any) => sum + (Number(item.portfolio_value) || 0), 0);
               }
-              setCurrentData({ account_code: 'ALL_ACCOUNTS', portfolio_value: totalCurrentValue, report_date: new Date().toISOString() });
-            }
-          }
-          setLoading(false);
-          return;
-        }
-
-        // Check if "All Strategies" is selected (strategy-level consolidation)
-        if (selectedAccount === 'ALL_STRATEGIES') {
-          console.log('🔍 [STRATEGY LEVEL] Fetching strategy-level consolidated NAV');
-
-          // Group accounts by strategy (first 3 characters of clientcode)
-          const strategyGroups = new Map<string, string[]>();
-          familyAccounts.forEach((acc: FamilyAccount) => {
-            const strategyCode = acc.clientcode.substring(0, 3).toUpperCase();
-            if (!strategyGroups.has(strategyCode)) {
-              strategyGroups.set(strategyCode, []);
-            }
-            strategyGroups.get(strategyCode)!.push(acc.clientcode);
-          });
-
-          console.log('📊 [STRATEGY GROUPS]:', Array.from(strategyGroups.entries()).map(([code, accounts]) => ({
-            strategy: code,
-            accountCount: accounts.length,
-            accounts: accounts
-          })));
-
-          // Fetch combined NAV for each strategy
-          const strategyNavPromises = Array.from(strategyGroups.entries()).map(async ([strategyCode, accounts]) => {
-            const navRes = await fetch('https://qode360-backend.qodeinvest.com/api/v1/returns/client_combined_nav/', {
-              method: 'POST',
-              headers: { 'accept': 'application/json', 'Content-Type': 'application/json' },
-              body: JSON.stringify({ account_code: accounts }),
-            });
-            const navData = await navRes.json();
-            return { strategyCode, navData, accounts };
-          });
-
-          const strategyNavResults = await Promise.all(strategyNavPromises);
-          console.log('✅ [STRATEGY NAV DATA] Fetched NAV for all strategies');
-
-          // Combine all strategy NAVs into a single consolidated dataset
-          // We need to merge NAVs across strategies for each date
-          const dateNavMap = new Map<string, number[]>();
-
-          strategyNavResults.forEach(({ navData }) => {
-            if (navData && navData.data && Array.isArray(navData.data)) {
-              navData.data.forEach((item: any) => {
-                const date = item.valuedate;
-                const nav = Number(item.combined_nav) || 100;
-                if (!dateNavMap.has(date)) {
-                  dateNavMap.set(date, []);
-                }
-                dateNavMap.get(date)!.push(nav);
+              setCurrentData({
+                account_code: 'COMPLETE_FAMILY_PORTFOLIO',
+                portfolio_value: totalCurrentValue,
+                report_date: new Date().toISOString()
               });
             }
-          });
-
-          // Fetch portfolio history for all accounts
-          const allAccountCodes = familyAccounts.map((acc: FamilyAccount) => acc.clientcode);
-          const historyRes = await fetch(`/api/portfolio-history?nuvama_codes=${allAccountCodes.join(',')}`);
-          const historyData = await historyRes.json();
-
-          if (historyData.success && historyData.data && historyData.isMultiAccount) {
-            const dateMap = new Map<string, { portfolioValues: number[]; cashFlows: number[] }>();
-            historyData.data.forEach((row: any) => {
-              const date = row.report_date;
-              if (!dateMap.has(date)) dateMap.set(date, { portfolioValues: [], cashFlows: [] });
-              const dateData = dateMap.get(date)!;
-              dateData.portfolioValues.push(Number(row.portfolio_value) || 0);
-              dateData.cashFlows.push(Number(row.cash_in_out) || 0);
-            });
-
-            // Create consolidated data with averaged NAVs across strategies
-            const consolidatedData: HistoricalData[] = Array.from(dateNavMap.entries()).map(([date, navs]) => {
-              const averageNav = navs.reduce((sum, val) => sum + val, 0) / navs.length;
-              const dateData = dateMap.get(date);
-              return {
-                report_date: date,
-                nav: averageNav,
-                portfolio_value: dateData ? dateData.portfolioValues.reduce((sum, val) => sum + val, 0) : 0,
-                cash_in_out: dateData ? dateData.cashFlows.reduce((sum, val) => sum + val, 0) : 0,
-                drawdown_percent: 0,
-              };
-            }).sort((a: HistoricalData, b: HistoricalData) => new Date(a.report_date).getTime() - new Date(b.report_date).getTime());
-
-            console.log('✅ [SUCCESS] Created strategy-level consolidated data with', consolidatedData.length, 'records');
-            setHistoricalData(consolidatedData);
-            setOrbisHistoricalData([]);
-            setConsolidatedHistoricalData(consolidatedData);
-            setOrbisData([]);
-            setDataView('consolidated'); // Default to consolidated view for ALL_STRATEGIES
-
-            const portfolioRes = await fetch("/api/portfolio-details", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ nuvama_codes: allAccountCodes }),
-            });
-            const portfolioData = await portfolioRes.json();
-            let totalCurrentValue = 0;
-            if (portfolioData.success && portfolioData.data && portfolioData.data.length > 0) {
-              totalCurrentValue = portfolioData.data.reduce((sum: number, item: any) => sum + (Number(item.portfolio_value) || 0), 0);
-            }
-            setCurrentData({ account_code: 'ALL_STRATEGIES', portfolio_value: totalCurrentValue, report_date: new Date().toISOString() });
           }
           setLoading(false);
           return;
         }
+
 
         // Check if a family member consolidation is selected (member-level consolidation)
         if (selectedAccount.startsWith('MEMBER_')) {
@@ -1244,15 +1212,18 @@ const createConsolidatedData = useCallback(
             console.log('🔍 [MEMBER LEVEL] Fetching consolidated NAV for family member:', member.holderName);
             console.log('🔍 [MEMBER LEVEL] Member has', member.clientcodes.length, 'accounts:', member.clientcodes);
 
+            // Check if any of member's accounts have Orbis data
+            const memberAccountsWithOrbis = member.accounts.filter(acc => acc.orbisData && acc.orbisData.length > 0);
+            const hasOrbisData = memberAccountsWithOrbis.length > 0;
+
             const combinedNavRes = await fetch('https://qode360-backend.qodeinvest.com/api/v1/returns/client_combined_nav/', {
               method: 'POST',
               headers: { 'accept': 'application/json', 'Content-Type': 'application/json' },
               body: JSON.stringify({ account_code: member.clientcodes }),
             });
 
-            console.log('📡 [API RESPONSE] Status:', combinedNavRes.status, combinedNavRes.statusText);
             const combinedNavData = await combinedNavRes.json();
-            console.log('✅ [API DATA] Combined NAV API Response:', combinedNavData);
+            console.log('✅ [MEMBER LEVEL] Combined NAV API Response received');
 
             if (combinedNavData && combinedNavData.data && Array.isArray(combinedNavData.data)) {
               const historyRes = await fetch(`/api/portfolio-history?nuvama_codes=${member.clientcodes.join(',')}`);
@@ -1268,7 +1239,7 @@ const createConsolidatedData = useCallback(
                   dateData.cashFlows.push(Number(row.cash_in_out) || 0);
                 });
 
-                const consolidatedData: HistoricalData[] = combinedNavData.data.map((item: any) => {
+                const nuvamaConsolidatedData: HistoricalData[] = combinedNavData.data.map((item: any) => {
                   const date = item.valuedate;
                   const dateData = dateMap.get(date);
                   return {
@@ -1280,12 +1251,67 @@ const createConsolidatedData = useCallback(
                   };
                 }).sort((a: HistoricalData, b: HistoricalData) => new Date(a.report_date).getTime() - new Date(b.report_date).getTime());
 
-                console.log('✅ [MEMBER SUCCESS] Using NAV from client_combined_nav API for member (Nuvama only)');
-                setHistoricalData(consolidatedData);
-                setOrbisHistoricalData([]);
-                setConsolidatedHistoricalData([]);
-                setOrbisData([]);
-                setDataView('nuvama'); // Show Nuvama data for member-level consolidation
+                if (hasOrbisData) {
+                  // Consolidate Orbis data for this member
+                  const allOrbisData: any[] = [];
+                  memberAccountsWithOrbis.forEach(acc => {
+                    if (acc.orbisData) {
+                      allOrbisData.push(...acc.orbisData.map(item => ({
+                        ...item,
+                        clientcode: acc.clientcode
+                      })));
+                    }
+                  });
+
+                  // Group Orbis data by date
+                  const orbisDateMap = new Map<string, { navs: number[]; marketValues: number[]; cashFlows: number[] }>();
+                  allOrbisData.forEach(item => {
+                    const date = item.date;
+                    if (!orbisDateMap.has(date)) {
+                      orbisDateMap.set(date, { navs: [], marketValues: [], cashFlows: [] });
+                    }
+                    const data = orbisDateMap.get(date)!;
+                    data.navs.push(Number(item.nav) || 100);
+                    data.marketValues.push(Number(item.market_value) || 0);
+                    data.cashFlows.push(Number(item.net_capital_flow) || 0);
+                  });
+
+                  const orbisConsolidatedData: HistoricalData[] = Array.from(orbisDateMap.entries())
+                    .map(([date, data]) => {
+                      const portfolioValue = data.marketValues.reduce((sum, v) => {
+                        const val = Number(v) || 0;
+                        return sum + (isFinite(val) && val < 1e15 ? val : 0);
+                      }, 0);
+                      return {
+                        report_date: date,
+                        nav: data.navs.reduce((sum, v) => sum + v, 0) / data.navs.length,
+                        portfolio_value: portfolioValue,
+                        cash_in_out: data.cashFlows.reduce((sum, v) => sum + v, 0),
+                        drawdown_percent: 0,
+                      };
+                    })
+                    .sort((a, b) => new Date(a.report_date).getTime() - new Date(b.report_date).getTime());
+
+                  const mergedConsolidated = createConsolidatedData(
+                    allOrbisData,
+                    nuvamaConsolidatedData,
+                    member.clientcodes[0]
+                  );
+
+                  console.log('✅ [MEMBER LEVEL] Created consolidated data with Orbis + Nuvama');
+                  setHistoricalData(nuvamaConsolidatedData);
+                  setOrbisHistoricalData(orbisConsolidatedData);
+                  setConsolidatedHistoricalData(mergedConsolidated);
+                  setOrbisData(allOrbisData);
+                  setDataView('nuvama'); // Default to Nuvama view
+                } else {
+                  console.log('✅ [MEMBER LEVEL] Using NAV from client_combined_nav API (Nuvama only)');
+                  setHistoricalData(nuvamaConsolidatedData);
+                  setOrbisHistoricalData([]);
+                  setConsolidatedHistoricalData([]);
+                  setOrbisData([]);
+                  setDataView('nuvama'); // Default to Nuvama view
+                }
 
                 const portfolioRes = await fetch("/api/portfolio-details", {
                   method: "POST",
@@ -1343,6 +1369,14 @@ const createConsolidatedData = useCallback(
           // Create consolidated data
           const consolidated = createConsolidatedData(currentOrbisData, histDataArr, selectedAccount);
           setConsolidatedHistoricalData(consolidated);
+
+          // Store Orbis data for view switching
+          setOrbisData(currentOrbisData);
+
+          // Set default view to Nuvama if Orbis data exists
+          if (currentOrbisData.length > 0) {
+            setDataView('nuvama');
+          }
 
           // Determine the date range for benchmark data
           // Use consolidated data if it has orbis, otherwise use nuvama data
@@ -1714,9 +1748,9 @@ const createConsolidatedData = useCallback(
   // Calculate metrics using active data
   // Get selected account details for Orbis metrics
   const selectedAccountDetails = familyAccounts.find(acc => acc.clientcode === selectedAccount);
-  const hasOrbisMetrics = selectedAccountDetails?.orbisMetrics &&
-    orbisData &&
-    orbisData.length > 0;
+  const isFamilyOrMemberView = selectedAccount === 'COMPLETE_FAMILY_PORTFOLIO' || selectedAccount.startsWith('MEMBER_');
+  const hasOrbisData = orbisData && orbisData.length > 0;
+  const hasOrbisMetrics = selectedAccountDetails?.orbisMetrics && hasOrbisData && !isFamilyOrMemberView;
 
   // For Orbis-only or Consolidated views with Orbis data, use Orbis metrics
   // For Nuvama-only, use cash flow summation
@@ -1725,13 +1759,12 @@ const createConsolidatedData = useCallback(
   let currentValue: number;
 
   if (hasOrbisMetrics && dataView === 'orbis') {
-    // Use Orbis metrics for Orbis-only view
+    // Use Orbis metrics for Orbis-only view (single account)
     totalInvested = selectedAccountDetails!.orbisMetrics!.latestCapitalAmount;
     totalCapitalIn = selectedAccountDetails!.orbisMetrics!.latestCapitalAmount;
     currentValue = selectedAccountDetails!.orbisMetrics!.latestMarketValue;
   } else if (hasOrbisMetrics && dataView === 'consolidated') {
-    // For consolidated view, combine both Nuvama and Orbis data
-    // Get Orbis invested amount and current value
+    // For consolidated view (single account), combine both Nuvama and Orbis data
     const orbisInvested = selectedAccountDetails!.orbisMetrics!.latestCapitalAmount;
     const orbisCurrentValue = selectedAccountDetails!.orbisMetrics!.latestMarketValue;
 
@@ -1747,27 +1780,117 @@ const createConsolidatedData = useCallback(
     totalInvested = orbisInvested + nuvamaInvested;
     totalCapitalIn = orbisInvested + nuvamaCapitalIn; // Orbis uses net capital, Nuvama uses gross inflows
     currentValue = orbisCurrentValue + nuvamaCurrentValue;
+  } else if (hasOrbisData && dataView === 'orbis' && isFamilyOrMemberView) {
+    // For family/member Orbis-only view, calculate from orbisHistoricalData
+    totalInvested = orbisHistoricalData.reduce((sum, item) => sum + (Number(item.cash_in_out) || 0), 0);
+    totalCapitalIn = orbisHistoricalData.reduce((sum, item) => {
+      const cashFlow = Number(item.cash_in_out) || 0;
+      return sum + (cashFlow > 0 ? cashFlow : 0);
+    }, 0);
+    const rawOrbisValue = orbisHistoricalData.length > 0
+      ? Number(orbisHistoricalData[orbisHistoricalData.length - 1].portfolio_value) || 0
+      : 0;
+    currentValue = isFinite(rawOrbisValue) && rawOrbisValue < 1e15 ? rawOrbisValue : 0;
+  } else if (hasOrbisData && dataView === 'consolidated' && isFamilyOrMemberView) {
+    // For family/member consolidated view, combine Orbis and Nuvama cash flows
+    const orbisInvested = orbisHistoricalData.reduce((sum, item) => sum + (Number(item.cash_in_out) || 0), 0);
+    const orbisCapitalIn = orbisHistoricalData.reduce((sum, item) => {
+      const cashFlow = Number(item.cash_in_out) || 0;
+      return sum + (cashFlow > 0 ? cashFlow : 0);
+    }, 0);
+    const rawOrbisValue = orbisHistoricalData.length > 0
+      ? Number(orbisHistoricalData[orbisHistoricalData.length - 1].portfolio_value) || 0
+      : 0;
+    const orbisCurrentValue = isFinite(rawOrbisValue) && rawOrbisValue < 1e15 ? rawOrbisValue : 0;
+
+    const nuvamaInvested = historicalData.reduce((sum, item) => sum + (Number(item.cash_in_out) || 0), 0);
+    const nuvamaCapitalIn = historicalData.reduce((sum, item) => {
+      const cashFlow = Number(item.cash_in_out) || 0;
+      return sum + (cashFlow > 0 ? cashFlow : 0);
+    }, 0);
+    const rawNuvamaValue = Number(currentData?.portfolio_value) || 0;
+    const nuvamaCurrentValue = isFinite(rawNuvamaValue) && rawNuvamaValue < 1e15 ? rawNuvamaValue : 0;
+
+    console.log('🔍 [FAMILY CONSOLIDATED] Orbis:', orbisCurrentValue, 'Nuvama:', nuvamaCurrentValue);
+
+    totalInvested = orbisInvested + nuvamaInvested;
+    totalCapitalIn = orbisCapitalIn + nuvamaCapitalIn;
+    currentValue = orbisCurrentValue + nuvamaCurrentValue;
   } else {
-    // Original calculation for Nuvama data
+    // Default calculation for Nuvama data (or consolidated without Orbis metrics)
     totalInvested = activeHistoricalData.reduce((sum, item) => sum + (Number(item.cash_in_out) || 0), 0);
     // Sum of only capital inflows (positive cash flows)
     totalCapitalIn = activeHistoricalData.reduce((sum, item) => {
       const cashFlow = Number(item.cash_in_out) || 0;
       return sum + (cashFlow > 0 ? cashFlow : 0);
     }, 0);
-    currentValue = dataView === 'nuvama'
-      ? (currentData?.portfolio_value || 0)
-      : activeHistoricalData.length > 0
-        ? activeHistoricalData[activeHistoricalData.length - 1].portfolio_value
+
+    if (dataView === 'consolidated' && hasOrbisData) {
+      // For consolidated view without Orbis metrics, calculate properly
+      // Get Orbis current value from last orbis record
+      const orbisCurrentValue = orbisHistoricalData.length > 0
+        ? Number(orbisHistoricalData[orbisHistoricalData.length - 1].portfolio_value) || 0
         : 0;
+      // Get Nuvama current value
+      const nuvamaCurrentValue = Number(currentData?.portfolio_value) || 0;
+
+      console.log('🔍 [CONSOLIDATED CALC] Orbis current:', orbisCurrentValue, 'Nuvama current:', nuvamaCurrentValue);
+
+      // Validate numbers before combining
+      const validOrbisValue = isFinite(orbisCurrentValue) && orbisCurrentValue < 1e15 ? orbisCurrentValue : 0;
+      const validNuvamaValue = isFinite(nuvamaCurrentValue) && nuvamaCurrentValue < 1e15 ? nuvamaCurrentValue : 0;
+
+      // Combine both
+      currentValue = validOrbisValue + validNuvamaValue;
+
+      console.log('✅ [CONSOLIDATED CALC] Final current value:', currentValue);
+    } else if (dataView === 'nuvama') {
+      currentValue = currentData?.portfolio_value || 0;
+    } else if (dataView === 'orbis') {
+      const rawValue = activeHistoricalData.length > 0
+        ? Number(activeHistoricalData[activeHistoricalData.length - 1].portfolio_value) || 0
+        : 0;
+      currentValue = isFinite(rawValue) && rawValue < 1e15 ? rawValue : 0;
+    } else {
+      // Fallback
+      const rawValue = Number(currentData?.portfolio_value) || 0;
+      currentValue = isFinite(rawValue) && rawValue < 1e15 ? rawValue : 0;
+    }
   }
 
   const totalReturns = currentValue - totalInvested;
 
-  // Calculate returns percentage based on actual money invested and current value
+  // Calculate returns percentage using NAV-based approach (proper CAGR/absolute)
   let returnsPercent: number = 0;
-  if (totalInvested !== 0) {
-    returnsPercent = (totalReturns / totalInvested) * 100;
+  if (activeHistoricalData.length >= 2) {
+    const sortedData = [...activeHistoricalData].sort(
+      (a, b) => new Date(a.report_date).getTime() - new Date(b.report_date).getTime()
+    );
+    const firstNavRecord = sortedData.find(r => Number(r.nav) > 0);
+    const latestNavRecord = [...sortedData].reverse().find(r => Number(r.nav) > 0);
+
+    if (firstNavRecord && latestNavRecord) {
+      const firstNav = Number(firstNavRecord.nav);
+      const latestNav = Number(latestNavRecord.nav);
+      const firstDate = new Date(firstNavRecord.report_date);
+      const latestDate = new Date(latestNavRecord.report_date);
+      const daysDiff = (latestDate.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24);
+      const years = daysDiff / 365.25;
+
+      if (years >= 1 && firstNav > 0 && latestNav > 0) {
+        // CAGR for >= 1 year
+        const cagr = (Math.pow(latestNav / firstNav, 1 / years) - 1) * 100;
+        returnsPercent = isFinite(cagr) ? cagr : 0;
+      } else if (firstNav > 0 && latestNav > 0) {
+        // Absolute return for < 1 year
+        const absReturn = ((latestNav / firstNav) - 1) * 100;
+        returnsPercent = isFinite(absReturn) ? absReturn : 0;
+      }
+    }
+  } else if (totalInvested !== 0 && isFinite(totalInvested) && isFinite(totalReturns)) {
+    // Fallback to simple calculation if NAV data is insufficient
+    const simpleReturn = (totalReturns / totalInvested) * 100;
+    returnsPercent = isFinite(simpleReturn) ? simpleReturn : 0;
   }
 
   // Determine if return is positive based on the calculated percentage
@@ -1874,31 +1997,26 @@ const createConsolidatedData = useCallback(
                     <SelectValue placeholder="Select Account" />
                   </SelectTrigger>
                   <SelectContent>
-                    {/* Show All Accounts options if there are multiple family members */}
-                    {familyAccounts.length > 1 && (
+                    {/* Family-level consolidation - Show only if there are multiple family members */}
+                    {groupedFamilyMembers.length > 1 && (
                       <>
-                        <SelectItem value="ALL_ACCOUNTS">
+                        <SelectItem value="COMPLETE_FAMILY_PORTFOLIO">
                           <div className="flex items-center justify-between gap-3">
-                            <span className="font-semibold">All Accounts</span>
-                            <span className="text-xs text-muted-foreground">(Consolidated)</span>
+                            <span className="font-semibold">Complete Family Portfolio</span>
+                            <span className="text-xs text-muted-foreground">(All Members, All Strategies)</span>
                           </div>
                         </SelectItem>
-                        <SelectItem value="ALL_STRATEGIES">
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="font-semibold">All Accounts</span>
-                            <span className="text-xs text-muted-foreground">(All Strategies)</span>
-                          </div>
-                        </SelectItem>
+                        <div className="h-px bg-border my-1" />
                       </>
                     )}
 
-                    {/* Show consolidated member options for members with multiple accounts */}
+                    {/* Per-member consolidation for members with multiple accounts */}
                     {groupedFamilyMembers.map(member => {
                       if (member.clientcodes.length > 1) {
                         return (
                           <SelectItem key={`MEMBER_${member.email}`} value={`MEMBER_${member.email}`}>
                             <div className="flex items-center justify-between gap-3">
-                              <span className="font-medium">{sanitizeName(member.holderName)} - All Accounts</span>
+                              <span className="font-medium">{sanitizeName(member.holderName)}</span>
                               <span className="text-xs text-muted-foreground">(All Strategies)</span>
                             </div>
                           </SelectItem>
@@ -1906,16 +2024,32 @@ const createConsolidatedData = useCallback(
                       }
                       return null;
                     })}
+                    {groupedFamilyMembers.some(m => m.clientcodes.length > 1) && (
+                      <div className="h-px bg-border my-1" />
+                    )}
 
-                    {/* Show individual accounts */}
-                    {familyAccounts.map(acc => (
-                      <SelectItem key={acc.clientcode} value={acc.clientcode}>
-                        <div className="flex items-center justify-between gap-3">
-                          <span>{sanitizeName(acc.holderName)}</span>
-                          <span className="text-xs text-muted-foreground">({acc.clientcode})</span>
-                        </div>
-                      </SelectItem>
-                    ))}
+                    {/* Individual accounts */}
+                    {familyAccounts.map(acc => {
+                      const strategyCode = acc.clientcode.substring(0, 3).toUpperCase();
+                      const strategyName = strategyNames[strategyCode as keyof typeof strategyNames] || strategyCode;
+                      const hasOrbis = acc.orbisData && acc.orbisData.length > 0;
+
+                      return (
+                        <SelectItem key={acc.clientcode} value={acc.clientcode}>
+                          <div className="flex items-center justify-between gap-3">
+                            <span>{sanitizeName(acc.holderName)}</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs text-muted-foreground">{strategyName}</span>
+                              {hasOrbis && (
+                                <Badge variant="outline" className="text-[9px] px-1 py-0 h-4">
+                                  Orbis+Nuvama
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
                 {/* {enrichedData.length > 0 && (
@@ -1950,9 +2084,9 @@ const createConsolidatedData = useCallback(
                 <CardContent className="pt-6">
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                     <div>
-                      <h3 className="text-sm font-semibold text-foreground">Data View</h3>
+                      <h3 className="text-sm font-semibold text-foreground">Data Source View</h3>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Select how you want to view your portfolio performance
+                        View performance data from different sources individually or combined
                       </p>
                     </div>
                     <div className="flex gap-2">
@@ -1962,7 +2096,7 @@ const createConsolidatedData = useCallback(
                         variant={dataView === 'nuvama' ? 'gradient' : 'outline'}
                         className="text-xs"
                       >
-                        Nuvama Only
+                        Nuvama
                       </Button>
                       <Button
                         onClick={() => setDataView('orbis')}
@@ -1970,7 +2104,7 @@ const createConsolidatedData = useCallback(
                         variant={dataView === 'orbis' ? 'gradient' : 'outline'}
                         className="text-xs"
                       >
-                        Orbis Only
+                        Orbis (Legacy)
                       </Button>
                       <Button
                         onClick={() => setDataView('consolidated')}
@@ -1978,7 +2112,7 @@ const createConsolidatedData = useCallback(
                         variant={dataView === 'consolidated' ? 'gradient' : 'outline'}
                         className="text-xs"
                       >
-                        Consolidated
+                        Orbis + Nuvama (Combined)
                       </Button>
                     </div>
                   </div>
@@ -1988,68 +2122,64 @@ const createConsolidatedData = useCallback(
           </div>
 
           {/* Metrics Cards */}
-          <div className={dataView === 'consolidated' ? "flex justify-center" : "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4"}>
-            {dataView !== 'consolidated' && (
-              <>
-                {/* Amount Invested */}
-                <Card>
-                  <CardContent className="">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-sm font-medium text-muted-foreground">Amount Invested</p>
-                      <Wallet className="h-4 w-4 text-blue-500" />
-                    </div>
-                    <div className="text-2xl font-bold text-foreground ">{formatCurrency(totalInvested)}</div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Gross: {formatCurrency(totalCapitalIn)}
-                    </p>
-                  </CardContent>
-                </Card>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Amount Invested */}
+            <Card>
+              <CardContent className="">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium text-muted-foreground">Amount Invested</p>
+                  <Wallet className="h-4 w-4 text-blue-500" />
+                </div>
+                <div className="text-2xl font-bold text-foreground ">{formatCurrency(totalInvested)}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Gross: {formatCurrency(totalCapitalIn)}
+                </p>
+              </CardContent>
+            </Card>
 
-                {/* Current Value */}
-                <Card>
-                  <CardContent className="">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-sm font-medium text-muted-foreground">Current Value</p>
-                      <RupeeIcon className="h-4 w-4 text-green-500" />
-                    </div>
-                    <div className="text-2xl font-bold text-primary">{formatCurrency(currentValue)}</div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {hasOrbisMetrics && dataView === 'orbis'
-                        ? selectedAccountDetails?.orbisMetrics?.latestDate && `As of ${new Date(selectedAccountDetails.orbisMetrics.latestDate).toLocaleDateString('en-IN')}`
-                        : currentData?.report_date && `As of ${new Date(currentData.report_date).toLocaleDateString('en-IN')}`}
-                    </p>
-                  </CardContent>
-                </Card>
+            {/* Current Value */}
+            <Card>
+              <CardContent className="">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium text-muted-foreground">Current Value</p>
+                  <RupeeIcon className="h-4 w-4 text-green-500" />
+                </div>
+                <div className="text-2xl font-bold text-primary">{formatCurrency(currentValue)}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {hasOrbisMetrics && dataView === 'orbis'
+                    ? selectedAccountDetails?.orbisMetrics?.latestDate && `As of ${new Date(selectedAccountDetails.orbisMetrics.latestDate).toLocaleDateString('en-IN')}`
+                    : currentData?.report_date && `As of ${new Date(currentData.report_date).toLocaleDateString('en-IN')}`}
+                </p>
+              </CardContent>
+            </Card>
 
-                {/* Returns (₹) */}
-                <Card>
-                  <CardContent className="">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-sm font-medium text-muted-foreground">Total Returns</p>
-                      {isPositiveReturnOverall ? (
-                        <ArrowUpRight className="h-4 w-4 text-green-500" />
-                      ) : (
-                        <ArrowDownRight className="h-4 w-4 text-red-500" />
-                      )}
-                    </div>
-                    <div className={`text-2xl font-bold ${isPositiveReturnOverall ? 'text-green-600' : 'text-red-600'}`}>
-                      {isPositiveReturnOverall ? '+' : ''}{formatCurrency(totalReturns)}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">Absolute returns</p>
-                  </CardContent>
-                </Card>
-              </>
-            )}
+            {/* Returns (₹) */}
+            <Card>
+              <CardContent className="">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium text-muted-foreground">Total Returns</p>
+                  {isPositiveReturnOverall ? (
+                    <ArrowUpRight className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <ArrowDownRight className="h-4 w-4 text-red-500" />
+                  )}
+                </div>
+                <div className={`text-2xl font-bold ${isPositiveReturnOverall ? 'text-green-600' : 'text-red-600'}`}>
+                  {isPositiveReturnOverall ? '+' : ''}{formatCurrency(totalReturns)}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Absolute returns</p>
+              </CardContent>
+            </Card>
 
             {/* Returns (%) */}
-            <Card className={dataView === 'consolidated' ? "w-full max-w-md" : ""}>
+            <Card>
               <CardContent className="">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-sm font-medium text-muted-foreground">Returns %</p>
                   <Percent className="h-4 w-4 text-orange-500" />
                 </div>
                 <div className={`text-2xl font-bold ${isPositiveReturnOverall ? 'text-green-600' : 'text-red-600'}`}>
-                  {isPositiveReturnOverall ? '+' : ''}{formatPercent(returnsPercent)}
+                  {isPositiveReturnOverall ? '+' : ''}{returnsPercent.toFixed(2)}%
                 </div>
                 <div className="flex items-center gap-1 mt-1">
                   {isPositiveReturnOverall ? (
