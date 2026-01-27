@@ -1109,10 +1109,12 @@ const createConsolidatedData = useCallback(
                 };
               }).sort((a: HistoricalData, b: HistoricalData) => new Date(a.report_date).getTime() - new Date(b.report_date).getTime());
 
-              console.log('✅ [SUCCESS] Using NAV from client_combined_nav API');
+              console.log('✅ [SUCCESS] Using NAV from client_combined_nav API for ALL_ACCOUNTS');
               setHistoricalData(consolidatedData);
               setOrbisHistoricalData([]);
               setConsolidatedHistoricalData(consolidatedData);
+              setOrbisData([]);
+              setDataView('consolidated'); // Default to consolidated view for ALL_ACCOUNTS
 
               const portfolioRes = await fetch("/api/portfolio-details", {
                 method: "POST",
@@ -1126,6 +1128,108 @@ const createConsolidatedData = useCallback(
               }
               setCurrentData({ account_code: 'ALL_ACCOUNTS', portfolio_value: totalCurrentValue, report_date: new Date().toISOString() });
             }
+          }
+          setLoading(false);
+          return;
+        }
+
+        // Check if "All Strategies" is selected (strategy-level consolidation)
+        if (selectedAccount === 'ALL_STRATEGIES') {
+          console.log('🔍 [STRATEGY LEVEL] Fetching strategy-level consolidated NAV');
+
+          // Group accounts by strategy (first 3 characters of clientcode)
+          const strategyGroups = new Map<string, string[]>();
+          familyAccounts.forEach((acc: FamilyAccount) => {
+            const strategyCode = acc.clientcode.substring(0, 3).toUpperCase();
+            if (!strategyGroups.has(strategyCode)) {
+              strategyGroups.set(strategyCode, []);
+            }
+            strategyGroups.get(strategyCode)!.push(acc.clientcode);
+          });
+
+          console.log('📊 [STRATEGY GROUPS]:', Array.from(strategyGroups.entries()).map(([code, accounts]) => ({
+            strategy: code,
+            accountCount: accounts.length,
+            accounts: accounts
+          })));
+
+          // Fetch combined NAV for each strategy
+          const strategyNavPromises = Array.from(strategyGroups.entries()).map(async ([strategyCode, accounts]) => {
+            const navRes = await fetch('https://qode360-backend.qodeinvest.com/api/v1/returns/client_combined_nav/', {
+              method: 'POST',
+              headers: { 'accept': 'application/json', 'Content-Type': 'application/json' },
+              body: JSON.stringify({ account_code: accounts }),
+            });
+            const navData = await navRes.json();
+            return { strategyCode, navData, accounts };
+          });
+
+          const strategyNavResults = await Promise.all(strategyNavPromises);
+          console.log('✅ [STRATEGY NAV DATA] Fetched NAV for all strategies');
+
+          // Combine all strategy NAVs into a single consolidated dataset
+          // We need to merge NAVs across strategies for each date
+          const dateNavMap = new Map<string, number[]>();
+
+          strategyNavResults.forEach(({ navData }) => {
+            if (navData && navData.data && Array.isArray(navData.data)) {
+              navData.data.forEach((item: any) => {
+                const date = item.valuedate;
+                const nav = Number(item.combined_nav) || 100;
+                if (!dateNavMap.has(date)) {
+                  dateNavMap.set(date, []);
+                }
+                dateNavMap.get(date)!.push(nav);
+              });
+            }
+          });
+
+          // Fetch portfolio history for all accounts
+          const allAccountCodes = familyAccounts.map((acc: FamilyAccount) => acc.clientcode);
+          const historyRes = await fetch(`/api/portfolio-history?nuvama_codes=${allAccountCodes.join(',')}`);
+          const historyData = await historyRes.json();
+
+          if (historyData.success && historyData.data && historyData.isMultiAccount) {
+            const dateMap = new Map<string, { portfolioValues: number[]; cashFlows: number[] }>();
+            historyData.data.forEach((row: any) => {
+              const date = row.report_date;
+              if (!dateMap.has(date)) dateMap.set(date, { portfolioValues: [], cashFlows: [] });
+              const dateData = dateMap.get(date)!;
+              dateData.portfolioValues.push(Number(row.portfolio_value) || 0);
+              dateData.cashFlows.push(Number(row.cash_in_out) || 0);
+            });
+
+            // Create consolidated data with averaged NAVs across strategies
+            const consolidatedData: HistoricalData[] = Array.from(dateNavMap.entries()).map(([date, navs]) => {
+              const averageNav = navs.reduce((sum, val) => sum + val, 0) / navs.length;
+              const dateData = dateMap.get(date);
+              return {
+                report_date: date,
+                nav: averageNav,
+                portfolio_value: dateData ? dateData.portfolioValues.reduce((sum, val) => sum + val, 0) : 0,
+                cash_in_out: dateData ? dateData.cashFlows.reduce((sum, val) => sum + val, 0) : 0,
+                drawdown_percent: 0,
+              };
+            }).sort((a: HistoricalData, b: HistoricalData) => new Date(a.report_date).getTime() - new Date(b.report_date).getTime());
+
+            console.log('✅ [SUCCESS] Created strategy-level consolidated data with', consolidatedData.length, 'records');
+            setHistoricalData(consolidatedData);
+            setOrbisHistoricalData([]);
+            setConsolidatedHistoricalData(consolidatedData);
+            setOrbisData([]);
+            setDataView('consolidated'); // Default to consolidated view for ALL_STRATEGIES
+
+            const portfolioRes = await fetch("/api/portfolio-details", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ nuvama_codes: allAccountCodes }),
+            });
+            const portfolioData = await portfolioRes.json();
+            let totalCurrentValue = 0;
+            if (portfolioData.success && portfolioData.data && portfolioData.data.length > 0) {
+              totalCurrentValue = portfolioData.data.reduce((sum: number, item: any) => sum + (Number(item.portfolio_value) || 0), 0);
+            }
+            setCurrentData({ account_code: 'ALL_STRATEGIES', portfolio_value: totalCurrentValue, report_date: new Date().toISOString() });
           }
           setLoading(false);
           return;
@@ -1176,10 +1280,12 @@ const createConsolidatedData = useCallback(
                   };
                 }).sort((a: HistoricalData, b: HistoricalData) => new Date(a.report_date).getTime() - new Date(b.report_date).getTime());
 
-                console.log('✅ [MEMBER SUCCESS] Using NAV from client_combined_nav API for member');
+                console.log('✅ [MEMBER SUCCESS] Using NAV from client_combined_nav API for member (Nuvama only)');
                 setHistoricalData(consolidatedData);
                 setOrbisHistoricalData([]);
-                setConsolidatedHistoricalData(consolidatedData);
+                setConsolidatedHistoricalData([]);
+                setOrbisData([]);
+                setDataView('nuvama'); // Show Nuvama data for member-level consolidation
 
                 const portfolioRes = await fetch("/api/portfolio-details", {
                   method: "POST",
@@ -1658,31 +1764,10 @@ const createConsolidatedData = useCallback(
 
   const totalReturns = currentValue - totalInvested;
 
-  // Calculate returns percentage using exact same logic as trailing returns "Since Inception"
+  // Calculate returns percentage based on actual money invested and current value
   let returnsPercent: number = 0;
-  if (activeHistoricalData.length >= 2) {
-    // Sort data by date
-    const sortedData = [...activeHistoricalData].sort(
-      (a, b) => new Date(a.report_date).getTime() - new Date(b.report_date).getTime()
-    );
-
-    const latest = sortedData[sortedData.length - 1];
-    const inceptionPoint = sortedData[0];
-
-    if (inceptionPoint && latest && Number(inceptionPoint.nav) > 0 && Number(latest.nav) > 0) {
-      const latestDate = new Date(latest.report_date);
-      const incDateForYears = new Date(inceptionPoint.report_date);
-      const daysDiff = (latestDate.getTime() - incDateForYears.getTime()) / (1000 * 60 * 60 * 24);
-      const years = daysDiff / 365.25;
-
-      if (years < 1) {
-        // Absolute return for <1Y
-        returnsPercent = ((Number(latest.nav) / Number(inceptionPoint.nav)) - 1) * 100;
-      } else {
-        // CAGR for >=1Y
-        returnsPercent = (Math.pow(Number(latest.nav) / Number(inceptionPoint.nav), 1 / years) - 1) * 100;
-      }
-    }
+  if (totalInvested !== 0) {
+    returnsPercent = (totalReturns / totalInvested) * 100;
   }
 
   // Determine if return is positive based on the calculated percentage
@@ -1789,13 +1874,22 @@ const createConsolidatedData = useCallback(
                     <SelectValue placeholder="Select Account" />
                   </SelectTrigger>
                   <SelectContent>
-                    {/* Show All Accounts option if there are multiple family members */}
+                    {/* Show All Accounts options if there are multiple family members */}
                     {familyAccounts.length > 1 && (
-                      <SelectItem value="ALL_ACCOUNTS">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="font-semibold">All Accounts (Consolidated)</span>
-                        </div>
-                      </SelectItem>
+                      <>
+                        <SelectItem value="ALL_ACCOUNTS">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-semibold">All Accounts</span>
+                            <span className="text-xs text-muted-foreground">(Consolidated)</span>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="ALL_STRATEGIES">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-semibold">All Accounts</span>
+                            <span className="text-xs text-muted-foreground">(All Strategies)</span>
+                          </div>
+                        </SelectItem>
+                      </>
                     )}
 
                     {/* Show consolidated member options for members with multiple accounts */}
@@ -1904,9 +1998,9 @@ const createConsolidatedData = useCallback(
                       <p className="text-sm font-medium text-muted-foreground">Amount Invested</p>
                       <Wallet className="h-4 w-4 text-blue-500" />
                     </div>
-                    <div className="text-2xl font-bold text-foreground ">{formatCurrency(totalCapitalIn)}</div>
+                    <div className="text-2xl font-bold text-foreground ">{formatCurrency(totalInvested)}</div>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Net: {formatCurrency(totalInvested)}
+                      Gross: {formatCurrency(totalCapitalIn)}
                     </p>
                   </CardContent>
                 </Card>
