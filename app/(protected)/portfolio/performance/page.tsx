@@ -2083,12 +2083,12 @@ const createConsolidatedData = useCallback(
     totalCapitalIn = selectedAccountDetails!.orbisMetrics!.latestCapitalAmount;
     currentValue = selectedAccountDetails!.orbisMetrics!.latestMarketValue;
   } else if (hasOrbisMetrics && dataView === 'consolidated') {
-    // For consolidated view (single account), combine both Nuvama and Orbis data
-    const orbisInvested = Number(selectedAccountDetails!.orbisMetrics!.latestCapitalAmount) || 0;
-    const rawOrbisCurrentValue = Number(selectedAccountDetails!.orbisMetrics!.latestMarketValue) || 0;
-    const orbisCurrentValue = isFinite(rawOrbisCurrentValue) && rawOrbisCurrentValue < 1e15 ? rawOrbisCurrentValue : 0;
+    // For consolidated view (single account), use Nuvama's numbers but exclude Orbis profit
+    // The transfer from Orbis to Nuvama included capital + profit, so subtract Orbis profit
+    const orbisCapital = Number(selectedAccountDetails!.orbisMetrics!.latestCapitalAmount) || 0;
+    const orbisMarketValue = Number(selectedAccountDetails!.orbisMetrics!.latestMarketValue) || 0;
+    const orbisProfit = orbisMarketValue - orbisCapital;
 
-    // Get Nuvama invested amount and current value from historical data
     const nuvamaInvested = historicalData.reduce((sum, item) => sum + (Number(item.cash_in_out) || 0), 0);
     const nuvamaCapitalIn = historicalData.reduce((sum, item) => {
       const cashFlow = Number(item.cash_in_out) || 0;
@@ -2097,10 +2097,11 @@ const createConsolidatedData = useCallback(
     const rawNuvamaCurrentValue = Number(currentData?.portfolio_value) || 0;
     const nuvamaCurrentValue = isFinite(rawNuvamaCurrentValue) && rawNuvamaCurrentValue < 1e15 ? rawNuvamaCurrentValue : 0;
 
-    // Combine both sources
-    totalInvested = orbisInvested + nuvamaInvested;
-    totalCapitalIn = orbisInvested + nuvamaCapitalIn; // Orbis uses net capital, Nuvama uses gross inflows
-    currentValue = orbisCurrentValue + nuvamaCurrentValue;
+    // Subtract Orbis profit from Nuvama's invested amounts since the Orbis transfer
+    // included profit that isn't new capital
+    totalInvested = nuvamaInvested - orbisProfit;
+    totalCapitalIn = nuvamaCapitalIn - orbisProfit;
+    currentValue = nuvamaCurrentValue;
   } else if (hasOrbisData && dataView === 'orbis' && isFamilyOrMemberView) {
     // For family/member Orbis-only view, calculate from orbisHistoricalData
     totalInvested = orbisHistoricalData.reduce((sum, item) => sum + (Number(item.cash_in_out) || 0), 0);
@@ -2113,16 +2114,12 @@ const createConsolidatedData = useCallback(
       : 0;
     currentValue = isFinite(rawOrbisValue) && rawOrbisValue < 1e15 ? rawOrbisValue : 0;
   } else if (hasOrbisData && dataView === 'consolidated' && isFamilyOrMemberView) {
-    // For family/member consolidated view, combine Orbis and Nuvama cash flows
+    // For family/member consolidated view, use Nuvama numbers but exclude Orbis profit
     const orbisInvested = orbisHistoricalData.reduce((sum, item) => sum + (Number(item.cash_in_out) || 0), 0);
-    const orbisCapitalIn = orbisHistoricalData.reduce((sum, item) => {
-      const cashFlow = Number(item.cash_in_out) || 0;
-      return sum + (cashFlow > 0 ? cashFlow : 0);
-    }, 0);
-    const rawOrbisValue = orbisHistoricalData.length > 0
+    const rawOrbisEndValue = orbisHistoricalData.length > 0
       ? Number(orbisHistoricalData[orbisHistoricalData.length - 1].portfolio_value) || 0
       : 0;
-    const orbisCurrentValue = isFinite(rawOrbisValue) && rawOrbisValue < 1e15 ? rawOrbisValue : 0;
+    const orbisProfit = rawOrbisEndValue - orbisInvested;
 
     const nuvamaInvested = historicalData.reduce((sum, item) => sum + (Number(item.cash_in_out) || 0), 0);
     const nuvamaCapitalIn = historicalData.reduce((sum, item) => {
@@ -2132,9 +2129,10 @@ const createConsolidatedData = useCallback(
     const rawNuvamaValue = Number(currentData?.portfolio_value) || 0;
     const nuvamaCurrentValue = isFinite(rawNuvamaValue) && rawNuvamaValue < 1e15 ? rawNuvamaValue : 0;
 
-    totalInvested = orbisInvested + nuvamaInvested;
-    totalCapitalIn = orbisCapitalIn + nuvamaCapitalIn;
-    currentValue = orbisCurrentValue + nuvamaCurrentValue;
+    // Subtract Orbis profit since it was transferred to Nuvama but isn't new capital
+    totalInvested = nuvamaInvested - orbisProfit;
+    totalCapitalIn = nuvamaCapitalIn - orbisProfit;
+    currentValue = nuvamaCurrentValue;
   } else {
     // Default calculation for Nuvama data (or consolidated without Orbis metrics)
     totalInvested = activeHistoricalData.reduce((sum, item) => sum + (Number(item.cash_in_out) || 0), 0);
