@@ -108,6 +108,10 @@ type FamilyAccount = {
   relation: string;
   status: string;
   email?: string;
+  ownerid?: string;
+  ownername?: string;
+  groupid?: string;
+  groupname?: string;
   orbisData?: any[];
   orbisMetrics?: {
     latestCapitalAmount: number;
@@ -118,13 +122,12 @@ type FamilyAccount = {
   } | null;
 };
 
-type GroupedFamilyMember = {
-  email: string;
-  holderName: string;
-  clientcodes: string[]; // Multiple Nuvama codes for this member
-  accounts: FamilyAccount[]; // All accounts for this member
-  relation: string;
-  status: string;
+// Owner-level grouping by ownerid (per-owner All Strategies)
+type GroupedOwner = {
+  ownerid: string;
+  ownerName: string;
+  clientcodes: string[];
+  accounts: FamilyAccount[];
 };
 
 type PortfolioData = {
@@ -1076,7 +1079,7 @@ export default function DetailedPortfolio() {
   const { clients, loading: clientsLoading, isHeadOfFamily } = useClient();
   const [selectedAccount, setSelectedAccount] = useState<string>("");
   const [familyAccounts, setFamilyAccounts] = useState<FamilyAccount[]>([]);
-  const [groupedFamilyMembers, setGroupedFamilyMembers] = useState<GroupedFamilyMember[]>([]);
+  const [groupedOwners, setGroupedOwners] = useState<GroupedOwner[]>([]);
   const [currentData, setCurrentData] = useState<PortfolioData | null>(null);
   const [historicalData, setHistoricalData] = useState<HistoricalData[]>([]);
   const [orbisHistoricalData, setOrbisHistoricalData] = useState<HistoricalData[]>([]);
@@ -1207,36 +1210,34 @@ const createConsolidatedData = useCallback(
             relation: member.relation,
             status: member.status,
             email: member.email,
+            ownerid: member.ownerid,
+            ownername: member.ownername,
+            groupid: member.groupid,
+            groupname: member.groupname,
             orbisData: member.orbisData || [],
             orbisMetrics: member.orbisMetrics || null,
           }));
 
           setFamilyAccounts(accounts);
 
-          // Group accounts by email to create family member consolidations
-          const memberMap = new Map<string, GroupedFamilyMember>();
-
+          // Owner-level grouping: use ownerid to group accounts per owner
+          // This is used for "Owner Name (All Strategies)" consolidation
+          const ownerMap = new Map<string, GroupedOwner>();
           accounts.forEach(account => {
-            const email = account.email || account.clientcode; // Fallback to clientcode if no email
-
-            if (!memberMap.has(email)) {
-              memberMap.set(email, {
-                email: email,
-                holderName: account.holderName,
+            const oid = account.ownerid || account.clientid || account.clientcode;
+            if (!ownerMap.has(oid)) {
+              ownerMap.set(oid, {
+                ownerid: oid,
+                ownerName: sanitizeName(account.ownername || account.holderName),
                 clientcodes: [],
                 accounts: [],
-                relation: account.relation,
-                status: account.status,
               });
             }
-
-            const member = memberMap.get(email)!;
-            member.clientcodes.push(account.clientcode);
-            member.accounts.push(account);
+            const owner = ownerMap.get(oid)!;
+            owner.clientcodes.push(account.clientcode);
+            owner.accounts.push(account);
           });
-
-          const grouped = Array.from(memberMap.values());
-          setGroupedFamilyMembers(grouped);
+          setGroupedOwners(Array.from(ownerMap.values()));
 
           // Set first active account as default
           const firstActive = accounts.find(acc => acc.status === "Active");
@@ -1434,44 +1435,44 @@ const createConsolidatedData = useCallback(
         }
 
 
-        // Check if a family member consolidation is selected (member-level consolidation)
-        if (selectedAccount.startsWith('MEMBER_')) {
+        // Check if an owner-level consolidation is selected (per-owner All Strategies)
+        if (selectedAccount.startsWith('OWNER_')) {
           // ============================================================================
-          // MEMBER-LEVEL "ALL STRATEGIES" NAV CALCULATION
+          // OWNER-LEVEL "ALL STRATEGIES" NAV CALCULATION
           // ============================================================================
-          // Similar to Complete Family Portfolio, but for a single family member
+          // Similar to Complete Family Portfolio, but for a single owner
           // who has multiple accounts across different strategies.
           //
-          // IMPORTANT: Orbis data is EXCLUDED from member-level consolidation
+          // IMPORTANT: Orbis data is EXCLUDED from owner-level consolidation
           // - Only Nuvama data is used
-          // - Backend API handles NAV aggregation across member's accounts
+          // - Backend API handles NAV aggregation across owner's accounts
           // ============================================================================
-          
-          const memberEmail = selectedAccount.replace('MEMBER_', '');
-          const member = groupedFamilyMembers.find(m => m.email === memberEmail);
 
-          if (member && member.clientcodes.length > 1) {
+          const ownerKey = selectedAccount.replace('OWNER_', '');
+          const owner = groupedOwners.find(o => o.ownerid === ownerKey);
+
+          if (owner && owner.clientcodes.length > 1) {
             // ============================================================================
-            // MEMBER-LEVEL CLOSED ACCOUNTS HANDLING
+            // OWNER-LEVEL CLOSED ACCOUNTS HANDLING
             // ============================================================================
-            // Filter to only include active accounts for this member
-            const activeMemberAccounts = member.accounts.filter(acc => acc.status === "Active");
+            // Filter to only include active accounts for this owner
+            const activeMemberAccounts = owner.accounts.filter(acc => acc.status === "Active");
             const activeMemberCodes = activeMemberAccounts.map(acc => acc.clientcode);
-            
-            console.log('📊 [MEMBER ACCOUNT FILTERING]');
-            console.log('  Member:', member.holderName);
-            console.log('  Total accounts:', member.clientcodes.length);
+
+            console.log('📊 [OWNER ACCOUNT FILTERING]');
+            console.log('  Owner:', owner.ownerName);
+            console.log('  Total accounts:', owner.clientcodes.length);
             console.log('  Active accounts:', activeMemberCodes.length);
             console.log('  Account codes for combined NAV:', activeMemberCodes);
-            
+
             // Skip if no active accounts
             if (activeMemberCodes.length === 0) {
-              console.warn('⚠️ [MEMBER LEVEL] No active accounts for member:', member.holderName);
+              console.warn('⚠️ [OWNER LEVEL] No active accounts for owner:', owner.ownerName);
               setLoading(false);
               return;
             }
 
-            // Check if any of member's active accounts have Orbis data
+            // Check if any of owner's active accounts have Orbis data
             const memberAccountsWithOrbis = activeMemberAccounts.filter(acc => acc.orbisData && acc.orbisData.length > 0);
             const hasOrbisData = memberAccountsWithOrbis.length > 0;
 
@@ -1493,16 +1494,16 @@ const createConsolidatedData = useCallback(
               });
               
               if (problematicDates.length > 0) {
-                console.error('🚨 [MEMBER COMBINED NAV API] Backend returned invalid NAV values:');
+                console.error('🚨 [OWNER COMBINED NAV API] Backend returned invalid NAV values:');
                 console.table(problematicDates.map((item: any) => ({
                   Date: item.valuedate,
                   'Combined NAV': item.combined_nav,
-                  'Member': member.holderName,
-                  'Account Codes': member.clientcodes.join(', ')
+                  'Owner': owner.ownerName,
+                  'Account Codes': owner.clientcodes.join(', ')
                 })));
-                
-                console.log('📋 [DEBUG INFO] Member accounts:', activeMemberCodes);
-                console.log('💡 [RECOMMENDATION] Check if all active member accounts have data for these dates');
+
+                console.log('📋 [DEBUG INFO] Owner accounts:', activeMemberCodes);
+                console.log('💡 [RECOMMENDATION] Check if all active owner accounts have data for these dates');
               }
             }
 
@@ -2067,7 +2068,7 @@ const createConsolidatedData = useCallback(
   // Calculate metrics using active data
   // Get selected account details for Orbis metrics
   const selectedAccountDetails = familyAccounts.find(acc => acc.clientcode === selectedAccount);
-  const isFamilyOrMemberView = selectedAccount === 'COMPLETE_FAMILY_PORTFOLIO' || selectedAccount.startsWith('MEMBER_');
+  const isFamilyOrMemberView = selectedAccount === 'COMPLETE_FAMILY_PORTFOLIO' || selectedAccount.startsWith('OWNER_');
   const hasOrbisData = orbisData && orbisData.length > 0;
   const hasOrbisMetrics = selectedAccountDetails?.orbisMetrics && hasOrbisData && !isFamilyOrMemberView;
 
@@ -2311,8 +2312,8 @@ const createConsolidatedData = useCallback(
                     <SelectValue placeholder="Select Account" />
                   </SelectTrigger>
                   <SelectContent>
-                    {/* Family-level consolidation - Show only if there are multiple family members */}
-                    {groupedFamilyMembers.length > 1 && (
+                    {/* Family-level consolidation - Show if there are multiple owners in the family */}
+                    {groupedOwners.length > 1 && (
                       <>
                         <SelectItem value="COMPLETE_FAMILY_PORTFOLIO">
                           <div className="flex items-center justify-between gap-3">
@@ -2324,13 +2325,13 @@ const createConsolidatedData = useCallback(
                       </>
                     )}
 
-                    {/* Per-member consolidation for members with multiple accounts */}
-                    {groupedFamilyMembers.map(member => {
-                      if (member.clientcodes.length > 1) {
+                    {/* Per-owner consolidation for owners with multiple accounts/strategies */}
+                    {groupedOwners.map(owner => {
+                      if (owner.clientcodes.length > 1) {
                         return (
-                          <SelectItem key={`MEMBER_${member.email}`} value={`MEMBER_${member.email}`}>
+                          <SelectItem key={`OWNER_${owner.ownerid}`} value={`OWNER_${owner.ownerid}`}>
                             <div className="flex items-center justify-between gap-3">
-                              <span className="font-medium">{sanitizeName(member.holderName)}</span>
+                              <span className="font-medium">{sanitizeName(owner.ownerName)}</span>
                               <span className="text-xs text-muted-foreground">(All Strategies)</span>
                             </div>
                           </SelectItem>
@@ -2338,7 +2339,7 @@ const createConsolidatedData = useCallback(
                       }
                       return null;
                     })}
-                    {groupedFamilyMembers.some(m => m.clientcodes.length > 1) && (
+                    {groupedOwners.some(o => o.clientcodes.length > 1) && (
                       <div className="h-px bg-border my-1" />
                     )}
 
@@ -2369,7 +2370,7 @@ const createConsolidatedData = useCallback(
                 {/* {enrichedData.length > 0 && (
                   <Button
                     onClick={() => {
-                      const isAllStrategies = selectedAccount === 'COMPLETE_FAMILY_PORTFOLIO' || selectedAccount.startsWith('MEMBER_');
+                      const isAllStrategies = selectedAccount === 'COMPLETE_FAMILY_PORTFOLIO' || selectedAccount.startsWith('OWNER_');
                       if (isAllStrategies) {
                         let accountCodes: string[] = [];
                         let portfolioName = '';
@@ -2379,14 +2380,14 @@ const createConsolidatedData = useCallback(
                             .filter(acc => acc.status === "Active")
                             .map(acc => acc.clientcode);
                           portfolioName = 'Complete Family Portfolio (Active Accounts Only)';
-                        } else if (selectedAccount.startsWith('MEMBER_')) {
-                          const memberEmail = selectedAccount.replace('MEMBER_', '');
-                          const member = groupedFamilyMembers.find(m => m.email === memberEmail);
-                          if (member) {
-                            accountCodes = member.accounts
+                        } else if (selectedAccount.startsWith('OWNER_')) {
+                          const ownerKey = selectedAccount.replace('OWNER_', '');
+                          const owner = groupedOwners.find(o => o.ownerid === ownerKey);
+                          if (owner) {
+                            accountCodes = owner.accounts
                               .filter(acc => acc.status === "Active")
                               .map(acc => acc.clientcode);
-                            portfolioName = `${member.holderName} - All Strategies (Active Accounts Only)`;
+                            portfolioName = `${owner.ownerName} - All Strategies (Active Accounts Only)`;
                           }
                         }
                         
@@ -2419,7 +2420,7 @@ const createConsolidatedData = useCallback(
                   >
                     <Download className="h-4 w-4" />
                     <span className="hidden sm:inline">
-                      {selectedAccount === 'COMPLETE_FAMILY_PORTFOLIO' || selectedAccount.startsWith('MEMBER_')
+                      {selectedAccount === 'COMPLETE_FAMILY_PORTFOLIO' || selectedAccount.startsWith('OWNER_')
                         ? 'Download All Strategies CSV'
                         : 'Download CSV'}
                     </span>
@@ -2430,7 +2431,7 @@ const createConsolidatedData = useCallback(
             </div>
 
             {/* Closed Accounts Info - Show if viewing All Strategies with closed accounts */}
-            {(selectedAccount === 'COMPLETE_FAMILY_PORTFOLIO' || selectedAccount.startsWith('MEMBER_')) && 
+            {(selectedAccount === 'COMPLETE_FAMILY_PORTFOLIO' || selectedAccount.startsWith('OWNER_')) &&
              familyAccounts.some(acc => acc.status !== "Active") && (
               <Alert className="border-blue-500 bg-blue-50 dark:bg-blue-950">
                 <AlertTriangle className="h-4 w-4 text-blue-600" />
