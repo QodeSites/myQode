@@ -2367,14 +2367,14 @@ const createConsolidatedData = useCallback(
                     })}
                   </SelectContent>
                 </Select>
-                {/* {enrichedData.length > 0 && (
+                {enrichedData.length > 0 && (
                   <Button
                     onClick={() => {
                       const isAllStrategies = selectedAccount === 'COMPLETE_FAMILY_PORTFOLIO' || selectedAccount.startsWith('OWNER_');
                       if (isAllStrategies) {
                         let accountCodes: string[] = [];
                         let portfolioName = '';
-                        
+
                         if (selectedAccount === 'COMPLETE_FAMILY_PORTFOLIO') {
                           accountCodes = familyAccounts
                             .filter(acc => acc.status === "Active")
@@ -2390,7 +2390,7 @@ const createConsolidatedData = useCallback(
                             portfolioName = `${owner.ownerName} - All Strategies (Active Accounts Only)`;
                           }
                         }
-                        
+
                         downloadAllStrategiesCSV(
                           enrichedData,
                           trailingReturns,
@@ -2426,7 +2426,7 @@ const createConsolidatedData = useCallback(
                     </span>
                     <span className="sm:hidden">CSV</span>
                   </Button>
-                )}  */}
+                )}
               </div>
             </div>
 
@@ -2459,7 +2459,7 @@ const createConsolidatedData = useCallback(
             )}
 
             {/* Data Quality Alert - Show if anomalies detected */}
-            {dataAnomalies.length > 0 && (
+            {/* {dataAnomalies.length > 0 && (
               <Alert variant="destructive" className="border-orange-500 bg-orange-50 dark:bg-orange-950">
                 <AlertTriangle className="h-4 w-4" />
                 <AlertTitle>Data Quality Issues Detected</AlertTitle>
@@ -2487,7 +2487,7 @@ const createConsolidatedData = useCallback(
                   </div>
                 </AlertDescription>
               </Alert>
-            )}
+            )} */}
 
             {/* Data View Selector - Only show if Orbis data exists */}
             {orbisData && orbisData.length > 0 && (
