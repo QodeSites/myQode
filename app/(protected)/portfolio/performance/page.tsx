@@ -2207,8 +2207,8 @@ const createConsolidatedData = useCallback(
     returnsPercent = isFinite(simpleReturn) ? simpleReturn : 0;
   }
 
-  // Determine if return is positive based on the calculated percentage
-  const isPositiveReturnOverall = returnsPercent >= 0;
+  // Determine if return is positive based on total returns (cash basis)
+  const isPositiveReturnOverall = totalReturns >= 0;
 
   // Portfolio DD metrics
   const portfolioCurrentDD = enrichedData.length > 0 ? enrichedData[enrichedData.length - 1].drawdown_percent : 0;
@@ -2589,8 +2589,8 @@ const createConsolidatedData = useCallback(
                   <p className="text-sm font-medium text-muted-foreground">Returns %</p>
                   <Percent className="h-4 w-4 text-orange-500" />
                 </div>
-                <div className={`text-2xl font-bold ${isPositiveReturnOverall ? 'text-green-600' : 'text-red-600'}`}>
-                  {isPositiveReturnOverall ? '+' : ''}{returnsPercent.toFixed(2)}%
+                <div className={`text-2xl font-bold ${returnsPercent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {returnsPercent >= 0 ? '+' : ''}{returnsPercent.toFixed(2)}%
                 </div>
                 <div className="flex items-center gap-1 mt-1">
                   {isPositiveReturnOverall ? (
