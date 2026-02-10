@@ -104,6 +104,7 @@ export function FullscreenLoader({
 type FamilyAccount = {
   clientid: string;
   clientcode: string;
+  clientname?: string;
   holderName: string;
   relation: string;
   status: string;
@@ -1206,6 +1207,7 @@ const createConsolidatedData = useCallback(
           const accounts: FamilyAccount[] = familyData.family.map((member: any) => ({
             clientid: member.clientid,
             clientcode: member.clientcode,
+            clientname: member.clientname,
             holderName: sanitizeName(member.holderName),
             relation: member.relation,
             status: member.status,
@@ -1324,110 +1326,92 @@ const createConsolidatedData = useCallback(
           const accountsWithOrbis = familyAccounts.filter(acc => acc.orbisData && acc.orbisData.length > 0);
           const hasAnyOrbisData = accountsWithOrbis.length > 0;
 
-          // Fetch combined NAV for all active Nuvama accounts
-          const combinedNavRes = await fetch('https://qode360-backend.qodeinvest.com/api/v1/returns/client_combined_nav/', {
-            method: 'POST',
-            headers: { 'accept': 'application/json', 'Content-Type': 'application/json' },
-            body: JSON.stringify({ account_code: activeAccountCodes }),
+          // Use portfolio-history-by-client API (exclude closed/inactive account codes)
+          const excludeClientcodes = familyAccounts
+            .filter((acc: FamilyAccount) => acc.status !== "Active")
+            .map((acc: FamilyAccount) => acc.clientcode)
+            .join(",");
+          const clientName = familyAccounts[0]?.groupname || familyAccounts[0]?.clientname || familyAccounts[0]?.holderName || "";
+          const historyByClientParams = new URLSearchParams({
+            client_name: clientName,
+            ...(excludeClientcodes ? { exclude_clientcodes: excludeClientcodes } : {}),
           });
+          const historyByClientRes = await fetch(`/api/portfolio-history-by-client?${historyByClientParams}`);
+          const historyByClientData = await historyByClientRes.json();
 
-          const combinedNavData = await combinedNavRes.json();
+          if (historyByClientData.success && historyByClientData.data && Array.isArray(historyByClientData.data)) {
+            const rows = historyByClientData.data as {
+              account_code: string;
+              report_date: string;
+              nav: string | number;
+              portfolio_value: string | number;
+              cash_in_out: string | number;
+              drawdown_percent?: string | number;
+            }[];
 
-          // ============================================================================
-          // COMBINED NAV DEBUGGING
-          // ============================================================================
-          // Log the API response to help debug negative NAV issues
-          if (combinedNavData && combinedNavData.data) {
-            const problematicDates = combinedNavData.data.filter((item: any) => {
-              const nav = Number(item.combined_nav);
-              return nav <= 0 || !isFinite(nav);
-            });
-            
-            if (problematicDates.length > 0) {
-              console.error('🚨 [COMBINED NAV API] Backend returned invalid NAV values:');
-              console.table(problematicDates.map((item: any) => ({
-                Date: item.valuedate,
-                'Combined NAV': item.combined_nav,
-                'Account Codes': activeAccountCodes.join(', ')
-              })));
-              
-              console.log('📋 [DEBUG INFO] Active accounts included:', activeAccountCodes);
-              console.log('💡 [RECOMMENDATION] Check if all active accounts have data for these dates');
-              console.log('💡 [RECOMMENDATION] Backend API may be failing when accounts have missing data');
-            }
-          }
-
-          if (combinedNavData && combinedNavData.data && Array.isArray(combinedNavData.data)) {
-            // Fetch Nuvama portfolio history (only for active accounts)
-            const historyRes = await fetch(`/api/portfolio-history?nuvama_codes=${activeAccountCodes.join(',')}`);
-            const historyData = await historyRes.json();
-
-            if (historyData.success && historyData.data && historyData.isMultiAccount) {
-              const dateMap = new Map<string, { portfolioValues: number[]; cashFlows: number[] }>();
-              historyData.data.forEach((row: any) => {
-                const date = row.report_date;
-                if (!dateMap.has(date)) dateMap.set(date, { portfolioValues: [], cashFlows: [] });
-                const dateData = dateMap.get(date)!;
-                dateData.portfolioValues.push(Number(row.portfolio_value) || 0);
-                dateData.cashFlows.push(Number(row.cash_in_out) || 0);
-              });
-
-              // Create Nuvama consolidated data
-              const nuvamaConsolidatedData: HistoricalData[] = combinedNavData.data
-                .map((item: any) => {
-                  const date = item.valuedate;
-                  const dateData = dateMap.get(date);
-                  return {
-                    report_date: date,
-                    nav: Number(item.combined_nav) || 100,
-                    portfolio_value: dateData ? dateData.portfolioValues.reduce((sum, val) => sum + val, 0) : 0,
-                    cash_in_out: dateData ? dateData.cashFlows.reduce((sum, val) => sum + val, 0) : 0,
-                    drawdown_percent: 0,
-                  };
-                })
-                .filter((item: HistoricalData) => {
-                  // TEMPORARY FIX: Filter out invalid NAV values
-                  // This handles cases where backend API still returns bad data
-                  const nav = Number(item.nav);
-                  const isValid = nav > 0 && isFinite(nav);
-                  
-                  if (!isValid) {
-                    console.warn(`⚠️ [DATA FILTER] Removing invalid NAV for date ${item.report_date}: ${nav}`);
-                  }
-                  
-                  return isValid;
-                })
-                .sort((a: HistoricalData, b: HistoricalData) => 
-                  new Date(a.report_date).getTime() - new Date(b.report_date).getTime()
-                );
-
-              console.log('✅ [DATA PROCESSING] Final data points after filtering:', nuvamaConsolidatedData.length);
-              console.log('📊 [DATA RANGE] From:', nuvamaConsolidatedData[0]?.report_date, 'To:', nuvamaConsolidatedData[nuvamaConsolidatedData.length - 1]?.report_date);
-
-              // For "All Strategies" consolidation, we exclude Orbis data and only use Nuvama
-              // Note: Individual account Orbis data is available in single-account views only
-              setHistoricalData(nuvamaConsolidatedData);
-              setOrbisHistoricalData([]);
-              setConsolidatedHistoricalData([]);
-              setOrbisData([]);
-              setDataView('nuvama'); // Default to Nuvama view
-
-              // Get current portfolio value (only for active accounts)
-              const portfolioRes = await fetch("/api/portfolio-details", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ nuvama_codes: activeAccountCodes }),
-              });
-              const portfolioData = await portfolioRes.json();
-              let totalCurrentValue = 0;
-              if (portfolioData.success && portfolioData.data && portfolioData.data.length > 0) {
-                totalCurrentValue = portfolioData.data.reduce((sum: number, item: any) => sum + (Number(item.portfolio_value) || 0), 0);
+            // One row per date: use first row's nav per date, sum portfolio_value and cash_in_out (API data only)
+            const byDate = new Map<string, { nav: number; portfolio_value: number; cash_in_out: number; drawdown_percent: number }>();
+            rows.forEach((row: any) => {
+              const d = row.report_date;
+              const pv = Number(row.portfolio_value) || 0;
+              const cash = Number(row.cash_in_out) || 0;
+              const nav = Number(row.nav) || 0;
+              const dd = Number(row.drawdown_percent ?? 0) || 0;
+              if (!byDate.has(d)) {
+                byDate.set(d, { nav, portfolio_value: pv, cash_in_out: cash, drawdown_percent: dd });
+              } else {
+                const cur = byDate.get(d)!;
+                cur.portfolio_value += pv;
+                cur.cash_in_out += cash;
               }
-              setCurrentData({
-                account_code: 'COMPLETE_FAMILY_PORTFOLIO',
-                portfolio_value: totalCurrentValue,
-                report_date: new Date().toISOString()
-              });
+            });
+            const nuvamaData: HistoricalData[] = Array.from(byDate.entries())
+              .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+              .map(([report_date, v]) => ({
+                report_date,
+                nav: v.nav,
+                portfolio_value: v.portfolio_value,
+                cash_in_out: v.cash_in_out,
+                drawdown_percent: v.drawdown_percent,
+              }));
+
+            setHistoricalData(nuvamaData);
+            setOrbisHistoricalData([]);
+            setConsolidatedHistoricalData([]);
+            setOrbisData([]);
+            setDataView('nuvama');
+
+            // Current = latest date's portfolio_value from same by-date aggregation
+            const latestEntry = nuvamaData.length > 0 ? nuvamaData[nuvamaData.length - 1] : null;
+            setCurrentData({
+              account_code: 'COMPLETE_FAMILY_PORTFOLIO',
+              portfolio_value: latestEntry ? latestEntry.portfolio_value : 0,
+              report_date: latestEntry ? latestEntry.report_date : new Date().toISOString(),
+            });
+
+            // Fetch benchmark using date range from API data
+            if (nuvamaData.length > 0) {
+              const incDate = nuvamaData[0].report_date;
+              const latDate = nuvamaData[nuvamaData.length - 1].report_date;
+              try {
+                const benchmarkUrl = `/api/getIndices?indices=BSE500&startDate=${incDate}&endDate=${latDate}`;
+                const benchmarkRes = await fetch(benchmarkUrl);
+                const benchmarkRaw = await benchmarkRes.json();
+                let benchArray: any[] = Array.isArray(benchmarkRaw) ? benchmarkRaw : (benchmarkRaw?.data && Array.isArray(benchmarkRaw.data) ? benchmarkRaw.data : []);
+                const start = new Date(incDate);
+                const end = new Date(latDate);
+                benchArray = benchArray
+                  .filter((item: any) => {
+                    const d = new Date(item.date);
+                    return d >= start && d <= end;
+                  })
+                  .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                const processedBench = benchArray.map((item: any) => ({ date: item.date, value: parseFloat(item.nav) })).filter((item) => !isNaN(item.value));
+                setBenchmarkData(processedBench);
+              } catch (benchErr) {
+                console.error("Failed to fetch benchmark:", benchErr);
+                setBenchmarkData([]);
+              }
             }
           }
           setLoading(false);
@@ -1476,99 +1460,91 @@ const createConsolidatedData = useCallback(
             const memberAccountsWithOrbis = activeMemberAccounts.filter(acc => acc.orbisData && acc.orbisData.length > 0);
             const hasOrbisData = memberAccountsWithOrbis.length > 0;
 
-            const combinedNavRes = await fetch('https://qode360-backend.qodeinvest.com/api/v1/returns/client_combined_nav/', {
-              method: 'POST',
-              headers: { 'accept': 'application/json', 'Content-Type': 'application/json' },
-              body: JSON.stringify({ account_code: activeMemberCodes }),
+            // Use portfolio-history-by-client API for this owner (exclude other family account codes)
+            const excludeMemberCodes = familyAccounts
+              .filter((acc) => !activeMemberCodes.includes(acc.clientcode))
+              .map((acc) => acc.clientcode)
+              .join(",");
+            const ownerClientName = owner.ownerName || "";
+            const ownerHistoryParams = new URLSearchParams({
+              client_name: ownerClientName,
+              ...(excludeMemberCodes ? { exclude_clientcodes: excludeMemberCodes } : {}),
             });
+            const ownerHistoryRes = await fetch(`/api/portfolio-history-by-client?${ownerHistoryParams}`);
+            const ownerHistoryData = await ownerHistoryRes.json();
 
-            const combinedNavData = await combinedNavRes.json();
+            if (ownerHistoryData.success && ownerHistoryData.data && Array.isArray(ownerHistoryData.data)) {
+              const rows = ownerHistoryData.data as {
+                account_code: string;
+                report_date: string;
+                nav: string | number;
+                portfolio_value: string | number;
+                cash_in_out: string | number;
+                drawdown_percent?: string | number;
+              }[];
 
-            // ============================================================================
-            // COMBINED NAV DEBUGGING (Member Level)
-            // ============================================================================
-            if (combinedNavData && combinedNavData.data) {
-              const problematicDates = combinedNavData.data.filter((item: any) => {
-                const nav = Number(item.combined_nav);
-                return nav <= 0 || !isFinite(nav);
-              });
-              
-              if (problematicDates.length > 0) {
-                console.error('🚨 [OWNER COMBINED NAV API] Backend returned invalid NAV values:');
-                console.table(problematicDates.map((item: any) => ({
-                  Date: item.valuedate,
-                  'Combined NAV': item.combined_nav,
-                  'Owner': owner.ownerName,
-                  'Account Codes': owner.clientcodes.join(', ')
-                })));
-
-                console.log('📋 [DEBUG INFO] Owner accounts:', activeMemberCodes);
-                console.log('💡 [RECOMMENDATION] Check if all active owner accounts have data for these dates');
-              }
-            }
-
-            if (combinedNavData && combinedNavData.data && Array.isArray(combinedNavData.data)) {
-              const historyRes = await fetch(`/api/portfolio-history?nuvama_codes=${activeMemberCodes.join(',')}`);
-              const historyData = await historyRes.json();
-
-              if (historyData.success && historyData.data && historyData.isMultiAccount) {
-                const dateMap = new Map<string, { portfolioValues: number[]; cashFlows: number[] }>();
-                historyData.data.forEach((row: any) => {
-                  const date = row.report_date;
-                  if (!dateMap.has(date)) dateMap.set(date, { portfolioValues: [], cashFlows: [] });
-                  const dateData = dateMap.get(date)!;
-                  dateData.portfolioValues.push(Number(row.portfolio_value) || 0);
-                  dateData.cashFlows.push(Number(row.cash_in_out) || 0);
-                });
-
-                const nuvamaConsolidatedData: HistoricalData[] = combinedNavData.data
-                  .map((item: any) => {
-                    const date = item.valuedate;
-                    const dateData = dateMap.get(date);
-                    return {
-                      report_date: date,
-                      nav: Number(item.combined_nav) || 100,
-                      portfolio_value: dateData ? dateData.portfolioValues.reduce((sum, val) => sum + val, 0) : 0,
-                      cash_in_out: dateData ? dateData.cashFlows.reduce((sum, val) => sum + val, 0) : 0,
-                      drawdown_percent: 0,
-                    };
-                  })
-                  .filter((item: HistoricalData) => {
-                    // TEMPORARY FIX: Filter out invalid NAV values
-                    const nav = Number(item.nav);
-                    const isValid = nav > 0 && isFinite(nav);
-                    
-                    if (!isValid) {
-                      console.warn(`⚠️ [MEMBER DATA FILTER] Removing invalid NAV for date ${item.report_date}: ${nav}`);
-                    }
-                    
-                    return isValid;
-                  })
-                  .sort((a: HistoricalData, b: HistoricalData) => 
-                    new Date(a.report_date).getTime() - new Date(b.report_date).getTime()
-                  );
-
-                console.log('✅ [MEMBER DATA PROCESSING] Final data points after filtering:', nuvamaConsolidatedData.length);
-
-                // For "All Strategies" member consolidation, we exclude Orbis data and only use Nuvama
-                // Note: Individual account Orbis data is available in single-account views only
-                setHistoricalData(nuvamaConsolidatedData);
-                setOrbisHistoricalData([]);
-                setConsolidatedHistoricalData([]);
-                setOrbisData([]);
-                setDataView('nuvama'); // Default to Nuvama view
-
-                const portfolioRes = await fetch("/api/portfolio-details", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ nuvama_codes: activeMemberCodes }),
-                });
-                const portfolioData = await portfolioRes.json();
-                let totalCurrentValue = 0;
-                if (portfolioData.success && portfolioData.data && portfolioData.data.length > 0) {
-                  totalCurrentValue = portfolioData.data.reduce((sum: number, item: any) => sum + (Number(item.portfolio_value) || 0), 0);
+              // One row per date: use first row's nav per date, sum portfolio_value and cash_in_out (API data only)
+              const byDate = new Map<string, { nav: number; portfolio_value: number; cash_in_out: number; drawdown_percent: number }>();
+              rows.forEach((row: any) => {
+                const d = row.report_date;
+                const pv = Number(row.portfolio_value) || 0;
+                const cash = Number(row.cash_in_out) || 0;
+                const nav = Number(row.nav) || 0;
+                const dd = Number(row.drawdown_percent ?? 0) || 0;
+                if (!byDate.has(d)) {
+                  byDate.set(d, { nav, portfolio_value: pv, cash_in_out: cash, drawdown_percent: dd });
+                } else {
+                  const cur = byDate.get(d)!;
+                  cur.portfolio_value += pv;
+                  cur.cash_in_out += cash;
                 }
-                setCurrentData({ account_code: selectedAccount, portfolio_value: totalCurrentValue, report_date: new Date().toISOString() });
+              });
+              const nuvamaConsolidatedData: HistoricalData[] = Array.from(byDate.entries())
+                .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
+                .map(([report_date, v]) => ({
+                  report_date,
+                  nav: v.nav,
+                  portfolio_value: v.portfolio_value,
+                  cash_in_out: v.cash_in_out,
+                  drawdown_percent: v.drawdown_percent,
+                }));
+
+              setHistoricalData(nuvamaConsolidatedData);
+              setOrbisHistoricalData([]);
+              setConsolidatedHistoricalData([]);
+              setOrbisData([]);
+              setDataView('nuvama');
+
+              const latestEntry = nuvamaConsolidatedData.length > 0 ? nuvamaConsolidatedData[nuvamaConsolidatedData.length - 1] : null;
+              setCurrentData({
+                account_code: selectedAccount,
+                portfolio_value: latestEntry ? latestEntry.portfolio_value : 0,
+                report_date: latestEntry ? latestEntry.report_date : new Date().toISOString(),
+              });
+
+              // Fetch benchmark using date range from API data
+              if (nuvamaConsolidatedData.length > 0) {
+                const incDate = nuvamaConsolidatedData[0].report_date;
+                const latDate = nuvamaConsolidatedData[nuvamaConsolidatedData.length - 1].report_date;
+                try {
+                  const benchmarkUrl = `/api/getIndices?indices=BSE500&startDate=${incDate}&endDate=${latDate}`;
+                  const benchmarkRes = await fetch(benchmarkUrl);
+                  const benchmarkRaw = await benchmarkRes.json();
+                  let benchArray: any[] = Array.isArray(benchmarkRaw) ? benchmarkRaw : (benchmarkRaw?.data && Array.isArray(benchmarkRaw.data) ? benchmarkRaw.data : []);
+                  const start = new Date(incDate);
+                  const end = new Date(latDate);
+                  benchArray = benchArray
+                    .filter((item: any) => {
+                      const d = new Date(item.date);
+                      return d >= start && d <= end;
+                    })
+                    .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+                  const processedBench = benchArray.map((item: any) => ({ date: item.date, value: parseFloat(item.nav) })).filter((item) => !isNaN(item.value));
+                  setBenchmarkData(processedBench);
+                } catch (benchErr) {
+                  console.error("Failed to fetch benchmark:", benchErr);
+                  setBenchmarkData([]);
+                }
               }
             }
             setLoading(false);
