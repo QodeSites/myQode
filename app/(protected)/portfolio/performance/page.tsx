@@ -1327,16 +1327,8 @@ const createConsolidatedData = useCallback(
           const hasAnyOrbisData = accountsWithOrbis.length > 0;
 
           // Use portfolio-history-by-client API (exclude closed/inactive account codes)
-          const excludeClientcodes = familyAccounts
-            .filter((acc: FamilyAccount) => acc.status !== "Active")
-            .map((acc: FamilyAccount) => acc.clientcode)
-            .join(",");
           const clientName = familyAccounts[0]?.groupname || familyAccounts[0]?.clientname || familyAccounts[0]?.holderName || "";
-          const historyByClientParams = new URLSearchParams({
-            client_name: clientName,
-            ...(excludeClientcodes ? { exclude_clientcodes: excludeClientcodes } : {}),
-          });
-          const historyByClientRes = await fetch(`/api/portfolio-history-by-client?${historyByClientParams}`);
+          const historyByClientRes = await fetch(`/api/portfolio-history-by-client?client_name=${clientName}`);
           const historyByClientData = await historyByClientRes.json();
 
           if (historyByClientData.success && historyByClientData.data && Array.isArray(historyByClientData.data)) {
@@ -1461,16 +1453,8 @@ const createConsolidatedData = useCallback(
             const hasOrbisData = memberAccountsWithOrbis.length > 0;
 
             // Use portfolio-history-by-client API for this owner (exclude other family account codes)
-            const excludeMemberCodes = familyAccounts
-              .filter((acc) => !activeMemberCodes.includes(acc.clientcode))
-              .map((acc) => acc.clientcode)
-              .join(",");
             const ownerClientName = owner.ownerName || "";
-            const ownerHistoryParams = new URLSearchParams({
-              client_name: ownerClientName,
-              ...(excludeMemberCodes ? { exclude_clientcodes: excludeMemberCodes } : {}),
-            });
-            const ownerHistoryRes = await fetch(`/api/portfolio-history-by-client?${ownerHistoryParams}`);
+            const ownerHistoryRes = await fetch(`/api/portfolio-history-by-client?client_name=${ownerClientName}`);
             const ownerHistoryData = await ownerHistoryRes.json();
 
             if (ownerHistoryData.success && ownerHistoryData.data && Array.isArray(ownerHistoryData.data)) {
