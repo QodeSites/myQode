@@ -1204,26 +1204,33 @@ const createConsolidatedData = useCallback(
         const familyData = await familyRes.json();
 
         if (familyData.success && familyData.family) {
-          const accounts: FamilyAccount[] = familyData.family.map((member: any) => ({
-            clientid: member.clientid,
-            clientcode: member.clientcode,
-            clientname: member.clientname,
-            holderName: sanitizeName(member.holderName),
-            relation: member.relation,
-            status: member.status,
-            email: member.email,
-            ownerid: member.ownerid,
-            ownername: member.ownername,
-            groupid: member.groupid,
-            groupname: member.groupname,
-            orbisData: member.orbisData || [],
-            orbisMetrics: member.orbisMetrics || null,
-          }));
+          // Only keep individual strategy accounts (QAW, QGF, QTF, QFH)
+          // Owner-level and group-level rows from pms_master_sheet are fetched directly by code
+          const individualPrefixes = ['QAW', 'QGF', 'QTF', 'QFH'];
+          const accounts: FamilyAccount[] = familyData.family
+            .filter((member: any) => {
+              const prefix = (member.clientcode || '').substring(0, 3).toUpperCase();
+              return individualPrefixes.includes(prefix);
+            })
+            .map((member: any) => ({
+              clientid: member.clientid,
+              clientcode: member.clientcode,
+              clientname: member.clientname,
+              holderName: sanitizeName(member.holderName),
+              relation: member.relation,
+              status: member.status,
+              email: member.email,
+              ownerid: member.ownerid,
+              ownername: member.ownername,
+              groupid: member.groupid,
+              groupname: member.groupname,
+              orbisData: member.orbisData || [],
+              orbisMetrics: member.orbisMetrics || null,
+            }));
 
           setFamilyAccounts(accounts);
 
-          // Owner-level grouping: use ownerid to group accounts per owner
-          // This is used for "Owner Name (All Strategies)" consolidation
+          // Group individual accounts by ownerid to build owner-level consolidation options
           const ownerMap = new Map<string, GroupedOwner>();
           accounts.forEach(account => {
             const oid = account.ownerid || account.clientid || account.clientcode;
@@ -1239,14 +1246,28 @@ const createConsolidatedData = useCallback(
             owner.clientcodes.push(account.clientcode);
             owner.accounts.push(account);
           });
-          setGroupedOwners(Array.from(ownerMap.values()));
+          const owners = Array.from(ownerMap.values());
+          setGroupedOwners(owners);
 
-          // Set first active account as default
-          const firstActive = accounts.find(acc => acc.status === "Active");
-          if (firstActive) {
-            setSelectedAccount(firstActive.clientcode);
-            // Set orbis data for the selected account
-            setOrbisData(firstActive.orbisData || []);
+          // Determine group ID for family-level consolidation
+          // Only show "Complete Family Portfolio" if there are multiple distinct owners
+          const groupId = accounts[0]?.groupid || null;
+          const hasMultipleOwners = owners.length > 1;
+
+          // Set default selected account:
+          // - If multiple owners exist → default to GROUP_{groupId}
+          // - Else if this owner has multiple strategies → default to OWNER_{ownerid}
+          // - Else → default to first individual account
+          if (hasMultipleOwners && groupId) {
+            setSelectedAccount(`GROUP_${groupId}`);
+          } else if (owners.length === 1 && owners[0].clientcodes.length > 1) {
+            setSelectedAccount(`OWNER_${owners[0].ownerid}`);
+          } else {
+            const firstActive = accounts.find(acc => acc.status === "Active");
+            if (firstActive) {
+              setSelectedAccount(firstActive.clientcode);
+              setOrbisData(firstActive.orbisData || []);
+            }
           }
         }
       } catch (err) {
@@ -1282,258 +1303,104 @@ const createConsolidatedData = useCallback(
     const fetchPortfolioData = async () => {
       setLoading(true);
       try {
-        // Check if "Complete Family Portfolio" is selected (family-level consolidation with Orbis support)
-        if (selectedAccount === 'COMPLETE_FAMILY_PORTFOLIO') {
-          // ============================================================================
-          // "ALL STRATEGIES" NAV CALCULATION (Complete Family Portfolio)
-          // ============================================================================
-          // This calculates consolidated NAV across ALL family accounts and strategies.
-          //
-          // IMPORTANT: Orbis data is EXCLUDED from "All Strategies" consolidation
-          // - Only Nuvama data is used for multi-account consolidation
-          // - Backend API (client_combined_nav) handles the NAV aggregation
-          // - Individual account Orbis data is only used in single-account views
-          //
-          // CLOSED ACCOUNTS HANDLING:
-          // - Closed accounts should only contribute to NAV when they were active
-          // - We need to filter account codes based on their status and data availability
-          // ============================================================================
-          
-          // Filter to only include active accounts OR closed accounts with recent data
-          const activeAccountCodes = familyAccounts
-            .filter((acc: FamilyAccount) => {
-              // Always include active accounts
-              if (acc.status === "Active") return true;
-              
-              // For closed accounts, check if they have recent data (within last 30 days)
-              if (acc.status === "Closed" || acc.status === "Inactive") {
-                // We'll let the backend handle this, but log it for debugging
-                console.log(`ℹ️ [CLOSED ACCOUNT] ${acc.clientcode} (${acc.holderName}) is ${acc.status} - will be excluded from combined NAV`);
-                return false;
-              }
-              
-              return true;
-            })
-            .map((acc: FamilyAccount) => acc.clientcode);
+        // GROUP_ prefix: family-level consolidation using pre-computed group NAV from pms_master_sheet
+        if (selectedAccount.startsWith('GROUP_')) {
+          const groupCode = selectedAccount.replace('GROUP_', '');
+          const historyRes = await fetch(`/api/portfolio-history-by-code?account_code=${groupCode}`);
+          const historyData = await historyRes.json();
 
-          console.log('📊 [ACCOUNT FILTERING]');
-          console.log('  Total accounts:', familyAccounts.length);
-          console.log('  Active accounts:', activeAccountCodes.length);
-          console.log('  Excluded accounts:', familyAccounts.length - activeAccountCodes.length);
-          console.log('  Account codes for combined NAV:', activeAccountCodes);
+          if (historyData.success && Array.isArray(historyData.data) && historyData.data.length > 0) {
+            const rows: HistoricalData[] = historyData.data.map((row: any) => ({
+              report_date: row.report_date,
+              nav: Number(row.nav) || 0,
+              portfolio_value: Number(row.portfolio_value) || 0,
+              cash_in_out: Number(row.cash_in_out) || 0,
+              drawdown_percent: Number(row.drawdown_percent) || 0,
+            }));
 
-          // Check if any account has Orbis data
-          const accountsWithOrbis = familyAccounts.filter(acc => acc.orbisData && acc.orbisData.length > 0);
-          const hasAnyOrbisData = accountsWithOrbis.length > 0;
-
-          // Use portfolio-history-by-client API (exclude closed/inactive account codes)
-          const clientName = familyAccounts[0]?.groupname || familyAccounts[0]?.clientname || familyAccounts[0]?.holderName || "";
-          const historyByClientRes = await fetch(`/api/portfolio-history-by-client?client_name=${clientName}`);
-          const historyByClientData = await historyByClientRes.json();
-
-          if (historyByClientData.success && historyByClientData.data && Array.isArray(historyByClientData.data)) {
-            const rows = historyByClientData.data as {
-              account_code: string;
-              report_date: string;
-              nav: string | number;
-              portfolio_value: string | number;
-              cash_in_out: string | number;
-              drawdown_percent?: string | number;
-            }[];
-
-            // One row per date: use first row's nav per date, sum portfolio_value and cash_in_out (API data only)
-            const byDate = new Map<string, { nav: number; portfolio_value: number; cash_in_out: number; drawdown_percent: number }>();
-            rows.forEach((row: any) => {
-              const d = row.report_date;
-              const pv = Number(row.portfolio_value) || 0;
-              const cash = Number(row.cash_in_out) || 0;
-              const nav = Number(row.nav) || 0;
-              const dd = Number(row.drawdown_percent ?? 0) || 0;
-              if (!byDate.has(d)) {
-                byDate.set(d, { nav, portfolio_value: pv, cash_in_out: cash, drawdown_percent: dd });
-              } else {
-                const cur = byDate.get(d)!;
-                cur.portfolio_value += pv;
-                cur.cash_in_out += cash;
-              }
-            });
-            const nuvamaData: HistoricalData[] = Array.from(byDate.entries())
-              .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
-              .map(([report_date, v]) => ({
-                report_date,
-                nav: v.nav,
-                portfolio_value: v.portfolio_value,
-                cash_in_out: v.cash_in_out,
-                drawdown_percent: v.drawdown_percent,
-              }));
-
-            setHistoricalData(nuvamaData);
+            setHistoricalData(rows);
             setOrbisHistoricalData([]);
             setConsolidatedHistoricalData([]);
             setOrbisData([]);
             setDataView('nuvama');
 
-            // Current = latest date's portfolio_value from same by-date aggregation
-            const latestEntry = nuvamaData.length > 0 ? nuvamaData[nuvamaData.length - 1] : null;
+            const latestRow = rows[rows.length - 1];
             setCurrentData({
-              account_code: 'COMPLETE_FAMILY_PORTFOLIO',
-              portfolio_value: latestEntry ? latestEntry.portfolio_value : 0,
-              report_date: latestEntry ? latestEntry.report_date : new Date().toISOString(),
+              account_code: groupCode,
+              portfolio_value: latestRow.portfolio_value,
+              report_date: latestRow.report_date,
+              nav: latestRow.nav,
             });
 
-            // Fetch benchmark using date range from API data
-            if (nuvamaData.length > 0) {
-              const incDate = nuvamaData[0].report_date;
-              const latDate = nuvamaData[nuvamaData.length - 1].report_date;
-              try {
-                const benchmarkUrl = `/api/getIndices?indices=BSE500&startDate=${incDate}&endDate=${latDate}`;
-                const benchmarkRes = await fetch(benchmarkUrl);
-                const benchmarkRaw = await benchmarkRes.json();
-                let benchArray: any[] = Array.isArray(benchmarkRaw) ? benchmarkRaw : (benchmarkRaw?.data && Array.isArray(benchmarkRaw.data) ? benchmarkRaw.data : []);
-                const start = new Date(incDate);
-                const end = new Date(latDate);
-                benchArray = benchArray
-                  .filter((item: any) => {
-                    const d = new Date(item.date);
-                    return d >= start && d <= end;
-                  })
-                  .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                const processedBench = benchArray.map((item: any) => ({ date: item.date, value: parseFloat(item.nav) })).filter((item) => !isNaN(item.value));
-                setBenchmarkData(processedBench);
-              } catch (benchErr) {
-                console.error("Failed to fetch benchmark:", benchErr);
-                setBenchmarkData([]);
-              }
+            const incDate = rows[0].report_date;
+            const latDate = latestRow.report_date;
+            try {
+              const benchmarkRes = await fetch(`/api/getIndices?indices=BSE500&startDate=${incDate}&endDate=${latDate}`);
+              const benchmarkRaw = await benchmarkRes.json();
+              let benchArray: any[] = Array.isArray(benchmarkRaw) ? benchmarkRaw : (benchmarkRaw?.data && Array.isArray(benchmarkRaw.data) ? benchmarkRaw.data : []);
+              const start = new Date(incDate);
+              const end = new Date(latDate);
+              benchArray = benchArray
+                .filter((item: any) => { const d = new Date(item.date); return d >= start && d <= end; })
+                .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+              setBenchmarkData(benchArray.map((item: any) => ({ date: item.date, value: parseFloat(item.nav) })).filter((item) => !isNaN(item.value)));
+            } catch (benchErr) {
+              console.error("Failed to fetch benchmark:", benchErr);
+              setBenchmarkData([]);
             }
           }
           setLoading(false);
           return;
         }
 
-
-        // Check if an owner-level consolidation is selected (per-owner All Strategies)
+        // OWNER_ prefix: owner-level consolidation using pre-computed owner NAV from pms_master_sheet
         if (selectedAccount.startsWith('OWNER_')) {
-          // ============================================================================
-          // OWNER-LEVEL "ALL STRATEGIES" NAV CALCULATION
-          // ============================================================================
-          // Similar to Complete Family Portfolio, but for a single owner
-          // who has multiple accounts across different strategies.
-          //
-          // IMPORTANT: Orbis data is EXCLUDED from owner-level consolidation
-          // - Only Nuvama data is used
-          // - Backend API handles NAV aggregation across owner's accounts
-          // ============================================================================
+          const ownerCode = selectedAccount.replace('OWNER_', '');
+          const historyRes = await fetch(`/api/portfolio-history-by-code?account_code=${ownerCode}`);
+          const historyData = await historyRes.json();
 
-          const ownerKey = selectedAccount.replace('OWNER_', '');
-          const owner = groupedOwners.find(o => o.ownerid === ownerKey);
+          if (historyData.success && Array.isArray(historyData.data) && historyData.data.length > 0) {
+            const rows: HistoricalData[] = historyData.data.map((row: any) => ({
+              report_date: row.report_date,
+              nav: Number(row.nav) || 0,
+              portfolio_value: Number(row.portfolio_value) || 0,
+              cash_in_out: Number(row.cash_in_out) || 0,
+              drawdown_percent: Number(row.drawdown_percent) || 0,
+            }));
 
-          if (owner && owner.clientcodes.length > 1) {
-            // ============================================================================
-            // OWNER-LEVEL CLOSED ACCOUNTS HANDLING
-            // ============================================================================
-            // Filter to only include active accounts for this owner
-            const activeMemberAccounts = owner.accounts.filter(acc => acc.status === "Active");
-            const activeMemberCodes = activeMemberAccounts.map(acc => acc.clientcode);
+            setHistoricalData(rows);
+            setOrbisHistoricalData([]);
+            setConsolidatedHistoricalData([]);
+            setOrbisData([]);
+            setDataView('nuvama');
 
-            console.log('📊 [OWNER ACCOUNT FILTERING]');
-            console.log('  Owner:', owner.ownerName);
-            console.log('  Total accounts:', owner.clientcodes.length);
-            console.log('  Active accounts:', activeMemberCodes.length);
-            console.log('  Account codes for combined NAV:', activeMemberCodes);
+            const latestRow = rows[rows.length - 1];
+            setCurrentData({
+              account_code: ownerCode,
+              portfolio_value: latestRow.portfolio_value,
+              report_date: latestRow.report_date,
+              nav: latestRow.nav,
+            });
 
-            // Skip if no active accounts
-            if (activeMemberCodes.length === 0) {
-              console.warn('⚠️ [OWNER LEVEL] No active accounts for owner:', owner.ownerName);
-              setLoading(false);
-              return;
+            const incDate = rows[0].report_date;
+            const latDate = latestRow.report_date;
+            try {
+              const benchmarkRes = await fetch(`/api/getIndices?indices=BSE500&startDate=${incDate}&endDate=${latDate}`);
+              const benchmarkRaw = await benchmarkRes.json();
+              let benchArray: any[] = Array.isArray(benchmarkRaw) ? benchmarkRaw : (benchmarkRaw?.data && Array.isArray(benchmarkRaw.data) ? benchmarkRaw.data : []);
+              const start = new Date(incDate);
+              const end = new Date(latDate);
+              benchArray = benchArray
+                .filter((item: any) => { const d = new Date(item.date); return d >= start && d <= end; })
+                .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+              setBenchmarkData(benchArray.map((item: any) => ({ date: item.date, value: parseFloat(item.nav) })).filter((item) => !isNaN(item.value)));
+            } catch (benchErr) {
+              console.error("Failed to fetch benchmark:", benchErr);
+              setBenchmarkData([]);
             }
-
-            // Check if any of owner's active accounts have Orbis data
-            const memberAccountsWithOrbis = activeMemberAccounts.filter(acc => acc.orbisData && acc.orbisData.length > 0);
-            const hasOrbisData = memberAccountsWithOrbis.length > 0;
-
-            // Use portfolio-history-by-client API for this owner (exclude other family account codes)
-            const ownerClientName = owner.ownerName || "";
-            const ownerHistoryRes = await fetch(`/api/portfolio-history-by-client?client_name=${ownerClientName}`);
-            const ownerHistoryData = await ownerHistoryRes.json();
-
-            if (ownerHistoryData.success && ownerHistoryData.data && Array.isArray(ownerHistoryData.data)) {
-              const rows = ownerHistoryData.data as {
-                account_code: string;
-                report_date: string;
-                nav: string | number;
-                portfolio_value: string | number;
-                cash_in_out: string | number;
-                drawdown_percent?: string | number;
-              }[];
-
-              // One row per date: use first row's nav per date, sum portfolio_value and cash_in_out (API data only)
-              const byDate = new Map<string, { nav: number; portfolio_value: number; cash_in_out: number; drawdown_percent: number }>();
-              rows.forEach((row: any) => {
-                const d = row.report_date;
-                const pv = Number(row.portfolio_value) || 0;
-                const cash = Number(row.cash_in_out) || 0;
-                const nav = Number(row.nav) || 0;
-                const dd = Number(row.drawdown_percent ?? 0) || 0;
-                if (!byDate.has(d)) {
-                  byDate.set(d, { nav, portfolio_value: pv, cash_in_out: cash, drawdown_percent: dd });
-                } else {
-                  const cur = byDate.get(d)!;
-                  cur.portfolio_value += pv;
-                  cur.cash_in_out += cash;
-                }
-              });
-              const nuvamaConsolidatedData: HistoricalData[] = Array.from(byDate.entries())
-                .sort((a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime())
-                .map(([report_date, v]) => ({
-                  report_date,
-                  nav: v.nav,
-                  portfolio_value: v.portfolio_value,
-                  cash_in_out: v.cash_in_out,
-                  drawdown_percent: v.drawdown_percent,
-                }));
-
-              setHistoricalData(nuvamaConsolidatedData);
-              setOrbisHistoricalData([]);
-              setConsolidatedHistoricalData([]);
-              setOrbisData([]);
-              setDataView('nuvama');
-
-              const latestEntry = nuvamaConsolidatedData.length > 0 ? nuvamaConsolidatedData[nuvamaConsolidatedData.length - 1] : null;
-              setCurrentData({
-                account_code: selectedAccount,
-                portfolio_value: latestEntry ? latestEntry.portfolio_value : 0,
-                report_date: latestEntry ? latestEntry.report_date : new Date().toISOString(),
-              });
-
-              // Fetch benchmark using date range from API data
-              if (nuvamaConsolidatedData.length > 0) {
-                const incDate = nuvamaConsolidatedData[0].report_date;
-                const latDate = nuvamaConsolidatedData[nuvamaConsolidatedData.length - 1].report_date;
-                try {
-                  const benchmarkUrl = `/api/getIndices?indices=BSE500&startDate=${incDate}&endDate=${latDate}`;
-                  const benchmarkRes = await fetch(benchmarkUrl);
-                  const benchmarkRaw = await benchmarkRes.json();
-                  let benchArray: any[] = Array.isArray(benchmarkRaw) ? benchmarkRaw : (benchmarkRaw?.data && Array.isArray(benchmarkRaw.data) ? benchmarkRaw.data : []);
-                  const start = new Date(incDate);
-                  const end = new Date(latDate);
-                  benchArray = benchArray
-                    .filter((item: any) => {
-                      const d = new Date(item.date);
-                      return d >= start && d <= end;
-                    })
-                    .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
-                  const processedBench = benchArray.map((item: any) => ({ date: item.date, value: parseFloat(item.nav) })).filter((item) => !isNaN(item.value));
-                  setBenchmarkData(processedBench);
-                } catch (benchErr) {
-                  console.error("Failed to fetch benchmark:", benchErr);
-                  setBenchmarkData([]);
-                }
-              }
-            }
-            setLoading(false);
-            return;
           }
+          setLoading(false);
+          return;
         }
 
         // Single account selected - existing logic
@@ -2028,7 +1895,7 @@ const createConsolidatedData = useCallback(
   // Calculate metrics using active data
   // Get selected account details for Orbis metrics
   const selectedAccountDetails = familyAccounts.find(acc => acc.clientcode === selectedAccount);
-  const isFamilyOrMemberView = selectedAccount === 'COMPLETE_FAMILY_PORTFOLIO' || selectedAccount.startsWith('OWNER_');
+  const isFamilyOrMemberView = selectedAccount.startsWith('GROUP_') || selectedAccount.startsWith('OWNER_');
   const hasOrbisData = orbisData && orbisData.length > 0;
   const hasOrbisMetrics = selectedAccountDetails?.orbisMetrics && hasOrbisData && !isFamilyOrMemberView;
 
@@ -2178,8 +2045,10 @@ const createConsolidatedData = useCallback(
   const benchmarkCurrentDD = enrichedData.length > 0 ? enrichedData[enrichedData.length - 1].benchmark_drawdown_percent || 0 : 0;
   const benchmarkMaxDD = enrichedData.length > 0 ? Math.max(...enrichedData.map(item => item.benchmark_drawdown_percent || 0)) : 0;
 
-  // Extract strategy (selectedAccountDetails already declared above)
-  const strategyCode = selectedAccount?.substring(0, 3).toUpperCase() as keyof typeof strategyColorConfig;
+  // Extract strategy color — for GROUP_/OWNER_ consolidated views use default QAW palette
+  const strategyCode = (selectedAccount?.startsWith('GROUP_') || selectedAccount?.startsWith('OWNER_'))
+    ? 'QAW'
+    : (selectedAccount?.substring(0, 3).toUpperCase() as keyof typeof strategyColorConfig);
   const colors = strategyColorConfig[strategyCode] || strategyColorConfig.QAW;
   const strategyName = strategyNames[strategyCode as keyof typeof strategyNames] || 'Portfolio';
 
@@ -2240,11 +2109,17 @@ const createConsolidatedData = useCallback(
                 <h1 className="text-2xl md:text-3xl font-bold text-foreground">Portfolio Details</h1>
                 <div className="flex flex-col gap-1 mt-1">
                   <p className="text-sm text-muted-foreground">
-                    {selectedAccountDetails && (
+                    {selectedAccount.startsWith('GROUP_') ? (
+                      <>Complete Family Portfolio • All Members, All Strategies</>
+                    ) : selectedAccount.startsWith('OWNER_') ? (
+                      <>
+                        {sanitizeName(groupedOwners.find(o => o.ownerid === selectedAccount.replace('OWNER_', ''))?.ownerName || '')} • All Strategies
+                      </>
+                    ) : selectedAccountDetails ? (
                       <>
                         {sanitizeName(selectedAccountDetails.holderName)} • {selectedAccount}
                       </>
-                    )}
+                    ) : null}
                   </p>
                   {inceptionDate && latestDate && (
                     <div className="flex flex-wrap items-center gap-3 text-xs">
@@ -2272,10 +2147,10 @@ const createConsolidatedData = useCallback(
                     <SelectValue placeholder="Select Account" />
                   </SelectTrigger>
                   <SelectContent>
-                    {/* Family-level consolidation - Show if there are multiple owners in the family */}
-                    {groupedOwners.length > 1 && (
+                    {/* Group-level: only show when there are multiple distinct owners (true family group) */}
+                    {groupedOwners.length > 1 && familyAccounts[0]?.groupid && (
                       <>
-                        <SelectItem value="COMPLETE_FAMILY_PORTFOLIO">
+                        <SelectItem value={`GROUP_${familyAccounts[0].groupid}`}>
                           <div className="flex items-center justify-between gap-3">
                             <span className="font-semibold">Complete Family Portfolio</span>
                             <span className="text-xs text-muted-foreground">(All Members, All Strategies)</span>
@@ -2285,7 +2160,7 @@ const createConsolidatedData = useCallback(
                       </>
                     )}
 
-                    {/* Per-owner consolidation for owners with multiple accounts/strategies */}
+                    {/* Owner-level: show for each owner who has 2+ individual strategies */}
                     {groupedOwners.map(owner => {
                       if (owner.clientcodes.length > 1) {
                         return (
@@ -2303,7 +2178,7 @@ const createConsolidatedData = useCallback(
                       <div className="h-px bg-border my-1" />
                     )}
 
-                    {/* Individual accounts */}
+                    {/* Individual strategy accounts */}
                     {familyAccounts.map(acc => {
                       const strategyCode = acc.clientcode.substring(0, 3).toUpperCase();
                       const strategyName = strategyNames[strategyCode as keyof typeof strategyNames] || strategyCode;
@@ -2330,16 +2205,16 @@ const createConsolidatedData = useCallback(
                 {enrichedData.length > 0 && (
                   <Button
                     onClick={() => {
-                      const isAllStrategies = selectedAccount === 'COMPLETE_FAMILY_PORTFOLIO' || selectedAccount.startsWith('OWNER_');
+                      const isAllStrategies = selectedAccount.startsWith('GROUP_') || selectedAccount.startsWith('OWNER_');
                       if (isAllStrategies) {
                         let accountCodes: string[] = [];
                         let portfolioName = '';
 
-                        if (selectedAccount === 'COMPLETE_FAMILY_PORTFOLIO') {
+                        if (selectedAccount.startsWith('GROUP_')) {
                           accountCodes = familyAccounts
                             .filter(acc => acc.status === "Active")
                             .map(acc => acc.clientcode);
-                          portfolioName = 'Complete Family Portfolio (Active Accounts Only)';
+                          portfolioName = 'Complete Family Portfolio (All Members, All Strategies)';
                         } else if (selectedAccount.startsWith('OWNER_')) {
                           const ownerKey = selectedAccount.replace('OWNER_', '');
                           const owner = groupedOwners.find(o => o.ownerid === ownerKey);
@@ -2347,7 +2222,7 @@ const createConsolidatedData = useCallback(
                             accountCodes = owner.accounts
                               .filter(acc => acc.status === "Active")
                               .map(acc => acc.clientcode);
-                            portfolioName = `${owner.ownerName} - All Strategies (Active Accounts Only)`;
+                            portfolioName = `${owner.ownerName} - All Strategies`;
                           }
                         }
 
@@ -2380,7 +2255,7 @@ const createConsolidatedData = useCallback(
                   >
                     <Download className="h-4 w-4" />
                     <span className="hidden sm:inline">
-                      {selectedAccount === 'COMPLETE_FAMILY_PORTFOLIO' || selectedAccount.startsWith('OWNER_')
+                      {selectedAccount.startsWith('GROUP_') || selectedAccount.startsWith('OWNER_')
                         ? 'Download All Strategies CSV'
                         : 'Download CSV'}
                     </span>
@@ -2391,7 +2266,7 @@ const createConsolidatedData = useCallback(
             </div>
 
             {/* Closed Accounts Info - Show if viewing All Strategies with closed accounts */}
-            {(selectedAccount === 'COMPLETE_FAMILY_PORTFOLIO' || selectedAccount.startsWith('OWNER_')) &&
+            {(selectedAccount.startsWith('GROUP_') || selectedAccount.startsWith('OWNER_')) &&
              familyAccounts.some(acc => acc.status !== "Active") && (
               <Alert className="border-blue-500 bg-blue-50 dark:bg-blue-950">
                 <AlertTriangle className="h-4 w-4 text-blue-600" />

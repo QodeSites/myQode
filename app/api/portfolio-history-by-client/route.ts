@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
     `;
 
     params.push(`%${client_name.trim()}%`, ...excludePatterns);
-
+    console.log("Executing Portfolio History By Client Query:", query, "with params:", params );
     const result = await pool.query(query, params);
 
     return NextResponse.json({
