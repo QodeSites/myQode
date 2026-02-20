@@ -17,7 +17,11 @@
       "Bash(timeout:*)",
       "Bash(./gradlew clean:*)",
       "Bash(cat:*)",
-      "Bash(keytool:*)"
+      "Bash(keytool:*)",
+      "Bash(ls:*)",
+      "Bash(npx tsc:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
