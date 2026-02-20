@@ -3,10 +3,31 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import pool from '@/lib/db1';
 
+interface DistributorData {
+  id: string;
+  clientid: string;
+  clientcode: string;
+  clientname: string;
+  email: string;
+  mobile: string;
+  onboarding_status: string;
+  ownerid: string;
+  groupid: string;
+  groupname: string;
+  login_count: number;
+  last_login_at: string | null;
+  created_at: string;
+  salutation: string;
+  firstname: string;
+  middlename: string;
+  lastname: string;
+}
+
 interface AdminDashboardData {
   clients: GroupedClientData[];
   queries: QueryData[];
   statistics: DashboardStatistics;
+  distributors: DistributorData[];
 }
 
 interface GroupedClientData {
@@ -255,10 +276,27 @@ export async function GET(request: NextRequest) {
       uniqueLoginsThisWeek: loginStats.logins_this_week || 0,
     };
 
+    // Fetch distributors separately
+    const distributorResult = await query(
+      `SELECT id, clientid, clientcode, clientname, email, mobile, onboarding_status,
+              ownerid, groupid, groupname, login_count, last_login_at, created_at,
+              salutation, firstname, middlename, lastname
+       FROM pms_clients_master
+       WHERE clienttype = 'DISTRIBUTORS'
+       ORDER BY created_at DESC`,
+      []
+    );
+
+    const distributors: DistributorData[] = distributorResult.rows.map((row: any) => ({
+      ...row,
+      clientname: `${row.salutation || ''} ${row.firstname} ${row.middlename || ''} ${row.lastname}`.trim(),
+    }));
+
     const dashboardData: AdminDashboardData = {
       clients: groupedClients,
       queries,
       statistics,
+      distributors,
     };
 
     return NextResponse.json({
@@ -277,10 +315,70 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Admin impersonation endpoint (unchanged from original)
+// Admin impersonation endpoint
 export async function POST(request: NextRequest) {
   try {
-    const { action, clientCode } = await request.json();
+    const { action, clientCode, distributorEmail } = await request.json();
+
+    // Distributor impersonation — lookup by email since clientcode is null
+    if (action === 'impersonate-distributor') {
+      if (!distributorEmail) {
+        return NextResponse.json(
+          { error: 'Distributor email is required for impersonation' },
+          { status: 400 }
+        );
+      }
+
+      const distributorResult = await query(
+        `SELECT clientid, clientcode, email, groupid, head_of_family, ownerid,
+                salutation, firstname, middlename, lastname, clienttype
+         FROM pms_clients_master
+         WHERE email = $1 AND clienttype = 'DISTRIBUTORS'
+         LIMIT 1`,
+        [distributorEmail]
+      );
+
+      if (distributorResult.rows.length === 0) {
+        return NextResponse.json(
+          { error: 'Distributor not found' },
+          { status: 404 }
+        );
+      }
+
+      const distributor = distributorResult.rows[0];
+
+      // clientData mirrors real distributor login: clientid present, clientcode may be null
+      const clientData = [{
+        clientid: distributor.clientid,
+        clientcode: distributor.clientcode,
+      }];
+
+      const impersonationToken = Buffer.from(JSON.stringify({
+        adminImpersonation: true,
+        clientCode: distributor.clientcode,
+        clientType: 'DISTRIBUTORS',
+        timestamp: Date.now(),
+        clientData,
+        userContext: {
+          clientid: distributor.clientid,
+          clientcode: distributor.clientcode,
+          email: distributor.email,
+          groupid: distributor.groupid,
+          head_of_family: false,
+          ownerid: distributor.ownerid,
+        },
+        targetClientName: `${distributor.salutation || ''} ${distributor.firstname} ${distributor.middlename || ''} ${distributor.lastname}`.trim(),
+      })).toString('base64');
+
+      return NextResponse.json({
+        success: true,
+        impersonationToken,
+        redirectUrl: `/api/admin/impersonate?token=${impersonationToken}`,
+        clientData,
+        isHeadOfFamily: false,
+        targetClientName: `${distributor.salutation || ''} ${distributor.firstname} ${distributor.middlename || ''} ${distributor.lastname}`.trim(),
+      });
+    }
 
     if (action === 'impersonate') {
       if (!clientCode) {
@@ -294,7 +392,7 @@ export async function POST(request: NextRequest) {
       const clientResult = await query(
         `SELECT clientid, clientcode, email, groupid, head_of_family, ownerid,
                 salutation, firstname, middlename, lastname
-         FROM pms_clients_master 
+         FROM pms_clients_master
          WHERE clientcode = $1`,
         [clientCode]
       );

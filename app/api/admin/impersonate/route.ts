@@ -82,9 +82,13 @@ export async function GET(request: NextRequest) {
     const host = request.headers.get('host') || 'localhost:3000';
     const protocol = request.headers.get('x-forwarded-proto') || 'http';
     const baseUrl = `${protocol}://${host}`;
-    
-    // Redirect to dashboard with correct base URL
-    return NextResponse.redirect(`${baseUrl}/portfolio/performance`);
+
+    // Redirect distributors to their own page, all others to portfolio
+    const redirectPath = tokenData.clientType === 'DISTRIBUTORS'
+      ? '/distributor/fees-distribution'
+      : '/portfolio/performance';
+
+    return NextResponse.redirect(`${baseUrl}${redirectPath}`);
 
   } catch (error) {
     console.error('Impersonation error:', error);

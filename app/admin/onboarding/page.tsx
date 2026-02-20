@@ -3,6 +3,7 @@
 
 import { AdminAuthProvider } from '@/components/admin-auth-provider';
 import { AdminLayout } from '@/components/admin-layout';
+import { useAdminAuthContext } from '@/components/admin-auth-provider';
 import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -111,6 +112,22 @@ interface QueryData {
   resolved_at: string | null;
 }
 
+interface DistributorData {
+  id: string;
+  clientid: string;
+  clientcode: string;
+  clientname: string;
+  email: string;
+  mobile: string;
+  onboarding_status: string;
+  ownerid: string;
+  groupid: string;
+  groupname: string;
+  login_count: number;
+  last_login_at: string | null;
+  created_at: string;
+}
+
 interface DashboardStatistics {
   totalOwners: number;
   totalAccounts: number;
@@ -136,7 +153,16 @@ const sanitizeName = (name: string | null | undefined) => {
   return name.trim();
 };
 
+// Emails that can only see the Distributors tab
+const DISTRIBUTOR_ONLY_ADMINS = [
+  'kruti.dave@qodeinvest.com',
+  'accounts@qodeinvest.com',
+];
+
 function AdminDashboardContent() {
+  const { user } = useAdminAuthContext();
+  const isDistributorOnlyAdmin = DISTRIBUTOR_ONLY_ADMINS.includes((user?.email || '').toLowerCase());
+
   const [clients, setClients] = useState<GroupedClientData[]>([]);
   const [allClients, setAllClients] = useState<GroupedClientData[]>([]);
   const [queries, setQueries] = useState<QueryData[]>([]);
@@ -157,6 +183,11 @@ function AdminDashboardContent() {
   const [loadingLogins, setLoadingLogins] = useState(false);
 
   const [loginFilter, setLoginFilter] = useState<'all' | 'today' | 'week'>('all');
+  const [distributors, setDistributors] = useState<DistributorData[]>([]);
+  const [distributorSearch, setDistributorSearch] = useState('');
+  const [activeTab, setActiveTab] = useState<'owners' | 'distributors'>(
+    isDistributorOnlyAdmin ? 'distributors' : 'owners'
+  );
 
   useEffect(() => {
     fetchDashboardData();
@@ -182,6 +213,10 @@ function AdminDashboardContent() {
         setAllClients(sanitizedClients);
         setQueries(data.data.queries);
         setStatistics(data.data.statistics);
+        setDistributors((data.data.distributors || []).map((d: DistributorData) => ({
+          ...d,
+          clientname: sanitizeName(d.clientname),
+        })));
       } else {
         setMessage('Failed to load dashboard data');
       }
@@ -307,6 +342,17 @@ function AdminDashboardContent() {
     });
   }, [allClients, searchTerm, statusFilter]);
 
+  const filteredDistributors = useMemo(() => {
+    if (!distributorSearch) return distributors;
+    const term = distributorSearch.toLowerCase();
+    return distributors.filter(d =>
+      sanitizeName(d.clientname).toLowerCase().includes(term) ||
+      d.email.toLowerCase().includes(term) ||
+      (d.clientcode || '').toLowerCase().includes(term) ||
+      (d.mobile || '').toLowerCase().includes(term)
+    );
+  }, [distributors, distributorSearch]);
+
   const handleImpersonate = async (clientCode: string) => {
     setImpersonating(true);
     try {
@@ -330,6 +376,31 @@ function AdminDashboardContent() {
     } finally {
       setImpersonating(false);
       setShowImpersonateDialog(false);
+    }
+  };
+
+  const handleImpersonateDistributor = async (distributorEmail: string, distributorName: string) => {
+    setImpersonating(true);
+    try {
+      const response = await fetch('/api/admin/dashboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'impersonate-distributor', distributorEmail }),
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        window.open(data.redirectUrl, '_blank');
+        setMessage(`Successfully logged in as distributor ${distributorName}`);
+      } else {
+        setMessage(`Distributor login failed: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Distributor impersonation error:', error);
+      setMessage('Failed to initiate distributor login');
+    } finally {
+      setImpersonating(false);
     }
   };
 
@@ -674,9 +745,9 @@ function AdminDashboardContent() {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold">Owner Management Dashboard</h2>
+          <h2 className="text-2xl font-bold">Admin Dashboard</h2>
           <p className="text-muted-foreground mt-2">
-            Monitor owners, manage multiple accounts, and track queries
+            Monitor owners, distributors, manage accounts, and track queries
           </p>
         </div>
         <Button
@@ -689,8 +760,8 @@ function AdminDashboardContent() {
         </Button>
       </div>
 
-      {/* Enhanced Statistics Cards */}
-      {statistics && (
+      {/* Enhanced Statistics Cards — hidden for distributor-only admins */}
+      {statistics && !isDistributorOnlyAdmin && (
         <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
           <StatCard
             icon={Users}
@@ -749,6 +820,26 @@ function AdminDashboardContent() {
           </div>
         </div>
       )}
+
+      {/* Main Tabs: Owners | Distributors */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'owners' | 'distributors')}>
+        <TabsList>
+          {!isDistributorOnlyAdmin && (
+            <TabsTrigger value="owners" className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Owners
+              <Badge variant="secondary" className="ml-1">{allClients.length}</Badge>
+            </TabsTrigger>
+          )}
+          <TabsTrigger value="distributors" className="flex items-center gap-2">
+            <Building2 className="h-4 w-4" />
+            Distributors
+            <Badge variant="secondary" className="ml-1">{distributors.length}</Badge>
+          </TabsTrigger>
+        </TabsList>
+
+        {/* ── OWNERS TAB ── */}
+        <TabsContent value="owners" className="space-y-4 mt-4">
 
       {/* Filters and Search */}
       <Card>
@@ -1019,6 +1110,150 @@ function AdminDashboardContent() {
           )}
         </>
       )}
+
+        </TabsContent>
+
+        {/* ── DISTRIBUTORS TAB ── */}
+        <TabsContent value="distributors" className="space-y-4 mt-4">
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <div>
+                  <CardTitle className="flex items-center space-x-2">
+                    <Building2 className="h-5 w-5 text-orange-500" />
+                    <span>Distributor Management</span>
+                  </CardTitle>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    All registered distributors in the system
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    const headers = ['Client Code', 'Name', 'Email', 'Mobile', 'Onboarding Status', 'Login Count', 'Last Login', 'Created Date'];
+                    const rows = filteredDistributors.map(d => [
+                      `"${d.clientcode}"`,
+                      `"${sanitizeName(d.clientname)}"`,
+                      `"${d.email}"`,
+                      `"${d.mobile || ''}"`,
+                      d.onboarding_status,
+                      d.login_count || 0,
+                      d.last_login_at ? new Date(d.last_login_at).toLocaleDateString() : 'Never',
+                      new Date(d.created_at).toLocaleDateString(),
+                    ].join(','));
+                    const csv = [headers.join(','), ...rows].join('\n');
+                    const blob = new Blob([csv], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'distributors.csv';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Export CSV
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <Search className="h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by name, email, or client code..."
+                  value={distributorSearch}
+                  onChange={(e) => setDistributorSearch(e.target.value)}
+                  className="max-w-sm"
+                />
+              </div>
+
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Client Code</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Mobile</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-center">Logins</TableHead>
+                      <TableHead>Last Login</TableHead>
+                      <TableHead>Created</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredDistributors.length > 0 ? (
+                      filteredDistributors.map((d, idx) => (
+                        <TableRow key={d.id || d.clientcode || idx}>
+                          <TableCell>
+                            <div className="flex items-center space-x-2">
+                              <Building2 className="h-4 w-4 text-orange-500" />
+                              <span className="font-medium text-sm">{sanitizeName(d.clientname)}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <span className="font-mono text-sm">{d.clientcode}</span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-1 text-sm">
+                              <Mail className="h-3 w-3 text-muted-foreground" />
+                              <span>{d.email}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-sm">{d.mobile || '—'}</TableCell>
+                          <TableCell>
+                            {getStatusBadge(d.onboarding_status)}
+                          </TableCell>
+                          <TableCell className="text-center font-semibold">
+                            {d.login_count || 0}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {d.last_login_at
+                              ? new Date(d.last_login_at).toLocaleDateString()
+                              : 'Never'}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {new Date(d.created_at).toLocaleDateString()}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={impersonating || !d.email}
+                              onClick={() => handleImpersonateDistributor(d.email, sanitizeName(d.clientname))}
+                              className="flex items-center gap-1 text-xs"
+                            >
+                              <UserCog className="h-3 w-3" />
+                              Login as
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={9} className="text-center py-12">
+                          <Building2 className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                          <p className="text-lg font-semibold">No distributors found</p>
+                          <p className="text-muted-foreground text-sm">
+                            {distributorSearch ? 'Try adjusting your search.' : 'No distributors registered yet.'}
+                          </p>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Showing {filteredDistributors.length} of {distributors.length} distributors
+              </p>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+      </Tabs>
 
       {/* Accounts Detail Dialog */}
       <Dialog open={showAccountsDialog} onOpenChange={setShowAccountsDialog}>
@@ -1415,7 +1650,7 @@ function AdminDashboardContent() {
 export default function AdminOnboardingPage() {
   return (
     <AdminAuthProvider>
-      <AdminLayout title="Owner Management Dashboard">
+      <AdminLayout title="Admin Dashboard">
         <AdminDashboardContent />
       </AdminLayout>
     </AdminAuthProvider>
