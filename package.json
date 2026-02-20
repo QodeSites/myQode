@@ -87,7 +87,7 @@
   "devDependencies": {
     "@capacitor/cli": "^7.4.4",
     "@capacitor/core": "^7.4.4",
-    "@tailwindcss/postcss": "^4.1.9",
+    "@tailwindcss/postcss": "^4.2.0",
     "@types/node": "^22",
     "@types/pg": "^8.15.5",
     "@types/react": "^19",
