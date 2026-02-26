@@ -351,6 +351,19 @@ export function ContentModal({
   );
 }
 
+const MONTH_ORDER: Record<string, number> = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12,
+};
+
+function folderToDate(section: string): number {
+  // Expects format like "Jan-2026" or "Sept-2025"
+  const [mon, year] = section.split("-");
+  const month = MONTH_ORDER[mon?.toLowerCase()] ?? 0;
+  const y = parseInt(year ?? "0", 10);
+  return y * 100 + month;
+}
+
 export default function InsightsArchivePage() {
   const [isNewsletterModalOpen, setIsNewsletterModalOpen] = useState(false);
   const [isPerspectiveModalOpen, setIsPerspectiveModalOpen] = useState(false);
@@ -378,21 +391,27 @@ export default function InsightsArchivePage() {
           // The response is { data: [ { filename, url, section } ] }
           if (!Array.isArray(json.data)) return [];
           // Use .section for title (fallback to filename if section not present)
-          return json.data.map((item: any) => ({
-            title: item.section || item.filename,
-            url: item.url,
-            type: "pdf",
-          }));
+          return json.data
+            .map((item: any) => ({
+              title: item.section || item.filename,
+              url: item.url,
+              type: "pdf",
+              _section: item.section,
+            }))
+            .sort((a: any, b: any) => folderToDate(b._section) - folderToDate(a._section));
         }),
       fetch("/api/list-folder?path=docs/prespectives")
         .then((res) => res.json())
         .then((json) => {
           if (!Array.isArray(json.data)) return [];
-          return json.data.map((item: any) => ({
-            title: item.section || item.filename,
-            url: item.url,
-            type: "pdf",
-          }));
+          return json.data
+            .map((item: any) => ({
+              title: item.section || item.filename,
+              url: item.url,
+              type: "pdf",
+              _section: item.section,
+            }))
+            .sort((a: any, b: any) => folderToDate(b._section) - folderToDate(a._section));
         })
     ]).then(([newsletterData, perspectiveData]) => {
       if (!isMounted) return;

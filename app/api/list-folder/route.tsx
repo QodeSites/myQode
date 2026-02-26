@@ -76,11 +76,12 @@ export async function GET(request: NextRequest) {
       timestamp: new Date().toISOString(),
     });
   } catch (error: any) {
+    console.error("[list-folder] Error:", error);
     return NextResponse.json(
       {
         success: false,
         error: error?.message || "Unknown server error",
-        error_code: "INTERNAL_ERROR",
+        error_code: error?.Code || "INTERNAL_ERROR",
         timestamp: new Date().toISOString(),
       },
       { status: 500 }
