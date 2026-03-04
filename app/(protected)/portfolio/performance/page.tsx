@@ -221,15 +221,15 @@ const strategyNames = {
 const strategyBenchmark: Record<string, string> = {
   QAW: 'NIFTY 50',
   QTF: 'NIFTY MIDCAP 150',
-  QGF: 'NIFTY SMALLCAP 250',
-  QFH: 'NIFTY MICROCAP 250',
+  QGF: 'NIFTY SMLCAP 250',
+  QFH: 'NIFTY MICROCAP250',
 };
 
 const benchmarkDisplayName: Record<string, string> = {
   'NIFTY 50': 'Nifty 50',
   'NIFTY MIDCAP 150': 'Nifty MID',
-  'NIFTY SMALLCAP 250': 'Nifty SML',
-  'NIFTY MICROCAP 250': 'Nifty MICRO',
+  'NIFTY SMLCAP 250': 'Nifty SML',
+  'NIFTY MICROCAP250': 'Nifty MICRO',
 };
 
 const getBenchmarkForAccount = (accountCode: string): string => {
