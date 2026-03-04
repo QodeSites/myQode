@@ -218,6 +218,25 @@ const strategyNames = {
   QFH: 'Qode Future Horizons'
 };
 
+const strategyBenchmark: Record<string, string> = {
+  QAW: 'NIFTY 50',
+  QTF: 'NIFTY MIDCAP 150',
+  QGF: 'NIFTY SMALLCAP 250',
+  QFH: 'NIFTY MICROCAP 250',
+};
+
+const benchmarkDisplayName: Record<string, string> = {
+  'NIFTY 50': 'Nifty 50',
+  'NIFTY MIDCAP 150': 'Nifty MID',
+  'NIFTY SMALLCAP 250': 'Nifty SML',
+  'NIFTY MICROCAP 250': 'Nifty MICRO',
+};
+
+const getBenchmarkForAccount = (accountCode: string): string => {
+  const prefix = accountCode.substring(0, 3).toUpperCase();
+  return strategyBenchmark[prefix] ?? 'NIFTY 50';
+};
+
 const formatCurrency = (value: number | undefined | null) => {
   if (value === undefined || value === null || isNaN(Number(value)) || !isFinite(Number(value))) return "₹0.00";
   const numValue = Number(value);
@@ -265,17 +284,19 @@ const calculateYDomain = (data: number[], paddingPercent: number = 5) => {
 };
 
 // Custom Tooltip Component
-const CustomTooltip = ({ active, payload, label, data }: any) => {
+const CustomTooltip = ({ active, payload, label, data, benchmarkLabel: bmLabel }: any) => {
   if (active && payload && payload.length) {
     const date = new Date(label);
     const formattedDate = `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
     const tooltipData = data.find((d: any) => d.report_date === label);
+    const bmName = bmLabel ?? 'Benchmark';
+    const bmDrawdownName = `${bmName} Drawdown`;
     return (
       <div className="bg-background border border-border rounded-lg p-3 shadow-lg" style={{ fontFamily: 'Lato, sans-serif', fontSize: '12px' }}>
         <p className="text-sm font-medium mb-1">{formattedDate}</p>
         {payload.map((entry: any, index: number) => {
           const val = Number(entry.value);
-          const isGrowth = entry.name === 'Portfolio Growth' || entry.name === 'BSE 500';
+          const isGrowth = entry.name === 'Portfolio Growth' || entry.name === bmName;
           const display = isGrowth ? `${(val - 100).toFixed(2)}%` : `${val.toFixed(2)}%`;
           return (
             <div key={index}>
@@ -290,9 +311,9 @@ const CustomTooltip = ({ active, payload, label, data }: any) => {
                   NAV: {tooltipData.nav}
                 </p>
               )}
-              {(entry.name === 'BSE 500' || entry.name === 'BSE 500 Drawdown') && tooltipData && tooltipData.benchmark_value !== undefined && (
+              {(entry.name === bmName || entry.name === bmDrawdownName) && tooltipData && tooltipData.benchmark_value !== undefined && (
                 <p className="text-sm text-muted-foreground">
-                  BSE 500: {tooltipData.benchmark_value.toFixed(2)}
+                  {bmName}: {tooltipData.benchmark_value.toFixed(2)}
                 </p>
               )}
             </div>
@@ -1335,7 +1356,8 @@ const createConsolidatedData = useCallback(
             const incDate = rows[0].report_date;
             const latDate = latestRow.report_date;
             try {
-              const benchmarkRes = await fetch(`/api/getIndices?indices=BSE500&startDate=${incDate}&endDate=${latDate}`);
+              const benchmarkIndex = getBenchmarkForAccount(groupCode);
+              const benchmarkRes = await fetch(`/api/getIndices?indices=${encodeURIComponent(benchmarkIndex)}&startDate=${incDate}&endDate=${latDate}`);
               const benchmarkRaw = await benchmarkRes.json();
               let benchArray: any[] = Array.isArray(benchmarkRaw) ? benchmarkRaw : (benchmarkRaw?.data && Array.isArray(benchmarkRaw.data) ? benchmarkRaw.data : []);
               const start = new Date(incDate);
@@ -1385,7 +1407,8 @@ const createConsolidatedData = useCallback(
             const incDate = rows[0].report_date;
             const latDate = latestRow.report_date;
             try {
-              const benchmarkRes = await fetch(`/api/getIndices?indices=BSE500&startDate=${incDate}&endDate=${latDate}`);
+              const benchmarkIndex = getBenchmarkForAccount(ownerCode);
+              const benchmarkRes = await fetch(`/api/getIndices?indices=${encodeURIComponent(benchmarkIndex)}&startDate=${incDate}&endDate=${latDate}`);
               const benchmarkRaw = await benchmarkRes.json();
               let benchArray: any[] = Array.isArray(benchmarkRaw) ? benchmarkRaw : (benchmarkRaw?.data && Array.isArray(benchmarkRaw.data) ? benchmarkRaw.data : []);
               const start = new Date(incDate);
@@ -1460,7 +1483,8 @@ const createConsolidatedData = useCallback(
 
             // Fetch benchmark data
             try {
-              const benchmarkUrl = `/api/getIndices?indices=BSE500&startDate=${incDate}&endDate=${latDate}`;
+              const benchmarkIndex = getBenchmarkForAccount(selectedAccount);
+              const benchmarkUrl = `/api/getIndices?indices=${encodeURIComponent(benchmarkIndex)}&startDate=${incDate}&endDate=${latDate}`;
               const benchmarkRes = await fetch(benchmarkUrl);
               const benchmarkRaw = await benchmarkRes.json();
 
@@ -2051,6 +2075,8 @@ const createConsolidatedData = useCallback(
     : (selectedAccount?.substring(0, 3).toUpperCase() as keyof typeof strategyColorConfig);
   const colors = strategyColorConfig[strategyCode] || strategyColorConfig.QAW;
   const strategyName = strategyNames[strategyCode as keyof typeof strategyNames] || 'Portfolio';
+  const benchmarkIndex = selectedAccount ? getBenchmarkForAccount(selectedAccount) : 'NIFTY 50';
+  const benchmarkLabel = benchmarkDisplayName[benchmarkIndex] ?? benchmarkIndex;
 
   // Calculate Y-axis domains
   const hasBenchmark = enrichedData.length > 0 && enrichedData[0]?.normalized_benchmark !== undefined;
@@ -2558,7 +2584,7 @@ const createConsolidatedData = useCallback(
                       {trailingReturnsBenchmark && (
                         <tr className="border-border text-xs">
                           <td className="px-4 py-3 text-left whitespace-nowrap min-w-[120px] font-medium text-foreground">
-                            BSE 500 (%)
+                            {benchmarkLabel} (%)
                           </td>
                           {periods.map((period) => {
                             let rawValue;
@@ -2675,7 +2701,7 @@ const createConsolidatedData = useCallback(
                         domain={navDomain}
                         tickFormatter={(value) => `${Number(value).toFixed(1)}`}
                       />
-                      <Tooltip content={(props) => <CustomTooltip {...props} data={enrichedData} />} />
+                      <Tooltip content={(props) => <CustomTooltip {...props} data={enrichedData} benchmarkLabel={benchmarkLabel} />} />
                       <Area
                         type="monotone"
                         dataKey="normalized_nav"
@@ -2691,7 +2717,7 @@ const createConsolidatedData = useCallback(
                           stroke={benchmarkColor}
                           strokeWidth={2}
                           fill="none"
-                          name="BSE 500"
+                          name={benchmarkLabel}
                         />
                       )}
                     </AreaChart>
@@ -2729,7 +2755,7 @@ const createConsolidatedData = useCallback(
                         domain={drawdownDomain}
                         tickFormatter={(value) => `${Number(value).toFixed(2)}`}
                       />
-                      <Tooltip content={(props) => <CustomTooltip {...props} data={enrichedData} />} />
+                      <Tooltip content={(props) => <CustomTooltip {...props} data={enrichedData} benchmarkLabel={benchmarkLabel} />} />
                       <Area
                         type="monotone"
                         dataKey={(entry) => -entry.drawdown_percent}
@@ -2745,7 +2771,7 @@ const createConsolidatedData = useCallback(
                           stroke={benchmarkColor}
                           strokeWidth={2}
                           fill="none"
-                          name="BSE 500 Drawdown"
+                          name={`${benchmarkLabel} Drawdown`}
                         />
                       )}
                     </AreaChart>
