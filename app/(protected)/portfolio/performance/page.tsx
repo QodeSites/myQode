@@ -404,9 +404,17 @@ function calculateTrailingReturnsForData(data: Array<{ nav: number, date: string
 
   const returns: any = {};
 
-  // Day periods with weekend adjustment
+  // Day periods - use calendar days for 1W, business days for others
   Object.entries(dayPeriods).forEach(([period, days]) => {
-    const targetDate = getBusinessDaysAgo(latestDate, days);
+    let targetDate: Date;
+    if (period === '1W') {
+      // 1 week = 7 calendar days ago
+      targetDate = new Date(latestDate);
+      targetDate.setDate(latestDate.getDate() - days);
+    } else {
+      // Use business days for other periods
+      targetDate = getBusinessDaysAgo(latestDate, days);
+    }
     const startPoint = findClosestDataPoint(targetDate);
 
     if (startPoint) {
