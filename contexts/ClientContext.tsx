@@ -2,6 +2,7 @@
 "use client"
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { apiClient } from '@/lib/api-client'
 
 interface ClientData {
   clientid: string;
@@ -51,21 +52,9 @@ export function ClientProvider({ children }: { children: ReactNode }) {
 
   const fetchClientData = async () => {
     try {
-      console.log('Fetching client data...');
       setLoading(true);
-      const response = await fetch('/api/auth/client-data', {
-        method: 'GET',
-        credentials: 'include',
-      });
-      console.log('API response status:', response.status);
-
-      if (response.status === 401) {
-        // Handle unauthenticated user
-        console.log('Unauthorized (401): clearing client state due to authentication error');
-        clearSelectedClient();
-        // Optionally, trigger a redirect or other action here if needed
-      } else if (response.ok) {
-        const data = await response.json();
+      const response = await apiClient.get('/api/auth/client-data');
+      const data = response.data;
         console.log('Client data fetched:', data);
 
         setIsHeadOfFamily(data.isHeadOfFamily || false);
@@ -142,10 +131,6 @@ export function ClientProvider({ children }: { children: ReactNode }) {
           console.log('No clients available');
           clearSelectedClient();
         }
-      } else {
-        console.error('Failed to fetch client data:', response.status, response.statusText);
-        clearSelectedClient();
-      }
     } catch (error) {
       console.error('Failed to fetch client data:', error);
       clearSelectedClient();

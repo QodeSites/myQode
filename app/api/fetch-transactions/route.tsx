@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import pool from '@/lib/db'; // Adjust path to your db.ts file
+import pool from '@/lib/db';
+import { getAuthPayload } from '@/lib/auth-api';
 
 interface Transaction {
   id: number;
@@ -28,6 +29,10 @@ interface Transaction {
 
 export async function GET(request: NextRequest) {
   try {
+    const payload = await getAuthPayload(request);
+    if (!payload) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
     const { searchParams } = new URL(request.url);
     const nuvama_code = searchParams.get('nuvama_code');
     const limit = parseInt(searchParams.get('limit') || '50', 10);

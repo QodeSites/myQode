@@ -1,9 +1,14 @@
 // app/api/portfolio-history/route.ts
 import pool from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
+import { getAuthPayload } from "@/lib/auth-api";
 
 export async function GET(request: NextRequest) {
   try {
+    const payload = await getAuthPayload(request);
+    if (!payload) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
     const { searchParams } = new URL(request.url);
     const nuvama_code = searchParams.get('nuvama_code');
     const nuvama_codes = searchParams.get('nuvama_codes'); // Support multiple codes

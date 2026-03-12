@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { query as query1 } from '@/lib/db1';
+import { getAuthPayload } from '@/lib/auth-api';
 
 interface UserContext {
   clientid: string;
@@ -74,7 +75,12 @@ function parseCustomDateLabel(dateStr: string): Date {
   return new Date(`${d} ${m} ${fullYear}`);
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const payload = await getAuthPayload(request);
+  if (!payload) {
+    return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  }
+
   const cookieStore = await cookies();
   const userContextCookie = cookieStore.get("qode-user-context");
 
@@ -159,8 +165,13 @@ export async function GET() {
 
 
 // Returns array of calc rows
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
     try {
+        const payload = await getAuthPayload(req);
+        if (!payload) {
+            return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+        }
+
         const cookieStore = await cookies();
         const userContextCookie = cookieStore.get('qode-user-context');
 

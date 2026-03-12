@@ -1,17 +1,14 @@
 // app/api/bank-details/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
 import pool from '@/lib/db1';
+import { getAuthPayload } from '@/lib/auth-api';
 
 export async function GET(request: NextRequest) {
   const client = await pool.connect();
 
   try {
-    // Check authentication
-    const cookieStore = await cookies();
-    const authCookie = cookieStore.get('qode-auth');
-
-    if (authCookie?.value !== '1') {
+    const payload = await getAuthPayload(request);
+    if (!payload) {
       return NextResponse.json(
         { error: 'Not authenticated' },
         { status: 401 }

@@ -9,8 +9,8 @@ export interface ClientData {
 // Check if user is authenticated
 export async function isAuthenticated(): Promise<boolean> {
   const cookieStore = await cookies()
-  const authCookie = cookieStore.get("qode-auth")
-  return authCookie?.value === "1"
+  const accessTokenCookie = cookieStore.get("qode-access-token")
+  return !!accessTokenCookie?.value
 }
 
 // Get all client data from cookies
@@ -59,6 +59,7 @@ export async function getClientIdByCode(clientcode: string): Promise<string | nu
 // Logout function - clear all auth cookies
 export async function logout() {
   const cookieStore = await cookies()
-  cookieStore.delete("qode-auth")
+  cookieStore.delete("qode-access-token")
+  cookieStore.delete("qode-refresh-token")
   cookieStore.delete("qode-clients")
 }

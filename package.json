@@ -82,7 +82,8 @@
     "vaul": "^0.9.9",
     "vue": "latest",
     "vue-router": "latest",
-    "zod": "3.25.67"
+    "zod": "3.25.67",
+    "axios": "^1.7.9"
   },
   "devDependencies": {
     "@capacitor/cli": "^7.4.4",

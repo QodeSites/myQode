@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Eye, EyeOff, X, ArrowLeft, Mail, Lock, Shield, Zap } from 'lucide-react'
 import { useClient } from '@/contexts/ClientContext'
+import { apiClient } from '@/lib/api-client'
 
 type LoginStep = 'username' | 'password' | 'otp-verification' | 'password-setup' | 'dev-bypass'
 
@@ -111,11 +112,8 @@ export default function LoginPage() {
 
       await refresh()
 
-      // Fetch client data to determine client type
-      const clientDataResponse = await fetch('/api/auth/client-data', {
-        credentials: 'include',
-      })
-      const clientData = await clientDataResponse.json()
+      // Fetch client data to determine client type (uses apiClient for 401 → refresh retry)
+      const { data: clientData } = await apiClient.get('/api/auth/client-data')
 
       if (clientData.success && clientData.clients && clientData.clients.length > 0) {
         const clientType = clientData.clients[0].clienttype
@@ -126,7 +124,6 @@ export default function LoginPage() {
           window.location.href = '/portfolio/performance'
         }
       } else {
-        // Fallback to portfolio/performance if we can't determine
         window.location.href = '/portfolio/performance'
       }
     } catch (err) {
@@ -249,11 +246,7 @@ export default function LoginPage() {
 
       await refresh()
 
-      // Fetch client data to determine client type
-      const clientDataResponse = await fetch('/api/auth/client-data', {
-        credentials: 'include',
-      })
-      const clientData = await clientDataResponse.json()
+      const { data: clientData } = await apiClient.get('/api/auth/client-data')
 
       if (clientData.success && clientData.clients && clientData.clients.length > 0) {
         const clientType = clientData.clients[0].clienttype
@@ -264,7 +257,6 @@ export default function LoginPage() {
           window.location.href = '/portfolio/performance'
         }
       } else {
-        // Fallback to portfolio/performance if we can't determine
         window.location.href = '/portfolio/performance'
       }
     } catch (err) {
@@ -314,11 +306,7 @@ export default function LoginPage() {
 
       await refresh()
 
-      // Fetch client data to determine client type
-      const clientDataResponse = await fetch('/api/auth/client-data', {
-        credentials: 'include',
-      })
-      const clientData = await clientDataResponse.json()
+      const { data: clientData } = await apiClient.get('/api/auth/client-data')
 
       if (clientData.success && clientData.clients && clientData.clients.length > 0) {
         const clientType = clientData.clients[0].clienttype
@@ -329,7 +317,6 @@ export default function LoginPage() {
           window.location.href = '/portfolio/performance'
         }
       } else {
-        // Fallback to portfolio/performance if we can't determine
         window.location.href = '/portfolio/performance'
       }
     } catch (err) {

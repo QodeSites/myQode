@@ -32,14 +32,6 @@ export async function GET(request: NextRequest) {
 
     const cookieStore = await cookies();
     
-    // Set authentication cookies (same as regular login)
-    cookieStore.set('qode-auth', '1', {
-      httpOnly: true,
-      sameSite: 'lax',
-      path: '/',
-      maxAge: 60 * 60 * 24 // 24 hours
-    });
-    
     cookieStore.set('qode-clients', JSON.stringify(tokenData.clientData), {
       httpOnly: true,
       sameSite: 'lax',

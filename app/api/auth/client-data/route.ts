@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
+import { getAuthPayload } from '@/lib/auth-api';
 
 interface UserContext {
   clientid: string;
@@ -10,15 +11,16 @@ interface UserContext {
   head_of_family: boolean;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    const cookieStore = await cookies();
-    const authCookie = cookieStore.get('qode-auth');
-    const userContextCookie = cookieStore.get('qode-user-context');
-    const headOfFamilyCookie = cookieStore.get('qode-head-of-family');
-    if (authCookie?.value !== '1') {
+    const payload = await getAuthPayload(request);
+    if (!payload) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
+
+    const cookieStore = await cookies();
+    const userContextCookie = cookieStore.get('qode-user-context');
+    const headOfFamilyCookie = cookieStore.get('qode-head-of-family');
 
     let userContext: UserContext | null = null;
     let isHeadOfFamily = false;

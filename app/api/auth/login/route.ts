@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { cookies } from 'next/headers'
 import bcrypt from 'bcryptjs'
+import axios, { AxiosError } from 'axios'
 
 interface ClientData {
   clientid: string;
@@ -14,6 +15,14 @@ interface ExtendedClientData {
   email: string;
   groupid: string;
   head_of_family: boolean;
+}
+
+interface AuthServiceTokenResponse {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_in?: number;
+  user?: Record<string, any>;
 }
 
 export async function POST(request: NextRequest) {
@@ -76,25 +85,59 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const apiRes = await fetch(
-      `${process.env.API_AUTH_URL}/auth/login/`,
-      {
-        method: "POST",
-        headers: new Headers({
-          "Content-Type": "application/json",
-          "X-Client-Type": request.headers.get("x-client-type") || "",
-          "X-Client-Id": request.headers.get("x-client-id") || "",
-        }),
-        body: JSON.stringify({ email: username, password }),
-      }
-    );
+    const clientIdFromHeader =
+      request.headers.get('x-client-id') ||
+      request.headers.get('X-Client-Id') ||
+      ''
 
-    const apiJson = await apiRes.json();
+    const resolvedClientId =
+      clientIdFromHeader ||
+      process.env.EXPO_PUBLIC_X_CLIENT_ID ||
+      process.env.EXPO_PUBLIC_X_BACKEND_CLIENT_ID ||
+      ''
 
-    if (!apiJson.success) {
+    if (!process.env.API_AUTH_URL || !resolvedClientId) {
       return NextResponse.json(
-        { error: 'Invalid credentials' },
-        { status: 401 }
+        { error: 'Auth service configuration missing' },
+        { status: 500 }
+      )
+    }
+
+    let authTokens: AuthServiceTokenResponse
+
+    try {
+      const apiRes = await axios.post<AuthServiceTokenResponse>(
+        `${process.env.API_AUTH_URL}/auth/login/`,
+        {
+          email: username,
+          password,
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-client-id': resolvedClientId,
+          },
+        }
+      )
+      authTokens = apiRes.data
+    } catch (err) {
+      const error = err as AxiosError<any>
+      const status = error.response?.status
+      const detail =
+        (error.response?.data as any)?.detail ||
+        (error.response?.data as any)?.error
+
+      if (status === 400 || status === 401) {
+        return NextResponse.json(
+          { error: detail || 'Invalid credentials' },
+          { status: 401 }
+        )
+      }
+
+      console.error('Auth service login error:', error.toJSON?.() || error)
+      return NextResponse.json(
+        { error: 'Authentication service unavailable' },
+        { status: 502 }
       )
     }
 
@@ -106,7 +149,30 @@ export async function POST(request: NextRequest) {
       [user.clientcode]
     )
 
-    // Set session cookies with head of family information
+    // Set JWT cookies from auth service
+    const cookieStore = await cookies()
+    const accessTokenMaxAge =
+      (authTokens.expires_in && Number.isFinite(authTokens.expires_in)
+        ? authTokens.expires_in
+        : 60 * 60) // default 1 hour
+
+    cookieStore.set('qode-access-token', authTokens.access_token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: accessTokenMaxAge,
+    })
+
+    cookieStore.set('qode-refresh-token', authTokens.refresh_token, {
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/',
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 60 * 60 * 24 * 7, // 7 days
+    })
+
+    // Set session cookies with head of family information (client mapping)
     await setSessionCookies(user)
 
     // Get associated client records for response based on head of family status
@@ -137,7 +203,13 @@ export async function POST(request: NextRequest) {
       message: 'Login successful',
       clients: clientData,
       isHeadOfFamily: user.head_of_family,
-      auth_data : apiRes
+      tokens: {
+        access_token: authTokens.access_token,
+        refresh_token: authTokens.refresh_token,
+        token_type: authTokens.token_type,
+        expires_in: authTokens.expires_in,
+      },
+      user: authTokens.user,
     })
 
   } catch (error) {

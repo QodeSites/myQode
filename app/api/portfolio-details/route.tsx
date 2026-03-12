@@ -1,9 +1,14 @@
 // app/api/portfolio-value/route.ts
 import pool from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
+import { getAuthPayload } from "@/lib/auth-api";
 
 export async function GET(request: NextRequest) {
   try {
+    const payload = await getAuthPayload(request);
+    if (!payload) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
     const { searchParams } = new URL(request.url);
     const nuvama_code = searchParams.get('nuvama_code');
     
@@ -66,6 +71,10 @@ export async function GET(request: NextRequest) {
 // Alternative endpoint to get portfolio values for multiple nuvama_codes
 export async function POST(request: NextRequest) {
   try {
+    const payload = await getAuthPayload(request);
+    if (!payload) {
+      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    }
     const { nuvama_codes } = await request.json();
     
     if (!Array.isArray(nuvama_codes) || nuvama_codes.length === 0) {

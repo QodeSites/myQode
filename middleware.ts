@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { verifyJWT } from './lib/jwt';
 
 function isAppClient(request: NextRequest) {
-  console.log(request.headers,"=========headers")
   const ua = request.headers.get('user-agent') || '';
   return (
     ua.includes('ReactNative') ||
@@ -13,72 +12,43 @@ function isAppClient(request: NextRequest) {
 
 export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
-  console.log(pathname,"==============pathname in middle ware")
 
-   // FIX: Do not NextResponse.next() if path has 'client-data'
-   if (
-    pathname === '/admin/login' ||
-    pathname.startsWith('/api/auth/')
-  ) {
-    // If it is exactly the client-data API, do not allow
-    if (pathname.includes('client-data')) {
-      // fall through and require auth
-    } else {
-      console.log("====++++++++++")
+  // Public: admin login and auth APIs (except client-data) — no auth required
+  if (pathname === '/admin/login') {
+    return NextResponse.next();
+  }
+  if (pathname.startsWith('/api/auth/') && !pathname.includes('client-data')) {
+    return NextResponse.next();
+  }
+
+  // /api/auth/client-data → require investor auth (JWT cookie), not admin session
+  if (pathname.includes('client-data')) {
+    const accessToken = request.cookies.get('qode-access-token')?.value;
+    if (accessToken) {
       return NextResponse.next();
     }
-   }
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+  }
 
-  // if (!pathname.startsWith('/admin')) {
-  //   return NextResponse.next();
-  // }
-  console.log("=00000======")
-
+  // /admin/* (other than login) → require admin session
   const isApp = isAppClient(request);
-  console.log(isApp,"=======")
 
   try {
-    // 📱 APP → JWT via Authorization header
     if (isApp) {
       const authHeader = request.headers.get('authorization');
       const token = authHeader?.replace('Bearer ', '');
-
       if (!token) throw new Error('Missing token');
-      console.log(token,"================token")
-
-      const payload = await verifyJWT(token);
-      console.log(payload,"=======payload")
-
-      console.log('📱 App authenticated', {
-        user: payload.sub,
-        appId: payload.app_id,
-      });
-
+      await verifyJWT(token);
       return NextResponse.next();
     }
 
-    // 🌐 WEB → Cookie-based session
     const sessionId = request.cookies.get('admin-session')?.value;
-
-    if (!sessionId) {
-      throw new Error('Missing session');
-    }
-
-    console.log('🌐 Web authenticated via cookie');
-
+    if (!sessionId) throw new Error('Missing session');
     return NextResponse.next();
   } catch (err) {
-    console.error('❌ Auth failed:', err);
-
-    // App → 401 JSON
     if (isApp) {
-      return NextResponse.json(
-        { message: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
-
-    // Web → redirect
     const loginUrl = new URL('/admin/login', request.url);
     loginUrl.searchParams.set('redirect', pathname);
     return NextResponse.redirect(loginUrl);
