@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import crypto from 'crypto'
-import bcrypt from 'bcryptjs'
+import axios, { AxiosError } from 'axios'
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,7 +12,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Token and newPassword are required' }, { status: 400 })
     }
 
-    // Password validation (matching your login mechanism)
     if (newPassword.length < 8) {
       return NextResponse.json({ error: 'Password must be at least 8 characters long' }, { status: 400 })
     }
@@ -38,7 +37,6 @@ export async function POST(req: NextRequest) {
 
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex')
 
-    // Find a valid token
     const tokRes = await query(
       `SELECT email, expires_at, used
          FROM password_reset_tokens
@@ -66,40 +64,49 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Token expired' }, { status: 400 })
     }
 
-    // Hash password with bcrypt (matching your login mechanism - 12 salt rounds)
-    const hashedPassword = await bcrypt.hash(newPassword, 12)
+    const normalizedEmail = String(email).trim().toLowerCase()
+    const resolvedClientId =
+      req.headers.get('x-client-id') ||
+      req.headers.get('X-Client-Id') ||
+      process.env.EXPO_PUBLIC_X_CLIENT_ID ||
+      process.env.EXPO_PUBLIC_X_BACKEND_CLIENT_ID ||
+      ''
 
-    // Update user password
-    const upd = await query(
-      `UPDATE pms_clients_master
-          SET password = $1
-        WHERE email = $2`,
-      [hashedPassword, email]
-    )
-
-    if ((upd as any).rowCount === 0) {
-      // No user? Mark token used anyway to avoid token reuse
-      await query(
-        `UPDATE password_reset_tokens SET used = TRUE WHERE token_hash = $1`,
-        [tokenHash]
-      )
-      return NextResponse.json({ error: 'No user found for token' }, { status: 400 })
+    if (!process.env.API_AUTH_URL || !resolvedClientId) {
+      return NextResponse.json({ error: 'Auth service not configured' }, { status: 500 })
     }
 
-    // Invalidate this token
+    try {
+      await axios.post(
+        `${process.env.API_AUTH_URL}/auth/set-password/`,
+        { email: normalizedEmail, new_password: newPassword },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-client-id': resolvedClientId,
+          },
+        }
+      )
+    } catch (err) {
+      const axiosErr = err as AxiosError<{ detail?: string }>
+      if (axiosErr.response?.status === 400) {
+        return NextResponse.json(
+          { error: axiosErr.response?.data?.detail || 'Failed to reset password' },
+          { status: 400 }
+        )
+      }
+      console.error('Auth set-password error:', axiosErr.message)
+      return NextResponse.json({ error: 'Failed to reset password' }, { status: 502 })
+    }
+
     await query(
-      `UPDATE password_reset_tokens
-          SET used = TRUE
-        WHERE token_hash = $1`,
+      `UPDATE password_reset_tokens SET used = TRUE WHERE token_hash = $1`,
       [tokenHash]
     )
 
-    // Invalidate all other outstanding tokens for this email
     await query(
-      `UPDATE password_reset_tokens
-          SET used = TRUE
-        WHERE email = $1 AND used = FALSE`,
-      [email]
+      `UPDATE password_reset_tokens SET used = TRUE WHERE email = $1 AND used = FALSE`,
+      [normalizedEmail]
     )
 
     return NextResponse.json({ success: true, message: 'Password has been reset successfully' })

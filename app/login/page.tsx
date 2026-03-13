@@ -28,6 +28,10 @@ export default function LoginPage() {
   // Forgot password modal state
   const [fpOpen, setFpOpen] = useState(false)
   const [fpEmail, setFpEmail] = useState('')
+  const [fpStep, setFpStep] = useState<'email' | 'otp' | 'new-password'>('email')
+  const [fpOtp, setFpOtp] = useState('')
+  const [fpNewPassword, setFpNewPassword] = useState('')
+  const [fpConfirmPassword, setFpConfirmPassword] = useState('')
   const [fpSending, setFpSending] = useState(false)
   const [fpMsg, setFpMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
@@ -179,23 +183,14 @@ export default function LoginPage() {
     setError('')
 
     try {
-      const response = await fetch('/api/auth/login', {
+      const response = await fetch('/api/auth/verify-setup-otp', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          action: 'verify-setup-otp', 
-          username: userEmail, 
-          otp: otp.trim() 
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: userEmail.trim().toLowerCase(), otp: otp.trim() }),
       })
-
       const data = await response.json()
 
-      if (!response.ok) {
-        throw new Error(data.error || 'Invalid verification code')
-      }
+      if (!response.ok) throw new Error(data.error || 'Invalid verification code')
 
       setCurrentStep('password-setup')
     } catch (err) {
@@ -346,7 +341,7 @@ export default function LoginPage() {
     }
   }
 
-  const handleForgotSubmit = async (e: React.FormEvent) => {
+  const handleForgotSendLink = async (e: React.FormEvent) => {
     e.preventDefault()
     setFpMsg(null)
     setFpSending(true)
@@ -354,31 +349,83 @@ export default function LoginPage() {
       const resp = await fetch('/api/auth/forgot', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: fpEmail.trim() }),
+        body: JSON.stringify({ email: fpEmail.trim().toLowerCase() }),
       })
       const data = await resp.json()
-
-      if (!resp.ok) {
-        throw new Error(data.error || 'Could not send reset email')
-      }
-
-      setFpMsg({
-        type: 'success',
-        text: 'If that email exists, a reset link has been sent. Be sure to check your email',
-      })
-
-      setTimeout(() => {
-        closeForgot()
-      }, 2000)
-      
+      if (!resp.ok) throw new Error(data.error || 'Could not send reset email')
+      setFpMsg({ type: 'success', text: 'If that email exists, a reset link has been sent. Check your email.' })
+      setTimeout(() => closeForgot(), 2000)
     } catch (err) {
-      setFpMsg({
-        type: 'error',
-        text:
-          err instanceof Error
-            ? err.message
-            : 'Something went wrong. Please try again.',
+      setFpMsg({ type: 'error', text: err instanceof Error ? err.message : 'Something went wrong.' })
+    } finally {
+      setFpSending(false)
+    }
+  }
+
+  const handleForgotSendOtp = async () => {
+    if (!fpEmail.trim()) return
+    setFpMsg(null)
+    setFpSending(true)
+    try {
+      const resp = await fetch('/api/auth/send-forgot-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: fpEmail.trim().toLowerCase() }),
       })
+      const data = await resp.json()
+      if (!resp.ok) throw new Error(data.error || 'Failed to send code')
+      setFpStep('otp')
+      setFpMsg({ type: 'success', text: 'Verification code sent to your email.' })
+    } catch (err) {
+      setFpMsg({ type: 'error', text: err instanceof Error ? err.message : 'Failed to send code.' })
+    } finally {
+      setFpSending(false)
+    }
+  }
+
+  const handleForgotVerifyOtp = async () => {
+    if (!fpOtp.trim() || fpOtp.length !== 6) return
+    setFpMsg(null)
+    setFpSending(true)
+    try {
+      const resp = await fetch('/api/auth/verify-setup-otp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: fpEmail.trim().toLowerCase(), otp: fpOtp.trim() }),
+      })
+      const data = await resp.json()
+      if (!resp.ok) throw new Error(data.error || 'Invalid code')
+      setFpStep('new-password')
+      setFpMsg(null)
+    } catch (err) {
+      setFpMsg({ type: 'error', text: err instanceof Error ? err.message : 'Verification failed.' })
+    } finally {
+      setFpSending(false)
+    }
+  }
+
+  const handleForgotNewPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!fpNewPassword || !fpConfirmPassword || fpNewPassword !== fpConfirmPassword) return
+    setFpMsg(null)
+    setFpSending(true)
+    try {
+      const resp = await fetch('/api/auth/complete-otp-setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: fpEmail.trim().toLowerCase(),
+          otp: fpOtp.trim(),
+          newPassword: fpNewPassword,
+          confirmPassword: fpConfirmPassword,
+        }),
+      })
+      const data = await resp.json()
+      if (!resp.ok) throw new Error(data.error || 'Failed to update password')
+      setFpMsg({ type: 'success', text: 'Password updated. You can now sign in.' })
+      setTimeout(() => closeForgot(), 2000)
+    } catch (err) {
+      setFpMsg({ type: 'error', text: err instanceof Error ? err.message : 'Failed to update password.' })
     } finally {
       setFpSending(false)
     }
@@ -388,6 +435,10 @@ export default function LoginPage() {
     setFpOpen(false)
     setFpMsg(null)
     setFpEmail('')
+    setFpStep('email')
+    setFpOtp('')
+    setFpNewPassword('')
+    setFpConfirmPassword('')
   }
 
   const getStepTitle = () => {
@@ -837,67 +888,130 @@ export default function LoginPage() {
               </button>
             </div>
 
-            <p className="text-sm text-muted-foreground mb-4">
-              Enter your account email. If it exists, we&apos;ll send a reset link.
-            </p>
-
-            {fpMsg && (
-              <div
-                className={`mb-3 rounded-md px-3 py-2 text-sm ${
-                  fpMsg.type === 'success'
-                    ? 'bg-emerald-50 text-emerald-700'
-                    : 'bg-red-50 text-red-600'
-                }`}
-              >
-                {fpMsg.text}
-              </div>
+            {fpStep === 'email' && (
+              <>
+                <p className="text-sm text-muted-foreground mb-4">
+                  Enter your account email. We can send a reset link or a verification code.
+                </p>
+                {fpMsg && (
+                  <div className={`mb-3 rounded-md px-3 py-2 text-sm ${fpMsg.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+                    {fpMsg.text}
+                  </div>
+                )}
+                <form onSubmit={handleForgotSendLink} className="space-y-3">
+                  <div className="grid gap-2">
+                    <label htmlFor="fp-email" className="text-sm font-medium">Email</label>
+                    <input
+                      id="fp-email"
+                      type="email"
+                      required
+                      value={fpEmail}
+                      onChange={(e) => setFpEmail(e.target.value.includes('@') ? e.target.value.toLowerCase() : e.target.value)}
+                      className="h-10 rounded-md border bg-background px-3 text-sm outline-none ring-0 focus:border-ring"
+                      placeholder="you@example.com"
+                      disabled={fpSending}
+                      autoComplete="email"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2 pt-1">
+                    <button
+                      type="submit"
+                      disabled={fpSending || !fpEmail.trim()}
+                      className="inline-flex h-10 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                    >
+                      {fpSending ? 'Sending…' : 'Send reset link to email'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleForgotSendOtp}
+                      disabled={fpSending || !fpEmail.trim()}
+                      className="inline-flex h-10 w-full items-center justify-center rounded-md border border-primary px-4 text-sm font-medium text-primary hover:bg-primary/5 disabled:opacity-50"
+                    >
+                      Send verification code (OTP) instead
+                    </button>
+                    <button type="button" onClick={closeForgot} className="text-sm text-muted-foreground hover:underline" disabled={fpSending}>
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              </>
+            )}
+            {fpStep === 'otp' && (
+              <>
+                <p className="text-sm text-muted-foreground mb-4">Enter the 6-digit code sent to {fpEmail}</p>
+                {fpMsg && (
+                  <div className={`mb-3 rounded-md px-3 py-2 text-sm ${fpMsg.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+                    {fpMsg.text}
+                  </div>
+                )}
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={fpOtp}
+                    onChange={(e) => setFpOtp(e.target.value.replace(/\D/g, ''))}
+                    className="h-10 w-full rounded-md border bg-background px-3 text-center text-lg tracking-widest outline-none ring-0 focus:border-ring"
+                    placeholder="000000"
+                    disabled={fpSending}
+                  />
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setFpStep('email')} className="flex-1 h-10 rounded-md border text-sm font-medium hover:bg-muted/40" disabled={fpSending}>Back</button>
+                    <button type="button" onClick={handleForgotVerifyOtp} disabled={fpSending || fpOtp.length !== 6} className="flex-1 h-10 rounded-md bg-primary px-4 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">
+                      {fpSending ? 'Verifying…' : 'Verify'}
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+            {fpStep === 'new-password' && (
+              <>
+                <p className="text-sm text-muted-foreground mb-4">Choose a new password.</p>
+                {fpMsg && (
+                  <div className={`mb-3 rounded-md px-3 py-2 text-sm ${fpMsg.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+                    {fpMsg.text}
+                  </div>
+                )}
+                <form onSubmit={handleForgotNewPassword} className="space-y-3">
+                  <div className="grid gap-2">
+                    <label className="text-sm font-medium">New password</label>
+                    <input
+                      type="password"
+                      value={fpNewPassword}
+                      onChange={(e) => setFpNewPassword(e.target.value)}
+                      className="h-10 rounded-md border bg-background px-3 text-sm outline-none ring-0 focus:border-ring"
+                      placeholder="At least 8 characters"
+                      disabled={fpSending}
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <label className="text-sm font-medium">Confirm password</label>
+                    <input
+                      type="password"
+                      value={fpConfirmPassword}
+                      onChange={(e) => setFpConfirmPassword(e.target.value)}
+                      className="h-10 rounded-md border bg-background px-3 text-sm outline-none ring-0 focus:border-ring"
+                      placeholder="Re-enter password"
+                      disabled={fpSending}
+                      autoComplete="new-password"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => setFpStep('otp')} className="flex-1 h-10 rounded-md border text-sm font-medium hover:bg-muted/40" disabled={fpSending}>Back</button>
+                    <button type="submit" disabled={fpSending || !fpNewPassword || !fpConfirmPassword || fpNewPassword !== fpConfirmPassword} className="flex-1 h-10 rounded-md bg-primary px-4 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">
+                      {fpSending ? 'Updating…' : 'Update password'}
+                    </button>
+                  </div>
+                </form>
+              </>
             )}
 
-            <form onSubmit={handleForgotSubmit} className="space-y-3">
-              <div className="grid gap-2">
-                <label htmlFor="fp-email" className="text-sm font-medium">Email</label>
-                <input
-                  id="fp-email"
-                  type="email"
-                  required
-                  value={fpEmail}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value.includes('@')) {
-                      setFpEmail(value.toLowerCase());
-                    } else {
-                      setFpEmail(value);
-                    }
-                  }}
-                  className="h-10 rounded-md border bg-background px-3 text-sm outline-none ring-0 focus:border-ring"
-                  placeholder="you@example.com"
-                  disabled={fpSending}
-                  autoComplete="email"
-                />
-              </div>
-
-              <div className="flex gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={closeForgot}
-                  className="inline-flex h-10 flex-1 items-center justify-center rounded-md border px-4 text-sm font-medium hover:bg-muted/40"
-                  disabled={fpSending}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={fpSending || !fpEmail.trim()}
-                  className="inline-flex h-10 flex-1 items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
-                >
-                  {fpSending ? 'Sending…' : 'Send reset link'}
-                </button>
-              </div>
-            </form>
-
-            <p className="mt-3 text-[11px] text-muted-foreground">
-              Tip: The email may take a minute. Also check your spam folder.
-            </p>
+            {fpStep === 'email' && (
+              <p className="mt-3 text-[11px] text-muted-foreground">
+                Tip: Check your spam folder. Reset link expires in 60 minutes; OTP in 10 minutes.
+              </p>
+            )}
           </div>
         </div>
       )}

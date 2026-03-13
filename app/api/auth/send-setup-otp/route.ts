@@ -6,20 +6,20 @@ import crypto from 'crypto';
 
 export async function POST(request: NextRequest) {
   try {
-    const { email } = await request.json();
-
-    if (!email) {
+    const rawEmail = (await request.json()).email;
+    if (!rawEmail || typeof rawEmail !== 'string') {
       return NextResponse.json(
         { error: 'Email address is required' },
         { status: 400 }
       );
     }
+    const email = rawEmail.trim().toLowerCase();
 
-    // Find client by email
+    // Find client by email (first-time setup: default password or pending onboarding)
     const result = await query(
       `SELECT clientid, clientcode, email, clientname, password, onboarding_status
        FROM pms_clients_master 
-       WHERE email = $1 
+       WHERE LOWER(TRIM(email)) = $1 
        AND (password = 'Qode@123' OR onboarding_status = 'pending')
        LIMIT 1`,
       [email]
@@ -38,12 +38,10 @@ export async function POST(request: NextRequest) {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
-    // Store OTP in database
     await query(
       `UPDATE pms_clients_master 
-       SET password_setup_token = $1, 
-           password_setup_expires = $2 
-       WHERE email = $3`,
+       SET password_setup_token = $1, password_setup_expires = $2 
+       WHERE LOWER(TRIM(email)) = $3`,
       [otp, otpExpires, email]
     );
 

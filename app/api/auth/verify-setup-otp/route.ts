@@ -4,20 +4,22 @@ import { query } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, otp } = await request.json();
+    const body = await request.json();
+    const rawEmail = body.email;
+    const otp = typeof body.otp === 'string' ? body.otp.trim() : '';
 
-    if (!email || !otp) {
+    if (!rawEmail || !otp) {
       return NextResponse.json(
         { error: 'Email and OTP are required' },
         { status: 400 }
       );
     }
+    const email = String(rawEmail).trim().toLowerCase();
 
-    // Verify OTP
     const result = await query(
       `SELECT clientid, clientcode, email, clientname, password_setup_token, password_setup_expires
        FROM pms_clients_master 
-       WHERE email = $1 
+       WHERE LOWER(TRIM(email)) = $1 
        AND password_setup_token = $2 
        AND password_setup_expires > NOW()`,
       [email, otp]

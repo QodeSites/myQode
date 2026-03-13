@@ -26,32 +26,29 @@ export async function POST(req: NextRequest) {
     if (!email || typeof email !== 'string') {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 })
     }
+    const normalizedEmail = email.trim().toLowerCase()
 
-    // Check if user exists (don't reveal result to client)
     const userRes = await query(
-      'SELECT email FROM pms_clients_master WHERE email = $1 LIMIT 1',
-      [email]
+      'SELECT email FROM pms_clients_master WHERE LOWER(TRIM(email)) = $1 LIMIT 1',
+      [normalizedEmail]
     )
 
-    // Always behave the same regardless of existence
-    // But only create a token if user exists
-    if (userRes.rows.length >= 0) {
+    // Only create token and send email if user exists (don't leak existence)
+    if (userRes.rows.length > 0) {
       const rawToken = crypto.randomBytes(32).toString('hex')
       const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex')
       const expiresAt = new Date(Date.now() + TOKEN_TTL_MIN * 60 * 1000)
 
       // Optionally invalidate previous tokens for this email
       await query(
-        `UPDATE password_reset_tokens
-           SET used = TRUE
-         WHERE email = $1 AND used = FALSE`,
-        [email]
+        `UPDATE password_reset_tokens SET used = TRUE WHERE email = $1 AND used = FALSE`,
+        [normalizedEmail]
       )
 
       await query(
         `INSERT INTO password_reset_tokens (email, token_hash, expires_at, used)
          VALUES ($1, $2, $3, FALSE)`,
-        [email, tokenHash, expiresAt.toISOString()]
+        [normalizedEmail, tokenHash, expiresAt.toISOString()]
       )
 
       const resetUrl = `${APP_URL}/reset-password?token=${rawToken}`
@@ -126,7 +123,7 @@ export async function POST(req: NextRequest) {
         if (resend) {
           await resend.emails.send({
             from: 'Qode Investor Relations <investor.relations@qodeinvest.com>',
-            to: email,
+            to: normalizedEmail,
             subject: 'Reset your password - Qode Invest',
             html: emailHtml,
           })

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { cookies } from 'next/headers'
-import bcrypt from 'bcryptjs'
 import axios, { AxiosError } from 'axios'
 
 interface ClientData {
@@ -42,7 +41,7 @@ export async function POST(request: NextRequest) {
 
     // Handle password setup completion
     if (action === 'complete-password-setup') {
-      return await handleCompletePasswordSetup(username, otp, newPassword, confirmPassword)
+      return await handleCompletePasswordSetup(request, username, otp, newPassword, confirmPassword)
     }
 
     // Handle sending OTP for password setup - redirect to separate API
@@ -538,12 +537,14 @@ async function handlePasswordStatusCheck(username: string) {
 
 async function handleVerifySetupOtp(email: string, otp: string) {
   try {
+    const normalizedEmail = String(email).trim().toLowerCase()
+    const trimmedOtp = String(otp).trim()
     const result = await query(
       `SELECT clientid FROM pms_clients_master 
-       WHERE email = $1 
+       WHERE LOWER(TRIM(email)) = $1 
        AND password_setup_token = $2 
        AND password_setup_expires > NOW()`,
-      [email, otp]
+      [normalizedEmail, trimmedOtp]
     )
 
     if (result.rows.length === 0) {
@@ -567,9 +568,17 @@ async function handleVerifySetupOtp(email: string, otp: string) {
   }
 }
 
-async function handleCompletePasswordSetup(email: string, otp: string, newPassword: string, confirmPassword: string) {
+async function handleCompletePasswordSetup(
+  request: NextRequest,
+  email: string,
+  otp: string,
+  newPassword: string,
+  confirmPassword: string
+) {
   try {
     const isDevelopment = process.env.NODE_ENV === 'development'
+    const normalizedEmail = String(email).trim().toLowerCase()
+    const trimmedOtp = String(otp).trim()
 
     if (!newPassword || !confirmPassword) {
       return NextResponse.json(
@@ -618,11 +627,11 @@ async function handleCompletePasswordSetup(email: string, otp: string, newPasswo
     const otpResult = await query(
       `SELECT email, groupid, clientid, clientcode, head_of_family 
        FROM pms_clients_master 
-       WHERE email = $1 
+       WHERE LOWER(TRIM(email)) = $1 
        AND password_setup_token = $2 
        AND password_setup_expires > NOW()
        LIMIT 1`,
-      [email, otp]
+      [normalizedEmail, trimmedOtp]
     )
 
     if (otpResult.rows.length === 0) {
@@ -635,25 +644,74 @@ async function handleCompletePasswordSetup(email: string, otp: string, newPasswo
     const userData = otpResult.rows[0]
     const { groupid } = userData
 
-    // Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 12)
+    const resolvedClientId =
+      request.headers.get('x-client-id') ||
+      request.headers.get('X-Client-Id') ||
+      process.env.EXPO_PUBLIC_X_CLIENT_ID ||
+      process.env.EXPO_PUBLIC_X_BACKEND_CLIENT_ID ||
+      ''
 
-    // Update password for all accounts with this email
+    if (process.env.API_AUTH_URL && resolvedClientId) {
+      try {
+        await axios.post(
+          `${process.env.API_AUTH_URL}/auth/set-password/`,
+          { email: normalizedEmail, new_password: newPassword },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'x-client-id': resolvedClientId,
+            },
+          }
+        )
+        const apiRes = await axios.post<AuthServiceTokenResponse>(
+          `${process.env.API_AUTH_URL}/auth/login/`,
+          { email: normalizedEmail, password: newPassword },
+          {
+            headers: {
+              'Content-Type': 'application/json',
+              'x-client-id': resolvedClientId,
+            },
+          }
+        )
+        const authTokens = apiRes.data
+        const cookieStore = await cookies()
+        const accessTokenMaxAge =
+          (authTokens.expires_in && Number.isFinite(authTokens.expires_in))
+            ? authTokens.expires_in
+            : 60 * 60
+
+        cookieStore.set('qode-access-token', authTokens.access_token, {
+          httpOnly: true,
+          sameSite: 'lax',
+          path: '/',
+          secure: process.env.NODE_ENV === 'production',
+          maxAge: accessTokenMaxAge,
+        })
+        cookieStore.set('qode-refresh-token', authTokens.refresh_token, {
+          httpOnly: true,
+          sameSite: 'lax',
+          path: '/',
+          secure: process.env.NODE_ENV === 'production',
+          maxAge: 60 * 60 * 24 * 7,
+        })
+      } catch (authErr) {
+        console.error('Auth service set-password or login after setup:', authErr)
+      }
+    }
+
     await query(
       `UPDATE pms_clients_master 
-       SET password = $1, 
-           password_set_at = NOW(),
+       SET password_set_at = NOW(),
            onboarding_status = 'completed',
            password_setup_token = NULL,
            password_setup_expires = NULL,
            login_attempts = 0,
            locked_until = NULL,
            first_login_at = COALESCE(first_login_at, NOW())
-       WHERE email = $2`,
-      [hashedPassword, email]
+       WHERE LOWER(TRIM(email)) = $1`,
+      [normalizedEmail]
     )
 
-    // Set session cookies with head of family information
     await setSessionCookies({
       clientid: userData.clientid,
       clientcode: userData.clientcode,
@@ -662,9 +720,7 @@ async function handleCompletePasswordSetup(email: string, otp: string, newPasswo
       head_of_family: userData.head_of_family
     })
 
-    // Get client data for response based on head of family status
     let clientResult;
-    
     if (userData.head_of_family) {
       clientResult = await query(
         'SELECT clientid, clientcode FROM pms_clients_master WHERE groupid = $1',
@@ -672,23 +728,21 @@ async function handleCompletePasswordSetup(email: string, otp: string, newPasswo
       )
     } else {
       clientResult = await query(
-        'SELECT clientid, clientcode FROM pms_clients_master WHERE email = $1',
-        [email]
+        'SELECT clientid, clientcode FROM pms_clients_master WHERE LOWER(TRIM(email)) = $1',
+        [normalizedEmail]
       )
     }
 
-    const clientData: ClientData[] = clientResult.rows.map(row => ({
+    const clientData: ClientData[] = clientResult.rows.map((row: any) => ({
       clientid: row.clientid,
       clientcode: row.clientcode
     }))
 
-    // Track this as a login (password setup completion = first real login)
     await query(
       `UPDATE pms_clients_master 
-       SET last_login_at = NOW(), 
-           login_count = COALESCE(login_count, 0) + 1
-       WHERE email = $1`,
-      [email]
+       SET last_login_at = NOW(), login_count = COALESCE(login_count, 0) + 1
+       WHERE LOWER(TRIM(email)) = $1`,
+      [normalizedEmail]
     )
 
     return NextResponse.json({

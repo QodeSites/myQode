@@ -1,18 +1,23 @@
 // app/api/auth/complete-otp-setup/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import bcrypt from 'bcryptjs';
+import axios, { AxiosError } from 'axios';
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, otp, newPassword, confirmPassword } = await request.json();
+    const body = await request.json();
+    const rawEmail = body.email;
+    const otp = typeof body.otp === 'string' ? body.otp.trim() : '';
+    const newPassword = body.newPassword;
+    const confirmPassword = body.confirmPassword;
 
-    if (!email || !otp || !newPassword || !confirmPassword) {
+    if (!rawEmail || !otp || !newPassword || !confirmPassword) {
       return NextResponse.json(
         { error: 'All fields are required' },
         { status: 400 }
       );
     }
+    const email = String(rawEmail).trim().toLowerCase();
 
     if (newPassword !== confirmPassword) {
       return NextResponse.json(
@@ -21,7 +26,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate password strength
     if (newPassword.length < 8) {
       return NextResponse.json(
         { error: 'Password must be at least 8 characters long' },
@@ -41,11 +45,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Verify OTP one more time
     const otpResult = await query(
       `SELECT clientid, clientcode, email
        FROM pms_clients_master 
-       WHERE email = $1 
+       WHERE LOWER(TRIM(email)) = $1 
        AND password_setup_token = $2 
        AND password_setup_expires > NOW()`,
       [email, otp]
@@ -58,7 +61,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Prevent using default password
     if (newPassword === 'Qode@123') {
       return NextResponse.json(
         { error: 'Please choose a different password than the default one' },
@@ -66,30 +68,65 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Hash new password
-    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    const resolvedClientId =
+      request.headers.get('x-client-id') ||
+      request.headers.get('X-Client-Id') ||
+      process.env.EXPO_PUBLIC_X_CLIENT_ID ||
+      process.env.EXPO_PUBLIC_X_BACKEND_CLIENT_ID ||
+      '';
 
-    // Update password for ALL accounts with this email address
-    const updateResult = await query(
+    if (!process.env.API_AUTH_URL || !resolvedClientId) {
+      return NextResponse.json(
+        { error: 'Auth service not configured' },
+        { status: 500 }
+      );
+    }
+
+    try {
+      await axios.post(
+        `${process.env.API_AUTH_URL}/auth/set-password/`,
+        { email, new_password: newPassword },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            'x-client-id': resolvedClientId,
+          },
+        }
+      );
+    } catch (err) {
+      const axiosErr = err as AxiosError<{ detail?: string }>;
+      const detail = axiosErr.response?.data?.detail;
+      const status = axiosErr.response?.status;
+      if (status === 400) {
+        return NextResponse.json(
+          { error: detail || 'Failed to set password' },
+          { status: 400 }
+        );
+      }
+      console.error('Auth set-password error:', axiosErr.message);
+      return NextResponse.json(
+        { error: 'Failed to set password' },
+        { status: 502 }
+      );
+    }
+
+    await query(
       `UPDATE pms_clients_master 
-       SET password = $1, 
-           password_set_at = NOW(),
+       SET password_set_at = NOW(),
            onboarding_status = 'completed',
            password_setup_token = NULL,
            password_setup_expires = NULL,
            login_attempts = 0,
            locked_until = NULL,
            first_login_at = COALESCE(first_login_at, NOW())
-       WHERE email = $2`,
-      [hashedPassword, email]
+       WHERE LOWER(TRIM(email)) = $1`,
+      [email]
     );
 
     return NextResponse.json({
       success: true,
       message: 'Password setup completed successfully',
-      accountsUpdated: updateResult.rowCount
     });
-
   } catch (error) {
     console.error('Complete OTP setup error:', error);
     return NextResponse.json(

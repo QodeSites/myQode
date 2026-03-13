@@ -22,8 +22,12 @@ export default function ResetPasswordPage() {
   }, [token])
 
   const pwValid = useMemo(() => {
-    // Simple policy: at least 8 chars; tweak as needed
-    return newPassword.length >= 8
+    if (newPassword.length < 8) return false
+    const hasUppercase = /[A-Z]/.test(newPassword)
+    const hasLowercase = /[a-z]/.test(newPassword)
+    const hasNumbers = /\d/.test(newPassword)
+    const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(newPassword)
+    return hasUppercase && hasLowercase && hasNumbers && hasSpecial
   }, [newPassword])
 
   const matchValid = useMemo(() => {
@@ -109,7 +113,7 @@ export default function ResetPasswordPage() {
                 {showPw ? <EyeOff size={20} /> : <Eye size={20} />}
               </button>
             </div>
-            <PasswordHints okLen={pwValid} />
+            <PasswordHints newPassword={newPassword} />
           </div>
 
           <div className="grid gap-2">
@@ -169,15 +173,28 @@ export default function ResetPasswordPage() {
   )
 }
 
-function PasswordHints({ okLen }: { okLen: boolean }) {
+function PasswordHints({ newPassword }: { newPassword: string }) {
+  const checks = {
+    length: newPassword.length >= 8,
+    uppercase: /[A-Z]/.test(newPassword),
+    lowercase: /[a-z]/.test(newPassword),
+    numbers: /\d/.test(newPassword),
+    special: /[!@#$%^&*(),.?":{}|<>]/.test(newPassword),
+  }
   return (
-    <div className="mt-1 text-xs">
-      <div className="flex items-center gap-2">
-        <span className={`inline-flex h-2 w-2 rounded-full ${okLen ? 'bg-emerald-500' : 'bg-red-500'}`} />
-        <span className={`${okLen ? 'text-emerald-600' : 'text-red-600'}`}>
-          At least 8 characters
-        </span>
-      </div>
+    <div className="mt-1 text-xs space-y-1">
+      {(['length', 'uppercase', 'lowercase', 'numbers', 'special'] as const).map((key) => (
+        <div key={key} className="flex items-center gap-2">
+          <span className={`inline-flex h-2 w-2 rounded-full ${checks[key] ? 'bg-emerald-500' : 'bg-red-500'}`} />
+          <span className={checks[key] ? 'text-emerald-600' : 'text-red-600'}>
+            {key === 'length' && 'At least 8 characters'}
+            {key === 'uppercase' && 'One uppercase letter'}
+            {key === 'lowercase' && 'One lowercase letter'}
+            {key === 'numbers' && 'One number'}
+            {key === 'special' && 'One special character'}
+          </span>
+        </div>
+      ))}
     </div>
   )
 }
