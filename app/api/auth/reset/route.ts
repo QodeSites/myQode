@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     const resolvedClientId =
       req.headers.get('x-client-id') ||
       req.headers.get('X-Client-Id') ||
-      process.env.EXPO_PUBLIC_X_CLIENT_ID ||
+      process.env.NEXT_PUBLIC_X_CLIENT_ID ||
       process.env.EXPO_PUBLIC_X_BACKEND_CLIENT_ID ||
       ''
 

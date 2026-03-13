@@ -2,11 +2,11 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Eye, EyeOff, X, ArrowLeft, Mail, Lock, Shield, Zap } from 'lucide-react'
+import { Eye, EyeOff, X, ArrowLeft, Mail, Lock, Shield } from 'lucide-react'
 import { useClient } from '@/contexts/ClientContext'
 import { apiClient } from '@/lib/api-client'
 
-type LoginStep = 'username' | 'password' | 'otp-verification' | 'password-setup' | 'dev-bypass'
+type LoginStep = 'username' | 'password' | 'otp-verification' | 'password-setup'
 
 export default function LoginPage() {
   const [username, setUsername] = useState('')
@@ -38,8 +38,6 @@ export default function LoginPage() {
   const router = useRouter()
   const { refresh ,selectedClientType, setSelectedClientType } = useClient()
 
-  // Check if in development
-  const isDevelopment = process.env.NODE_ENV === 'development'
   const checkPasswordStatus = async () => {
     if (!username.trim()) {
       setError('Please enter your email or Account ID')
@@ -83,72 +81,11 @@ export default function LoginPage() {
     }
   }
 
-  const devBypassLogin = async () => {
-    if (!userEmail.trim()) {
-      setError('Please enter an email address')
-      return
-    }
-
-    setIsLoading(true)
-    setError('')
-
-    try {
-      localStorage.removeItem('selectedClientCode')
-      localStorage.removeItem('selectedClientId')
-
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'dev-bypass-login',
-          username: userEmail.trim()
-        }),
-        credentials: 'include',
-      })
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Dev bypass login failed')
-      }
-
-      await refresh()
-
-      // Fetch client data to determine client type (uses apiClient for 401 → refresh retry)
-      const { data: clientData } = await apiClient.get('/api/auth/client-data')
-
-      if (clientData.success && clientData.clients && clientData.clients.length > 0) {
-        const clientType = clientData.clients[0].clienttype
-
-        if (clientType === "DISTRIBUTORS") {
-          window.location.href = '/distributor/fees-distribution'
-        } else {
-          window.location.href = '/portfolio/performance'
-        }
-      } else {
-        window.location.href = '/portfolio/performance'
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Dev bypass login failed')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
   const sendSetupOtp = async () => {
     setIsLoading(true)
     setError('')
 
     try {
-      // In development, skip OTP and go directly to password setup
-      if (isDevelopment) {
-        setOtp('000000')
-        setCurrentStep('password-setup')
-        return
-      }
-
       const response = await fetch('/api/auth/send-setup-otp', {
         method: 'POST',
         headers: {
@@ -264,14 +201,8 @@ export default function LoginPage() {
   const handleRegularLogin = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    // In dev mode, password is optional
-    if (!isDevelopment && (!username || !password)) {
+    if (!username || !password) {
       setError('Username and password are required')
-      return
-    }
-
-    if (!username) {
-      setError('Please enter your email or Account ID')
       return
     }
 
@@ -290,7 +221,7 @@ export default function LoginPage() {
         },
         body: JSON.stringify({
           username,
-          password: isDevelopment ? '' : password // Send empty password in dev mode
+          password
         }),
         credentials: 'include',
       })
@@ -335,9 +266,6 @@ export default function LoginPage() {
       setCurrentStep('otp-verification')
       setNewPassword('')
       setConfirmPassword('')
-    } else if (currentStep === 'dev-bypass') {
-      setCurrentStep('username')
-      setUserEmail('')
     }
   }
 
@@ -447,7 +375,6 @@ export default function LoginPage() {
       case 'password': return 'Enter Password'
       case 'otp-verification': return 'Email Verification'
       case 'password-setup': return 'Set Your Password'
-      case 'dev-bypass': return 'Dev Mode Login'
       default: return 'Welcome!'
     }
   }
@@ -458,7 +385,6 @@ export default function LoginPage() {
       case 'password': return <Lock className="w-5 h-5 text-primary" />
       case 'otp-verification': return <Shield className="w-5 h-5 text-primary" />
       case 'password-setup': return <Lock className="w-5 h-5 text-primary" />
-      case 'dev-bypass': return <Zap className="w-5 h-5 text-amber-500" />
       default: return <Mail className="w-5 h-5 text-primary" />
     }
   }
@@ -472,9 +398,7 @@ export default function LoginPage() {
     special: /[!@#$%^&*(),.?\":{}|<>]/.test(newPassword),
   }
 
-  const isPasswordValid = isDevelopment 
-    ? newPassword.length > 0 && confirmPassword.length > 0
-    : Object.values(passwordStrength).every(Boolean)
+  const isPasswordValid = Object.values(passwordStrength).every(Boolean)
 
   return (
     <main className="min-h-screen flex flex-col items-center bg-background justify-center gap-8">
@@ -507,18 +431,6 @@ export default function LoginPage() {
           {currentStep === 'otp-verification' && (
             <p className="text-sm text-muted-foreground text-center mt-2">
               We've sent a verification code to {userEmail}
-            </p>
-          )}
-
-          {isDevelopment && currentStep === 'password-setup' && (
-            <p className="text-xs bg-amber-50 text-amber-700 rounded px-2 py-1 mt-2 text-center">
-              Development mode: Password validation skipped
-            </p>
-          )}
-
-          {isDevelopment && currentStep === 'dev-bypass' && (
-            <p className="text-xs bg-amber-50 text-amber-700 rounded px-2 py-1 mt-2 text-center">
-              Development mode: Bypass any email
             </p>
           )}
         </div>
@@ -575,25 +487,9 @@ export default function LoginPage() {
                   disabled={isLoading}
                   className="inline-flex h-10 w-full items-center justify-center rounded-md px-4 text-sm md:text-lg font-semibold bg-primary text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-50"
                 >
-                  {isLoading ? 'Sending...' : isDevelopment ? 'Continue to Setup' : 'Send Verification Code'}
+                  {isLoading ? 'Sending...' : 'Send Verification Code'}
                 </button>
               </>
-            )}
-
-            {/* Dev Mode Bypass Button */}
-            {isDevelopment && !requirePasswordSetup && (
-              <button
-                onClick={() => {
-                  setCurrentStep('dev-bypass')
-                  setUserEmail('')
-                  setError('')
-                }}
-                disabled={isLoading}
-                className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md px-4 text-sm md:text-lg font-semibold bg-amber-100 text-amber-900 border border-amber-300 transition-colors hover:bg-amber-200 disabled:opacity-50"
-              >
-                <Zap className="w-4 h-4" />
-                Dev Mode: Bypass Login
-              </button>
             )}
           </div>
         )}
@@ -618,7 +514,6 @@ export default function LoginPage() {
               <div className="flex items-center justify-between">
                 <label htmlFor="password" className="text-sm text-muted-foreground">
                   Password
-                  {isDevelopment && <span className="text-xs text-amber-600 ml-2">(optional in dev)</span>}
                 </label>
               </div>
               <div className="relative">
@@ -626,11 +521,11 @@ export default function LoginPage() {
                   id="password"
                   name="password"
                   type={showPassword ? 'text' : 'password'}
-                  required={!isDevelopment}
+                  required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="h-10 rounded-md border w-full bg-background px-3 pr-10 text-sm outline-none ring-0 focus:border-ring"
-                  placeholder={isDevelopment ? "Leave blank in dev mode (optional)" : "Enter your password"}
+                  placeholder="Enter your password"
                   disabled={isLoading}
                   autoComplete="current-password"
                 />
@@ -655,14 +550,6 @@ export default function LoginPage() {
                 </button>
               </div>
             </div>
-
-            {isDevelopment && (
-              <div className="bg-amber-50 border border-amber-200 rounded-md p-2">
-                <p className="text-xs text-amber-700">
-                  <strong>Development Mode:</strong> Leave password blank to login to any account instantly
-                </p>
-              </div>
-            )}
 
             <button
               type="submit"
@@ -775,9 +662,7 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Only show password requirements in production */}
-            {!isDevelopment && (
-              <div className="text-xs text-muted-foreground">
+            <div className="text-xs text-muted-foreground">
                 Password must contain:
                 <ul className="mt-1 space-y-1 pl-4">
                   <li className="flex items-center gap-2">
@@ -801,60 +686,14 @@ export default function LoginPage() {
                     Special character
                   </li>
                 </ul>
-              </div>
-            )}
+            </div>
 
             <button
               onClick={completePasswordSetup}
-              disabled={isLoading || !newPassword || !confirmPassword || (!isDevelopment && !isPasswordValid)}
+              disabled={isLoading || !newPassword || !confirmPassword || !isPasswordValid}
               className="inline-flex h-10 w-full items-center justify-center rounded-md px-4 text-sm md:text-lg font-semibold bg-primary text-primary-foreground transition-colors hover:opacity-90 disabled:opacity-50"
             >
               {isLoading ? 'Setting Password...' : 'Complete Setup & Sign In'}
-            </button>
-          </div>
-        )}
-
-        {/* Dev Bypass Step */}
-        {currentStep === 'dev-bypass' && (
-          <div className="space-y-4">
-            <div className="bg-amber-50 border border-amber-200 rounded-md p-3 mb-2">
-              <p className="text-xs text-amber-700">
-                <strong>Development mode:</strong> Enter any email address to bypass authentication
-              </p>
-            </div>
-
-            <div className="grid gap-2">
-              <label htmlFor="dev-email" className="text-sm font-medium">
-                Email Address
-              </label>
-              <input
-                id="dev-email"
-                name="dev-email"
-                type="email"
-                value={userEmail}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  if (value.includes('@')) {
-                    setUserEmail(value.toLowerCase());
-                  } else {
-                    setUserEmail(value);
-                  }
-                }}
-                className="h-10 rounded-md border bg-background px-3 text-sm outline-none ring-0 focus:border-ring"
-                placeholder="any@example.com"
-                disabled={isLoading}
-                autoComplete="email"
-                onKeyPress={(e) => e.key === 'Enter' && devBypassLogin()}
-              />
-            </div>
-
-            <button
-              onClick={devBypassLogin}
-              disabled={isLoading || !userEmail.trim()}
-              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md px-4 text-sm md:text-lg font-semibold bg-amber-500 text-white transition-colors hover:bg-amber-600 disabled:opacity-50"
-            >
-              <Zap className="w-4 h-4" />
-              {isLoading ? 'Logging In...' : 'Login'}
             </button>
           </div>
         )}
