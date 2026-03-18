@@ -1,0 +1,967 @@
+{
+  "info": {
+    "name": "Qode Mobile API",
+    "description": "All mobile API endpoints for the Qode PMS investor app.\n\n## Setup\n1. Run the **Login** request first\n2. The `token` is automatically saved to the `jwt_token` collection variable\n3. All subsequent requests use that token automatically via the collection-level Authorization header\n\n## Variables\n- `base_url` — change to your production URL when deploying\n- `jwt_token` — auto-set after Login\n- `account_id` — set to your account code (e.g. QFH0008)",
+    "_postman_id": "qode-mobile-api-v1",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://f2lxldmp-2069.inc1.devtunnels.ms",
+      "type": "string"
+    },
+    {
+      "key": "jwt_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "account_id",
+      "value": "QFH0008",
+      "type": "string"
+    },
+    {
+      "key": "order_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{jwt_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.token) {",
+                  "  pm.collectionVariables.set('jwt_token', res.token);",
+                  "  console.log('✅ Token saved. accountCodes:', res.user?.accountCodes);",
+                  "  if (res.user?.accountCodes?.[0]) {",
+                  "    pm.collectionVariables.set('account_id', res.user.accountCodes[0]);",
+                  "    console.log('✅ account_id set to:', res.user.accountCodes[0]);",
+                  "  }",
+                  "} else {",
+                  "  console.error('❌ Login failed:', res);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"your@email.com\",\n  \"password\": \"yourpassword\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/mobile/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Authenticates an investor and returns a 30-day JWT.\n\nThe test script automatically saves the token to `jwt_token` and sets `account_id` to the first account code."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Portfolio",
+      "item": [
+        {
+          "name": "Performance",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mobile/portfolio/performance?accountId={{account_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "portfolio",
+                "performance"
+              ],
+              "query": [
+                {
+                  "key": "accountId",
+                  "value": "{{account_id}}",
+                  "description": "Account code (e.g. QFH0008). Omit to use first account from JWT."
+                }
+              ]
+            },
+            "description": "Returns consolidated performance summary for the home screen.\n\nIncludes amount invested, current value, total returns, inception date, data-as-of date, and trailing returns for both the portfolio and Nifty 50 benchmark.\n\nTrailing return periods: w1, d10, m1, m3, m6, y1, y3, currentDD, maxDD, sinceInception"
+          }
+        },
+        {
+          "name": "NAV Chart",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mobile/portfolio/nav?accountId={{account_id}}&period=1Y",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "portfolio",
+                "nav"
+              ],
+              "query": [
+                {
+                  "key": "accountId",
+                  "value": "{{account_id}}",
+                  "description": "Account code"
+                },
+                {
+                  "key": "period",
+                  "value": "1Y",
+                  "description": "1W | 1M | 3M | 6M | 1Y | 3Y | ALL"
+                }
+              ]
+            },
+            "description": "Returns rebased NAV series (portfolio starts at 100) for charting.\n\nPeriod options: 1W, 1M, 3M, 6M, 1Y, 3Y, ALL\n\nResponse includes minValue and maxValue for Y-axis scaling."
+          }
+        },
+        {
+          "name": "NAV Chart - 6M",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mobile/portfolio/nav?accountId={{account_id}}&period=6M",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "portfolio",
+                "nav"
+              ],
+              "query": [
+                {
+                  "key": "accountId",
+                  "value": "{{account_id}}"
+                },
+                {
+                  "key": "period",
+                  "value": "6M"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "NAV Chart - ALL",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mobile/portfolio/nav?accountId={{account_id}}&period=ALL",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "portfolio",
+                "nav"
+              ],
+              "query": [
+                {
+                  "key": "accountId",
+                  "value": "{{account_id}}"
+                },
+                {
+                  "key": "period",
+                  "value": "ALL"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Drawdown Chart",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mobile/portfolio/drawdown?accountId={{account_id}}&period=1Y",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "portfolio",
+                "drawdown"
+              ],
+              "query": [
+                {
+                  "key": "accountId",
+                  "value": "{{account_id}}",
+                  "description": "Account code"
+                },
+                {
+                  "key": "period",
+                  "value": "1Y",
+                  "description": "1W | 1M | 3M | 6M | 1Y | 3Y | ALL"
+                }
+              ]
+            },
+            "description": "Returns drawdown % series for charting. All values are ≤ 0. 0.0 means at or above the high-water mark."
+          }
+        },
+        {
+          "name": "Drawdown Chart - ALL",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mobile/portfolio/drawdown?accountId={{account_id}}&period=ALL",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "portfolio",
+                "drawdown"
+              ],
+              "query": [
+                {
+                  "key": "accountId",
+                  "value": "{{account_id}}"
+                },
+                {
+                  "key": "period",
+                  "value": "ALL"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Quarterly P&L",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mobile/portfolio/quarterly-pl?accountId={{account_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "portfolio",
+                "quarterly-pl"
+              ],
+              "query": [
+                {
+                  "key": "accountId",
+                  "value": "{{account_id}}",
+                  "description": "Account code"
+                }
+              ]
+            },
+            "description": "Returns quarterly P&L bucketed by year × quarter.\n\nResponse has two arrays:\n- percentData: quarter returns in %\n- rupeeData: quarter returns in ₹\n\nNull values mean the account did not exist in that quarter."
+          }
+        },
+        {
+          "name": "Monthly P&L",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mobile/portfolio/monthly-pl?accountId={{account_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "portfolio",
+                "monthly-pl"
+              ],
+              "query": [
+                {
+                  "key": "accountId",
+                  "value": "{{account_id}}",
+                  "description": "Account code"
+                }
+              ]
+            },
+            "description": "Returns monthly P&L bucketed by year × month (jan–dec).\n\nResponse has two arrays:\n- percentData: monthly returns in %\n- rupeeData: monthly returns in ₹\n\nNull values mean the account did not exist in that month."
+          }
+        },
+        {
+          "name": "Cashflow",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mobile/portfolio/cashflow?accountId={{account_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "portfolio",
+                "cashflow"
+              ],
+              "query": [
+                {
+                  "key": "accountId",
+                  "value": "{{account_id}}",
+                  "description": "Account code"
+                }
+              ]
+            },
+            "description": "Returns all cash inflow/outflow transactions with formatted ₹ amounts and a running total."
+          }
+        },
+        {
+          "name": "Snapshot (All Accounts)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mobile/portfolio/snapshot",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "portfolio",
+                "snapshot"
+              ]
+            },
+            "description": "Returns the full owner profile with all linked accounts and their latest portfolio values.\n\nNo accountId needed — data is derived from the JWT. Returns strategyName, strategyColor, and strategyPrefix for each account."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Services",
+      "item": [
+        {
+          "name": "Payment Transactions",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mobile/services/transactions?accountId={{account_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "services",
+                "transactions"
+              ],
+              "query": [
+                {
+                  "key": "accountId",
+                  "value": "{{account_id}}",
+                  "description": "Account code"
+                }
+              ]
+            },
+            "description": "Returns all Cashfree payment transactions (one-time and SIP) for the account.\n\nStatus values: PAID | EXPIRED | PENDING | PROCESSING\nType values: ONE_TIME | SIP"
+          }
+        },
+        {
+          "name": "Bank Details",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mobile/services/bank-details",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "services",
+                "bank-details"
+              ]
+            },
+            "description": "Returns Qode Advisors LLP bank details for fund transfers.\n\nIncludes a pre-formatted copyText string ready for clipboard copy."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Documents",
+      "item": [
+        {
+          "name": "List Categories",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mobile/documents/list?accountId={{account_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "documents",
+                "list"
+              ],
+              "query": [
+                {
+                  "key": "accountId",
+                  "value": "{{account_id}}",
+                  "description": "Account code"
+                }
+              ]
+            },
+            "description": "Returns document categories with file counts from S3.\n\nCategory IDs: pms-agreement | account-opening | cml | disclosures"
+          }
+        },
+        {
+          "name": "Files - PMS Agreement",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mobile/documents/files/pms-agreement?accountId={{account_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "documents",
+                "files",
+                "pms-agreement"
+              ],
+              "query": [
+                {
+                  "key": "accountId",
+                  "value": "{{account_id}}"
+                }
+              ]
+            },
+            "description": "Returns signed S3 URLs for PMS Agreement documents.\n\nSigned URLs expire in 5 minutes — do not cache them."
+          }
+        },
+        {
+          "name": "Files - Account Opening",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mobile/documents/files/account-opening?accountId={{account_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "documents",
+                "files",
+                "account-opening"
+              ],
+              "query": [
+                {
+                  "key": "accountId",
+                  "value": "{{account_id}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Files - CML",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mobile/documents/files/cml?accountId={{account_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "documents",
+                "files",
+                "cml"
+              ],
+              "query": [
+                {
+                  "key": "accountId",
+                  "value": "{{account_id}}"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Files - Disclosures",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mobile/documents/files/disclosures?accountId={{account_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "documents",
+                "files",
+                "disclosures"
+              ],
+              "query": [
+                {
+                  "key": "accountId",
+                  "value": "{{account_id}}"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payments",
+      "item": [
+        {
+          "name": "Create Order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const res = pm.response.json();",
+                  "if (res.orderId) {",
+                  "  pm.collectionVariables.set(\"order_id\", res.orderId);",
+                  "  console.log(\"✅ order_id saved:\", res.orderId);",
+                  "  console.log(\"   paymentSessionId:\", res.paymentSessionId);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 50000,\n  \"accountId\": \"{{account_id}}\",\n  \"orderType\": \"ONE_TIME\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/mobile/payments/create-order",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "payments",
+                "create-order"
+              ]
+            },
+            "description": "Creates a Cashfree order. Returns paymentSessionId to pass to the React Native Cashfree SDK."
+          }
+        },
+        {
+          "name": "Verify Payment",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mobile/payments/verify?orderId={{order_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "payments",
+                "verify"
+              ],
+              "query": [
+                {
+                  "key": "orderId",
+                  "value": "{{order_id}}"
+                }
+              ]
+            },
+            "description": "Call after Cashfree SDK completes. Returns live payment status and syncs DB."
+          }
+        },
+        {
+          "name": "Investment Status",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mobile/payments/investment-status?accountId={{account_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "payments",
+                "investment-status"
+              ],
+              "query": [
+                {
+                  "key": "accountId",
+                  "value": "{{account_id}}"
+                }
+              ]
+            },
+            "description": "Returns full investment lifecycle for all orders. Shows PENDING_PAYMENT → PAYMENT_SUCCESS → SETTLED → DEPLOYED with human-readable messages and timeline."
+          }
+        }
+      ]
+    },
+    {
+      "name": "🧪 Dev & Testing",
+      "item": [
+        {
+          "name": "List Orders (for simulation)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/dev/simulate-webhook",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "dev",
+                "simulate-webhook"
+              ]
+            },
+            "description": "Returns all orders in DB + full Cashfree sandbox test data (UPI VPAs, card numbers, OTPs)."
+          }
+        },
+        {
+          "name": "Simulate — Payment SUCCESS",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const r = pm.response.json();",
+                  "console.log(\"Final state:\", JSON.stringify(r.finalState, null, 2));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": \"{{order_id}}\",\n  \"paymentStatus\": \"SUCCESS\",\n  \"simulateCronToo\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/dev/simulate-webhook",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "dev",
+                "simulate-webhook"
+              ]
+            },
+            "description": "Fires a simulated PAYMENT_SUCCESS_WEBHOOK. Sets investment_status → PAYMENT_SUCCESS."
+          }
+        },
+        {
+          "name": "Simulate — SUCCESS + Full Pipeline (Settlement + Deploy)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const r = pm.response.json();",
+                  "console.log(\"Cron result:\", JSON.stringify(r.cronSimulated, null, 2));",
+                  "console.log(\"Final state:\", JSON.stringify(r.finalState, null, 2));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": \"{{order_id}}\",\n  \"paymentStatus\": \"SUCCESS\",\n  \"simulateCronToo\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/dev/simulate-webhook",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "dev",
+                "simulate-webhook"
+              ]
+            },
+            "description": "Fires SUCCESS webhook + simulates settlement (sets SETTLED with fake UTR) + checks pms_master_sheet for deployment match. Full end-to-end pipeline."
+          }
+        },
+        {
+          "name": "Simulate — Payment FAILED",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": \"{{order_id}}\",\n  \"paymentStatus\": \"FAILED\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/dev/simulate-webhook",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "dev",
+                "simulate-webhook"
+              ]
+            },
+            "description": "Sets investment_status → PAYMENT_FAILED."
+          }
+        },
+        {
+          "name": "Simulate — User Dropped",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderId\": \"{{order_id}}\",\n  \"paymentStatus\": \"USER_DROPPED\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/dev/simulate-webhook",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "dev",
+                "simulate-webhook"
+              ]
+            },
+            "description": "Stays PENDING_PAYMENT — user can retry."
+          }
+        },
+        {
+          "name": "Trigger Cron Manually",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/cron/investment-status?secret=dev_cron_secret_change_in_prod",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "cron",
+                "investment-status"
+              ],
+              "query": [
+                {
+                  "key": "secret",
+                  "value": "dev_cron_secret_change_in_prod"
+                }
+              ]
+            },
+            "description": "Manually runs the investment status cron (settlement check + deployment detection + stale expiry). Requires CRON_SECRET."
+          }
+        }
+      ]
+    },
+    {
+      "name": "🔧 Debug",
+      "item": [
+        {
+          "name": "Performance - No accountId (uses JWT default)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mobile/portfolio/performance",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "portfolio",
+                "performance"
+              ]
+            },
+            "description": "Calls performance without accountId — server falls back to accountCodes[0] from the JWT."
+          }
+        },
+        {
+          "name": "Performance - Wrong accountId (403 test)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mobile/portfolio/performance?accountId=XYZ9999",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "portfolio",
+                "performance"
+              ],
+              "query": [
+                {
+                  "key": "accountId",
+                  "value": "XYZ9999"
+                }
+              ]
+            },
+            "description": "Should return 403 Forbidden with `available` array showing which account codes the token holds."
+          }
+        },
+        {
+          "name": "Login - Bad credentials (401 test)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"wrong@email.com\",\n  \"password\": \"wrongpassword\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/mobile/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Should return 401 Invalid credentials."
+          }
+        },
+        {
+          "name": "Any route - No token (401 test)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/mobile/portfolio/performance?accountId={{account_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "mobile",
+                "portfolio",
+                "performance"
+              ],
+              "query": [
+                {
+                  "key": "accountId",
+                  "value": "{{account_id}}"
+                }
+              ]
+            },
+            "description": "Should return 401 Unauthorized with code: NO_TOKEN."
+          }
+        }
+      ]
+    }
+  ]
+}
