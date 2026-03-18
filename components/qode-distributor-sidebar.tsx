@@ -1,8 +1,9 @@
-"use client"
+ "use client"
 
 import Link from "next/link"
+import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { Calculator } from "lucide-react"
+import { Calculator, Users } from "lucide-react"
 
 function NavLink({
   href,
@@ -15,13 +16,15 @@ function NavLink({
   icon?: React.ReactNode
   onClick?: () => void
 }) {
-  // No active highlight logic needed with single link
+  const pathname = usePathname()
+  const active = pathname === href
   return (
     <Link
       href={href}
       onClick={onClick}
       className={cn(
-        "flex items-center gap-2 rounded-md px-3 py-2 text-sm text-secondary hover:bg-muted/60"
+        "flex items-center gap-2 rounded-md px-3 py-2 text-sm text-secondary hover:bg-muted/60",
+        active && "bg-background text-primary"
       )}
     >
       {icon}
@@ -38,20 +41,38 @@ type QodeSidebarProps = {
 }
 
 export default function DistributorQodeSidebar({ open = false, onClose }: QodeSidebarProps) {
-  // Only a simple nav with Calculator link for both desktop and mobile
-
   const SidebarContent = (
     <nav className="h-full flex flex-col gap-1">
-      <NavLink href="/distributor/fees-distribution" icon={<Calculator className="h-4 w-4" />}>
+      <NavLink
+        href="/distributor/fees-distribution"
+        icon={<Calculator className="h-4 w-4" />}
+      >
         Distributor Fee Calculator
+      </NavLink>
+      <NavLink
+        href="/distributor/clients"
+        icon={<Users className="h-4 w-4" />}
+      >
+        Clients Overview
       </NavLink>
     </nav>
   )
 
   const SidebarContentMobile = ({ onClose }: { onClose?: () => void }) => (
     <nav className="h-full flex flex-col gap-1 mt-5">
-      <NavLink href="/distributor/fees-distribution" icon={<Calculator className="h-4 w-4" />} onClick={onClose}>
+      <NavLink
+        href="/distributor/fees-distribution"
+        icon={<Calculator className="h-4 w-4" />}
+        onClick={onClose}
+      >
         Calculator
+      </NavLink>
+      <NavLink
+        href="/distributor/clients"
+        icon={<Users className="h-4 w-4" />}
+        onClick={onClose}
+      >
+        Clients
       </NavLink>
     </nav>
   )
