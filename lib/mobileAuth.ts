@@ -10,6 +10,10 @@ export interface MobileAuthUser {
   ownerIds: string[]
   groupId: string
   isHeadOfFamily: boolean
+  isSuperAdmin?: boolean          // only true for karan@qodeinvest.com
+  isImpersonated?: boolean        // true when super admin is viewing as a client
+  impersonatedBy?: string         // email of the super admin who is impersonating
+  isReviewer?: boolean            // Play Store / App Store reviewer — served mock data
 }
 
 export async function verifyMobileAuth(request: NextRequest): Promise<{
@@ -42,4 +46,19 @@ export async function verifyMobileAuth(request: NextRequest): Promise<{
       ),
     }
   }
+}
+
+/** Guard: reject requests that don't come from karan@qodeinvest.com.
+ *  Also rejects impersonation tokens — admin actions must use the original JWT. */
+export function requireSuperAdmin(user: MobileAuthUser): NextResponse | null {
+  if (user.isImpersonated) {
+    return NextResponse.json(
+      { error: 'Admin actions require the original token. Exit impersonation first.', code: 'IMPERSONATION_TOKEN' },
+      { status: 403 }
+    )
+  }
+  if (!user.isSuperAdmin) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  }
+  return null
 }

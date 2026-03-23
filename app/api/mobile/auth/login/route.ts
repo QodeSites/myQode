@@ -8,6 +8,10 @@ import { query } from '@/lib/db'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import type { MobileAuthUser } from '@/lib/mobileAuth'
+import { REVIEWER_ACCOUNT_CODES } from '@/lib/reviewerMock'
+
+const REVIEWER_EMAIL    = 'reviewer@qodeinvest.com'
+const REVIEWER_PASSWORD = 'Review@123'
 
 export async function POST(request: NextRequest) {
   try {
@@ -30,6 +34,35 @@ export async function POST(request: NextRequest) {
         { error: 'Fields required: username (or email) and password', received: Object.keys(body ?? {}) },
         { status: 400 }
       )
+    }
+
+    // ── Reviewer bypass (Play Store / App Store review) ───────────────────────
+    if (username.toLowerCase() === REVIEWER_EMAIL && password === REVIEWER_PASSWORD) {
+      const payload: MobileAuthUser = {
+        userId: 'reviewer',
+        email: REVIEWER_EMAIL,
+        clientCode: 'DEMO001',
+        clientId: 'reviewer',
+        accountCodes: REVIEWER_ACCOUNT_CODES,
+        ownerIds: ['DEMO_OWNER'],
+        groupId: null as any,
+        isHeadOfFamily: false,
+        isReviewer: true,
+      }
+      const token = jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: '30d' })
+      return NextResponse.json({
+        token,
+        expiresIn: 60 * 60 * 24 * 30,
+        user: {
+          clientId: 'reviewer',
+          clientCode: 'DEMO001',
+          name: 'Demo User',
+          email: REVIEWER_EMAIL,
+          accountCodes: REVIEWER_ACCOUNT_CODES,
+          isHeadOfFamily: false,
+          isSuperAdmin: false,
+        },
+      })
     }
 
     // Look up user
@@ -65,18 +98,28 @@ export async function POST(request: NextRequest) {
     let accountsResult;
     if (user.head_of_family) {
       accountsResult = await query(
-        'SELECT clientid, clientcode FROM pms_clients_master WHERE groupid = $1',
+        'SELECT clientid, clientcode, ownerid FROM pms_clients_master WHERE groupid = $1',
         [user.groupid]
       )
     } else {
       accountsResult = await query(
-        'SELECT clientid, clientcode FROM pms_clients_master WHERE email = $1',
+        'SELECT clientid, clientcode, ownerid FROM pms_clients_master WHERE email = $1',
         [user.email]
       )
     }
 
     const accounts = accountsResult.rows
-    const accountCodes = accounts.map((a: any) => a.clientcode)
+    const individualCodes: string[] = accounts.map((a: any) => a.clientcode).filter(Boolean)
+
+    // Include group-level and owner-level consolidated account codes so the
+    // portfolio APIs (which check accountCodes) allow GROUP/OWNER aggregated views.
+    // These match rows in pms_master_sheet where account_code = groupid / ownerid.
+    const uniqueOwnerIds: string[] = [...new Set(
+      accounts.map((a: any) => a.ownerid).filter(Boolean)
+    )] as string[]
+    const groupCode: string[] = user.head_of_family && user.groupid ? [user.groupid] : []
+
+    const accountCodes: string[] = [...individualCodes, ...uniqueOwnerIds, ...groupCode]
 
     // Track login
     await query(
@@ -92,6 +135,9 @@ export async function POST(request: NextRequest) {
       .replace(/\s+/g, ' ')
       .trim()
 
+    const SUPER_ADMIN_EMAIL = 'karan@qodeinvest.com'
+    const isSuperAdmin = user.email.toLowerCase() === SUPER_ADMIN_EMAIL
+
     const payload: MobileAuthUser = {
       userId: user.clientid,
       email: user.email,
@@ -101,6 +147,7 @@ export async function POST(request: NextRequest) {
       ownerIds: [user.ownerid || user.clientid],
       groupId: user.groupid,
       isHeadOfFamily: user.head_of_family,
+      ...(isSuperAdmin && { isSuperAdmin: true }),
     }
 
     const token = jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: '30d' })
@@ -115,6 +162,7 @@ export async function POST(request: NextRequest) {
         email: user.email,
         accountCodes,
         isHeadOfFamily: user.head_of_family,
+        isSuperAdmin,
       },
     })
   } catch (error) {

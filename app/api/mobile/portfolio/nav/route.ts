@@ -6,6 +6,7 @@ import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
 import db2 from '@/lib/db2'
 import { getStrategyName, getStrategyBenchmark, getPrefix } from '@/lib/strategyConfig'
+import { reviewerMockNav } from '@/lib/reviewerMock'
 
 const PERIOD_DAYS: Record<string, number> = {
   '1W': 7,
@@ -24,6 +25,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const accountId = searchParams.get('accountId') ?? user!.accountCodes?.[0]
   const period = (searchParams.get('period') || '1Y').toUpperCase()
+  if (user!.isReviewer) return NextResponse.json(reviewerMockNav(accountId ?? 'DEMO001'))
 
   if (!accountId) {
     return NextResponse.json({ error: 'accountId is required', available: user!.accountCodes }, { status: 400 })
@@ -36,12 +38,34 @@ export async function GET(request: NextRequest) {
   const benchmarkIndex = getStrategyBenchmark(accountId)
 
   try {
+    // ── 0. Detect closed account ─────────────────────────────────────────────
+    const closedCheckRes = await pool.query(
+      `SELECT report_date, portfolio_value FROM public.pms_master_sheet
+       WHERE account_code = $1 ORDER BY report_date DESC LIMIT 2`,
+      [accountId]
+    )
+    const last2 = closedCheckRes.rows
+    const isClosed = last2.length >= 2 &&
+      parseFloat(last2[0].portfolio_value || 0) === 0 &&
+      parseFloat(last2[1].portfolio_value || 0) === 0
+    let closedAt: string | null = null
+    if (isClosed) {
+      const caRes = await pool.query(
+        `SELECT report_date FROM public.pms_master_sheet
+         WHERE account_code = $1 AND portfolio_value > 0
+         ORDER BY report_date DESC LIMIT 1`,
+        [accountId]
+      )
+      closedAt = caRes.rows[0]?.report_date ?? null
+    }
+
     // ── 1. Portfolio rows (ASC) ──────────────────────────────────────────────
     const portResult = await pool.query(
       `SELECT report_date, nav
        FROM public.pms_master_sheet
        WHERE account_code = $1
          AND report_date >= CURRENT_DATE - INTERVAL '${days} days'
+         ${closedAt ? `AND report_date <= '${closedAt}'` : ''}
        ORDER BY report_date ASC`,
       [accountId]
     )
@@ -49,14 +73,16 @@ export async function GET(request: NextRequest) {
     const portRows = portResult.rows
     if (portRows.length === 0) {
       return NextResponse.json({
-        accountId, period,
+        accountId, period, isClosed, closedAt,
         strategy: { prefix: getPrefix(accountId), name: getStrategyName(accountId), benchmark: benchmarkIndex },
         series: [], minValue: 100, maxValue: 100,
       })
     }
 
     const windowStart: string = portRows[0].report_date
-    const windowEnd: string   = portRows[portRows.length - 1].report_date
+    const windowEnd: string   = closedAt && closedAt < portRows[portRows.length - 1].report_date
+      ? closedAt
+      : portRows[portRows.length - 1].report_date
     const basePortNav = parseFloat(portRows[0].nav)
 
     // Build a map: date → raw portfolio nav
@@ -120,6 +146,8 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       accountId,
+      isClosed,
+      closedAt,
       strategy: {
         prefix: getPrefix(accountId),
         name: getStrategyName(accountId),

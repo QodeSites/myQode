@@ -21,7 +21,14 @@
       "Bash(ls:*)",
       "Bash(npx tsc:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(npm install:*)",
+      "Bash(find /Users/qodetech/Desktop/Projects/myQode -type f \\\\\\(-name *.sql -o -name *migration* -o -name *schema* \\\\\\))",
+      "Bash(find /Users/qodetech/Desktop/Projects/myQode -type f \\\\\\(-name *.sql -o -name *.ts -o -name *.tsx \\\\\\))",
+      "Bash(find /Users/qodetech/Desktop/Projects/myQode/app -type f \\\\\\(-name *.tsx -o -name *.ts \\\\\\))",
+      "Bash(grep -r \"qode_microsite_inquiries\\\\|qode_inquiry_notes\" /Users/qodetech/Desktop/Projects/myQode --include=*.sql)",
+      "Bash(find /Users/qodetech/Desktop/Projects/myQode -type f \\\\\\(-name *.sql -o -name *init* -o -name *migration* \\\\\\))",
+      "mcp__claude_ai_Gmail__gmail_get_profile"
     ],
     "deny": [],
     "ask": []

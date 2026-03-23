@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
+import { reviewerMockCashflow } from '@/lib/reviewerMock'
 
 function formatINR(amount: number): string {
   const abs = Math.abs(amount)
@@ -17,6 +18,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const accountId = searchParams.get('accountId') ?? user!.accountCodes?.[0]
+  if (user!.isReviewer) return NextResponse.json(reviewerMockCashflow(accountId ?? 'DEMO001'))
 
   if (!accountId) {
     return NextResponse.json({ error: 'accountId is required', available: user!.accountCodes }, { status: 400 })
@@ -27,12 +29,34 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    // Detect closed account
+    const closedCheckRes = await pool.query(
+      `SELECT report_date, portfolio_value FROM public.pms_master_sheet
+       WHERE account_code = $1 ORDER BY report_date DESC LIMIT 2`,
+      [accountId]
+    )
+    const last2 = closedCheckRes.rows
+    const isClosed = last2.length >= 2 &&
+      parseFloat(last2[0].portfolio_value || 0) === 0 &&
+      parseFloat(last2[1].portfolio_value || 0) === 0
+    let closedAt: string | null = null
+    if (isClosed) {
+      const caRes = await pool.query(
+        `SELECT report_date FROM public.pms_master_sheet
+         WHERE account_code = $1 AND portfolio_value > 0
+         ORDER BY report_date DESC LIMIT 1`,
+        [accountId]
+      )
+      closedAt = caRes.rows[0]?.report_date ?? null
+    }
+
     const result = await pool.query(
       `SELECT report_date, cash_in_out
        FROM public.pms_master_sheet
        WHERE account_code = $1
          AND cash_in_out IS NOT NULL
          AND cash_in_out != 0
+         ${closedAt ? `AND report_date <= '${closedAt}'` : ''}
        ORDER BY report_date ASC`,
       [accountId]
     )
@@ -50,6 +74,8 @@ export async function GET(request: NextRequest) {
     const total = transactions.reduce((sum: number, t: any) => sum + t.amount, 0)
 
     return NextResponse.json({
+      isClosed,
+      closedAt,
       transactions,
       total: +total.toFixed(2),
       formattedTotal: `₹${Math.abs(total).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,

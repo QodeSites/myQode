@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import { s3 } from '@/lib/s3'
+import { query } from '@/lib/db'
 import { ListObjectsV2Command } from '@aws-sdk/client-s3'
 
 const BUCKET = 'qode-static-assets'
@@ -12,25 +13,25 @@ const CATEGORIES = [
     id: 'pms-agreement',
     label: 'PMS Agreement',
     description: 'Your official agreement with Qode.',
-    s3Prefix: (accountId: string) => `documents/${accountId}/pms-agreement/`,
+    s3Prefix: (accountId: string) => `docs/client-documents/${accountId}/PMS Agreement/`,
   },
   {
     id: 'account-opening',
     label: 'Account Opening Documents',
     description: 'Verification of linked bank and demat accounts.',
-    s3Prefix: (accountId: string) => `documents/${accountId}/account-opening/`,
+    s3Prefix: (accountId: string) => `docs/client-documents/${accountId}/Account Opening Documents/`,
   },
   {
     id: 'cml',
     label: 'CML',
     description: 'Capital Market License and regulatory documents.',
-    s3Prefix: (accountId: string) => `documents/${accountId}/cml/`,
+    s3Prefix: (accountId: string) => `docs/client-documents/${accountId}/CML/`,
   },
   {
     id: 'disclosures',
     label: 'Disclosures',
     description: 'Risk disclosures and regulatory filings.',
-    s3Prefix: (accountId: string) => `documents/${accountId}/disclosures/`,
+    s3Prefix: (accountId: string) => `docs/client-documents/${accountId}/Disclosures/`,
   },
 ]
 
@@ -49,13 +50,23 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden', available: user!.accountCodes }, { status: 403 })
   }
 
+  // clientcode (e.g. QAW0009) ≠ clientid; S3 folders are keyed by clientid
+  const clientRes = await query(
+    'SELECT clientid FROM pms_clients_master WHERE clientcode = $1 LIMIT 1',
+    [accountId]
+  )
+  if (!clientRes.rows.length) {
+    return NextResponse.json({ error: 'Account not found' }, { status: 404 })
+  }
+  const clientId = clientRes.rows[0].clientid
+
   try {
     const categories = await Promise.all(
       CATEGORIES.map(async (cat) => {
         let fileCount = 0
         try {
           const res = await s3.send(
-            new ListObjectsV2Command({ Bucket: BUCKET, Prefix: cat.s3Prefix(accountId) })
+            new ListObjectsV2Command({ Bucket: BUCKET, Prefix: cat.s3Prefix(clientId) })
           )
           fileCount = (res.Contents || []).filter((o) => o.Key && !o.Key.endsWith('/')).length
         } catch {

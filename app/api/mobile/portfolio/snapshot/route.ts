@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
 import { getStrategyName, getStrategyColor, getPrefix } from '@/lib/strategyConfig'
+import { REVIEWER_MOCK_SNAPSHOT } from '@/lib/reviewerMock'
 
 function formatINR(amount: number): string {
   return `₹${Math.round(amount).toLocaleString('en-IN')}`
@@ -14,6 +15,7 @@ function formatINR(amount: number): string {
 export async function GET(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)
   if (error) return error
+  if (user!.isReviewer) return NextResponse.json(REVIEWER_MOCK_SNAPSHOT)
 
   try {
     // Fetch all accounts for this owner group
@@ -36,7 +38,7 @@ export async function GET(request: NextRequest) {
 
     const codes = accounts.map((a: any) => a.clientcode)
 
-    // Latest portfolio values for all codes
+    // Latest 2 portfolio values per account to detect closed accounts
     const portfolioResult = await pool.query(
       `WITH ranked AS (
          SELECT account_code, report_date, portfolio_value,
@@ -44,16 +46,27 @@ export async function GET(request: NextRequest) {
          FROM public.pms_master_sheet
          WHERE account_code = ANY($1)
        )
-       SELECT account_code, report_date, portfolio_value FROM ranked WHERE rn = 1`,
+       SELECT account_code, report_date, portfolio_value, rn FROM ranked WHERE rn <= 2`,
       [codes]
     )
 
-    const valueMap: Record<string, { value: number; date: string }> = {}
+    // Build value map — if last 2 consecutive records are both 0.0, account is closed
+    // NOTE: ROW_NUMBER() returns bigint which node-postgres gives back as a string — use Number()
+    const rawMap: Record<string, { value: number; date: string; prev?: number }> = {}
     portfolioResult.rows.forEach((r: any) => {
-      valueMap[r.account_code] = {
-        value: parseFloat(r.portfolio_value || 0),
-        date: r.report_date,
+      const val = parseFloat(r.portfolio_value || 0)
+      const rn = Number(r.rn)
+      if (rn === 1) {
+        rawMap[r.account_code] = { value: val, date: r.report_date }
+      } else if (rn === 2 && rawMap[r.account_code]) {
+        rawMap[r.account_code].prev = val
       }
+    })
+
+    const valueMap: Record<string, { value: number; date: string; isClosed: boolean }> = {}
+    Object.entries(rawMap).forEach(([code, data]) => {
+      const isClosed = data.value === 0 && data.prev === 0
+      valueMap[code] = { value: data.value, date: data.date, isClosed }
     })
 
     // Group by owner
@@ -77,7 +90,13 @@ export async function GET(request: NextRequest) {
         const pv = valueMap[a.clientcode]
         const portfolioValue = pv?.value ?? 0
         ownerTotal += portfolioValue
-        if (a.onboarding_status === 'completed') activeAccountCount++
+        const isClosed = pv?.isClosed ?? false
+        if (a.onboarding_status === 'completed' && !isClosed) activeAccountCount++
+        const status = isClosed
+          ? 'closed'
+          : a.onboarding_status === 'completed'
+            ? 'active'
+            : a.onboarding_status
         return {
           id: a.clientcode,
           strategyPrefix: getPrefix(a.clientcode),
@@ -87,7 +106,8 @@ export async function GET(request: NextRequest) {
           clientId: a.clientid,
           lastUpdated: pv?.date ?? null,
           portfolioValue: +portfolioValue.toFixed(2),
-          status: a.onboarding_status === 'completed' ? 'active' : a.onboarding_status,
+          status,
+          isClosed,
           mobile: a.mobile ?? null,
         }
       })
@@ -98,16 +118,22 @@ export async function GET(request: NextRequest) {
         id: ownerId,
         name,
         email: primary.email,
+        groupId: primary.groupid ?? null,
+        isHeadOfFamily: primary.head_of_family ?? false,
         totalValue: +ownerTotal.toFixed(2),
         accounts: mappedAccounts,
       }
     })
+
+    const headOwner = owners.find(o => o.isHeadOfFamily) ?? owners[0]
 
     return NextResponse.json({
       owners,
       totalPortfolioValue: +totalPortfolioValue.toFixed(2),
       formattedTotal: formatINR(totalPortfolioValue),
       activeAccountCount,
+      isHeadOfFamily: user!.isHeadOfFamily ?? false,
+      groupId: headOwner?.groupId ?? null,
     })
   } catch (err) {
     console.error('[mobile/portfolio/snapshot]', err)
