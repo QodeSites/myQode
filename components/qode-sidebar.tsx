@@ -78,10 +78,15 @@ export default function QodeSidebar({ open = false, onClose }: QodeSidebarProps)
   const pathname = usePathname()
   const [openAccordions, setOpenAccordions] = useState<string[]>(["portfolio"])
   const [isPending, startTransition] = useTransition()
+  const [fpOpen, setFpOpen] = useState(false)
+  const [fpEmail, setFpEmail] = useState("")
+  const [fpSending, setFpSending] = useState(false)
+  const [fpMsg, setFpMsg] = useState<{ type: "success" | "error"; text: string } | null>(null)
   const {
     clients,
     selectedClientCode,
     selectedClientHolderName,
+    selectedEmailClient,
     isHeadOfFamily,
     setSelectedClient,
     selectedClientType
@@ -134,6 +139,55 @@ export default function QodeSidebar({ open = false, onClose }: QodeSidebarProps)
       await fetch("/api/logout", { method: "POST" })
       window.location.href = "/login"
     })
+  }
+
+  const openForgot = () => {
+    setFpMsg(null)
+    setFpEmail(selectedEmailClient || "")
+    setFpOpen(true)
+  }
+
+  const closeForgot = () => {
+    setFpOpen(false)
+    setFpMsg(null)
+    setFpEmail("")
+  }
+
+  const handleForgotSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setFpMsg(null)
+    setFpSending(true)
+    try {
+      const resp = await fetch("/api/auth/forgot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: fpEmail.trim() }),
+      })
+      const data = await resp.json()
+
+      if (!resp.ok) {
+        throw new Error(data.error || "Could not send reset email")
+      }
+
+      setFpMsg({
+        type: "success",
+        text: "If that email exists, a reset link has been sent. Be sure to check your email",
+      })
+
+      setTimeout(() => {
+        closeForgot()
+      }, 2000)
+    } catch (err) {
+      setFpMsg({
+        type: "error",
+        text:
+          err instanceof Error
+            ? err.message
+            : "Something went wrong. Please try again.",
+      })
+    } finally {
+      setFpSending(false)
+    }
   }
 
   // Reusable mobile account dropdown component (matches header styling)
@@ -234,6 +288,10 @@ export default function QodeSidebar({ open = false, onClose }: QodeSidebarProps)
             "Owner account access only"
           )}
         </div>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={openForgot} className="cursor-pointer text-primary">
+          Forgot password?
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -648,6 +706,94 @@ export default function QodeSidebar({ open = false, onClose }: QodeSidebarProps)
           <SidebarContentMobile onClose={onClose} />
         </aside>
       </div>
+
+      {fpOpen && (
+        <div
+          aria-modal="true"
+          role="dialog"
+          className="fixed inset-0 z-[2000] flex items-center justify-center"
+        >
+          <button
+            aria-label="Close"
+            onClick={closeForgot}
+            className="absolute inset-0 bg-black/50"
+          />
+          <div className="relative w-full max-w-md rounded-lg border bg-card p-5 mx-4">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold">Reset your password</h2>
+              <button
+                onClick={closeForgot}
+                className="p-1 rounded-md hover:bg-muted/60"
+                aria-label="Close dialog"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="text-sm text-muted-foreground mb-4">
+              Enter your account email. If it exists, we&apos;ll send a reset link.
+            </p>
+
+            {fpMsg && (
+              <div
+                className={`mb-3 rounded-md px-3 py-2 text-sm ${
+                  fpMsg.type === "success"
+                    ? "bg-emerald-50 text-emerald-700"
+                    : "bg-red-50 text-red-600"
+                }`}
+              >
+                {fpMsg.text}
+              </div>
+            )}
+
+            <form onSubmit={handleForgotSubmit} className="space-y-3">
+              <div className="grid gap-2">
+                <label htmlFor="sidebar-fp-email" className="text-sm font-medium">Email</label>
+                <input
+                  id="sidebar-fp-email"
+                  type="email"
+                  required
+                  value={fpEmail}
+                  onChange={(e) => {
+                    const value = e.target.value
+                    if (value.includes("@")) {
+                      setFpEmail(value.toLowerCase())
+                    } else {
+                      setFpEmail(value)
+                    }
+                  }}
+                  className="h-10 rounded-md border bg-background px-3 text-sm outline-none ring-0 focus:border-ring"
+                  placeholder="you@example.com"
+                  disabled={fpSending}
+                  autoComplete="email"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={closeForgot}
+                  className="inline-flex h-10 flex-1 items-center justify-center rounded-md border px-4 text-sm font-medium hover:bg-muted/40"
+                  disabled={fpSending}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={fpSending || !fpEmail.trim()}
+                  className="inline-flex h-10 flex-1 items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+                >
+                  {fpSending ? "Sending..." : "Send reset link"}
+                </button>
+              </div>
+            </form>
+
+            <p className="mt-3 text-[11px] text-muted-foreground">
+              Tip: The email may take a minute. Also check your spam folder.
+            </p>
+          </div>
+        </div>
+      )}
     </>
   )
 }
