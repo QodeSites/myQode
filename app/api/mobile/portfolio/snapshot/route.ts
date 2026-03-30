@@ -18,17 +18,25 @@ export async function GET(request: NextRequest) {
   if (user!.isReviewer) return NextResponse.json(REVIEWER_MOCK_SNAPSHOT)
 
   try {
-    // Fetch all accounts for this owner group
+    // Fetch accounts based on role — HoF sees full group, others see only their own
+    const isHoF = user!.isHeadOfFamily
     const accountsResult = await pool.query(
-      `SELECT
-         clientid, clientcode, email, mobile, groupid,
-         salutation, firstname, middlename, lastname,
-         ownerid, head_of_family, onboarding_status, created_at
-       FROM pms_clients_master
-       WHERE (groupid = (SELECT groupid FROM pms_clients_master WHERE clientid = $1 LIMIT 1)
-              OR ownerid = (SELECT ownerid FROM pms_clients_master WHERE clientid = $1 LIMIT 1))
-       ORDER BY head_of_family DESC, created_at ASC`,
-      [user!.userId]
+      isHoF
+        ? `SELECT
+             clientid, clientcode, email, mobile, groupid,
+             salutation, firstname, middlename, lastname,
+             ownerid, head_of_family, onboarding_status, created_at
+           FROM pms_clients_master
+           WHERE groupid = (SELECT groupid FROM pms_clients_master WHERE clientid = $1 LIMIT 1)
+           ORDER BY head_of_family DESC, created_at ASC`
+        : `SELECT
+             clientid, clientcode, email, mobile, groupid,
+             salutation, firstname, middlename, lastname,
+             ownerid, head_of_family, onboarding_status, created_at
+           FROM pms_clients_master
+           WHERE ownerid = $1 OR clientid = $1
+           ORDER BY head_of_family DESC, created_at ASC`,
+      isHoF ? [user!.userId] : [user!.ownerIds?.[0] ?? user!.userId]
     )
 
     const accounts = accountsResult.rows

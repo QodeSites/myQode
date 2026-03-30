@@ -124,13 +124,19 @@ export async function POST(request: NextRequest) {
 
     const cfResponse = await makeCashfreeRequest('/subscriptions', subscriptionData)
 
-    // Store in DB
+    // Store in DB — include start_date and next_charge_date so the mobile
+    // SIP management screen can display them without extra API calls.
+    const firstChargeIso = cfResponse.subscription_first_charge_time
+      ? new Date(cfResponse.subscription_first_charge_time).toISOString()
+      : new Date(`${startDate}T00:00:00+05:30`).toISOString()
+
     await query(
       `INSERT INTO payment_transactions
-       (order_id, nuvama_code, amount, payment_type, payment_status, frequency, cf_subscription_id, created_at, updated_at)
-       VALUES ($1,$2,$3,'SIP','PENDING',$4,$5,NOW(),NOW())
+       (order_id, nuvama_code, amount, payment_type, payment_status, frequency,
+        cf_subscription_id, start_date, next_charge_date, created_at, updated_at)
+       VALUES ($1,$2,$3,'SIP','PENDING',$4,$5,$6,$6,NOW(),NOW())
        ON CONFLICT (order_id) DO NOTHING`,
-      [subscriptionId, accountId, amount, frequency, cfResponse.cf_subscription_id || null]
+      [subscriptionId, accountId, amount, frequency, cfResponse.cf_subscription_id || null, firstChargeIso]
     )
 
     return NextResponse.json({

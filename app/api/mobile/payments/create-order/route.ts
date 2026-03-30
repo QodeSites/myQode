@@ -88,7 +88,8 @@ export async function POST(request: NextRequest) {
     }
 
     const orderId = generateOrderId()
-    const baseUrl = process.env.PUBLIC_BASE_URL || 'https://myqode.qodeinvest.com'
+    // Use NEXT_PUBLIC_BASE_URL (consistent with other routes) with a sensible fallback
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://myqode.qodeinvest.com'
 
     const orderData: any = {
       order_id: orderId,

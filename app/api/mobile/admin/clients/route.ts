@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
          clientid, clientcode, email, mobile,
          groupid, groupname, ownerid,
          salutation, firstname, middlename, lastname,
-         head_of_family, onboarding_status,
+         head_of_family, onboarding_status, password_set_at,
          login_count, last_login_at, created_at
        FROM pms_clients_master
        WHERE ownerid IS NOT NULL
@@ -52,8 +52,7 @@ export async function GET(request: NextRequest) {
     let groups: any[] = Array.from(ownerMap.entries()).map(([ownerId, accounts]) => {
       const primary = accounts.find(a => a.head_of_family) || accounts[0]
       const allCodes = accounts.map(a => a.clientcode).filter(Boolean)
-      const allStatuses = accounts.map(a => a.onboarding_status)
-      const completed = allStatuses.filter(s => s === 'completed').length
+      const completed = accounts.filter(a => a.password_set_at != null).length
       const onboardingStatus =
         completed === accounts.length ? 'completed' :
         completed === 0 ? 'pending' : 'mixed'
@@ -83,7 +82,7 @@ export async function GET(request: NextRequest) {
           clientId: a.clientid,
           clientCode: a.clientcode,
           name: a.fullName,
-          onboardingStatus: a.onboarding_status,
+          onboardingStatus: a.password_set_at ? 'completed' : 'pending',
           isHeadOfFamily: a.head_of_family,
           loginCount: a.login_count || 0,
           lastLogin: a.last_login_at,

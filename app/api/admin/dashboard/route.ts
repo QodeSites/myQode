@@ -165,14 +165,13 @@ export async function GET(request: NextRequest) {
         const allQueries = accounts.flatMap(acc => queryMap.get(acc.clientcode) || []);
         const totalLogins = accounts.reduce((sum, acc) => sum + (acc.login_attempts || 0), 0);
 
-        // Determine overall onboarding status
-        const completedCount = accounts.filter(acc => acc.onboarding_status === 'completed').length;
-        const pendingCount = accounts.filter(acc => acc.onboarding_status === 'pending').length;
+        // Determine overall onboarding status based on whether password has been set up
+        const completedCount = accounts.filter(acc => acc.password_set_at != null).length;
 
         let onboardingStatus: 'completed' | 'pending' | 'mixed';
         if (completedCount === accounts.length) {
           onboardingStatus = 'completed';
-        } else if (pendingCount === accounts.length) {
+        } else if (completedCount === 0) {
           onboardingStatus = 'pending';
         } else {
           onboardingStatus = 'mixed';
@@ -194,7 +193,7 @@ export async function GET(request: NextRequest) {
             clientId: acc.clientid,
             clientCode: acc.clientcode,
             clientName: acc.clientname,
-            onboardingStatus: acc.onboarding_status,
+            onboardingStatus: acc.password_set_at ? 'completed' : 'pending',
             headOfFamily: acc.head_of_family,
             createdAt: acc.created_at,
             loginCount: acc.login_count || 0,      // Changed from login_attempts
@@ -230,13 +229,12 @@ export async function GET(request: NextRequest) {
     // Calculate statistics
     // Calculate statistics with proper login tracking
     const allGroupedClients = Array.from(clientGroups.entries()).map(([ownerId, accounts]) => {
-      const completedCount = accounts.filter(acc => acc.onboarding_status === 'completed').length;
-      const pendingCount = accounts.filter(acc => acc.onboarding_status === 'pending').length;
+      const completedCount = accounts.filter(acc => acc.password_set_at != null).length;
 
       let onboardingStatus: 'completed' | 'pending' | 'mixed';
       if (completedCount === accounts.length) {
         onboardingStatus = 'completed';
-      } else if (pendingCount === accounts.length) {
+      } else if (completedCount === 0) {
         onboardingStatus = 'pending';
       } else {
         onboardingStatus = 'mixed';

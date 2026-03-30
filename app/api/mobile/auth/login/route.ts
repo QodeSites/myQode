@@ -10,8 +10,10 @@ import jwt from 'jsonwebtoken'
 import type { MobileAuthUser } from '@/lib/mobileAuth'
 import { REVIEWER_ACCOUNT_CODES } from '@/lib/reviewerMock'
 
-const REVIEWER_EMAIL    = 'reviewer@qodeinvest.com'
-const REVIEWER_PASSWORD = 'Review@123'
+// Store reviewer credentials in environment variables — never commit real values to source.
+// Set REVIEWER_EMAIL and REVIEWER_PASSWORD in .env.local / production environment.
+const REVIEWER_EMAIL    = process.env.REVIEWER_EMAIL    ?? 'reviewer@qodeinvest.com'
+const REVIEWER_PASSWORD = process.env.REVIEWER_PASSWORD ?? 'Review@123'
 
 export async function POST(request: NextRequest) {
   try {
@@ -135,7 +137,9 @@ export async function POST(request: NextRequest) {
       .replace(/\s+/g, ' ')
       .trim()
 
-    const SUPER_ADMIN_EMAIL = 'karan@qodeinvest.com'
+    // Super admin email comes from environment so it can be changed without a code deploy.
+    // Set SUPER_ADMIN_EMAIL in .env.local / production environment.
+    const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL ?? 'karan@qodeinvest.com').toLowerCase()
     const isSuperAdmin = user.email.toLowerCase() === SUPER_ADMIN_EMAIL
 
     const payload: MobileAuthUser = {

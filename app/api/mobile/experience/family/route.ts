@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
   try {
     // Fetch the user's own record to get groupid, ownerid, head_of_family
     const selfRes = await pool.query(
-      `SELECT clientid, clientcode, groupid, ownerid, head_of_family, groupname, ownername
+      `SELECT clientid, clientcode, groupid, ownerid, head_of_family, groupname, ownername, email
        FROM pms_clients_master WHERE clientid = $1 LIMIT 1`,
       [user!.userId]
     )
@@ -32,19 +32,30 @@ export async function GET(request: NextRequest) {
     const self = selfRes.rows[0]
     const isHeadOfFamily: boolean = !!self.head_of_family
 
-    // Fetch all family members in the same group
+    // Fetch family members — HoF sees full group, others see only their own accounts
     const familyRes = await pool.query(
-      `SELECT
-         clientid, clientcode, email, mobile,
-         groupid, groupname,
-         ownerid, ownername,
-         salutation, firstname, middlename, lastname,
-         address1, city, state, pannumber,
-         head_of_family, onboarding_status
-       FROM pms_clients_master
-       WHERE groupid = $1
-       ORDER BY head_of_family DESC, firstname ASC`,
-      [self.groupid]
+      isHeadOfFamily
+        ? `SELECT
+             clientid, clientcode, email, mobile,
+             groupid, groupname,
+             ownerid, ownername,
+             salutation, firstname, middlename, lastname,
+             address1, city, state, pannumber,
+             head_of_family, onboarding_status
+           FROM pms_clients_master
+           WHERE groupid = $1
+           ORDER BY head_of_family DESC, firstname ASC`
+        : `SELECT
+             clientid, clientcode, email, mobile,
+             groupid, groupname,
+             ownerid, ownername,
+             salutation, firstname, middlename, lastname,
+             address1, city, state, pannumber,
+             head_of_family, onboarding_status
+           FROM pms_clients_master
+           WHERE ownerid = $1 OR clientid = $1
+           ORDER BY head_of_family DESC, firstname ASC`,
+      isHeadOfFamily ? [self.groupid] : [self.ownerid ?? self.clientid]
     )
 
     const members = familyRes.rows

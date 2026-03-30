@@ -2,10 +2,14 @@
 // Aggregated performance for multiple accounts (owner-level "all strategies" view).
 // Merges each account's daily rows by date, summing portfolio_value and cash_in_out.
 // All accountIds must be present in the JWT accountCodes.
+// Benchmark: NIFTY 50 (same fallback used by the web version for combined views).
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
+import db2 from '@/lib/db2'
 import { REVIEWER_MOCK_COMBINED_PERFORMANCE } from '@/lib/reviewerMock'
+
+const COMBINED_BENCHMARK = 'NIFTY 50'
 
 function formatDate(d: string): string {
   return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
@@ -45,6 +49,20 @@ function valueOnOrBefore(rows: { date: string; portfolioValue: number }[], cutof
     if (new Date(rows[i].date) <= cutoff) return rows[i].portfolioValue
   }
   return null
+}
+
+// Find closest nav on or before a cutoff date in a DESC-sorted array
+function benchNavOnOrBefore(rows: any[], cutoff: Date): number | null {
+  for (const r of rows) {
+    if (new Date(r.date) <= cutoff) return parseFloat(r.nav)
+  }
+  return null
+}
+
+const isMonthEnd = (d: Date) => {
+  const n = new Date(d)
+  n.setDate(n.getDate() + 1)
+  return n.getMonth() !== d.getMonth()
 }
 
 export async function GET(request: NextRequest) {
@@ -118,9 +136,9 @@ export async function GET(request: NextRequest) {
     const totalReturns = currentValue - amountInvested
     const returnsPercent = inceptionReturn(currentValue, firstValue, inceptionDate, latestDate) ?? 0
 
-    // Trailing returns — ratio of combined portfolio value at each window
+    // ── Portfolio trailing returns ────────────────────────────────────────────
     const latestDateObj = new Date(latestDate)
-    const isMonthEnd = (d: Date) => { const n = new Date(d); n.setDate(n.getDate() + 1); return n.getMonth() !== d.getMonth() }
+
     const getMonthTarget = (months: number): Date => {
       const t = new Date(latestDateObj)
       if (isMonthEnd(latestDateObj)) t.setMonth(t.getMonth() - months + 1, 0)
@@ -147,10 +165,104 @@ export async function GET(request: NextRequest) {
       currentDD = dd
     }
 
+    const portfolioTrailing = {
+      w1:   simpleReturn(currentValue, v1W),
+      d10:  simpleReturn(currentValue, v10D),
+      m1:   simpleReturn(currentValue, v1M),
+      m3:   simpleReturn(currentValue, v3M),
+      m6:   simpleReturn(currentValue, v6M),
+      y1:   simpleReturn(currentValue, v1Y),
+      y3:   cagrReturn(currentValue, v3Y, 3),
+      currentDD: +currentDD.toFixed(2),
+      maxDD: +maxDD.toFixed(2),
+      sinceInception: inceptionReturn(currentValue, firstValue, inceptionDate, latestDate),
+    }
+
+    // ── NIFTY 50 benchmark trailing returns ───────────────────────────────────
+    type BenchTrailing = {
+      w1: number | null; d10: number | null; m1: number | null; m3: number | null;
+      m6: number | null; y1: number | null; y3: number | null;
+      currentDD: number | null; maxDD: number | null; sinceInception: number | null;
+    }
+    let benchmarkTrailing: BenchTrailing = {
+      w1: null, d10: null, m1: null, m3: null,
+      m6: null, y1: null, y3: null,
+      currentDD: null, maxDD: null, sinceInception: null,
+    }
+
+    try {
+      const benchEndDate = closedAtRaw ?? latestDate
+      const benchResult = await db2.query(
+        `SELECT date, nav
+         FROM public.tblresearch_new
+         WHERE indices = $1
+           AND date >= $2
+           AND date <= $3
+         ORDER BY date DESC`,
+        [COMBINED_BENCHMARK, inceptionDate, benchEndDate]
+      )
+
+      const bRows = benchResult.rows // DESC
+      if (bRows.length > 0) {
+        const latestBench = parseFloat(bRows[0].nav)
+        const latestBenchDate = new Date(bRows[0].date)
+
+        const bIsMonthEnd = isMonthEnd(latestBenchDate)
+        const getBMonthTarget = (months: number): Date => {
+          const t = new Date(latestBenchDate)
+          if (bIsMonthEnd) {
+            t.setMonth(t.getMonth() - months + 1, 0)
+          } else {
+            t.setMonth(t.getMonth() - months)
+          }
+          return t
+        }
+
+        const b1W  = benchNavOnOrBefore(bRows, new Date(latestBenchDate.getTime() - 7 * 86400000))
+        const b10D = benchNavOnOrBefore(bRows, businessDaysAgo(latestBenchDate, 10))
+        const b1M  = benchNavOnOrBefore(bRows, getBMonthTarget(1))
+        const b3M  = benchNavOnOrBefore(bRows, getBMonthTarget(3))
+        const b6M  = benchNavOnOrBefore(bRows, getBMonthTarget(6))
+        const b1Y  = benchNavOnOrBefore(bRows, getBMonthTarget(12))
+        const b3Y  = benchNavOnOrBefore(bRows, getBMonthTarget(36))
+        const inceptionBench = parseFloat(bRows[bRows.length - 1].nav)
+        const inceptionBenchDate = bRows[bRows.length - 1].date
+
+        // Benchmark drawdown (peak-to-valley, walking ASC)
+        const bAsc = [...bRows].reverse()
+        let bPeak = parseFloat(bAsc[0].nav)
+        let benchMaxDD = 0
+        let benchCurrentDD = 0
+        for (const r of bAsc) {
+          const v = parseFloat(r.nav)
+          if (v > bPeak) bPeak = v
+          const dd = bPeak > 0 ? ((v - bPeak) / bPeak) * 100 : 0
+          if (dd < benchMaxDD) benchMaxDD = dd
+          benchCurrentDD = dd
+        }
+
+        benchmarkTrailing = {
+          w1:   simpleReturn(latestBench, b1W),
+          d10:  simpleReturn(latestBench, b10D),
+          m1:   simpleReturn(latestBench, b1M),
+          m3:   simpleReturn(latestBench, b3M),
+          m6:   simpleReturn(latestBench, b6M),
+          y1:   simpleReturn(latestBench, b1Y),
+          y3:   cagrReturn(latestBench, b3Y, 3),
+          currentDD: +benchCurrentDD.toFixed(2),
+          maxDD: +benchMaxDD.toFixed(2),
+          sinceInception: inceptionReturn(latestBench, inceptionBench, inceptionBenchDate, bRows[0].date),
+        }
+      }
+    } catch (benchErr) {
+      console.warn('[mobile/portfolio/combined-performance] benchmark fetch failed:', benchErr)
+    }
+
     return NextResponse.json({
       accountIds,
       isClosed,
       closedAt: closedAtRaw ? formatDate(closedAtRaw) : null,
+      benchmark: COMBINED_BENCHMARK,
       amountInvested: +amountInvested.toFixed(2),
       currentValue: +currentValue.toFixed(2),
       totalReturns: +totalReturns.toFixed(2),
@@ -160,18 +272,8 @@ export async function GET(request: NextRequest) {
       dataAsOf: formatDate(latestDate),
       grossValue: +currentValue.toFixed(2),
       trailingReturns: {
-        portfolio: {
-          w1:   simpleReturn(currentValue, v1W),
-          d10:  simpleReturn(currentValue, v10D),
-          m1:   simpleReturn(currentValue, v1M),
-          m3:   simpleReturn(currentValue, v3M),
-          m6:   simpleReturn(currentValue, v6M),
-          y1:   simpleReturn(currentValue, v1Y),
-          y3:   cagrReturn(currentValue, v3Y, 3),
-          currentDD: +currentDD.toFixed(2),
-          maxDD: +maxDD.toFixed(2),
-          sinceInception: inceptionReturn(currentValue, firstValue, inceptionDate, latestDate),
-        },
+        portfolio: portfolioTrailing,
+        benchmark: benchmarkTrailing,
       },
     })
   } catch (err) {

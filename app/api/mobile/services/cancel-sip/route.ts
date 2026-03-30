@@ -26,7 +26,10 @@ const makeCashfreeRequest = async (endpoint: string, method: string, body?: any)
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}))
-    throw new Error(err.message || `Cashfree error: ${response.status}`)
+    throw Object.assign(
+      new Error(err.message || `Cashfree error: ${response.status}`),
+      { cfCode: err.code, httpStatus: response.status }
+    )
   }
   return response.json()
 }
@@ -78,9 +81,12 @@ export async function POST(request: NextRequest) {
     try {
       await makeCashfreeRequest(`/subscriptions/${sip.cf_subscription_id}/cancel`, 'POST')
     } catch (cfErr: any) {
-      if (!cfErr.message?.includes('already cancelled') && !cfErr.message?.includes('404')) {
-        throw cfErr
-      }
+      // Accept 404 (already deleted) and 409-style "already cancelled" by http status code
+      const isAlreadyCancelled =
+        cfErr.httpStatus === 404 ||
+        cfErr.httpStatus === 409 ||
+        cfErr.cfCode === 'already_cancelled'
+      if (!isAlreadyCancelled) throw cfErr
     }
 
     const { rows: updated } = await pool.query(

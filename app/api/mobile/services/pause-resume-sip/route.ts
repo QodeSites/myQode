@@ -4,19 +4,21 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
 
-const makeCashfreeV2Request = async (endpoint: string, method: string, body?: any) => {
+// Uses Cashfree API v3 (same version as setup-sip and cancel-sip)
+const makeCashfreeRequest = async (endpoint: string, method: string, body?: any) => {
   const clientId = process.env.CASHFREE_APP_ID || process.env.CASHFREE_CLIENT_ID
   const clientSecret = process.env.CASHFREE_SECRET_KEY
   const baseUrl =
     process.env.CASHFREE_ENVIRONMENT === 'production'
-      ? 'https://api.cashfree.com/api/v2'
-      : 'https://sandbox.cashfree.com/api/v2'
+      ? 'https://api.cashfree.com/pg'
+      : 'https://sandbox.cashfree.com/pg'
 
   const response = await fetch(`${baseUrl}${endpoint}`, {
     method,
     headers: {
       accept: 'application/json',
       'content-type': 'application/json',
+      'x-api-version': '2025-01-01',
       'x-client-id': clientId!,
       'x-client-secret': clientSecret!,
     },
@@ -25,7 +27,11 @@ const makeCashfreeV2Request = async (endpoint: string, method: string, body?: an
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({}))
-    throw new Error(err.message || `Cashfree error: ${response.status}`)
+    // Prefer structured error code over message string for robustness
+    throw Object.assign(
+      new Error(err.message || `Cashfree error: ${response.status}`),
+      { cfCode: err.code, httpStatus: response.status }
+    )
   }
   return response.json()
 }
@@ -81,14 +87,30 @@ export async function POST(request: NextRequest) {
     let newStatus: string
     try {
       if (action === 'pause') {
-        await makeCashfreeV2Request(`/subscriptions/${sip.cf_subscription_id}/pause-subscription`, 'POST')
+        // v3 API: PATCH /subscriptions/{id} with status=PAUSED
+        await makeCashfreeRequest(
+          `/subscriptions/${sip.cf_subscription_id}`,
+          'PATCH',
+          { status: 'PAUSED' },
+        )
         newStatus = 'PAUSED'
       } else {
-        await makeCashfreeV2Request(`/subscriptions/${sip.cf_subscription_id}/activate-subscription`, 'POST')
+        // v3 API: PATCH /subscriptions/{id} with status=ACTIVE
+        await makeCashfreeRequest(
+          `/subscriptions/${sip.cf_subscription_id}`,
+          'PATCH',
+          { status: 'ACTIVE' },
+        )
         newStatus = 'ACTIVE'
       }
     } catch (cfErr: any) {
-      if (cfErr.message?.includes('already paused') || cfErr.message?.includes('already active')) {
+      // Accept idempotent "already in target state" errors (HTTP 400 with code 409/already_*)
+      const isIdempotent =
+        cfErr.httpStatus === 400 &&
+        (cfErr.cfCode === 'already_paused' ||
+          cfErr.cfCode === 'already_active' ||
+          cfErr.message?.includes('already'))
+      if (isIdempotent) {
         newStatus = action === 'pause' ? 'PAUSED' : 'ACTIVE'
       } else {
         throw cfErr

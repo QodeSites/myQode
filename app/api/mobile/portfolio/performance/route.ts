@@ -72,11 +72,11 @@ export async function GET(request: NextRequest) {
   if (user!.isReviewer) return NextResponse.json(reviewerMockPerformance(accountId ?? 'DEMO001'))
 
   if (!accountId) {
-    return NextResponse.json({ error: 'accountId is required', available: user!.accountCodes }, { status: 400 })
+    return NextResponse.json({ error: 'accountId is required' }, { status: 400 })
   }
 
   if (!user!.accountCodes?.includes(accountId)) {
-    return NextResponse.json({ error: 'Forbidden', available: user!.accountCodes }, { status: 403 })
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   try {

@@ -1,14 +1,30 @@
 // GET /api/mobile/portfolio/combined-drawdown?accountIds=QAW00037,QFH00035&period=1Y
 // Drawdown chart for the combined multi-account portfolio.
 // Combined portfolio value = sum of all accounts per date. Peak resets at window start.
+// Benchmark: NIFTY 50 (same fallback used by the web version for combined views).
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
+import db2 from '@/lib/db2'
 import { REVIEWER_MOCK_COMBINED_DRAWDOWN } from '@/lib/reviewerMock'
 
 const PERIOD_DAYS: Record<string, number> = {
   '1W': 7, '1M': 30, '3M': 90, '6M': 180,
   '1Y': 365, '3Y': 1095, 'ALL': 99999,
+}
+
+const COMBINED_BENCHMARK = 'NIFTY 50'
+
+// Compute running drawdown from an ASC array of { date, nav }.
+// Returns a map of date → drawdown % (all values ≤ 0). Peak resets at first point.
+function computeDrawdownMap(navRows: { date: string; nav: number }[]): Record<string, number> {
+  const result: Record<string, number> = {}
+  let peak = -Infinity
+  for (const r of navRows) {
+    if (r.nav > peak) peak = r.nav
+    result[r.date] = peak > 0 ? +(((r.nav - peak) / peak) * 100).toFixed(4) : 0
+  }
+  return result
 }
 
 export async function GET(request: NextRequest) {
@@ -38,7 +54,7 @@ export async function GET(request: NextRequest) {
   const days = PERIOD_DAYS[period] ?? PERIOD_DAYS['1Y']
 
   try {
-    // Detect closed
+    // ── 0. Detect closed ─────────────────────────────────────────────────────
     const closedCheckRes = await pool.query(
       `SELECT report_date, SUM(portfolio_value) AS combined_value
        FROM public.pms_master_sheet WHERE account_code = ANY($1)
@@ -62,6 +78,7 @@ export async function GET(request: NextRequest) {
       closedAt = caRes.rows[0]?.report_date ? String(caRes.rows[0].report_date).split('T')[0] : null
     }
 
+    // ── 1. Portfolio rows in the selected window (ASC) ───────────────────────
     const result = await pool.query(
       `SELECT report_date, SUM(portfolio_value) AS combined_value
        FROM public.pms_master_sheet
@@ -74,19 +91,59 @@ export async function GET(request: NextRequest) {
     )
 
     if (result.rows.length === 0) {
-      return NextResponse.json({ accountIds, period, isClosed, closedAt, series: [] })
+      return NextResponse.json({ accountIds, period, isClosed, closedAt, series: [], benchmark: COMBINED_BENCHMARK })
     }
 
-    // Compute running drawdown from window start (peak resets to first value)
-    let peak = -Infinity
-    const series = result.rows.map((r: any) => {
-      const val = parseFloat(r.combined_value)
-      if (val > peak) peak = val
-      const dd = peak > 0 ? +(((val - peak) / peak) * 100).toFixed(4) : 0
-      return { date: String(r.report_date).split('T')[0], portfolio: dd, benchmark: null }
+    const windowStart: string = String(result.rows[0].report_date).split('T')[0]
+    const windowEnd: string   = closedAt ?? String(result.rows[result.rows.length - 1].report_date).split('T')[0]
+
+    // Compute combined portfolio drawdown (peak resets at window start)
+    const portDDMap = computeDrawdownMap(
+      result.rows.map((r: any) => ({
+        date: String(r.report_date).split('T')[0],
+        nav: parseFloat(r.combined_value),
+      }))
+    )
+
+    // ── 2. Benchmark drawdown — fetch NIFTY 50 in the window, compute DD ─────
+    const benchResult = await db2.query(
+      `SELECT date, nav
+       FROM public.tblresearch_new
+       WHERE indices = $1
+         AND date >= $2
+         AND date <= $3
+       ORDER BY date ASC`,
+      [COMBINED_BENCHMARK, windowStart, windowEnd]
+    )
+
+    const benchDDMap = computeDrawdownMap(
+      benchResult.rows.map((r: any) => ({
+        date: String(r.date).split('T')[0],
+        nav: parseFloat(r.nav),
+      }))
+    )
+
+    // ── 3. Align on portfolio dates (spine), forward-fill benchmark DD ────────
+    const portfolioDates = result.rows.map((r: any) => String(r.report_date).split('T')[0])
+    let lastBenchDD: number | null = null
+
+    const series = portfolioDates.map((date: string) => {
+      if (benchDDMap[date] !== undefined) lastBenchDD = benchDDMap[date]
+      return {
+        date,
+        portfolio: portDDMap[date] ?? 0,
+        benchmark: lastBenchDD !== null ? +lastBenchDD.toFixed(4) : null,
+      }
     })
 
-    return NextResponse.json({ accountIds, period, isClosed, closedAt, series })
+    return NextResponse.json({
+      accountIds,
+      period,
+      isClosed,
+      closedAt,
+      benchmark: COMBINED_BENCHMARK,
+      series,
+    })
   } catch (err) {
     console.error('[mobile/portfolio/combined-drawdown]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
