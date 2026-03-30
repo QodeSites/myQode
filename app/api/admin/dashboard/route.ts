@@ -111,7 +111,7 @@ export async function GET(request: NextRequest) {
     let clientQuery = `
   SELECT 
     id, clientid, clientcode, clientname, email, mobile, onboarding_status,
-    head_of_family, groupid, groupname, ownerid, password_set_at, first_login_at,
+    head_of_family, groupid, groupname, ownerid, password, password_set_at, first_login_at,
     login_attempts, login_count, last_login_at, locked_until, created_at, updated_at,
     salutation, firstname, middlename, lastname
   FROM pms_clients_master
@@ -165,8 +165,8 @@ export async function GET(request: NextRequest) {
         const allQueries = accounts.flatMap(acc => queryMap.get(acc.clientcode) || []);
         const totalLogins = accounts.reduce((sum, acc) => sum + (acc.login_attempts || 0), 0);
 
-        // Determine overall onboarding status based on whether password has been set up
-        const completedCount = accounts.filter(acc => acc.password_set_at != null).length;
+        // Determine overall onboarding status based on whether default password has been changed
+        const completedCount = accounts.filter(acc => acc.password && acc.password !== 'Qode@123').length;
 
         let onboardingStatus: 'completed' | 'pending' | 'mixed';
         if (completedCount === accounts.length) {
@@ -193,7 +193,7 @@ export async function GET(request: NextRequest) {
             clientId: acc.clientid,
             clientCode: acc.clientcode,
             clientName: acc.clientname,
-            onboardingStatus: acc.password_set_at ? 'completed' : 'pending',
+            onboardingStatus: (acc.password && acc.password !== 'Qode@123') ? 'completed' : 'pending',
             headOfFamily: acc.head_of_family,
             createdAt: acc.created_at,
             loginCount: acc.login_count || 0,      // Changed from login_attempts
@@ -229,7 +229,7 @@ export async function GET(request: NextRequest) {
     // Calculate statistics
     // Calculate statistics with proper login tracking
     const allGroupedClients = Array.from(clientGroups.entries()).map(([ownerId, accounts]) => {
-      const completedCount = accounts.filter(acc => acc.password_set_at != null).length;
+      const completedCount = accounts.filter(acc => acc.password && acc.password !== 'Qode@123').length;
 
       let onboardingStatus: 'completed' | 'pending' | 'mixed';
       if (completedCount === accounts.length) {
