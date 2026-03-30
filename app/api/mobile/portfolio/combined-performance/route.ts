@@ -1,8 +1,8 @@
-// GET /api/mobile/portfolio/combined-performance?accountIds=QAW00037,QFH00035,QGF00032
-// Aggregated performance for multiple accounts (owner-level "all strategies" view).
-// Merges each account's daily rows by date, summing portfolio_value and cash_in_out.
-// All accountIds must be present in the JWT accountCodes.
-// Benchmark: NIFTY 50 (same fallback used by the web version for combined views).
+// GET /api/mobile/portfolio/combined-performance?accountId={ownerId}
+// Performance for the owner/group aggregate view.
+// Uses the same pre-computed approach as the web version:
+//   pms_master_sheet WHERE account_code = accountId (no runtime SUM).
+// Benchmark: always NIFTY 50 for combined/aggregate views.
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
@@ -11,8 +11,10 @@ import { REVIEWER_MOCK_COMBINED_PERFORMANCE } from '@/lib/reviewerMock'
 
 const COMBINED_BENCHMARK = 'NIFTY 50'
 
-function formatDate(d: string): string {
-  return new Date(d).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+function formatDate(d: Date | string | null): string {
+  if (!d) return ''
+  const date = typeof d === 'string' ? new Date(d) : d
+  return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
 function businessDaysAgo(date: Date, days: number): Date {
@@ -44,14 +46,13 @@ function inceptionReturn(current: number, past: number | null, inceptionDateStr:
   return +(((current / past - 1) * 100).toFixed(2))
 }
 
-function valueOnOrBefore(rows: { date: string; portfolioValue: number }[], cutoff: Date): number | null {
+function navOnOrBefore(rows: any[], cutoff: Date, dateKey: string, navKey: string): number | null {
   for (let i = rows.length - 1; i >= 0; i--) {
-    if (new Date(rows[i].date) <= cutoff) return rows[i].portfolioValue
+    if (new Date(rows[i][dateKey]) <= cutoff) return parseFloat(rows[i][navKey])
   }
   return null
 }
 
-// Find closest nav on or before a cutoff date in a DESC-sorted array
 function benchNavOnOrBefore(rows: any[], cutoff: Date): number | null {
   for (const r of rows) {
     if (new Date(r.date) <= cutoff) return parseFloat(r.nav)
@@ -70,112 +71,95 @@ export async function GET(request: NextRequest) {
   if (error) return error
 
   const { searchParams } = new URL(request.url)
-  const param = searchParams.get('accountIds')
+  const accountId = searchParams.get('accountId') ?? user!.accountCodes?.[0]
 
   if (user!.isReviewer) return NextResponse.json(REVIEWER_MOCK_COMBINED_PERFORMANCE)
 
-  if (!param) {
-    return NextResponse.json({ error: 'accountIds is required (comma-separated)' }, { status: 400 })
+  if (!accountId) {
+    return NextResponse.json({ error: 'accountId is required' }, { status: 400 })
   }
 
-  const accountIds = param.split(',').map(s => s.trim()).filter(Boolean)
-  if (accountIds.length === 0) {
-    return NextResponse.json({ error: 'At least one accountId is required' }, { status: 400 })
-  }
-
-  const unauthorized = accountIds.filter(id => !user!.accountCodes?.includes(id))
-  if (unauthorized.length > 0) {
-    return NextResponse.json({ error: 'Forbidden', unauthorized }, { status: 403 })
+  if (!user!.accountCodes?.includes(accountId)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   try {
-    const result = await pool.query(
-      `SELECT account_code, report_date, portfolio_value, cash_in_out
+    // --- Portfolio data from pre-computed row ---
+    const historyResult = await pool.query(
+      `SELECT report_date, nav, portfolio_value, drawdown_percent, cash_in_out
        FROM public.pms_master_sheet
-       WHERE account_code = ANY($1)
+       WHERE account_code = $1
        ORDER BY report_date ASC`,
-      [accountIds]
+      [accountId]
     )
 
-    if (result.rows.length === 0) {
+    const rows = historyResult.rows
+    if (rows.length === 0) {
       return NextResponse.json({ error: 'No data found' }, { status: 404 })
     }
 
-    // Merge by date: sum portfolio_value and cash_in_out across all accounts
-    const dateMap: Record<string, { portfolioValue: number; cashInOut: number }> = {}
-    for (const row of result.rows) {
-      const date = String(row.report_date).split('T')[0]
-      const pv = parseFloat(row.portfolio_value || 0)
-      const cf = parseFloat(row.cash_in_out || 0)
-      if (!dateMap[date]) dateMap[date] = { portfolioValue: 0, cashInOut: 0 }
-      dateMap[date].portfolioValue += pv
-      dateMap[date].cashInOut += cf
+    // Detect closed account: find last row with portfolio_value > 0
+    let lastNonZeroIdx = rows.length - 1
+    while (lastNonZeroIdx >= 0 && parseFloat(rows[lastNonZeroIdx].portfolio_value || 0) === 0) {
+      lastNonZeroIdx--
     }
+    const isClosed = lastNonZeroIdx < rows.length - 1
+    const closedAtRaw: string | null = isClosed && lastNonZeroIdx >= 0 ? rows[lastNonZeroIdx].report_date : null
+    const activeRows = isClosed && lastNonZeroIdx >= 0 ? rows.slice(0, lastNonZeroIdx + 1) : rows
 
-    const combined = Object.keys(dateMap).sort().map(date => ({
-      date,
-      portfolioValue: dateMap[date].portfolioValue,
-      cashInOut: dateMap[date].cashInOut,
-    }))
-
-    // Detect closed account: find last combined row with portfolioValue > 0
-    let lastNonZeroIdx = combined.length - 1
-    while (lastNonZeroIdx >= 0 && combined[lastNonZeroIdx].portfolioValue === 0) lastNonZeroIdx--
-    const isClosed = lastNonZeroIdx < combined.length - 1
-    const closedAtRaw = isClosed && lastNonZeroIdx >= 0 ? combined[lastNonZeroIdx].date : null
-    const activeRows = isClosed && lastNonZeroIdx >= 0 ? combined.slice(0, lastNonZeroIdx + 1) : combined
-
-    const first = activeRows[0]
     const latest = activeRows[activeRows.length - 1]
-    const inceptionDate = first.date
-    const latestDate = latest.date
-    const currentValue = latest.portfolioValue
-    const firstValue = first.portfolioValue
+    const first = activeRows[0]
+    const latestNav: number = parseFloat(latest.nav)
+    const latestValue: number = parseFloat(latest.portfolio_value)
+    const latestDate: string = latest.report_date
+    const inceptionDate: string = first.report_date
+    const firstNav: number = parseFloat(first.nav)
 
-    const amountInvested = activeRows.reduce((sum, r) => sum + r.cashInOut, 0)
-    const totalReturns = currentValue - amountInvested
-    const returnsPercent = inceptionReturn(currentValue, firstValue, inceptionDate, latestDate) ?? 0
+    const amountInvested: number = activeRows.reduce((sum: number, r: any) => {
+      return sum + parseFloat(r.cash_in_out || 0)
+    }, 0)
 
-    // ── Portfolio trailing returns ────────────────────────────────────────────
+    const totalReturns = latestValue - amountInvested
+    const returnsPercent = inceptionReturn(latestNav, firstNav, inceptionDate, latestDate) ?? 0
+
+    // ── Trailing return helpers (NAV-based, ASC) ──────────────────────────────
     const latestDateObj = new Date(latestDate)
 
     const getMonthTarget = (months: number): Date => {
       const t = new Date(latestDateObj)
-      if (isMonthEnd(latestDateObj)) t.setMonth(t.getMonth() - months + 1, 0)
-      else t.setMonth(t.getMonth() - months)
+      if (isMonthEnd(latestDateObj)) {
+        t.setMonth(t.getMonth() - months + 1, 0)
+      } else {
+        t.setMonth(t.getMonth() - months)
+      }
       return t
     }
 
-    const v1W  = valueOnOrBefore(activeRows, new Date(latestDateObj.getTime() - 7 * 86400000))
-    const v10D = valueOnOrBefore(activeRows, businessDaysAgo(latestDateObj, 10))
-    const v1M  = valueOnOrBefore(activeRows, getMonthTarget(1))
-    const v3M  = valueOnOrBefore(activeRows, getMonthTarget(3))
-    const v6M  = valueOnOrBefore(activeRows, getMonthTarget(6))
-    const v1Y  = valueOnOrBefore(activeRows, getMonthTarget(12))
-    const v3Y  = valueOnOrBefore(activeRows, getMonthTarget(36))
+    const nav1W  = navOnOrBefore(activeRows, new Date(latestDateObj.getTime() - 7 * 86400000), 'report_date', 'nav')
+    const nav10D = navOnOrBefore(activeRows, businessDaysAgo(latestDateObj, 10), 'report_date', 'nav')
+    const nav1M  = navOnOrBefore(activeRows, getMonthTarget(1),  'report_date', 'nav')
+    const nav3M  = navOnOrBefore(activeRows, getMonthTarget(3),  'report_date', 'nav')
+    const nav6M  = navOnOrBefore(activeRows, getMonthTarget(6),  'report_date', 'nav')
+    const nav1Y  = navOnOrBefore(activeRows, getMonthTarget(12), 'report_date', 'nav')
+    const nav3Y  = navOnOrBefore(activeRows, getMonthTarget(36), 'report_date', 'nav')
 
-    // Max drawdown on combined portfolio value
-    let peak = -Infinity
-    let maxDD = 0
-    let currentDD = 0
-    for (const r of activeRows) {
-      if (r.portfolioValue > peak) peak = r.portfolioValue
-      const dd = peak > 0 ? ((r.portfolioValue - peak) / peak) * 100 : 0
-      if (dd < maxDD) maxDD = dd
-      currentDD = dd
-    }
+    // Max drawdown from the pre-computed column
+    const maxDDRaw = activeRows.reduce((min: number, r: any) => {
+      const v = parseFloat(r.drawdown_percent || 0)
+      return v < min ? v : min
+    }, 0)
 
     const portfolioTrailing = {
-      w1:   simpleReturn(currentValue, v1W),
-      d10:  simpleReturn(currentValue, v10D),
-      m1:   simpleReturn(currentValue, v1M),
-      m3:   simpleReturn(currentValue, v3M),
-      m6:   simpleReturn(currentValue, v6M),
-      y1:   simpleReturn(currentValue, v1Y),
-      y3:   cagrReturn(currentValue, v3Y, 3),
-      currentDD: +currentDD.toFixed(2),
-      maxDD: +maxDD.toFixed(2),
-      sinceInception: inceptionReturn(currentValue, firstValue, inceptionDate, latestDate),
+      w1:   simpleReturn(latestNav, nav1W),
+      d10:  simpleReturn(latestNav, nav10D),
+      m1:   simpleReturn(latestNav, nav1M),
+      m3:   simpleReturn(latestNav, nav3M),
+      m6:   simpleReturn(latestNav, nav6M),
+      y1:   cagrReturn(latestNav, nav1Y, 1),
+      y3:   cagrReturn(latestNav, nav3Y, 3),
+      currentDD: parseFloat(latest.drawdown_percent || 0),
+      maxDD: +maxDDRaw.toFixed(2),
+      sinceInception: inceptionReturn(latestNav, firstNav, inceptionDate, latestDate),
     }
 
     // ── NIFTY 50 benchmark trailing returns ───────────────────────────────────
@@ -247,7 +231,7 @@ export async function GET(request: NextRequest) {
           m1:   simpleReturn(latestBench, b1M),
           m3:   simpleReturn(latestBench, b3M),
           m6:   simpleReturn(latestBench, b6M),
-          y1:   simpleReturn(latestBench, b1Y),
+          y1:   cagrReturn(latestBench, b1Y, 1),
           y3:   cagrReturn(latestBench, b3Y, 3),
           currentDD: +benchCurrentDD.toFixed(2),
           maxDD: +benchMaxDD.toFixed(2),
@@ -259,18 +243,20 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      accountIds,
+      accountId,
       isClosed,
       closedAt: closedAtRaw ? formatDate(closedAtRaw) : null,
-      benchmark: COMBINED_BENCHMARK,
+      strategy: {
+        benchmark: COMBINED_BENCHMARK,
+      },
       amountInvested: +amountInvested.toFixed(2),
-      currentValue: +currentValue.toFixed(2),
+      currentValue: +latestValue.toFixed(2),
       totalReturns: +totalReturns.toFixed(2),
       returnsPercent,
       isNegative: totalReturns < 0,
       inceptionDate: formatDate(inceptionDate),
       dataAsOf: formatDate(latestDate),
-      grossValue: +currentValue.toFixed(2),
+      grossValue: +latestValue.toFixed(2),
       trailingReturns: {
         portfolio: portfolioTrailing,
         benchmark: benchmarkTrailing,

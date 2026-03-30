@@ -66,9 +66,23 @@ export async function GET(request: NextRequest) {
     let yearStartNav = 0
     let yearStartValue = 0
     let yearSumCash = 0
+    let yearStartDate: Date | null = null
 
-    const finalizeYear = (year: number, nav: number, value: number) => {
-      const yPct = yearStartNav > 0 ? ((nav / yearStartNav) - 1) * 100 : 0
+    // CAGR if period >= 365 days, else absolute
+    const smartPct = (endNav: number, startNav: number, startDate: Date | null, endDate: Date): number => {
+      if (startNav <= 0) return 0
+      if (startDate) {
+        const days = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
+        if (days >= 365) {
+          const years = days / 365.25
+          return (Math.pow(endNav / startNav, 1 / years) - 1) * 100
+        }
+      }
+      return (endNav / startNav - 1) * 100
+    }
+
+    const finalizeYear = (year: number, nav: number, value: number, endDate: Date) => {
+      const yPct = smartPct(nav, yearStartNav, yearStartDate, endDate)
       const yCash = value - yearStartValue - yearSumCash
       yearTotals[year] = { totalPct: yPct, totalCash: yCash, yearCash: yearSumCash }
     }
@@ -93,9 +107,10 @@ export async function GET(request: NextRequest) {
       const isNewQuarter = isNewYear || qtr !== prevQuarter
 
       if (isNewYear) {
-        if (prevYear > 0) finalizeYear(prevYear, prevNav, prevValue)
+        if (prevYear > 0) finalizeYear(prevYear, prevNav, prevValue, prevDate!)
         yearStartNav = prevDate === null ? nav : prevNav
         yearStartValue = prevDate === null ? 0 : prevValue
+        yearStartDate = prevDate === null ? dateObj : prevDate
         yearSumCash = 0
       }
 
@@ -118,7 +133,7 @@ export async function GET(request: NextRequest) {
 
     // Finalize last quarter and last year
     if (prevQuarter > 0) finalizeQuarter(prevYear, prevQuarter, prevNav, prevValue)
-    if (prevYear > 0) finalizeYear(prevYear, prevNav, prevValue)
+    if (prevYear > 0) finalizeYear(prevYear, prevNav, prevValue, prevDate!)
 
     // ── Build response arrays ──────────────────────────────────────────────────
     const years = Object.keys(qtrData).map(Number).sort((a, b) => a - b)

@@ -161,7 +161,7 @@ export async function GET(request: NextRequest) {
       m1:   simpleReturn(latestNav, nav1M),
       m3:   simpleReturn(latestNav, nav3M),
       m6:   simpleReturn(latestNav, nav6M),
-      y1:   simpleReturn(latestNav, nav1Y),          // 1Y window = same as absolute
+      y1:   cagrReturn(latestNav, nav1Y, 1),           // 1Y window → CAGR (period ≥ 1 year)
       y3:   cagrReturn(latestNav, nav3Y, 3),          // 3Y window → CAGR (annualised)
       currentDD: parseFloat(latest.drawdown_percent || 0),
       maxDD: +maxDDRaw.toFixed(2),
@@ -239,7 +239,7 @@ export async function GET(request: NextRequest) {
           m1:   simpleReturn(latestBench, b1M),
           m3:   simpleReturn(latestBench, b3M),
           m6:   simpleReturn(latestBench, b6M),
-          y1:   simpleReturn(latestBench, b1Y),
+          y1:   cagrReturn(latestBench, b1Y, 1),
           y3:   cagrReturn(latestBench, b3Y, 3),
           currentDD: +benchCurrentDD.toFixed(2),
           maxDD: +benchMaxDD.toFixed(2),

@@ -1,7 +1,8 @@
-// GET /api/mobile/portfolio/combined-monthly-pl?accountIds=QAW00037,QFH00035
-// Monthly P&L aggregated across multiple accounts.
-// Merges daily rows by date (summing portfolio_value and cash_in_out), then
-// runs the same month-boundary logic as the single-account monthly-pl route.
+// GET /api/mobile/portfolio/combined-monthly-pl?accountId={ownerId}
+// Monthly P&L for the owner/group aggregate view.
+// Uses the same pre-computed approach as the web version:
+//   pms_master_sheet WHERE account_code = accountId (no runtime SUM).
+// Calculation matches the regular monthly-pl route exactly (NAV-based %).
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
@@ -15,32 +16,25 @@ export async function GET(request: NextRequest) {
   if (error) return error
 
   const { searchParams } = new URL(request.url)
-  const param = searchParams.get('accountIds')
+  const accountId = searchParams.get('accountId') ?? user!.accountCodes?.[0]
 
   if (user!.isReviewer) return NextResponse.json(REVIEWER_MOCK_COMBINED_MONTHLY_PL)
 
-  if (!param) {
-    return NextResponse.json({ error: 'accountIds is required (comma-separated)' }, { status: 400 })
+  if (!accountId) {
+    return NextResponse.json({ error: 'accountId is required' }, { status: 400 })
   }
 
-  const accountIds = param.split(',').map(s => s.trim()).filter(Boolean)
-  if (accountIds.length === 0) {
-    return NextResponse.json({ error: 'At least one accountId is required' }, { status: 400 })
-  }
-
-  const unauthorized = accountIds.filter(id => !user!.accountCodes?.includes(id))
-  if (unauthorized.length > 0) {
-    return NextResponse.json({ error: 'Forbidden', unauthorized }, { status: 403 })
+  if (!user!.accountCodes?.includes(accountId)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   try {
     const result = await pool.query(
-      `SELECT report_date, SUM(portfolio_value) AS portfolio_value, SUM(cash_in_out) AS cash_in_out
+      `SELECT report_date, nav, portfolio_value, cash_in_out
        FROM public.pms_master_sheet
-       WHERE account_code = ANY($1)
-       GROUP BY report_date
+       WHERE account_code = $1
        ORDER BY report_date ASC`,
-      [accountIds]
+      [accountId]
     )
 
     let rows = result.rows
@@ -48,38 +42,57 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ percentData: [], rupeeData: [], isClosed: false, closedAt: null })
     }
 
-    // Detect closed
+    // Detect closed account: find last row with portfolio_value > 0
     let lastNonZeroIdx = rows.length - 1
-    while (lastNonZeroIdx >= 0 && parseFloat(rows[lastNonZeroIdx].portfolio_value || 0) === 0) lastNonZeroIdx--
+    while (lastNonZeroIdx >= 0 && parseFloat(rows[lastNonZeroIdx].portfolio_value || 0) === 0) {
+      lastNonZeroIdx--
+    }
     const isClosed = lastNonZeroIdx < rows.length - 1
-    const closedAt: string | null = isClosed && lastNonZeroIdx >= 0
-      ? String(rows[lastNonZeroIdx].report_date).split('T')[0] : null
+    const closedAt: string | null = isClosed && lastNonZeroIdx >= 0 ? rows[lastNonZeroIdx].report_date : null
     if (isClosed && lastNonZeroIdx >= 0) rows = rows.slice(0, lastNonZeroIdx + 1)
 
+    // ── Computation matching the regular monthly-pl route ─────────────────────
     type MonthEntry = { pct: number; cash: number; capitalInOut: number }
     const monthData: Record<number, Record<number, MonthEntry>> = {}
     const yearTotals: Record<number, { totalPct: number; totalCash: number; yearCash: number }> = {}
 
+    let prevNav = 0
     let prevValue = 0
     let prevDate: Date | null = null
     let prevYear = 0
     let prevYearMonth: string | null = null
 
-    // For combined view, use portfolio_value ratio directly (no single-fund NAV available)
+    let monthStartNav = 0
     let monthStartValue = 0
     let monthSumCash = 0
+
+    let yearStartNav = 0
     let yearStartValue = 0
     let yearSumCash = 0
+    let yearStartDate: Date | null = null
 
-    const finalizeYear = (year: number, value: number) => {
-      const yPct = yearStartValue > 0 ? ((value / yearStartValue) - 1) * 100 : 0
+    // CAGR if period >= 365 days, else absolute
+    const smartPct = (endNav: number, startNav: number, startDate: Date | null, endDate: Date): number => {
+      if (startNav <= 0) return 0
+      if (startDate) {
+        const days = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)
+        if (days >= 365) {
+          const years = days / 365.25
+          return (Math.pow(endNav / startNav, 1 / years) - 1) * 100
+        }
+      }
+      return (endNav / startNav - 1) * 100
+    }
+
+    const finalizeYear = (year: number, nav: number, value: number, endDate: Date) => {
+      const yPct = smartPct(nav, yearStartNav, yearStartDate, endDate)
       const yCash = value - yearStartValue - yearSumCash
       yearTotals[year] = { totalPct: yPct, totalCash: yCash, yearCash: yearSumCash }
     }
 
-    const finalizeMonth = (ymKey: string, value: number) => {
+    const finalizeMonth = (ymKey: string, nav: number, value: number) => {
       const [ymYear, ymMo] = ymKey.split('-').map(Number)
-      const mPct = monthStartValue > 0 ? ((value / monthStartValue) - 1) * 100 : 0
+      const mPct = monthStartNav > 0 ? ((nav / monthStartNav) - 1) * 100 : 0
       const mCash = value - monthStartValue - monthSumCash
       if (!monthData[ymYear]) monthData[ymYear] = {}
       monthData[ymYear][ymMo] = { pct: mPct, cash: mCash, capitalInOut: monthSumCash }
@@ -88,22 +101,26 @@ export async function GET(request: NextRequest) {
     for (const item of rows) {
       const dateObj = new Date(item.report_date)
       const year = dateObj.getFullYear()
-      const mo = dateObj.getMonth()
+      const mo = dateObj.getMonth()       // 0-indexed
       const ym = `${year}-${mo}`
       const cash = parseFloat(item.cash_in_out || 0)
+      const nav = parseFloat(item.nav)
       const pValue = parseFloat(item.portfolio_value || 0)
 
       const isNewYear = prevDate === null || year !== prevYear
       const isNewMonth = prevDate === null || ym !== prevYearMonth
 
       if (isNewYear) {
-        if (prevYear > 0) finalizeYear(prevYear, prevValue)
+        if (prevYear > 0) finalizeYear(prevYear, prevNav, prevValue, prevDate!)
+        yearStartNav = prevDate === null ? nav : prevNav
         yearStartValue = prevDate === null ? 0 : prevValue
+        yearStartDate = prevDate === null ? dateObj : prevDate
         yearSumCash = 0
       }
 
       if (isNewMonth) {
-        if (prevYearMonth !== null) finalizeMonth(prevYearMonth, prevValue)
+        if (prevYearMonth !== null) finalizeMonth(prevYearMonth, prevNav, prevValue)
+        monthStartNav = prevDate === null ? nav : prevNav
         monthStartValue = prevDate === null ? 0 : prevValue
         monthSumCash = 0
         prevYearMonth = ym
@@ -111,15 +128,20 @@ export async function GET(request: NextRequest) {
 
       yearSumCash += cash
       monthSumCash += cash
+
+      prevNav = nav
       prevValue = pValue
       prevDate = dateObj
       prevYear = year
     }
 
-    if (prevYearMonth !== null) finalizeMonth(prevYearMonth, prevValue)
-    if (prevYear > 0) finalizeYear(prevYear, prevValue)
+    // Finalize last month and last year
+    if (prevYearMonth !== null) finalizeMonth(prevYearMonth, prevNav, prevValue)
+    if (prevYear > 0) finalizeYear(prevYear, prevNav, prevValue, prevDate!)
 
+    // ── Build response arrays ──────────────────────────────────────────────────
     const years = Object.keys(monthData).map(Number).sort((a, b) => a - b)
+
     type YearRow = { year: number } & Record<MonthKey, number | null> & { total: number | null; yearCashFlow?: number | null }
 
     const pctRows: YearRow[] = []
@@ -132,12 +154,14 @@ export async function GET(request: NextRequest) {
         total: yearTotals[yr] ? +yearTotals[yr].totalCash.toFixed(2) : null,
         yearCashFlow: yearTotals[yr] ? +yearTotals[yr].yearCash.toFixed(2) : null,
       }
+
       for (let mo = 0; mo < 12; mo++) {
         const mKey = MONTH_KEYS[mo]
         const entry = monthData[yr]?.[mo]
         pctRow[mKey] = entry != null ? +entry.pct.toFixed(2) : null
         rupRow[mKey] = entry != null ? +entry.cash.toFixed(2) : null
       }
+
       pctRows.push(pctRow)
       rupRows.push(rupRow)
     }

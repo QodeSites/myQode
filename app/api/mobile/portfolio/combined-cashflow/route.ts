@@ -1,5 +1,7 @@
-// GET /api/mobile/portfolio/combined-cashflow?accountIds=QAW00037,QFH00035
-// All cash transactions across multiple accounts, merged and sorted by date.
+// GET /api/mobile/portfolio/combined-cashflow?accountId={ownerId}
+// Cash transactions for a pre-computed owner/group aggregate row.
+// Uses the same pre-computed approach as the web version:
+//   pms_master_sheet WHERE account_code = ownerId (no runtime SUM aggregation).
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
@@ -17,65 +19,55 @@ export async function GET(request: NextRequest) {
   if (error) return error
 
   const { searchParams } = new URL(request.url)
-  const param = searchParams.get('accountIds')
+  const accountId = searchParams.get('accountId') ?? user!.accountCodes?.[0]
 
   if (user!.isReviewer) return NextResponse.json(REVIEWER_MOCK_COMBINED_CASHFLOW)
 
-  if (!param) {
-    return NextResponse.json({ error: 'accountIds is required (comma-separated)' }, { status: 400 })
+  if (!accountId) {
+    return NextResponse.json({ error: 'accountId is required' }, { status: 400 })
   }
 
-  const accountIds = param.split(',').map(s => s.trim()).filter(Boolean)
-  if (accountIds.length === 0) {
-    return NextResponse.json({ error: 'At least one accountId is required' }, { status: 400 })
-  }
-
-  const unauthorized = accountIds.filter(id => !user!.accountCodes?.includes(id))
-  if (unauthorized.length > 0) {
-    return NextResponse.json({ error: 'Forbidden', unauthorized }, { status: 403 })
+  if (!user!.accountCodes?.includes(accountId)) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
   try {
-    // Detect closed
+    // Detect closed account via pre-computed row
     const closedCheckRes = await pool.query(
-      `SELECT report_date, SUM(portfolio_value) AS combined_value
-       FROM public.pms_master_sheet WHERE account_code = ANY($1)
-       GROUP BY report_date ORDER BY report_date DESC LIMIT 2`,
-      [accountIds]
+      `SELECT report_date, portfolio_value FROM public.pms_master_sheet
+       WHERE account_code = $1 ORDER BY report_date DESC LIMIT 2`,
+      [accountId]
     )
     const last2 = closedCheckRes.rows
     const isClosed = last2.length >= 2 &&
-      parseFloat(last2[0].combined_value || 0) === 0 &&
-      parseFloat(last2[1].combined_value || 0) === 0
+      parseFloat(last2[0].portfolio_value || 0) === 0 &&
+      parseFloat(last2[1].portfolio_value || 0) === 0
     let closedAt: string | null = null
     if (isClosed) {
       const caRes = await pool.query(
-        `SELECT report_date FROM (
-           SELECT report_date, SUM(portfolio_value) AS combined_value
-           FROM public.pms_master_sheet WHERE account_code = ANY($1)
-           GROUP BY report_date ORDER BY report_date DESC
-         ) t WHERE combined_value > 0 LIMIT 1`,
-        [accountIds]
+        `SELECT report_date FROM public.pms_master_sheet
+         WHERE account_code = $1 AND portfolio_value > 0
+         ORDER BY report_date DESC LIMIT 1`,
+        [accountId]
       )
       closedAt = caRes.rows[0]?.report_date ? String(caRes.rows[0].report_date).split('T')[0] : null
     }
 
-    // Fetch all non-zero cash flows across all accounts
+    // Fetch non-zero cash flows from the pre-computed aggregate row
     const result = await pool.query(
-      `SELECT account_code, report_date, cash_in_out
+      `SELECT report_date, cash_in_out
        FROM public.pms_master_sheet
-       WHERE account_code = ANY($1)
+       WHERE account_code = $1
          AND cash_in_out IS NOT NULL AND cash_in_out != 0
          ${closedAt ? `AND report_date <= '${closedAt}'` : ''}
        ORDER BY report_date ASC`,
-      [accountIds]
+      [accountId]
     )
 
     const transactions = result.rows.map((r: any) => {
       const amount = parseFloat(r.cash_in_out)
       return {
         date: String(r.report_date).split('T')[0],
-        accountId: r.account_code,
         amount,
         type: amount >= 0 ? 'inflow' : 'outflow',
         formattedAmount: formatINR(amount),
