@@ -111,7 +111,6 @@ export async function POST(request: NextRequest) {
         { status: 401 }
       )
     }
-    console.log(user.email, "=========email")
 
     await query(
       `UPDATE pms_clients_master 
