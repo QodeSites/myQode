@@ -1179,6 +1179,7 @@ function AdminDashboardContent() {
                       <TableHead>Status</TableHead>
                       <TableHead className="text-center">Logins</TableHead>
                       <TableHead>Last Login</TableHead>
+                      <TableHead>Created</TableHead>
                       <TableHead>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1212,6 +1213,9 @@ function AdminDashboardContent() {
                             {d.last_login_at
                               ? new Date(d.last_login_at).toLocaleDateString()
                               : 'Never'}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {new Date(d.created_at).toLocaleDateString()}
                           </TableCell>
                           <TableCell>
                             <Button
