@@ -60,6 +60,12 @@ const PERIOD_DATE_MAPPING = [
     endDate: "31-Dec-25",
   },
   {
+    type: "Quarter",
+    label: "Q4 FY2026",
+    startDate: "1-Jan-26",
+    endDate: "31-Mar-26",
+  },
+  {
     type: "Year",
     label: "FY 2025",
     startDate: "1-Apr-24",
