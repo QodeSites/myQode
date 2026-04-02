@@ -127,8 +127,8 @@ export async function POST(request: NextRequest) {
     await query(
       `UPDATE pms_clients_master
        SET last_login_at = NOW(), login_count = COALESCE(login_count, 0) + 1
-       WHERE clientcode = $1`,
-      [user.clientcode]
+       WHERE email = $1`,
+      [user.email]
     )
 
     const clientName = [user.salutation, user.firstname, user.middlename, user.lastname]

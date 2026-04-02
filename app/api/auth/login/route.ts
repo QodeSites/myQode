@@ -101,23 +101,24 @@ export async function POST(request: NextRequest) {
     }
 
     const user = initialResult.rows[0]
-    
+
     // Verify password (assuming bcrypt for hashed passwords)
     const isPasswordValid = await bcrypt.compare(password, user.password)
-    
+
     if (!isPasswordValid) {
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
       )
     }
+    console.log(user.email, "=========email")
 
     await query(
       `UPDATE pms_clients_master 
        SET last_login_at = NOW(), 
            login_count = COALESCE(login_count, 0) + 1
-       WHERE clientcode = $1`,
-      [user.clientcode]
+       WHERE email = $1`,
+      [user.email]
     )
 
     // Set session cookies with head of family information
@@ -126,7 +127,7 @@ export async function POST(request: NextRequest) {
     // Get associated client records for response based on head of family status
     const { groupid, email, head_of_family } = user
     let result;
-    
+
     if (head_of_family) {
       // If head of family, get all accounts in the group
       result = await query(
@@ -203,7 +204,7 @@ async function handleDevPasswordlessLogin(username: string) {
 
     // Set session cookies
     const cookieStore = await cookies()
-    
+
     // Set authentication cookie
     cookieStore.set('qode-auth', '1', {
       httpOnly: true,
@@ -211,7 +212,7 @@ async function handleDevPasswordlessLogin(username: string) {
       path: '/',
       maxAge: 60 * 60 * 24
     })
-    
+
     // Client data
     const clientData: ClientData[] = [
       {
@@ -244,7 +245,7 @@ async function handleDevPasswordlessLogin(username: string) {
       groupid: user.groupid,
       head_of_family: user.head_of_family
     }
-    
+
     cookieStore.set('qode-user-context', JSON.stringify(userContext), {
       httpOnly: true,
       sameSite: 'lax',
@@ -297,7 +298,7 @@ async function handleDevBypassLogin(email: string) {
     // If user doesn't exist in development, create mock user data
     if (userResult.rows.length === 0) {
       console.warn(`[DEV] Creating mock session for non-existent email: ${trimmedEmail}`)
-      
+
       // Generate mock data for development
       user = {
         clientid: `DEV-${Date.now()}`,
@@ -312,7 +313,7 @@ async function handleDevBypassLogin(email: string) {
 
     // Set session cookies
     const cookieStore = await cookies()
-    
+
     // Set authentication cookie
     cookieStore.set('qode-auth', '1', {
       httpOnly: true,
@@ -320,7 +321,7 @@ async function handleDevBypassLogin(email: string) {
       path: '/',
       maxAge: 60 * 60 * 24
     })
-    
+
     // Mock client data
     const clientData: ClientData[] = [
       {
@@ -353,7 +354,7 @@ async function handleDevBypassLogin(email: string) {
       groupid: user.groupid,
       head_of_family: user.head_of_family
     }
-    
+
     cookieStore.set('qode-user-context', JSON.stringify(userContext), {
       httpOnly: true,
       sameSite: 'lax',
@@ -380,11 +381,11 @@ async function handleDevBypassLogin(email: string) {
 
 async function setSessionCookies(user: ExtendedClientData) {
   const cookieStore = await cookies()
-  
+
   // Get associated client records based on head of family status
   const { groupid, email, head_of_family } = user
   let result;
-  
+
   if (head_of_family) {
     // If head of family, get all accounts in the group
     result = await query(
@@ -411,7 +412,7 @@ async function setSessionCookies(user: ExtendedClientData) {
     path: '/',
     maxAge: 60 * 60 * 24
   })
-  
+
   // Set client data cookie
   cookieStore.set('qode-clients', JSON.stringify(clientData), {
     httpOnly: true,
@@ -436,7 +437,7 @@ async function setSessionCookies(user: ExtendedClientData) {
     groupid: user.groupid,
     head_of_family: user.head_of_family
   }
-  
+
   cookieStore.set('qode-user-context', JSON.stringify(userContext), {
     httpOnly: true,
     sameSite: 'lax',
@@ -459,13 +460,13 @@ async function handlePasswordStatusCheck(username: string) {
       )
     }
 
-    const { password, email, clientname , clienttype } = result.rows[0]
+    const { password, email, clientname, clienttype } = result.rows[0]
     const requirePasswordSetup = password === 'Qode@123' || !password
 
     return NextResponse.json({
       requirePasswordSetup,
       email: requirePasswordSetup ? email : undefined,
-      clienttype : clienttype
+      clienttype: clienttype
     })
 
   } catch (error) {
@@ -605,7 +606,7 @@ async function handleCompletePasswordSetup(email: string, otp: string, newPasswo
 
     // Get client data for response based on head of family status
     let clientResult;
-    
+
     if (userData.head_of_family) {
       clientResult = await query(
         'SELECT clientid, clientcode FROM pms_clients_master WHERE groupid = $1',
