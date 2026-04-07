@@ -12,8 +12,8 @@ interface UserContext {
 }
 
 interface CalculatorRequest {
-    startDate: string; // required: 'YYYY-MM-DD'
-    endDate: string;   // required: 'YYYY-MM-DD'
+  startDate: string; // required: 'YYYY-MM-DD'
+  endDate: string;   // required: 'YYYY-MM-DD'
 }
 
 const PERIOD_DATE_MAPPING = [
@@ -60,11 +60,23 @@ const PERIOD_DATE_MAPPING = [
     endDate: "31-Dec-25",
   },
   {
+    type: "Quarter",
+    label: "Q4 FY2026",
+    startDate: "1-Jan-26",
+    endDate: "31-Mar-26",
+  },
+  {
     type: "Year",
     label: "FY 2025",
     startDate: "1-Apr-24",
     endDate: "31-Mar-25",
   },
+  {
+    type: "Year",
+    label: "FY 2026",
+    startDate: "1-Apr-25",
+    endDate: "31-Mar-26",
+  }
 ];
 
 // Converts `1-Apr-24` → Date
@@ -160,89 +172,89 @@ export async function GET() {
 
 // Returns array of calc rows
 export async function POST(req: Request) {
+  try {
+    const cookieStore = await cookies();
+    const userContextCookie = cookieStore.get('qode-user-context');
+
+    let userContext: UserContext | null = null;
+    let email: string | null = null;
+
+    if (userContextCookie?.value) {
+      try {
+        userContext = JSON.parse(userContextCookie.value);
+        email = userContext?.email || null;
+      } catch (error) {
+        console.error('Error parsing user context cookie:', error);
+        return NextResponse.json({ error: 'Invalid user context' }, { status: 400 });
+      }
+    } else {
+      return NextResponse.json({ error: 'No user context' }, { status: 401 });
+    }
+
+    let body: CalculatorRequest;
     try {
-        const cookieStore = await cookies();
-        const userContextCookie = cookieStore.get('qode-user-context');
+      body = await req.json();
+      if (!body.startDate || !body.endDate) {
+        return NextResponse.json({ error: 'Missing date range' }, { status: 400 });
+      }
+    } catch (e) {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
 
-        let userContext: UserContext | null = null;
-        let email: string | null = null;
+    // Distributor info
+    const distributorResult = await query(
+      `SELECT * FROM pms_clients_master WHERE email = $1`,
+      [email]
+    );
+    if (!distributorResult.rows.length) {
+      return NextResponse.json({ error: 'Distributor not found' }, { status: 404 });
+    }
+    const distributor = distributorResult.rows[0];
+    const intermediaryName = distributor.clientname;
+    const fees_percentage: number = parseFloat(distributor.intermediary_fee_percentage) || 0;
 
-        if (userContextCookie?.value) {
-            try {
-                userContext = JSON.parse(userContextCookie.value);
-                email = userContext?.email || null;
-            } catch (error) {
-                console.error('Error parsing user context cookie:', error);
-                return NextResponse.json({ error: 'Invalid user context' }, { status: 400 });
-            }
-        } else {
-            return NextResponse.json({ error: 'No user context' }, { status: 401 });
-        }
+    // Related clients
+    const clientsResult = await query(
+      `SELECT * FROM pms_clients_master WHERE intermediaryname = $1`,
+      [intermediaryName]
+    );
+    const clientRows = clientsResult.rows;
+    console.log(intermediaryName, clientRows, "============================clientRows");
 
-        let body: CalculatorRequest;
-        try {
-            body = await req.json();
-            if (!body.startDate || !body.endDate) {
-                return NextResponse.json({ error: 'Missing date range' }, { status: 400 });
-            }
-        } catch (e) {
-            return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
-        }
+    if (!clientRows.length) {
+      return NextResponse.json([], { status: 200 });
+    }
 
-        // Distributor info
-        const distributorResult = await query(
-            `SELECT * FROM pms_clients_master WHERE email = $1`,
-            [email]
-        );
-        if (!distributorResult.rows.length) {
-            return NextResponse.json({ error: 'Distributor not found' }, { status: 404 });
-        }
-        const distributor = distributorResult.rows[0];
-        const intermediaryName = distributor.clientname;
-        const fees_percentage: number = parseFloat(distributor.intermediary_fee_percentage) || 0;
+    // Client codes
+    // Also get billgroup for each client
+    const wsClientCodes = clientRows.map((row: any) => row.clientcode);
+    const billGroupMap = new Map<string, any>();
+    clientRows.forEach((row: any) => {
+      billGroupMap.set(row.clientcode, row.billgroup);
+    });
 
-        // Related clients
-        const clientsResult = await query(
-            `SELECT * FROM pms_clients_master WHERE intermediaryname = $1`,
-            [intermediaryName]
-        );
-        const clientRows = clientsResult.rows;
-        console.log(intermediaryName, clientRows, "============================clientRows");
-
-        if (!clientRows.length) {
-            return NextResponse.json([], { status: 200 });
-        }
-
-        // Client codes
-        // Also get billgroup for each client
-        const wsClientCodes = clientRows.map((row: any) => row.clientcode);
-        const billGroupMap = new Map<string, any>();
-        clientRows.forEach((row: any) => {
-            billGroupMap.set(row.clientcode, row.billgroup);
-        });
-
-        const aumResult = await query1(
-            `SELECT accountcode, AVG(aum) as average_aum
+    const aumResult = await query1(
+      `SELECT accountcode, AVG(aum) as average_aum
              FROM pms_clients_tracker.pms_aum
              WHERE accountcode = ANY($1)
              AND valuedate BETWEEN $2 AND $3
              GROUP BY accountcode`,
-            [wsClientCodes, body.startDate, body.endDate]
-        );
-        console.log(aumResult.rows, "===========================aumResult");
+      [wsClientCodes, body.startDate, body.endDate]
+    );
+    console.log(aumResult.rows, "===========================aumResult");
 
-        // Inception dates
-        const inceptionResult = await query1(
-            `SELECT accountcode, MIN(valuedate) as inception_date
+    // Inception dates
+    const inceptionResult = await query1(
+      `SELECT accountcode, MIN(valuedate) as inception_date
              FROM pms_clients_tracker.pms_aum
              WHERE accountcode = ANY($1)
              GROUP BY accountcode`,
-            [wsClientCodes]
-        );
-        console.log(inceptionResult.rows, "===========================inceptionResult");
+      [wsClientCodes]
+    );
+    console.log(inceptionResult.rows, "===========================inceptionResult");
 
-        // Fetch fees, split by Performance and Management
-        const feesQuery = `
+    // Fetch fees, split by Performance and Management
+    const feesQuery = `
             SELECT
                 ws_account_code as accountcode,
                 client_name as clientname,
@@ -256,91 +268,91 @@ export async function POST(req: Request) {
             GROUP BY ws_account_code, client_name
         `;
 
-        const feesResult = await query1(
-            feesQuery,
-            [wsClientCodes, body.startDate, body.endDate]
-        );
-        console.log(feesResult.rows, "===========================feesResult");
+    const feesResult = await query1(
+      feesQuery,
+      [wsClientCodes, body.startDate, body.endDate]
+    );
+    console.log(feesResult.rows, "===========================feesResult");
 
-        const feesMap = new Map<string, any>();
-        feesResult.rows.forEach((row: any) => feesMap.set(row.accountcode, row));
+    const feesMap = new Map<string, any>();
+    feesResult.rows.forEach((row: any) => feesMap.set(row.accountcode, row));
 
-        const aumMap = new Map<string, any>();
-        aumResult.rows.forEach((row: any) => aumMap.set(row.accountcode, row.average_aum));
-        const inceptionMap = new Map<string, any>();
-        inceptionResult.rows.forEach((row: any) => inceptionMap.set(row.accountcode, row.inception_date));
+    const aumMap = new Map<string, any>();
+    aumResult.rows.forEach((row: any) => aumMap.set(row.accountcode, row.average_aum));
+    const inceptionMap = new Map<string, any>();
+    inceptionResult.rows.forEach((row: any) => inceptionMap.set(row.accountcode, row.inception_date));
 
-        const GST_RATE = 18;
+    const GST_RATE = 18;
 
-        // Instead of mapping over feesResult, map over aumResult
-        const response = aumResult.rows.map((aumRow: any, idx: number) => {
-                const accountcode = aumRow.accountcode;
-                // For the given accountcode, get all other details
-                const clientRow = clientRows.find((c: any) => c.clientcode === accountcode) || {};
-                const clientname = clientRow.clientname || '';
-                const billgroup = billGroupMap.get(accountcode) || null;
-                const inceptionDateRaw = inceptionMap.get(accountcode);
+    // Instead of mapping over feesResult, map over aumResult
+    const response = aumResult.rows.map((aumRow: any, idx: number) => {
+      const accountcode = aumRow.accountcode;
+      // For the given accountcode, get all other details
+      const clientRow = clientRows.find((c: any) => c.clientcode === accountcode) || {};
+      const clientname = clientRow.clientname || '';
+      const billgroup = billGroupMap.get(accountcode) || null;
+      const inceptionDateRaw = inceptionMap.get(accountcode);
 
-                // For the given accountcode, get the fee breakdown (may be missing)
-                const feesRow = feesMap.get(accountcode) || {};
+      // For the given accountcode, get the fee breakdown (may be missing)
+      const feesRow = feesMap.get(accountcode) || {};
 
-                const perfFeesRaw = parseFloat(feesRow.performance_fees) || 0;
-                const fixedFeesRaw = parseFloat(feesRow.fixed_fees) || 0;
-                const totalFeesRaw = parseFloat(feesRow.total_fees_collected) || 0;
+      const perfFeesRaw = parseFloat(feesRow.performance_fees) || 0;
+      const fixedFeesRaw = parseFloat(feesRow.fixed_fees) || 0;
+      const totalFeesRaw = parseFloat(feesRow.total_fees_collected) || 0;
 
-                // GST calculations
-                const gstOnPerf = (perfFeesRaw * GST_RATE) / 118;
-                const gstOnFixed = (fixedFeesRaw * GST_RATE) / 118;
-                const gstOnTotal = (totalFeesRaw * GST_RATE) / 118;
+      // GST calculations
+      const gstOnPerf = (perfFeesRaw * GST_RATE) / 118;
+      const gstOnFixed = (fixedFeesRaw * GST_RATE) / 118;
+      const gstOnTotal = (totalFeesRaw * GST_RATE) / 118;
 
-                const perfFeesBeforeGst = perfFeesRaw - gstOnPerf;
-                const fixedFeesBeforeGst = fixedFeesRaw - gstOnFixed;
-                const totalFeesBeforeGst = totalFeesRaw - gstOnTotal;
+      const perfFeesBeforeGst = perfFeesRaw - gstOnPerf;
+      const fixedFeesBeforeGst = fixedFeesRaw - gstOnFixed;
+      const totalFeesBeforeGst = totalFeesRaw - gstOnTotal;
 
-                // Distributor share on GST-deducted total
-                const distributorShare = totalFeesRaw * (fees_percentage / 100);
+      // Distributor share on GST-deducted total
+      const distributorShare = totalFeesRaw * (fees_percentage / 100);
 
-                return {
-                    id: idx + 1,
-                    clientName: clientname,
-                    strategy: accountcode,
-                    billGroup: billgroup,
-                    inceptionDate: inceptionDateRaw
-                        ? (() => {
-                            const d = inceptionDateRaw;
-                            // expects d in "yyyy-mm-dd" or "yyyy-mm-ddTHH:MM:SS" format
-                            const [yyyy, mm, dd] = d.split('T')[0].split('-');
-                            return `${dd}-${mm}-${yyyy}`;
-                        })()
-                        : null,
-                    averageAum: aumRow.average_aum
-                        ? Number(aumRow.average_aum).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                        : "0.00",
+      return {
+        id: idx + 1,
+        clientName: clientname,
+        strategy: accountcode,
+        billGroup: billgroup,
+        inceptionDate: inceptionDateRaw
+          ? (() => {
+            const d = inceptionDateRaw;
+            // expects d in "yyyy-mm-dd" or "yyyy-mm-ddTHH:MM:SS" format
+            const [yyyy, mm, dd] = d.split('T')[0].split('-');
+            return `${dd}-${mm}-${yyyy}`;
+          })()
+          : null,
+        averageAum: aumRow.average_aum
+          ? Number(aumRow.average_aum).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+          : "0.00",
 
-                    // Performance Fees
-                    performanceFees: perfFeesBeforeGst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                    performanceFeesGst: gstOnPerf.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        // Performance Fees
+        performanceFees: perfFeesBeforeGst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        performanceFeesGst: gstOnPerf.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
 
-                    // Fixed Fees
-                    fixedFees: fixedFeesBeforeGst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                    fixedFeesGst: gstOnFixed.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        // Fixed Fees
+        fixedFees: fixedFeesBeforeGst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        fixedFeesGst: gstOnFixed.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
 
-                    // Totals
-                    totalFees: totalFeesBeforeGst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                    totalFeesGst: gstOnTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                    totalFeesCollected: totalFeesRaw.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        // Totals
+        totalFees: totalFeesBeforeGst.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        totalFeesGst: gstOnTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        totalFeesCollected: totalFeesRaw.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
 
-                    distributorPercentage: fees_percentage.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-                    distributorShare: distributorShare.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        distributorPercentage: fees_percentage.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        distributorShare: distributorShare.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
 
-                    accountcode
-                };
-        });
+        accountcode
+      };
+    });
 
 
-        return NextResponse.json(response, { status: 200 });
-    } catch (error) {
-        console.error('Error in distributor calculator API:', error);
-        return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
-    }
+    return NextResponse.json(response, { status: 200 });
+  } catch (error) {
+    console.error('Error in distributor calculator API:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  }
 }
