@@ -336,20 +336,37 @@ function findLatestBenchmarkBeforeOrOn(benchData: BenchmarkItem[], targetDateStr
   return null;
 }
 
-function getBusinessDaysAgo(date: Date, businessDays: number): Date {
-  let target = new Date(date);
-  let count = 0;
-  while (count < businessDays) {
-    target.setDate(target.getDate() - 1);
-    const dayOfWeek = target.getDay();
-    if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Skip Sunday (0) and Saturday (6)
-      count++;
-    }
+function getBusinessDaysAgo(sortedDates: Date[], currentDate: Date, businessDays: number): Date {
+  const currentIndex = sortedDates.findIndex(d => d.getTime() === currentDate.getTime());
+  if (currentIndex === -1) {
+    return currentDate;
   }
-  return target;
+  const targetIndex = currentIndex - businessDays;
+  if (targetIndex < 0) {
+    return sortedDates[0];
+  }
+
+  return sortedDates[targetIndex];
 }
 
-function calculateTrailingReturnsForData(data: Array<{ nav: number, date: string }>, inceptionDate?: string) {
+function getDateKey(dateValue: string | Date): string {
+  const date = dateValue instanceof Date ? dateValue : new Date(dateValue);
+  return date.toISOString().slice(0, 10);
+}
+
+function getNthTradingDateFromEnd(data: Array<{ date: string }>, n: number): string | null {
+  if (!data.length) return null;
+  const sorted = [...data].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const targetIndex = sorted.length - 1 - n;
+  if (targetIndex < 0) return null;
+  return getDateKey(sorted[targetIndex].date);
+}
+
+function calculateTrailingReturnsForData(
+  data: Array<{ nav: number, date: string }>,
+  inceptionDate?: string,
+  options?: { exactStartDateByPeriod?: Partial<Record<string, string>> }
+) {
   if (data.length === 0) {
     return null;
   }
@@ -357,6 +374,7 @@ function calculateTrailingReturnsForData(data: Array<{ nav: number, date: string
   const sortedData = [...data].sort((a, b) =>
     new Date(a.date).getTime() - new Date(b.date).getTime()
   );
+  const sortedDates = sortedData.map(item => new Date(item.date));
 
   const latest = sortedData[sortedData.length - 1];
   const latestDate = new Date(latest.date);
@@ -406,14 +424,26 @@ function calculateTrailingReturnsForData(data: Array<{ nav: number, date: string
 
   // Day periods - use calendar days for 1W, business days for others
   Object.entries(dayPeriods).forEach(([period, days]) => {
+    const exactStartDate = options?.exactStartDateByPeriod?.[period];
+    if (exactStartDate) {
+      const startPoint = sortedData.find(item => getDateKey(item.date) === exactStartDate);
+      if (startPoint) {
+        const returnValue = ((latest.nav / startPoint.nav) - 1) * 100;
+        returns[period] = returnValue;
+      } else {
+        returns[period] = '-';
+      }
+      return;
+    }
+
     let targetDate: Date;
     if (period === '1W') {
       // 1 week = 7 calendar days ago
       targetDate = new Date(latestDate);
       targetDate.setDate(latestDate.getDate() - days);
     } else {
-      // Use business days for other periods
-      targetDate = getBusinessDaysAgo(latestDate, days);
+      // Use available data points (portfolio/benchmark trading dates) for business-day delta
+      targetDate = getBusinessDaysAgo(sortedDates, latestDate, days);
     }
     const startPoint = findClosestDataPoint(targetDate);
 
@@ -1887,10 +1917,18 @@ const createConsolidatedData = useCallback(
         date: item.report_date
       }));
       const incDate = dataToUse[0].report_date;
-      const returns = calculateTrailingReturnsForData(mappedData, incDate);
+      const benchmark10DDate = getNthTradingDateFromEnd(
+        benchmarkData.map(item => ({ date: item.date })),
+        10
+      );
+      const returns = calculateTrailingReturnsForData(
+        mappedData,
+        incDate,
+        benchmark10DDate ? { exactStartDateByPeriod: { '10D': benchmark10DDate } } : undefined
+      );
       setTrailingReturns(returns);
     }
-  }, [getActiveHistoricalData]);
+  }, [getActiveHistoricalData, benchmarkData]);
 
   // Calculate trailing returns for benchmark
   useEffect(() => {
@@ -1901,7 +1939,12 @@ const createConsolidatedData = useCallback(
         date: item.date
       }));
       const incDate = dataToUse[0].report_date;
-      const returns = calculateTrailingReturnsForData(mappedData, incDate);
+      const benchmark10DDate = getNthTradingDateFromEnd(mappedData, 10);
+      const returns = calculateTrailingReturnsForData(
+        mappedData,
+        incDate,
+        benchmark10DDate ? { exactStartDateByPeriod: { '10D': benchmark10DDate } } : undefined
+      );
       setTrailingReturnsBenchmark(returns);
     }
   }, [benchmarkData, getActiveHistoricalData]);
