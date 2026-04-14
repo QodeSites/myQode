@@ -68,6 +68,7 @@ export async function GET() {
     
 
     const clientCodes = clientCodesResult.rows.map(row => row.clientcode);
+    console.log(clientCodes,"==================clientCodes")
 
     if (!clientCodes.length) {
       console.log(email,"==================email2")
@@ -163,52 +164,59 @@ export async function GET() {
       }
     });
 
-    // Determine group ID and final head of family status from DB
-    const groupId = allClientDetails[0].groupid;
-    const finalIsHeadOfFamily = allClientDetails.some((c: any) => c.head_of_family === true) || isHeadOfFamily;
+    // Determine final head of family status from DB (overall; used as a fallback)
+    const finalIsHeadOfFamily =
+      allClientDetails.some((c: any) => c.head_of_family === true) || isHeadOfFamily;
 
-    let familyMembers: any[] = [];
-    let responseData: any = {
-      success: true,
-      clients: allClientDetails,
-      isHeadOfFamily: finalIsHeadOfFamily,
-      family: [],
-      familyCount: 0,
-    };
+    // Group-aware behavior:
+    // Same email can appear in multiple groups; we want to return all relevant groups.
+    const groupIds = Array.from(
+      new Set((allClientDetails || []).map((c: any) => c.groupid).filter(Boolean))
+    );
 
-    if (finalIsHeadOfFamily) {
-      let headOfFamilyEmail: string = email;
+    const familyMemberRows: any[] = [];
+    for (const gid of groupIds) {
+      const emailRowsForGroup = allClientDetails.filter((c: any) => c.groupid === gid);
+      const canSeeFullGroup =
+        isHeadOfFamily || emailRowsForGroup.some((c: any) => c.head_of_family === true);
 
-      // First, fetch all client codes for the family group
+      if (!canSeeFullGroup) {
+        // Not head-of-family for this group: only include accounts that match the session email
+        familyMemberRows.push(...emailRowsForGroup);
+        continue;
+      }
+
       const familyClientCodesResult = await query(
         `SELECT clientcode 
          FROM pms_clients_master 
          WHERE groupid = $1 
          ORDER BY head_of_family DESC, firstname ASC`,
-        [groupId]
+        [gid]
       );
 
-      const familyClientCodes = familyClientCodesResult.rows.map(row => row.clientcode);
+      const familyClientCodes = familyClientCodesResult.rows.map((row: any) => row.clientcode);
+      if (!familyClientCodes.length) continue;
 
-      if (familyClientCodes.length > 0) {
-        // Then, fetch full info of all family clients using the client codes
-        const familyResult = await query(
-          `SELECT id, clientid, clientname, clientcode, clienttype, accounttype, account_open_date, 
-                  inceptiondate, mobile, email, address1, address2, city, pincode, state, pannumber, 
-                  ownerid, ownername, groupid, groupname, schemeid, schemename, advisorname, username, 
-                  salutation, firstname, middlename, lastname, first_holder_gender, created_at, 
-                  updated_at, password, head_of_family 
-           FROM pms_clients_master 
-           WHERE clientcode = ANY($1::text[])`,
-          [familyClientCodes]
-        );
+      const familyResult = await query(
+        `SELECT id, clientid, clientname, clientcode, clienttype, accounttype, account_open_date, 
+                inceptiondate, mobile, email, address1, address2, city, pincode, state, pannumber, 
+                ownerid, ownername, groupid, groupname, schemeid, schemename, advisorname, username, 
+                salutation, firstname, middlename, lastname, first_holder_gender, created_at, 
+                updated_at, password, head_of_family 
+         FROM pms_clients_master 
+         WHERE clientcode = ANY($1::text[])`,
+        [familyClientCodes]
+      );
 
-        // Preserve the order from the client codes query
-        const familyMap = new Map(familyResult.rows.map(member => [member.clientcode, member]));
-        const orderedFamilyRows = familyClientCodes.map(code => familyMap.get(code)).filter(Boolean);
+      const familyMap = new Map(familyResult.rows.map((member: any) => [member.clientcode, member]));
+      const orderedFamilyRows = familyClientCodes.map((code: string) => familyMap.get(code)).filter(Boolean);
+      familyMemberRows.push(...orderedFamilyRows);
+    }
 
-        // Fetch Orbis data for all family members
-        const familyOrbisResult = await query(
+    // Fetch Orbis data for all relevant members (dedup by clientcode)
+    const uniqueMemberCodes = Array.from(new Set(familyMemberRows.map((m: any) => m.clientcode).filter(Boolean)));
+    const familyOrbisResult = uniqueMemberCodes.length
+      ? await query(
           `SELECT id, person_name, orbis_code, date, capital_amount, unit_balance,
                   market_value, nav, opening_unit_balance, units_allotted, units_redeemed,
                   closing_unit_balance, capital_investment, capital_redemption, management_fees,
@@ -216,167 +224,124 @@ export async function GET() {
            FROM orbis_master_sheet
            WHERE nuvama_code = ANY($1::text[])
            ORDER BY date ASC`,
-          [familyClientCodes]
-        );
+          [uniqueMemberCodes]
+        )
+      : { rows: [] as any[] };
 
-        // Create a map of nuvama_code to orbis data for family members
-        const familyOrbisDataMap = new Map();
-        familyOrbisResult.rows.forEach((row) => {
-          if (!familyOrbisDataMap.has(row.nuvama_code)) {
-            familyOrbisDataMap.set(row.nuvama_code, []);
-          }
-          familyOrbisDataMap.get(row.nuvama_code).push(row);
-        });
+    const familyOrbisDataMap = new Map<string, any[]>();
+    (familyOrbisResult.rows || []).forEach((row: any) => {
+      if (!familyOrbisDataMap.has(row.nuvama_code)) familyOrbisDataMap.set(row.nuvama_code, []);
+      familyOrbisDataMap.get(row.nuvama_code)!.push(row);
+    });
 
-        familyMembers = orderedFamilyRows.map((member) => {
-          // Form holderName and fullName, handling null/undefined values
-          const middleNamePart = member.middlename ? ` ${member.middlename}` : '';
-          const salutationPart = member.salutation ? `${member.salutation} ` : '';
+    // Fetch latest portfolio_value for each account_code (clientcode)
+    const portfolioMap = new Map<string, number>();
+    if (uniqueMemberCodes.length > 0) {
+      const pmsResult = await query(
+        `SELECT DISTINCT ON (account_code)
+                account_code,
+                portfolio_value
+         FROM public.pms_master_sheet
+         WHERE account_code = ANY($1::text[])
+         ORDER BY account_code, id DESC`,
+        [uniqueMemberCodes]
+      );
 
-          const memberOrbisData = familyOrbisDataMap.get(member.clientcode) || [];
-
-          // Calculate Orbis metrics for family members from latest non-zero records
-          let orbisMetrics = null;
-          if (memberOrbisData.length > 0) {
-            const sortedOrbisData = [...memberOrbisData].sort(
-              (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-            );
-
-            // Find latest non-zero capital_amount
-            const latestCapitalRecord = sortedOrbisData.find(
-              record => Number(record.capital_amount) > 0
-            );
-
-            // Find latest non-zero market_value
-            const latestMarketRecord = sortedOrbisData.find(
-              record => Number(record.market_value) > 0
-            );
-
-            // Use the most recent date among the non-zero records
-            const latestDate = latestMarketRecord?.date || latestCapitalRecord?.date || sortedOrbisData[0].date;
-
-            orbisMetrics = {
-              latestCapitalAmount: latestCapitalRecord ? Number(latestCapitalRecord.capital_amount) : 0,
-              latestMarketValue: latestMarketRecord ? Number(latestMarketRecord.market_value) : 0,
-              latestDate: latestDate,
-              latestNav: latestMarketRecord ? Number(latestMarketRecord.nav) : (latestCapitalRecord ? Number(latestCapitalRecord.nav) : 0),
-              totalRecords: memberOrbisData.length
-            };
-          }
-
-          return {
-            id: member.id,
-            clientid: member.clientid,
-            clientname: member.clientname,
-            clientcode: member.clientcode,
-            clienttype: member.clienttype,
-            accounttype: member.accounttype,
-            account_open_date: member.account_open_date,
-            inceptiondate: member.inceptiondate,
-            mobile: member.mobile,
-            email: member.email,
-            address1: member.address1,
-            address2: member.address2,
-            city: member.city,
-            pincode: member.pincode,
-            state: member.state,
-            pannumber: member.pannumber,
-            ownerid: member.ownerid,
-            ownername: member.ownername,
-            groupid: member.groupid,
-            groupname: member.groupname,
-            groupemailid: headOfFamilyEmail,
-            schemeid: member.schemeid,
-            schemename: member.schemename,
-            advisorname: member.advisorname,
-            username: member.username,
-            salutation: member.salutation,
-            firstname: member.firstname,
-            middlename: member.middlename,
-            lastname: member.lastname,
-            first_holder_gender: member.first_holder_gender,
-            created_at: member.created_at,
-            updated_at: member.updated_at,
-            head_of_family: member.head_of_family,
-            holderName: `${member.firstname}${middleNamePart} ${member.lastname}`.trim(),
-            fullName: `${salutationPart}${member.firstname}${middleNamePart} ${member.lastname}`.trim(),
-            relation: member.head_of_family ? 'Primary' : 'Family Member',
-            status: 'Active',
-            orbisData: memberOrbisData,
-            orbisMetrics: orbisMetrics,
-          };
-        });
-      }
-
-      // Find the actual head client for response
-      const headClient = familyMembers.find(m => m.head_of_family) || familyMembers[0];
-
-      responseData = {
-        ...responseData,
-        family: familyMembers,
-        familyCount: familyMembers.length,
-        headOfFamily: headClient,
-        groupEmailId: headOfFamilyEmail,
-      };
-    } else {
-      // If user is NOT head of family, return only their own account data
-      familyMembers = allClientDetails.map((member) => {
-        // Form holderName and fullName, handling null/undefined values
-        const middleNamePart = member.middlename ? ` ${member.middlename}` : '';
-        const salutationPart = member.salutation ? `${member.salutation} ` : '';
-        return {
-          id: member.id,
-          clientid: member.clientid,
-          clientname: member.clientname,
-          clientcode: member.clientcode,
-          clienttype: member.clienttype,
-          accounttype: member.accounttype,
-          account_open_date: member.account_open_date,
-          inceptiondate: member.inceptiondate,
-          mobile: member.mobile,
-          email: member.email,
-          address1: member.address1,
-          address2: member.address2,
-          city: member.city,
-          pincode: member.pincode,
-          state: member.state,
-          pannumber: member.pannumber,
-          ownerid: member.ownerid,
-          ownername: member.ownername,
-          groupid: member.groupid,
-          groupname: member.groupname,
-          groupemailid: member.email, // Use their own email as group email
-          schemeid: member.schemeid,
-          schemename: member.schemename,
-          advisorname: member.advisorname,
-          username: member.username,
-          salutation: member.salutation,
-          firstname: member.firstname,
-          middlename: member.middlename,
-          lastname: member.lastname,
-          first_holder_gender: member.first_holder_gender,
-          created_at: member.created_at,
-          updated_at: member.updated_at,
-          head_of_family: member.head_of_family,
-          holderName: `${member.firstname}${middleNamePart} ${member.lastname}`.trim(),
-          fullName: `${salutationPart}${member.firstname}${middleNamePart} ${member.lastname}`.trim(),
-          relation: 'Individual Account',
-          status: 'Active',
-          orbisData: member.orbisData || [],
-          orbisMetrics: member.orbisMetrics || null,
-        };
+      (pmsResult.rows || []).forEach((row: any) => {
+        portfolioMap.set(row.account_code, Number(row.portfolio_value) || 0);
       });
-
-      responseData = {
-        ...responseData,
-        family: familyMembers,
-        familyCount: familyMembers.length,
-        headOfFamily: null,
-        groupEmailId: familyMembers[0]?.email || null,
-      };
     }
 
-    return NextResponse.json(responseData);
+    const familyMembers = familyMemberRows.map((member: any) => {
+      const nameParts = [member.firstname, member.middlename, member.lastname]
+        .filter((part) => typeof part === 'string' && part.trim().length > 0)
+        .map((part) => part.trim());
+      const holderName = nameParts.join(' ').trim() || member.clientname || member.clientcode;
+      const salutation = typeof member.salutation === 'string' ? member.salutation.trim() : '';
+      const fullName = [salutation, holderName].filter(Boolean).join(' ').trim();
+
+      const memberOrbisData = familyOrbisDataMap.get(member.clientcode) || [];
+
+      let orbisMetrics = null;
+      if (memberOrbisData.length > 0) {
+        const sortedOrbisData = [...memberOrbisData].sort(
+          (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
+        const latestCapitalRecord = sortedOrbisData.find((record) => Number(record.capital_amount) > 0);
+        const latestMarketRecord = sortedOrbisData.find((record) => Number(record.market_value) > 0);
+        const latestDate = latestMarketRecord?.date || latestCapitalRecord?.date || sortedOrbisData[0].date;
+        orbisMetrics = {
+          latestCapitalAmount: latestCapitalRecord ? Number(latestCapitalRecord.capital_amount) : 0,
+          latestMarketValue: latestMarketRecord ? Number(latestMarketRecord.market_value) : 0,
+          latestDate: latestDate,
+          latestNav: latestMarketRecord
+            ? Number(latestMarketRecord.nav)
+            : latestCapitalRecord
+              ? Number(latestCapitalRecord.nav)
+              : 0,
+          totalRecords: memberOrbisData.length,
+        };
+      }
+
+      const portfolioValue = portfolioMap.get(member.clientcode) ?? 0;
+      const status = portfolioValue === 0 ? 'Closed' : 'Active';
+
+      return {
+        id: member.id,
+        clientid: member.clientid,
+        clientname: member.clientname,
+        clientcode: member.clientcode,
+        clienttype: member.clienttype,
+        accounttype: member.accounttype,
+        account_open_date: member.account_open_date,
+        inceptiondate: member.inceptiondate,
+        mobile: member.mobile,
+        email: member.email,
+        address1: member.address1,
+        address2: member.address2,
+        city: member.city,
+        pincode: member.pincode,
+        state: member.state,
+        pannumber: member.pannumber,
+        ownerid: member.ownerid,
+        ownername: member.ownername,
+        groupid: member.groupid,
+        groupname: member.groupname,
+        groupemailid: email,
+        schemeid: member.schemeid,
+        schemename: member.schemename,
+        advisorname: member.advisorname,
+        username: member.username,
+        salutation: member.salutation,
+        firstname: member.firstname,
+        middlename: member.middlename,
+        lastname: member.lastname,
+        first_holder_gender: member.first_holder_gender,
+        created_at: member.created_at,
+        updated_at: member.updated_at,
+        head_of_family: member.head_of_family,
+        holderName,
+        fullName,
+        relation: member.head_of_family ? 'Primary' : (finalIsHeadOfFamily ? 'Family Member' : 'Individual Account'),
+        status,
+        portfolioValue,
+        orbisData: memberOrbisData,
+        orbisMetrics: orbisMetrics,
+      };
+    });
+
+    // Head client (best-effort across groups)
+    const headClient = familyMembers.find((m: any) => m.head_of_family) || familyMembers[0] || null;
+
+    return NextResponse.json({
+      success: true,
+      clients: allClientDetails,
+      isHeadOfFamily: finalIsHeadOfFamily,
+      family: familyMembers,
+      familyCount: familyMembers.length,
+      headOfFamily: headClient,
+      groupEmailId: email,
+    });
 
   } catch (error) {
     console.error('Client data fetch error:', error);

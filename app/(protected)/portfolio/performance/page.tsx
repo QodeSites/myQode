@@ -2194,7 +2194,7 @@ const createConsolidatedData = useCallback(
                       </>
                     ) : selectedAccountDetails ? (
                       <>
-                        {sanitizeName(selectedAccountDetails.holderName)} • {selectedAccount}
+                        {sanitizeName(selectedAccountDetails.holderName)} ({selectedAccount})
                       </>
                     ) : null}
                   </p>
@@ -2227,24 +2227,61 @@ const createConsolidatedData = useCallback(
                     {/* Group-level: only show when there are multiple distinct owners (true family group) */}
                     {groupedOwners.length > 1 && familyAccounts[0]?.groupid && (
                       <>
+                        {(() => {
+                          const familyHasActive = familyAccounts.some(acc => acc.status !== "Closed");
+                          return (
                         <SelectItem value={`GROUP_${familyAccounts[0].groupid}`}>
                           <div className="flex items-center justify-between gap-3">
                             <span className="font-semibold">Complete Family Portfolio</span>
-                            <span className="text-xs text-muted-foreground">(All Members, All Strategies)</span>
+                            <div className="flex items-center gap-1.5">
+                              <Badge
+                                variant="outline"
+                                className={`text-[9px] px-1.5 py-0 h-4 ${
+                                  familyHasActive
+                                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                    : "bg-red-50 text-red-700 border-red-200"
+                                }`}
+                              >
+                                {familyHasActive ? "Active" : "Deactive"}
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">(All Members, All Strategies)</span>
+                            </div>
                           </div>
                         </SelectItem>
+                          );
+                        })()}
                         <div className="h-px bg-border my-1" />
                       </>
                     )}
 
-                    {/* Owner-level: show for each owner who has 2+ individual strategies */}
-                    {groupedOwners.map(owner => {
+                    {/* Owner-level: show for each owner who has 2+ individual strategies, ordered by active count */}
+                    {[...groupedOwners]
+                      .sort((a, b) => {
+                        const aActive = a.accounts.filter(acc => acc.status !== "Closed").length;
+                        const bActive = b.accounts.filter(acc => acc.status !== "Closed").length;
+                        if (aActive !== bActive) return bActive - aActive;
+                        return sanitizeName(a.ownerName || "").localeCompare(sanitizeName(b.ownerName || ""));
+                      })
+                      .map(owner => {
                       if (owner.clientcodes.length > 1) {
+                        const ownerHasActive = owner.accounts.some(acc => acc.status !== "Closed");
                         return (
                           <SelectItem key={`OWNER_${owner.ownerid}`} value={`OWNER_${owner.ownerid}`}>
                             <div className="flex items-center justify-between gap-3">
                               <span className="font-medium">{sanitizeName(owner.ownerName)}</span>
-                              <span className="text-xs text-muted-foreground">(All Strategies)</span>
+                              <div className="flex items-center gap-1.5">
+                                <Badge
+                                  variant="outline"
+                                  className={`text-[9px] px-1.5 py-0 h-4 ${
+                                    ownerHasActive
+                                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                      : "bg-red-50 text-red-700 border-red-200"
+                                  }`}
+                                >
+                                  {ownerHasActive ? "Active" : "Deactive"}
+                                </Badge>
+                                <span className="text-xs text-muted-foreground">(All Strategies)</span>
+                              </div>
                             </div>
                           </SelectItem>
                         );
@@ -2255,28 +2292,93 @@ const createConsolidatedData = useCallback(
                       <div className="h-px bg-border my-1" />
                     )}
 
-                    {/* Individual strategy accounts */}
-                    {familyAccounts.map(acc => {
-                      const strategyCode = acc.clientcode.substring(0, 3).toUpperCase();
-                      const strategyName = strategyNames[strategyCode as keyof typeof strategyNames] || strategyCode;
-                      const hasOrbis = acc.orbisData && acc.orbisData.length > 0;
+                    {/* Individual strategy accounts (Active first, then Deactive) */}
+                    {(() => {
+                      const byAccountOrder = (a: any, b: any) => {
+                        const aPrimary = a.head_of_family || a.relation === "Primary";
+                        const bPrimary = b.head_of_family || b.relation === "Primary";
+                        if (aPrimary && !bPrimary) return -1;
+                        if (!aPrimary && bPrimary) return 1;
+                        const aName = sanitizeName(a.holderName || a.clientname || "").toLowerCase();
+                        const bName = sanitizeName(b.holderName || b.clientname || "").toLowerCase();
+                        if (aName !== bName) return aName.localeCompare(bName);
+                        return (a.clientcode || "").localeCompare(b.clientcode || "");
+                      };
+
+                      const activeAccounts = familyAccounts
+                        .filter((acc) => acc.status !== "Closed")
+                        .sort(byAccountOrder);
+                      const deactiveAccounts = familyAccounts
+                        .filter((acc) => acc.status === "Closed")
+                        .sort(byAccountOrder);
+
+                      const renderAccountItem = (acc: any) => {
+                        const strategyCode = acc.clientcode.substring(0, 3).toUpperCase();
+                        const strategyName = strategyNames[strategyCode as keyof typeof strategyNames] || strategyCode;
+                        const hasOrbis = acc.orbisData && acc.orbisData.length > 0;
+                        const isDeactive = acc.status === "Closed";
+
+                        return (
+                          <SelectItem key={acc.clientcode} value={acc.clientcode}>
+                            <div className="flex items-center justify-between gap-3">
+                              <span>{sanitizeName(acc.holderName)} ({acc.clientcode})</span>
+                              <div className="flex items-center gap-1.5">
+                                <Badge
+                                  variant="outline"
+                                  className={`text-[9px] px-1.5 py-0 h-4 ${
+                                    isDeactive
+                                      ? "bg-red-50 text-red-700 border-red-200"
+                                      : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  }`}
+                                >
+                                  {isDeactive ? "Deactive" : "Active"}
+                                </Badge>
+                                <span className="text-xs text-muted-foreground">{strategyName}</span>
+                                {hasOrbis && (
+                                  <Badge variant="outline" className="text-[9px] px-1 py-0 h-4">
+                                    Orbis+Nuvama
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                          </SelectItem>
+                        );
+                      };
 
                       return (
-                        <SelectItem key={acc.clientcode} value={acc.clientcode}>
-                          <div className="flex items-center justify-between gap-3">
-                            <span>{sanitizeName(acc.holderName)}</span>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-xs text-muted-foreground">{strategyName}</span>
-                              {hasOrbis && (
-                                <Badge variant="outline" className="text-[9px] px-1 py-0 h-4">
-                                  Orbis+Nuvama
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        </SelectItem>
+                        <>
+                          {activeAccounts.length > 0 && (
+                            <>
+                              <div className="px-2 py-1">
+                                <div className="flex items-center gap-2">
+                                  <div className="h-px flex-1 bg-emerald-200" />
+                                  <span className="text-[11px] font-semibold text-emerald-700 uppercase tracking-wide">
+                                    Active Accounts
+                                  </span>
+                                  <div className="h-px flex-1 bg-emerald-200" />
+                                </div>
+                              </div>
+                              {activeAccounts.map(renderAccountItem)}
+                            </>
+                          )}
+
+                          {deactiveAccounts.length > 0 && (
+                            <>
+                              <div className="px-2 py-1 mt-1">
+                                <div className="flex items-center gap-2">
+                                  <div className="h-px flex-1 bg-red-200" />
+                                  <span className="text-[11px] font-semibold text-red-700 uppercase tracking-wide">
+                                    Deactive Accounts
+                                  </span>
+                                  <div className="h-px flex-1 bg-red-200" />
+                                </div>
+                              </div>
+                              {deactiveAccounts.map(renderAccountItem)}
+                            </>
+                          )}
+                        </>
                       );
-                    })}
+                    })()}
                   </SelectContent>
                 </Select>
                 {enrichedData.length > 0 && (
@@ -2343,7 +2445,7 @@ const createConsolidatedData = useCallback(
             </div>
 
             {/* Closed Accounts Info - Show if viewing All Strategies with closed accounts */}
-            {(selectedAccount.startsWith('GROUP_') || selectedAccount.startsWith('OWNER_')) &&
+            {/* {(selectedAccount.startsWith('GROUP_') || selectedAccount.startsWith('OWNER_')) &&
              familyAccounts.some(acc => acc.status !== "Active") && (
               <Alert className="border-blue-500 bg-blue-50 dark:bg-blue-950">
                 <AlertTriangle className="h-4 w-4 text-blue-600" />
@@ -2368,7 +2470,7 @@ const createConsolidatedData = useCallback(
                   </div>
                 </AlertDescription>
               </Alert>
-            )}
+            )} */}
 
             {/* Data Quality Alert - Show if anomalies detected */}
             {/* {dataAnomalies.length > 0 && (

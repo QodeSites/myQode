@@ -14,6 +14,8 @@ interface ClientData {
   head_of_family?: boolean;
   groupid?: string;
   groupname?: string;
+  status?: string;
+  portfolioValue?: number;
   clienttype: string; // Make clienttype required and always a string
 }
 
@@ -48,6 +50,7 @@ export function ClientProvider({ children }: { children: ReactNode }) {
   const [selectedClientHolderName, setSelectedClientHolderName] = useState<string>('')
   const [isHeadOfFamily, setIsHeadOfFamily] = useState<boolean>(false)
   const [loading, setLoading] = useState(true)
+  const isClosedClient = (client: ClientData) => client.status === 'Closed'
 
   const fetchClientData = async () => {
     try {
@@ -72,8 +75,8 @@ export function ClientProvider({ children }: { children: ReactNode }) {
 
         let availableClients: ClientData[] = [];
 
-        if (data.isHeadOfFamily && data.family?.length > 0) {
-          // For head of family, ensure clienttype is always a string (fallback empty string if missing)
+        if (data.family?.length > 0) {
+          // Use `family` whenever available (it may contain multiple groups + portfolio status).
           availableClients = data.family.map((member: any) => ({
             clientid: member.clientid,
             clientcode: member.clientcode,
@@ -85,9 +88,11 @@ export function ClientProvider({ children }: { children: ReactNode }) {
             head_of_family: member.head_of_family,
             groupid: member.groupid,
             groupname: member.groupname,
+            status: member.status,
+            portfolioValue: typeof member.portfolioValue === 'number' ? member.portfolioValue : (member.portfolioValue ? Number(member.portfolioValue) : undefined),
             clienttype: typeof member.clienttype === 'string' ? member.clienttype : "",
           }));
-          console.log('Head of family - available clients:', availableClients);
+          console.log('Family/role-filtered - available clients:', availableClients);
         } else if (data.clients?.length > 0) {
           availableClients = data.clients.map((client: any) => ({
             clientid: client.clientid,
@@ -100,6 +105,8 @@ export function ClientProvider({ children }: { children: ReactNode }) {
             head_of_family: !!client.head_of_family,
             groupid: client.groupid,
             groupname: client.groupname,
+            status: client.status,
+            portfolioValue: typeof client.portfolioValue === 'number' ? client.portfolioValue : (client.portfolioValue ? Number(client.portfolioValue) : undefined),
             clienttype: typeof client.clienttype === 'string' ? client.clienttype : "",
           }));
           console.log('Individual member - available clients:', availableClients);
@@ -128,12 +135,17 @@ export function ClientProvider({ children }: { children: ReactNode }) {
           }
 
           if (!clientToSelect) {
+            const activeClients = availableClients.filter((c) => !isClosedClient(c))
             if (data.isHeadOfFamily) {
-              clientToSelect = availableClients.find(c => c.head_of_family) || availableClients[0];
+              clientToSelect =
+                activeClients.find((c) => c.head_of_family) ||
+                activeClients[0] ||
+                availableClients.find((c) => c.head_of_family) ||
+                availableClients[0];
             } else {
-              clientToSelect = availableClients[0];
+              clientToSelect = activeClients[0] || availableClients[0];
             }
-            console.log('Using default client:', clientToSelect);
+            console.log('Using default client (preferring active):', clientToSelect);
           }
 
           updateSelectedClient(clientToSelect);
