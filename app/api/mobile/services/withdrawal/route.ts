@@ -9,11 +9,28 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
-    const { accountId, amount, additionalNotes } = body
+    const { accountId, additionalNotes } = body
+    const amount = body.amount !== undefined ? parseFloat(String(body.amount)) : NaN
 
-    if (!accountId || !amount) {
+    if (!accountId || !body.amount) {
       return NextResponse.json(
         { error: 'Fields required: accountId, amount' },
+        { status: 400 }
+      )
+    }
+
+    if (isNaN(amount) || amount <= 0) {
+      return NextResponse.json(
+        { error: 'amount must be a positive number' },
+        { status: 400 }
+      )
+    }
+
+    // Guard against absurdly large withdrawal requests (server-side sanity check)
+    const MAX_WITHDRAWAL = 100_000_000 // ₹10 Cr
+    if (amount > MAX_WITHDRAWAL) {
+      return NextResponse.json(
+        { error: `amount exceeds maximum allowed (₹${MAX_WITHDRAWAL.toLocaleString('en-IN')})` },
         { status: 400 }
       )
     }

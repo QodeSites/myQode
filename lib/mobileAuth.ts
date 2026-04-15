@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import jwt from 'jsonwebtoken'
 
+// Validate JWT_SECRET at module load time — fail loudly rather than silently
+// issuing or accepting tokens with an undefined secret.
+if (!process.env.JWT_SECRET) {
+  throw new Error('[mobileAuth] JWT_SECRET environment variable is not set. ' +
+    'Set it in .env.local (development) or the production environment before starting the server.')
+}
+
 export interface MobileAuthUser {
   userId: string
   email: string

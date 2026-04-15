@@ -60,14 +60,26 @@ export async function GET(request: NextRequest) {
     }
 
     // ── 1. Portfolio rows (ASC) ──────────────────────────────────────────────
+    // Use parameterized cutoff date instead of INTERVAL string interpolation
+    // and parameterized closedAt to avoid any SQL injection surface.
+    const cutoffDate = new Date()
+    cutoffDate.setDate(cutoffDate.getDate() - days)
+    const cutoffStr = cutoffDate.toISOString().split('T')[0]
+
     const portResult = await pool.query(
-      `SELECT report_date, nav
-       FROM public.pms_master_sheet
-       WHERE account_code = $1
-         AND report_date >= CURRENT_DATE - INTERVAL '${days} days'
-         ${closedAt ? `AND report_date <= '${closedAt}'` : ''}
-       ORDER BY report_date ASC`,
-      [accountId]
+      closedAt
+        ? `SELECT report_date, nav
+           FROM public.pms_master_sheet
+           WHERE account_code = $1
+             AND report_date >= $2
+             AND report_date <= $3
+           ORDER BY report_date ASC`
+        : `SELECT report_date, nav
+           FROM public.pms_master_sheet
+           WHERE account_code = $1
+             AND report_date >= $2
+           ORDER BY report_date ASC`,
+      closedAt ? [accountId, cutoffStr, closedAt] : [accountId, cutoffStr]
     )
 
     const portRows = portResult.rows

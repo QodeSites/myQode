@@ -182,6 +182,7 @@ export async function GET(request: NextRequest) {
       currentDD: null, maxDD: null, sinceInception: null,
     }
 
+    let benchmarkUnavailable = false
     try {
       const benchEndDate = closedAtRaw ?? latestDate
       const benchResult = await db2.query(
@@ -247,7 +248,8 @@ export async function GET(request: NextRequest) {
         }
       }
     } catch (benchErr) {
-      console.warn('[mobile/portfolio/performance] benchmark fetch failed:', benchErr)
+      benchmarkUnavailable = true
+      console.error('[mobile/portfolio/performance] benchmark fetch failed:', benchErr)
     }
 
     return NextResponse.json({
@@ -271,6 +273,7 @@ export async function GET(request: NextRequest) {
       trailingReturns: {
         portfolio: portfolioTrailing,
         benchmark: benchmarkTrailing,
+        benchmarkUnavailable,  // true when db2 is down — client can show "Benchmark data unavailable"
       },
     })
   } catch (err) {

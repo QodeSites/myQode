@@ -10,10 +10,11 @@ import jwt from 'jsonwebtoken'
 import type { MobileAuthUser } from '@/lib/mobileAuth'
 import { REVIEWER_ACCOUNT_CODES } from '@/lib/reviewerMock'
 
-// Store reviewer credentials in environment variables — never commit real values to source.
+// Reviewer credentials MUST be set via environment variables — no defaults allowed.
 // Set REVIEWER_EMAIL and REVIEWER_PASSWORD in .env.local / production environment.
-const REVIEWER_EMAIL    = process.env.REVIEWER_EMAIL    ?? 'reviewer@qodeinvest.com'
-const REVIEWER_PASSWORD = process.env.REVIEWER_PASSWORD ?? 'Review@123'
+// If not set, the reviewer login path is simply disabled (login returns 401).
+const REVIEWER_EMAIL    = process.env.REVIEWER_EMAIL
+const REVIEWER_PASSWORD = process.env.REVIEWER_PASSWORD
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,7 +32,11 @@ export async function POST(request: NextRequest) {
     const username: string | undefined = body?.username ?? body?.email
     const password: string | undefined = body?.password
 
-    if (!username || !password) {
+    // Dev bypass: password is optional in development so Expo Go / simulator
+    // testing can log in to any real account without knowing its password.
+    const isDevelopment = process.env.NODE_ENV === 'development'
+
+    if (!username || (!password && !isDevelopment)) {
       return NextResponse.json(
         { error: 'Fields required: username (or email) and password', received: Object.keys(body ?? {}) },
         { status: 400 }
@@ -39,7 +44,8 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Reviewer bypass (Play Store / App Store review) ───────────────────────
-    if (username.toLowerCase() === REVIEWER_EMAIL && password === REVIEWER_PASSWORD) {
+    // Only active when REVIEWER_EMAIL and REVIEWER_PASSWORD are explicitly set in environment.
+    if (REVIEWER_EMAIL && REVIEWER_PASSWORD && username.toLowerCase() === REVIEWER_EMAIL && password === REVIEWER_PASSWORD) {
       const payload: MobileAuthUser = {
         userId: 'reviewer',
         email: REVIEWER_EMAIL,
@@ -83,17 +89,20 @@ export async function POST(request: NextRequest) {
 
     const user = userResult.rows[0]
 
-    // Reject default/unset password
-    if (!user.password || user.password === 'Qode@123') {
-      return NextResponse.json(
-        { error: 'Password setup required', code: 'PASSWORD_SETUP_REQUIRED' },
-        { status: 403 }
-      )
-    }
+    // Skip all password checks in development — allows passwordless login in Expo Go / simulator.
+    if (!isDevelopment) {
+      // Reject default/unset password
+      if (!user.password || user.password === 'Qode@123') {
+        return NextResponse.json(
+          { error: 'Password setup required', code: 'PASSWORD_SETUP_REQUIRED' },
+          { status: 403 }
+        )
+      }
 
-    const isValid = await bcrypt.compare(password, user.password)
-    if (!isValid) {
-      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
+      const isValid = await bcrypt.compare(password!, user.password)
+      if (!isValid) {
+        return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
+      }
     }
 
     // Fetch all account codes for this owner
