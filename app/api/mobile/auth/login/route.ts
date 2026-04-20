@@ -73,15 +73,32 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    // Look up user
+    // Look up user — prefer head_of_family=true row when multiple rows share the same email
+    // (one person can have accounts across multiple schemes, only one row has head_of_family=true)
     const userResult = await query(
       `SELECT clientid, clientcode, email, groupid, password, head_of_family, ownerid,
               salutation, firstname, middlename, lastname
        FROM pms_clients_master
        WHERE (email = $1 OR clientcode = $1)
+       ORDER BY head_of_family DESC NULLS LAST, clientcode ASC
        LIMIT 1`,
       [username]
     )
+
+    console.log('[login] user lookup →', {
+      identifier: username,
+      found: userResult.rows.length > 0,
+      row: userResult.rows[0]
+        ? {
+            clientcode:     userResult.rows[0].clientcode,
+            email:          userResult.rows[0].email,
+            groupid:        userResult.rows[0].groupid,
+            head_of_family: userResult.rows[0].head_of_family,
+            ownerid:        userResult.rows[0].ownerid,
+            hasPassword:    !!userResult.rows[0].password,
+          }
+        : null,
+    })
 
     if (userResult.rows.length === 0) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
@@ -93,6 +110,7 @@ export async function POST(request: NextRequest) {
     if (!isDevelopment) {
       // Reject default/unset password
       if (!user.password || user.password === 'Qode@123') {
+        console.log('[login] blocked — PASSWORD_SETUP_REQUIRED for', user.clientcode)
         return NextResponse.json(
           { error: 'Password setup required', code: 'PASSWORD_SETUP_REQUIRED' },
           { status: 403 }
@@ -101,25 +119,104 @@ export async function POST(request: NextRequest) {
 
       const isValid = await bcrypt.compare(password!, user.password)
       if (!isValid) {
+        console.log('[login] blocked — invalid password for', user.clientcode)
         return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
       }
     }
 
-    // Fetch all account codes for this owner
+    // Fetch all account codes for this owner — exclude matured/closed accounts
+    // maturity_date IS NULL means open-ended (no fixed term), otherwise only include future-dated ones
     let accountsResult;
+    let accountsFetchMethod: string;
+
     if (user.head_of_family) {
       accountsResult = await query(
-        'SELECT clientid, clientcode, ownerid FROM pms_clients_master WHERE groupid = $1',
+        `SELECT clientid, clientcode, ownerid, maturity_date FROM pms_clients_master
+         WHERE groupid = $1
+           AND (maturity_date IS NULL OR maturity_date > NOW())`,
         [user.groupid]
       )
+      accountsFetchMethod = `groupid=${user.groupid} (head of family)`
+
+      // Edge case: entire group may be matured (e.g. client moved to a new group).
+      // Fall back to email lookup so active accounts in other groups are still visible.
+      if (accountsResult.rows.length === 0) {
+        console.log('[login] group has 0 active accounts — falling back to email lookup', {
+          groupid: user.groupid,
+          email:   user.email,
+        })
+        accountsResult = await query(
+          `SELECT clientid, clientcode, ownerid, maturity_date FROM pms_clients_master
+           WHERE email = $1
+             AND (maturity_date IS NULL OR maturity_date > NOW())`,
+          [user.email]
+        )
+        accountsFetchMethod = `email=${user.email} (fallback — group fully matured)`
+      }
     } else {
       accountsResult = await query(
-        'SELECT clientid, clientcode, ownerid FROM pms_clients_master WHERE email = $1',
+        `SELECT clientid, clientcode, ownerid, maturity_date FROM pms_clients_master
+         WHERE email = $1
+           AND (maturity_date IS NULL OR maturity_date > NOW())`,
         [user.email]
       )
+      accountsFetchMethod = `email=${user.email}`
     }
 
+    console.log('[login] accounts fetched →', {
+      method:   accountsFetchMethod,
+      count:    accountsResult.rows.length,
+      accounts: accountsResult.rows.map((a: any) => ({
+        clientcode:    a.clientcode,
+        ownerid:       a.ownerid,
+        maturity_date: a.maturity_date ?? 'NULL (open-ended)',
+      })),
+    })
+
     const accounts = accountsResult.rows
+
+    // ── All-accounts-closed guard ─────────────────────────────────────────────
+    // If the active-account query came back empty, check whether ALL accounts
+    // for this email actually exist but have a maturity_date in the past.
+    // If so, the client's portfolio has been fully closed — return a clear error
+    // instead of silently issuing a JWT with no accountCodes.
+    if (accounts.length === 0) {
+      const allAccountsResult = await query(
+        `SELECT clientcode, maturity_date
+         FROM pms_clients_master
+         WHERE email = $1`,
+        [user.email]
+      )
+
+      const allRows = allAccountsResult.rows
+      const hasAnyRow = allRows.length > 0
+      const allMatured = hasAnyRow && allRows.every(
+        (r: any) => r.maturity_date && new Date(r.maturity_date) <= new Date()
+      )
+
+      console.log('[login] no active accounts →', {
+        email:       user.email,
+        totalRows:   allRows.length,
+        allMatured,
+        maturityDates: allRows.map((r: any) => ({
+          clientcode:    r.clientcode,
+          maturity_date: r.maturity_date ?? 'NULL',
+        })),
+      })
+
+      if (allMatured) {
+        return NextResponse.json(
+          {
+            error: 'Your account has been closed. If you think this is an error, please contact our IR team.',
+            code: 'ACCOUNT_CLOSED',
+          },
+          { status: 403 }
+        )
+      }
+      // If not all matured (e.g. maturity_date not yet populated), fall through
+      // and issue the JWT — the portfolio screens will simply show no data.
+    }
+
     const individualCodes: string[] = accounts.map((a: any) => a.clientcode).filter(Boolean)
 
     // Include group-level and owner-level consolidated account codes so the
@@ -131,6 +228,13 @@ export async function POST(request: NextRequest) {
     const groupCode: string[] = user.head_of_family && user.groupid ? [user.groupid] : []
 
     const accountCodes: string[] = [...individualCodes, ...uniqueOwnerIds, ...groupCode]
+
+    console.log('[login] JWT accountCodes →', {
+      individualCodes,
+      uniqueOwnerIds,
+      groupCode,
+      total: accountCodes,
+    })
 
     // Track login
     await query(

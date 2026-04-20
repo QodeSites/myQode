@@ -62,9 +62,12 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if password is set for this user
+    // Check if password is set for this user — prefer head_of_family=true row
     const passwordCheck = await query(
-      'SELECT password FROM pms_clients_master WHERE email = $1 OR clientcode = $1 LIMIT 1',
+      `SELECT password FROM pms_clients_master
+       WHERE email = $1 OR clientcode = $1
+       ORDER BY head_of_family DESC NULLS LAST, clientcode ASC
+       LIMIT 1`,
       [username]
     )
 
@@ -85,11 +88,13 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Proceed with regular login - get extended user data
+    // Proceed with regular login - get extended user data, prefer head_of_family=true row
     const initialResult = await query(
-      `SELECT clientid, clientcode, email, groupid, password, head_of_family 
-       FROM pms_clients_master 
-       WHERE (email = $1 OR clientcode = $1)`,
+      `SELECT clientid, clientcode, email, groupid, password, head_of_family
+       FROM pms_clients_master
+       WHERE (email = $1 OR clientcode = $1)
+       ORDER BY head_of_family DESC NULLS LAST, clientcode ASC
+       LIMIT 1`,
       [username]
     )
 
@@ -128,20 +133,30 @@ export async function POST(request: NextRequest) {
     let result;
 
     if (head_of_family) {
-      // If head of family, get all accounts in the group
       result = await query(
-        'SELECT clientid, clientcode FROM pms_clients_master WHERE groupid = $1',
+        `SELECT clientid, clientcode FROM pms_clients_master
+         WHERE groupid = $1
+           AND (maturity_date IS NULL OR maturity_date > NOW())`,
         [groupid]
       )
+      if (result.rows.length === 0) {
+        result = await query(
+          `SELECT clientid, clientcode FROM pms_clients_master
+           WHERE email = $1
+             AND (maturity_date IS NULL OR maturity_date > NOW())`,
+          [email]
+        )
+      }
     } else {
-      // If not head of family, get only accounts with this email
       result = await query(
-        'SELECT clientid, clientcode FROM pms_clients_master WHERE email = $1',
+        `SELECT clientid, clientcode FROM pms_clients_master
+         WHERE email = $1
+           AND (maturity_date IS NULL OR maturity_date > NOW())`,
         [email]
       )
     }
 
-    const clientData: ClientData[] = result.rows.map(row => ({
+    const clientData: ClientData[] = result.rows.map((row: any) => ({
       clientid: row.clientid,
       clientcode: row.clientcode
     }))
@@ -175,11 +190,13 @@ async function handleDevPasswordlessLogin(username: string) {
     const trimmedUsername = username.trim()
     console.log(`[DEV] Passwordless login attempt for: ${trimmedUsername}`)
 
-    // Try to find existing user by email or clientcode
+    // Try to find existing user by email or clientcode — prefer head_of_family=true row
     let userResult = await query(
-      `SELECT clientid, clientcode, email, groupid, head_of_family 
-       FROM pms_clients_master 
-       WHERE email = $1 OR clientcode = $1 LIMIT 1`,
+      `SELECT clientid, clientcode, email, groupid, head_of_family
+       FROM pms_clients_master
+       WHERE email = $1 OR clientcode = $1
+       ORDER BY head_of_family DESC NULLS LAST, clientcode ASC
+       LIMIT 1`,
       [trimmedUsername]
     )
 
@@ -284,11 +301,13 @@ async function handleDevBypassLogin(email: string) {
 
     const trimmedEmail = email.trim()
 
-    // Try to find existing user
+    // Try to find existing user — prefer head_of_family=true row
     let userResult = await query(
-      `SELECT clientid, clientcode, email, groupid, head_of_family 
-       FROM pms_clients_master 
-       WHERE email = $1 LIMIT 1`,
+      `SELECT clientid, clientcode, email, groupid, head_of_family
+       FROM pms_clients_master
+       WHERE email = $1
+       ORDER BY head_of_family DESC NULLS LAST, clientcode ASC
+       LIMIT 1`,
       [trimmedEmail]
     )
 
@@ -386,15 +405,25 @@ async function setSessionCookies(user: ExtendedClientData) {
   let result;
 
   if (head_of_family) {
-    // If head of family, get all accounts in the group
     result = await query(
-      'SELECT clientid, clientcode FROM pms_clients_master WHERE groupid = $1',
+      `SELECT clientid, clientcode FROM pms_clients_master
+       WHERE groupid = $1
+         AND (maturity_date IS NULL OR maturity_date > NOW())`,
       [groupid]
     )
+    if (result.rows.length === 0) {
+      result = await query(
+        `SELECT clientid, clientcode FROM pms_clients_master
+         WHERE email = $1
+           AND (maturity_date IS NULL OR maturity_date > NOW())`,
+        [email]
+      )
+    }
   } else {
-    // If not head of family, get only accounts with this email
     result = await query(
-      'SELECT clientid, clientcode FROM pms_clients_master WHERE email = $1',
+      `SELECT clientid, clientcode FROM pms_clients_master
+       WHERE email = $1
+         AND (maturity_date IS NULL OR maturity_date > NOW())`,
       [email]
     )
   }
@@ -608,12 +637,24 @@ async function handleCompletePasswordSetup(email: string, otp: string, newPasswo
 
     if (userData.head_of_family) {
       clientResult = await query(
-        'SELECT clientid, clientcode FROM pms_clients_master WHERE groupid = $1',
+        `SELECT clientid, clientcode FROM pms_clients_master
+         WHERE groupid = $1
+           AND (maturity_date IS NULL OR maturity_date > NOW())`,
         [groupid]
       )
+      if (clientResult.rows.length === 0) {
+        clientResult = await query(
+          `SELECT clientid, clientcode FROM pms_clients_master
+           WHERE email = $1
+             AND (maturity_date IS NULL OR maturity_date > NOW())`,
+          [email]
+        )
+      }
     } else {
       clientResult = await query(
-        'SELECT clientid, clientcode FROM pms_clients_master WHERE email = $1',
+        `SELECT clientid, clientcode FROM pms_clients_master
+         WHERE email = $1
+           AND (maturity_date IS NULL OR maturity_date > NOW())`,
         [email]
       )
     }

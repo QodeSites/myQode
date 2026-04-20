@@ -22,7 +22,9 @@ export async function GET(request: NextRequest) {
 
     // Fetch all client codes for this email
     const clientCodesResult = await query(
-      `SELECT clientcode FROM pms_clients_master WHERE email = $1`,
+      `SELECT clientcode FROM pms_clients_master
+       WHERE email = $1
+         AND (maturity_date IS NULL OR maturity_date > NOW())`,
       [email]
     )
 
@@ -78,6 +80,7 @@ export async function GET(request: NextRequest) {
         `SELECT clientcode
          FROM pms_clients_master
          WHERE groupid = $1
+           AND (maturity_date IS NULL OR maturity_date > NOW())
          ORDER BY head_of_family DESC, firstname ASC`,
         [gid]
       )

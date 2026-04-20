@@ -41,8 +41,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if user has set up password
-    const hasPassword = client.password !== 'Qode@123' && client.onboarding_status === 'completed';
+    // Password is considered set up if it's not the default value and not empty.
+    // onboarding_status is intentionally NOT checked — a user who set their
+    // password is allowed in regardless of where they are in the onboarding flow.
+    const hasPassword = !!client.password && client.password !== 'Qode@123';
 
     return NextResponse.json({
       success: true,

@@ -1,0 +1,897 @@
+{
+  "info": {
+    "name": "myQode Mobile API",
+    "description": "Complete API collection for the myQode mobile backend (41 endpoints across 9 folders).\n\n**How to use:**\n1. Set `baseUrl` variable to your environment URL.\n2. Run **Auth > Login** first — the test script auto-saves `{{token}}` so all subsequent requests are authenticated automatically.\n3. Set `{{accountId}}` to a real client code (e.g. QAW00038).\n4. For combined/aggregate endpoints use `{{ownerId}}` (ownerid or groupid from pms_clients_master).\n\n**Variables:**\n- `baseUrl` — API base URL\n- `token` — JWT Bearer token (auto-set by Login)\n- `accountId` — individual client code\n- `ownerId` — owner/group ID for combined endpoints\n- `orderId` — Cashfree order ID (auto-set by Create Order)\n- `subscriptionId` — Cashfree SIP subscription ID (auto-set by Setup SIP)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      { "key": "token", "value": "{{token}}", "type": "string" }
+    ]
+  },
+  "variable": [
+    { "key": "baseUrl",        "value": "https://myqode.qodeinvest.com/api/mobile", "description": "Base URL — swap to dev tunnel for local testing" },
+    { "key": "token",          "value": "", "description": "JWT Bearer token — auto-set by the Login request test script" },
+    { "key": "accountId",      "value": "QAW00038", "description": "Default individual account code" },
+    { "key": "ownerId",        "value": "", "description": "Owner or group ID for combined portfolio requests" },
+    { "key": "orderId",        "value": "", "description": "Cashfree order ID — auto-set after Create Order" },
+    { "key": "subscriptionId", "value": "", "description": "Cashfree SIP subscription ID — auto-set after Setup SIP" }
+  ],
+  "item": [
+    {
+      "name": "🔐 Auth",
+      "description": "Authentication. Run Login first — the test script saves {{token}} so every other request authenticates automatically.",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const j = pm.response.json();",
+                  "  if (j.token) {",
+                  "    pm.collectionVariables.set('token', j.token);",
+                  "    console.log('✅ Token saved');",
+                  "    console.log('   User:', j.user?.name, '|', j.user?.email);",
+                  "    console.log('   Accounts:', (j.user?.accountCodes || []).join(', '));",
+                  "  }",
+                  "} else {",
+                  "  console.error('❌ Login failed:', pm.response.text());",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"ashwinagarwal1@gmail.com\",\n  \"password\": \"\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Issues a JWT Bearer token.\n\n- In `NODE_ENV=development` the password can be empty for any real account (dev bypass).\n- In production a valid bcrypt password is required.\n- Test script auto-saves the token to `{{token}}`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "👤 Admin",
+      "description": "Super-admin only endpoints. Token must belong to isSuperAdmin=true (karan@qodeinvest.com or SUPER_ADMIN_EMAIL env var).",
+      "item": [
+        {
+          "name": "List All Clients",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/clients?search=&page=1&limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "clients"],
+              "query": [
+                { "key": "search", "value": "", "description": "Filter by name, email or client code" },
+                { "key": "page",   "value": "1" },
+                { "key": "limit",  "value": "20" }
+              ]
+            },
+            "description": "Returns all client owner groups for the super-admin master view. Paginated."
+          },
+          "response": []
+        },
+        {
+          "name": "Analytics Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/admin/analytics?days=30",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "analytics"],
+              "query": [
+                { "key": "days",     "value": "30", "description": "Lookback window in days" },
+                { "key": "event",    "value": "", "description": "Filter by event name", "disabled": true },
+                { "key": "platform", "value": "", "description": "ios | android", "disabled": true }
+              ]
+            },
+            "description": "Returns analytics event summary for the admin dashboard. Super-admin only."
+          },
+          "response": []
+        },
+        {
+          "name": "Impersonate Client",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const j = pm.response.json();",
+                  "  if (j.token) {",
+                  "    pm.collectionVariables.set('token', j.token);",
+                  "    console.log('✅ Impersonation token saved. Acting as:', j.user?.name);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clientCode\": \"{{accountId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/admin/impersonate",
+              "host": ["{{baseUrl}}"],
+              "path": ["admin", "impersonate"]
+            },
+            "description": "Issues a new JWT scoped to the given clientCode. Super-admin only. Test script replaces {{token}} with the impersonation token."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📊 Portfolio",
+      "description": "Individual account portfolio data. Use a single clientcode in {{accountId}} (e.g. QAW00038, QGF00165).",
+      "item": [
+        {
+          "name": "Snapshot",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/portfolio/snapshot",
+              "host": ["{{baseUrl}}"],
+              "path": ["portfolio", "snapshot"]
+            },
+            "description": "Returns owner profile and all linked accounts with latest portfolio values. accountId is derived from the JWT — no param needed."
+          },
+          "response": []
+        },
+        {
+          "name": "Performance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/portfolio/performance?accountId={{accountId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["portfolio", "performance"],
+              "query": [{ "key": "accountId", "value": "{{accountId}}" }]
+            },
+            "description": "Trailing returns (1W, 1M, 3M, 6M, 1Y, 3Y, inception) vs NIFTY 50 benchmark."
+          },
+          "response": []
+        },
+        {
+          "name": "NAV Chart",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/portfolio/nav?accountId={{accountId}}&period=1Y",
+              "host": ["{{baseUrl}}"],
+              "path": ["portfolio", "nav"],
+              "query": [
+                { "key": "accountId", "value": "{{accountId}}" },
+                { "key": "period", "value": "1Y", "description": "1W | 1M | 3M | 6M | 1Y | 3Y | ALL" }
+              ]
+            },
+            "description": "NAV chart rebased to 100 at window start with NIFTY 50 benchmark series."
+          },
+          "response": []
+        },
+        {
+          "name": "Drawdown Chart",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/portfolio/drawdown?accountId={{accountId}}&period=1Y",
+              "host": ["{{baseUrl}}"],
+              "path": ["portfolio", "drawdown"],
+              "query": [
+                { "key": "accountId", "value": "{{accountId}}" },
+                { "key": "period", "value": "1Y", "description": "1W | 1M | 3M | 6M | 1Y | 3Y | ALL" }
+              ]
+            },
+            "description": "Portfolio and benchmark drawdown from peak, sorted ascending."
+          },
+          "response": []
+        },
+        {
+          "name": "Cashflow",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/portfolio/cashflow?accountId={{accountId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["portfolio", "cashflow"],
+              "query": [{ "key": "accountId", "value": "{{accountId}}" }]
+            },
+            "description": "Cash-in / cash-out transactions derived from pms_master_sheet."
+          },
+          "response": []
+        },
+        {
+          "name": "Monthly P&L",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/portfolio/monthly-pl?accountId={{accountId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["portfolio", "monthly-pl"],
+              "query": [{ "key": "accountId", "value": "{{accountId}}" }]
+            },
+            "description": "Monthly P&L bucketed by year/month in both % and ₹."
+          },
+          "response": []
+        },
+        {
+          "name": "Quarterly P&L",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/portfolio/quarterly-pl?accountId={{accountId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["portfolio", "quarterly-pl"],
+              "query": [{ "key": "accountId", "value": "{{accountId}}" }]
+            },
+            "description": "Quarterly P&L bucketed by year/quarter in both % and ₹."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📊 Portfolio (Combined)",
+      "description": "Aggregate views for owner-level or group-level IDs. Use {{ownerId}} (ownerid or groupid from pms_clients_master).",
+      "item": [
+        {
+          "name": "Combined Performance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/portfolio/combined-performance?accountId={{ownerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["portfolio", "combined-performance"],
+              "query": [{ "key": "accountId", "value": "{{ownerId}}", "description": "ownerid or groupid" }]
+            },
+            "description": "Performance for owner/group aggregate row with NIFTY 50 benchmark."
+          },
+          "response": []
+        },
+        {
+          "name": "Combined NAV Chart",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/portfolio/combined-nav?accountId={{ownerId}}&period=1Y",
+              "host": ["{{baseUrl}}"],
+              "path": ["portfolio", "combined-nav"],
+              "query": [
+                { "key": "accountId", "value": "{{ownerId}}" },
+                { "key": "period", "value": "1Y", "description": "1W | 1M | 3M | 6M | 1Y | 3Y | ALL" }
+              ]
+            },
+            "description": "NAV chart for owner/group aggregate with NIFTY 50 benchmark."
+          },
+          "response": []
+        },
+        {
+          "name": "Combined Drawdown Chart",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/portfolio/combined-drawdown?accountId={{ownerId}}&period=1Y",
+              "host": ["{{baseUrl}}"],
+              "path": ["portfolio", "combined-drawdown"],
+              "query": [
+                { "key": "accountId", "value": "{{ownerId}}" },
+                { "key": "period", "value": "1Y" }
+              ]
+            },
+            "description": "Drawdown chart for owner/group aggregate with NIFTY 50 benchmark."
+          },
+          "response": []
+        },
+        {
+          "name": "Combined Cashflow",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/portfolio/combined-cashflow?accountId={{ownerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["portfolio", "combined-cashflow"],
+              "query": [{ "key": "accountId", "value": "{{ownerId}}" }]
+            },
+            "description": "Cash transactions for owner/group aggregate row."
+          },
+          "response": []
+        },
+        {
+          "name": "Combined Monthly P&L",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/portfolio/combined-monthly-pl?accountId={{ownerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["portfolio", "combined-monthly-pl"],
+              "query": [{ "key": "accountId", "value": "{{ownerId}}" }]
+            },
+            "description": "Monthly P&L for owner/group aggregate view."
+          },
+          "response": []
+        },
+        {
+          "name": "Combined Quarterly P&L",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/portfolio/combined-quarterly-pl?accountId={{ownerId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["portfolio", "combined-quarterly-pl"],
+              "query": [{ "key": "accountId", "value": "{{ownerId}}" }]
+            },
+            "description": "Quarterly P&L for owner/group aggregate view."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📄 Documents",
+      "description": "Client document retrieval from S3. All endpoints scoped to {{accountId}}.",
+      "item": [
+        {
+          "name": "List Document Categories",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/list?accountId={{accountId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["documents", "list"],
+              "query": [{ "key": "accountId", "value": "{{accountId}}" }]
+            },
+            "description": "Returns document categories (pms-agreement, account-opening, cml, disclosures) with per-category file counts from S3."
+          },
+          "response": []
+        },
+        {
+          "name": "Files — PMS Agreement",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/files/pms-agreement?accountId={{accountId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["documents", "files", "pms-agreement"],
+              "query": [{ "key": "accountId", "value": "{{accountId}}" }]
+            },
+            "description": "Signed S3 URLs for PMS Agreement documents."
+          },
+          "response": []
+        },
+        {
+          "name": "Files — Account Opening",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/files/account-opening?accountId={{accountId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["documents", "files", "account-opening"],
+              "query": [{ "key": "accountId", "value": "{{accountId}}" }]
+            },
+            "description": "Signed S3 URLs for Account Opening documents."
+          },
+          "response": []
+        },
+        {
+          "name": "Files — CML",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/files/cml?accountId={{accountId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["documents", "files", "cml"],
+              "query": [{ "key": "accountId", "value": "{{accountId}}" }]
+            },
+            "description": "Signed S3 URLs for CML documents."
+          },
+          "response": []
+        },
+        {
+          "name": "Files — Disclosures",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/documents/files/disclosures?accountId={{accountId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["documents", "files", "disclosures"],
+              "query": [{ "key": "accountId", "value": "{{accountId}}" }]
+            },
+            "description": "Signed S3 URLs for Disclosure documents."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📣 Engagement",
+      "description": "Investor content (newsletters, perspectives, events), portal guide, referrals, and analytics ingestion.",
+      "item": [
+        {
+          "name": "Newsletters",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/engagement/newsletters",
+              "host": ["{{baseUrl}}"],
+              "path": ["engagement", "newsletters"]
+            },
+            "description": "Newsletter PDFs from S3 with signed URLs, sorted newest first."
+          },
+          "response": []
+        },
+        {
+          "name": "Perspectives",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/engagement/perspectives",
+              "host": ["{{baseUrl}}"],
+              "path": ["engagement", "perspectives"]
+            },
+            "description": "Perspective PDFs from S3 with signed URLs, sorted newest first."
+          },
+          "response": []
+        },
+        {
+          "name": "Events",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/engagement/events",
+              "host": ["{{baseUrl}}"],
+              "path": ["engagement", "events"]
+            },
+            "description": "Event PDFs/materials from S3 with signed URLs, sorted newest first."
+          },
+          "response": []
+        },
+        {
+          "name": "Portal Guide",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/engagement/portal-guide",
+              "host": ["{{baseUrl}}"],
+              "path": ["engagement", "portal-guide"]
+            },
+            "description": "Video tutorials and report snapshot images from S3 for the investor portal guide."
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Referral",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accountId\": \"{{accountId}}\",\n  \"name\": \"John Doe\",\n  \"email\": \"johndoe@example.com\",\n  \"phone\": \"9876543210\",\n  \"description\": \"Friend interested in PMS\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/engagement/referral",
+              "host": ["{{baseUrl}}"],
+              "path": ["engagement", "referral"]
+            },
+            "description": "Submits an investor referral and sends a notification email to the IR team."
+          },
+          "response": []
+        },
+        {
+          "name": "Ingest Analytics Events",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"events\": [\n    {\n      \"event\": \"SCREEN_VIEW\",\n      \"properties\": { \"screen\": \"Portfolio\" },\n      \"timestamp\": \"2026-04-17T10:00:00.000Z\"\n    }\n  ]\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/engagement/analytics",
+              "host": ["{{baseUrl}}"],
+              "path": ["engagement", "analytics"]
+            },
+            "description": "Batched analytics event ingestion from the mobile app. Each event has: event (string), properties (object), timestamp (ISO string)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "👨‍👩‍👧 Experience",
+      "description": "Family tree and account relationship endpoints.",
+      "item": [
+        {
+          "name": "Family Tree",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/experience/family",
+              "host": ["{{baseUrl}}"],
+              "path": ["experience", "family"]
+            },
+            "description": "Returns the full family tree: group → owner → individual account levels. Derived from JWT accountCodes — no params needed."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "💳 Payments",
+      "description": "Cashfree payment orders and investment status.",
+      "item": [
+        {
+          "name": "Create Order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const j = pm.response.json();",
+                  "  if (j.orderId) {",
+                  "    pm.collectionVariables.set('orderId', j.orderId);",
+                  "    console.log('✅ orderId saved:', j.orderId);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accountId\": \"{{accountId}}\",\n  \"amount\": 100000,\n  \"orderType\": \"ONE_TIME\",\n  \"strategyType\": \"\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/payments/create-order",
+              "host": ["{{baseUrl}}"],
+              "path": ["payments", "create-order"]
+            },
+            "description": "Creates a Cashfree order and returns `payment_session_id` for the React Native SDK. orderType: ONE_TIME | NEW_STRATEGY. Test script saves {{orderId}}."
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Payment",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/payments/verify?orderId={{orderId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["payments", "verify"],
+              "query": [{ "key": "orderId", "value": "{{orderId}}" }]
+            },
+            "description": "Fetches live order and payment status from Cashfree and syncs it to DB."
+          },
+          "response": []
+        },
+        {
+          "name": "Investment Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/payments/investment-status?accountId={{accountId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["payments", "investment-status"],
+              "query": [{ "key": "accountId", "value": "{{accountId}}" }]
+            },
+            "description": "Returns all one-time investments and SIPs with Qode lifecycle status and charge history."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🛠️ Services",
+      "description": "Client service requests, SIP management, withdrawals, transactions and push token registration.",
+      "item": [
+        {
+          "name": "Bank Details",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/services/bank-details",
+              "host": ["{{baseUrl}}"],
+              "path": ["services", "bank-details"]
+            },
+            "description": "Returns static Qode Advisors LLP bank details for fund transfers. No auth required."
+          },
+          "response": []
+        },
+        {
+          "name": "Transactions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/services/transactions?accountId={{accountId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["services", "transactions"],
+              "query": [{ "key": "accountId", "value": "{{accountId}}" }]
+            },
+            "description": "All Cashfree payment transactions (one-time + SIP) for the given account."
+          },
+          "response": []
+        },
+        {
+          "name": "Account Change Request",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accountId\": \"{{accountId}}\",\n  \"message\": \"Please update my bank account details.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/services/account-request",
+              "host": ["{{baseUrl}}"],
+              "path": ["services", "account-request"]
+            },
+            "description": "Raises a family mapping or account change request and sends a notification to the IR team."
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Discussion",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accountId\": \"{{accountId}}\",\n  \"topic\": \"I would like to discuss portfolio rebalancing.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/services/discussion",
+              "host": ["{{baseUrl}}"],
+              "path": ["services", "discussion"]
+            },
+            "description": "Raises a general query/discussion topic with the IR team."
+          },
+          "response": []
+        },
+        {
+          "name": "Strategy Inquiry",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accountId\": \"{{accountId}}\",\n  \"question\": \"What is the current mid-cap exposure in QGF?\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/services/strategy-inquiry",
+              "host": ["{{baseUrl}}"],
+              "path": ["services", "strategy-inquiry"]
+            },
+            "description": "Submits a strategy question to the fund manager team."
+          },
+          "response": []
+        },
+        {
+          "name": "Strategy Switch",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accountId\": \"{{accountId}}\",\n  \"switchTo\": \"Qode All Weather\",\n  \"amount\": 500000,\n  \"reason\": \"Seeking lower volatility\",\n  \"investedIn\": \"Qode Growth Fund\",\n  \"additionalNotes\": \"\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/services/switch",
+              "host": ["{{baseUrl}}"],
+              "path": ["services", "switch"]
+            },
+            "description": "Submits a strategy switch/reallocation request and sends a notification email."
+          },
+          "response": []
+        },
+        {
+          "name": "Withdrawal Request",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accountId\": \"{{accountId}}\",\n  \"amount\": 100000,\n  \"additionalNotes\": \"Partial withdrawal required.\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/services/withdrawal",
+              "host": ["{{baseUrl}}"],
+              "path": ["services", "withdrawal"]
+            },
+            "description": "Submits a withdrawal request and sends a notification email to the IR team."
+          },
+          "response": []
+        },
+        {
+          "name": "Setup SIP",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "  const j = pm.response.json();",
+                  "  if (j.subscriptionId) {",
+                  "    pm.collectionVariables.set('subscriptionId', j.subscriptionId);",
+                  "    console.log('✅ subscriptionId saved:', j.subscriptionId);",
+                  "  }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"accountId\": \"{{accountId}}\",\n  \"amount\": 25000,\n  \"frequency\": \"monthly\",\n  \"startDate\": \"2026-05-01\",\n  \"endDate\": \"2028-05-01\",\n  \"totalInstallments\": 24\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/services/setup-sip",
+              "host": ["{{baseUrl}}"],
+              "path": ["services", "setup-sip"]
+            },
+            "description": "Creates a PERIODIC SIP subscription via Cashfree.\n\nfrequency: `daily` | `weekly` | `monthly` | `quarterly` | `yearly`\n\nTest script auto-saves `{{subscriptionId}}`."
+          },
+          "response": []
+        },
+        {
+          "name": "Verify SIP",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/services/verify-sip?subscriptionId={{subscriptionId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["services", "verify-sip"],
+              "query": [{ "key": "subscriptionId", "value": "{{subscriptionId}}" }]
+            },
+            "description": "Syncs live SIP subscription status from Cashfree into payment_transactions."
+          },
+          "response": []
+        },
+        {
+          "name": "Pause or Resume SIP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subscription_id\": \"{{subscriptionId}}\",\n  \"accountId\": \"{{accountId}}\",\n  \"action\": \"pause\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/services/pause-resume-sip",
+              "host": ["{{baseUrl}}"],
+              "path": ["services", "pause-resume-sip"]
+            },
+            "description": "Pauses or resumes an active SIP subscription. action: `pause` | `resume`."
+          },
+          "response": []
+        },
+        {
+          "name": "Cancel SIP",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"subscription_id\": \"{{subscriptionId}}\",\n  \"accountId\": \"{{accountId}}\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/services/cancel-sip",
+              "host": ["{{baseUrl}}"],
+              "path": ["services", "cancel-sip"]
+            },
+            "description": "Cancels an active SIP subscription permanently."
+          },
+          "response": []
+        },
+        {
+          "name": "Register Push Token",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pushToken\": \"ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]\",\n  \"platform\": \"ios\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/services/register-push-token",
+              "host": ["{{baseUrl}}"],
+              "path": ["services", "register-push-token"]
+            },
+            "description": "Stores or updates the user's Expo push token for notifications. platform: `ios` | `android`."
+          },
+          "response": []
+        },
+        {
+          "name": "Deregister Push Token",
+          "request": {
+            "method": "DELETE",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pushToken\": \"ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/services/register-push-token",
+              "host": ["{{baseUrl}}"],
+              "path": ["services", "register-push-token"]
+            },
+            "description": "Removes the push token on logout or when the user disables notifications."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

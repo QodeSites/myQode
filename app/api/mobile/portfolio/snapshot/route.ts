@@ -18,26 +18,76 @@ export async function GET(request: NextRequest) {
   if (user!.isReviewer) return NextResponse.json(REVIEWER_MOCK_SNAPSHOT)
 
   try {
-    // Fetch accounts based on role — HoF sees full group, others see only their own
     const isHoF = user!.isHeadOfFamily
-    const accountsResult = await pool.query(
-      isHoF
-        ? `SELECT
-             clientid, clientcode, email, mobile, groupid,
+    const ACCOUNT_SELECT = `
+      SELECT clientid, clientcode, email, mobile, groupid,
              salutation, firstname, middlename, lastname,
              ownerid, head_of_family, onboarding_status, created_at
-           FROM pms_clients_master
-           WHERE groupid = (SELECT groupid FROM pms_clients_master WHERE clientid = $1 LIMIT 1)
-           ORDER BY head_of_family DESC, created_at ASC`
-        : `SELECT
-             clientid, clientcode, email, mobile, groupid,
-             salutation, firstname, middlename, lastname,
-             ownerid, head_of_family, onboarding_status, created_at
-           FROM pms_clients_master
-           WHERE ownerid = $1 OR clientid = $1
+      FROM pms_clients_master`
+    const ACTIVE_FILTER = `(maturity_date IS NULL OR maturity_date > NOW())`
+
+    let accountsResult
+
+    if (isHoF) {
+      // Look up the group of the logged-in user's primary row, then fetch all active
+      // members of that group.
+      accountsResult = await pool.query(
+        `${ACCOUNT_SELECT}
+         WHERE groupid = (SELECT groupid FROM pms_clients_master WHERE clientid = $1 LIMIT 1)
+           AND ${ACTIVE_FILTER}
+         ORDER BY head_of_family DESC, created_at ASC`,
+        [user!.userId]
+      )
+
+      // Edge case (e.g. Ashok Jogani): HoF row's group may be fully matured while the
+      // client has active accounts in another group (e.g. HUF accounts).
+      // Fall back to email lookup — same logic as the login route.
+      if (accountsResult.rows.length === 0) {
+        console.log('[snapshot] HoF group fully matured — falling back to email lookup', {
+          userId: user!.userId,
+          email: user!.email,
+        })
+        accountsResult = await pool.query(
+          `${ACCOUNT_SELECT}
+           WHERE email = $1
+             AND ${ACTIVE_FILTER}
            ORDER BY head_of_family DESC, created_at ASC`,
-      isHoF ? [user!.userId] : [user!.ownerIds?.[0] ?? user!.userId]
-    )
+          [user!.email]
+        )
+      }
+    } else {
+      // Non-HoF: start with ownerid lookup. If the user has accounts across
+      // multiple owner entities (e.g. personal + LLP under the same email —
+      // like karan@qodeinvest.com with QAW0009/Qode Advisors LLP), the ownerid
+      // query would miss them. Always augment with email lookup and deduplicate.
+      const ownerResult = await pool.query(
+        `${ACCOUNT_SELECT}
+         WHERE (ownerid = $1 OR clientid = $1)
+           AND ${ACTIVE_FILTER}
+         ORDER BY head_of_family DESC, created_at ASC`,
+        [user!.ownerIds?.[0] ?? user!.userId]
+      )
+
+      const emailResult = await pool.query(
+        `${ACCOUNT_SELECT}
+         WHERE email = $1
+           AND ${ACTIVE_FILTER}
+         ORDER BY head_of_family DESC, created_at ASC`,
+        [user!.email]
+      )
+
+      // Merge & deduplicate by clientcode — email results may include extra
+      // accounts (different owner entities) that ownerid alone wouldn't return.
+      const seen = new Set<string>()
+      const merged: typeof ownerResult.rows = []
+      for (const row of [...ownerResult.rows, ...emailResult.rows]) {
+        if (!seen.has(row.clientcode)) {
+          seen.add(row.clientcode)
+          merged.push(row)
+        }
+      }
+      accountsResult = { ...ownerResult, rows: merged }
+    }
 
     const accounts = accountsResult.rows
     if (accounts.length === 0) {
@@ -99,12 +149,11 @@ export async function GET(request: NextRequest) {
         const portfolioValue = pv?.value ?? 0
         ownerTotal += portfolioValue
         const isClosed = pv?.isClosed ?? false
-        if (a.onboarding_status === 'completed' && !isClosed) activeAccountCount++
-        const status = isClosed
-          ? 'closed'
-          : a.onboarding_status === 'completed'
-            ? 'active'
-            : a.onboarding_status
+        // Active = has portfolio data and isn't closed by two-consecutive-zero rule.
+        // onboarding_status is not used here — a user who can log in (password set)
+        // should see their accounts as active regardless of onboarding_status.
+        if (!isClosed) activeAccountCount++
+        const status = isClosed ? 'closed' : 'active'
         return {
           id: a.clientcode,
           strategyPrefix: getPrefix(a.clientcode),
@@ -135,13 +184,22 @@ export async function GET(request: NextRequest) {
 
     const headOwner = owners.find(o => o.isHeadOfFamily) ?? owners[0]
 
+    // "Combined Family View" only makes sense when there are multiple distinct
+    // owners. If the HoF's original group was fully matured and we fell back to
+    // email — and that email has accounts under a single owner — there is no
+    // family to aggregate. Return isHeadOfFamily: false + groupId: null so the
+    // StrategySelector hides the family-level option automatically.
+    const hasMultipleOwners = owners.length > 1
+    const effectiveIsHoF = (user!.isHeadOfFamily ?? false) && hasMultipleOwners
+    const effectiveGroupId = hasMultipleOwners ? (headOwner?.groupId ?? null) : null
+
     return NextResponse.json({
       owners,
       totalPortfolioValue: +totalPortfolioValue.toFixed(2),
       formattedTotal: formatINR(totalPortfolioValue),
       activeAccountCount,
-      isHeadOfFamily: user!.isHeadOfFamily ?? false,
-      groupId: headOwner?.groupId ?? null,
+      isHeadOfFamily: effectiveIsHoF,
+      groupId: effectiveGroupId,
     })
   } catch (err) {
     console.error('[mobile/portfolio/snapshot]', err)

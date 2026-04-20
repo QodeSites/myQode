@@ -1,28 +1,32 @@
 import { Pool, QueryResult } from "pg";
 
-// Define the Pool configuration type
-interface PoolConfig {
-  user?: string;
-  host?: string;
-  database?: string;
-  password?: string;
-  port?: number;
+// Singleton guard — prevents new Pool instances on every Next.js hot-reload.
+declare global {
+  // eslint-disable-next-line no-var
+  var _pgPool2: Pool | undefined;
 }
 
-// Create a connection pool
-const pool = new Pool({
-  user: process.env.PG_USER,
-  host: process.env.PG_HOST,
-  database: process.env.PG_DATABASE2,
-  // schema: process.env.PG_SCHEMA2,
-  password: process.env.PG_PASSWORD,
-  port: process.env.PG_PORT ? parseInt(process.env.PG_PORT, 10) : 5432,
-} as PoolConfig);
+function createPool() {
+  const p = new Pool({
+    user:     process.env.PG_USER,
+    host:     process.env.PG_HOST,
+    database: process.env.PG_DATABASE2,
+    password: process.env.PG_PASSWORD,
+    port:     process.env.PG_PORT ? parseInt(process.env.PG_PORT, 10) : 5432,
+    max:                     3,
+    idleTimeoutMillis:       20_000,
+    connectionTimeoutMillis: 8_000,
+  });
 
-// Tell pg to return DATE fields as strings
-pool.on('connect', (client) => {
-  client.query('SET timezone = "UTC"');
-});
+  p.on('error', (err) => {
+    console.error('[db2] unexpected pool error:', err);
+  });
+
+  return p;
+}
+
+const pool: Pool = global._pgPool2 ?? createPool();
+if (process.env.NODE_ENV !== 'production') global._pgPool2 = pool;
 
 // Optionally, disable date parsing
 const types = require('pg').types;

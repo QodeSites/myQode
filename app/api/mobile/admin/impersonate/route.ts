@@ -51,12 +51,16 @@ export async function POST(request: NextRequest) {
     let accountsResult
     if (target.head_of_family) {
       accountsResult = await query(
-        'SELECT clientid, clientcode, ownerid FROM pms_clients_master WHERE groupid = $1',
+        `SELECT clientid, clientcode, ownerid FROM pms_clients_master
+         WHERE groupid = $1
+           AND (maturity_date IS NULL OR maturity_date > NOW())`,
         [target.groupid]
       )
     } else {
       accountsResult = await query(
-        'SELECT clientid, clientcode, ownerid FROM pms_clients_master WHERE ownerid = $1',
+        `SELECT clientid, clientcode, ownerid FROM pms_clients_master
+         WHERE ownerid = $1
+           AND (maturity_date IS NULL OR maturity_date > NOW())`,
         [target.ownerid]
       )
     }

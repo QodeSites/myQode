@@ -123,13 +123,18 @@ export async function POST(request: NextRequest) {
     })
     const cfOrder: any = resp.data
 
-    // Persist to payment_transactions (same table as web)
+    // Persist to payment_transactions.
+    // investment_status is the Qode-side lifecycle column (NOT the Cashfree payment_status).
+    // It must always be explicitly set — the column is NOT NULL with no DB default.
+    // Lifecycle: PENDING_PAYMENT → PAYMENT_SUCCESS → SETTLED → DEPLOYED
     await pool.query(
       `INSERT INTO payment_transactions (
          order_id, client_id, nuvama_code, client_name, amount, currency,
-         payment_type, payment_status, payment_session_id, cf_order_id,
-         created_at, is_new_strategy, strategy_type
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+         payment_type, payment_status, investment_status,
+         payment_session_id, cf_order_id,
+         created_at, updated_at,
+         is_new_strategy, strategy_type
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,NOW(),NOW(),$12,$13)`,
       [
         cfOrder.order_id,
         client.clientid,
@@ -138,10 +143,10 @@ export async function POST(request: NextRequest) {
         amount,
         'INR',
         orderType,
-        cfOrder.order_status || 'CREATED',
+        cfOrder.order_status || 'ACTIVE',  // Cashfree order status
+        'PENDING_PAYMENT',                 // Qode lifecycle — always starts here
         cfOrder.payment_session_id,
         cfOrder.cf_order_id || cfOrder.order_id,
-        new Date(),
         orderType === 'NEW_STRATEGY',
         strategyType || null,
       ]

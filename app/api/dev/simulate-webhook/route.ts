@@ -2,11 +2,77 @@
 // DEVELOPMENT ONLY — simulates Cashfree webhook events for testing the full
 // investment status pipeline without making real payments.
 //
+// Supports both one-time payment events and SIP subscription events.
 // Disabled automatically in production unless ALLOW_SIMULATE_WEBHOOK=true.
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 
 const GUARD = process.env.NODE_ENV === 'production' && process.env.ALLOW_SIMULATE_WEBHOOK !== 'true'
+
+// ── SIP / subscription webhook payloads ──────────────────────────────────────
+const SIP_EVENT_TYPES = [
+  'SUBSCRIPTION_ACTIVE',
+  'SUBSCRIPTION_PAYMENT_SUCCESS',
+  'SUBSCRIPTION_PAYMENT_FAILED',
+  'SUBSCRIPTION_CANCELLED',
+  'SUBSCRIPTION_COMPLETED',
+  'SUBSCRIPTION_ON_HOLD',
+  'INSTRUMENT_ACTIVE',
+  'INSTRUMENT_FAILED',
+] as const
+type SipEventType = typeof SIP_EVENT_TYPES[number]
+
+function buildSipWebhookPayload(subscriptionId: string, eventType: SipEventType, amount: number) {
+  const now = new Date().toISOString()
+  const cfPaymentId = `sim_sip_${Date.now()}`
+
+  const subscriptionStatusMap: Record<SipEventType, string> = {
+    SUBSCRIPTION_ACTIVE:          'ACTIVE',
+    SUBSCRIPTION_PAYMENT_SUCCESS: 'ACTIVE',
+    SUBSCRIPTION_PAYMENT_FAILED:  'ON_HOLD',
+    SUBSCRIPTION_CANCELLED:       'CANCELLED',
+    SUBSCRIPTION_COMPLETED:       'COMPLETED',
+    SUBSCRIPTION_ON_HOLD:         'ON_HOLD',
+    INSTRUMENT_ACTIVE:            'ACTIVE',
+    INSTRUMENT_FAILED:            'FAILED',
+  }
+
+  const base = {
+    type: eventType,
+    event_time: now,
+    data: {
+      subscription: {
+        subscription_id:     subscriptionId,
+        subscription_status: subscriptionStatusMap[eventType],
+        plan_id:             'sim_plan',
+        plan_type:           'PERIODIC',
+        authorization_details: {
+          authorization_status: eventType === 'SUBSCRIPTION_ACTIVE' || eventType === 'INSTRUMENT_ACTIVE'
+            ? 'SUCCESS' : 'FAILED',
+          authorization_time: now,
+        },
+        next_charge_time: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // +30 days
+      },
+    },
+  }
+
+  // For charge events, add payment details
+  if (eventType === 'SUBSCRIPTION_PAYMENT_SUCCESS' || eventType === 'SUBSCRIPTION_PAYMENT_FAILED') {
+    ;(base.data as any).payment = {
+      cf_payment_id:    cfPaymentId,
+      payment_status:   eventType === 'SUBSCRIPTION_PAYMENT_SUCCESS' ? 'SUCCESS' : 'FAILED',
+      payment_amount:   amount,
+      payment_currency: 'INR',
+      payment_time:     now,
+      bank_reference:   eventType === 'SUBSCRIPTION_PAYMENT_SUCCESS' ? `SIM${Date.now()}` : null,
+      failure_reason:   eventType === 'SUBSCRIPTION_PAYMENT_FAILED' ? 'Insufficient funds (simulated)' : null,
+      payment_method:   { upi: { upi_id: 'testsuccess@gocash' } },
+    }
+    ;(base.data as any).installment_number = 1
+  }
+
+  return base
+}
 
 // Simulate all possible Cashfree payment_status values for a given order
 function buildWebhookPayload(orderId: string, paymentStatus: string, amount: number) {
@@ -68,20 +134,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
   }
 
-  const { orderId, paymentStatus = 'SUCCESS', simulateCronToo = false } = body
+  const {
+    orderId,
+    paymentStatus = 'SUCCESS',
+    simulateCronToo = false,
+    // SIP-specific
+    sipEvent,   // e.g. 'SUBSCRIPTION_ACTIVE', 'SUBSCRIPTION_PAYMENT_SUCCESS', etc.
+  } = body
 
   if (!orderId) {
     return NextResponse.json({ error: 'orderId is required' }, { status: 400 })
   }
 
-  const VALID_STATUSES = ['SUCCESS', 'FAILED', 'USER_DROPPED', 'PENDING', 'FLAGGED', 'CANCELLED', 'VOID']
-  if (!VALID_STATUSES.includes(paymentStatus)) {
-    return NextResponse.json({ error: `paymentStatus must be one of: ${VALID_STATUSES.join(', ')}` }, { status: 400 })
-  }
-
-  // Fetch the order to get amount
+  // Fetch the order to get amount + type
   const { rows } = await pool.query(
-    `SELECT order_id, amount, nuvama_code, investment_status FROM payment_transactions WHERE order_id = $1`,
+    `SELECT order_id, amount, nuvama_code, investment_status, payment_type FROM payment_transactions WHERE order_id = $1`,
     [orderId]
   )
   if (rows.length === 0) {
@@ -89,6 +156,43 @@ export async function POST(request: NextRequest) {
   }
   const tx = rows[0]
   const amount = parseFloat(tx.amount)
+  const isSip = tx.payment_type === 'SIP' || !!sipEvent
+
+  // ── SIP webhook simulation ────────────────────────────────────────────────
+  if (isSip) {
+    const event = sipEvent ?? 'SUBSCRIPTION_ACTIVE'
+    if (!SIP_EVENT_TYPES.includes(event)) {
+      return NextResponse.json({
+        error: `sipEvent must be one of: ${SIP_EVENT_TYPES.join(', ')}`,
+      }, { status: 400 })
+    }
+
+    const devPort = process.env.PORT || process.env.NEXTAUTH_URL?.match(/:(\d+)/)?.[1] || '2069'
+    const webhookPayload = buildSipWebhookPayload(orderId, event as SipEventType, amount)
+
+    const webhookRes = await fetch(`http://localhost:${devPort}/api/cashfree/webhook`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-webhook-signature': 'simulated',
+        'x-webhook-timestamp': Date.now().toString(),
+      },
+      body: JSON.stringify(webhookPayload),
+    })
+    const webhookResult = await webhookRes.json()
+
+    const { rows: final } = await pool.query(
+      `SELECT order_id, payment_status, investment_status, updated_at FROM payment_transactions WHERE order_id = $1`,
+      [orderId]
+    )
+    return NextResponse.json({ simulated: true, sipEvent: event, orderId, webhookFired: webhookResult, finalState: final[0] })
+  }
+
+  // ── One-time payment webhook simulation ──────────────────────────────────
+  const VALID_STATUSES = ['SUCCESS', 'FAILED', 'USER_DROPPED', 'PENDING', 'FLAGGED', 'CANCELLED', 'VOID']
+  if (!VALID_STATUSES.includes(paymentStatus)) {
+    return NextResponse.json({ error: `paymentStatus must be one of: ${VALID_STATUSES.join(', ')}` }, { status: 400 })
+  }
 
   // Fire the simulated webhook against our own local endpoint (always localhost in dev)
   const devPort = process.env.PORT || process.env.NEXTAUTH_URL?.match(/:(\d+)/)?.[1] || '2069'
@@ -198,9 +302,17 @@ export async function GET(request: NextRequest) {
       paylater: { mobile: '8714268343', pan4: '1234', otp: '777777' },
     },
     howToSimulate: {
-      step1: 'POST /api/dev/simulate-webhook { orderId, paymentStatus: "SUCCESS" }',
-      step2: 'Add simulateCronToo: true to also simulate settlement + deployment check',
-      step3: 'GET /api/mobile/payments/investment-status?accountId=XXX to see the result',
+      oneTimePayment: {
+        step1: 'POST /api/dev/simulate-webhook { orderId, paymentStatus: "SUCCESS" }',
+        step2: 'Add simulateCronToo: true to also simulate SETTLED + DEPLOYED in one shot',
+        step3: 'GET /api/mobile/payments/investment-status?accountId=XXX to verify',
+      },
+      sipSubscription: {
+        step1: 'POST /api/dev/simulate-webhook { orderId: "<sip_order_id>", sipEvent: "SUBSCRIPTION_ACTIVE" }',
+        step2: 'Then POST { orderId, sipEvent: "SUBSCRIPTION_PAYMENT_SUCCESS" } to simulate a charge',
+        step3: 'Also try: SUBSCRIPTION_PAYMENT_FAILED, SUBSCRIPTION_CANCELLED, SUBSCRIPTION_COMPLETED',
+      },
+      sipEvents: SIP_EVENT_TYPES,
     },
   })
 }
