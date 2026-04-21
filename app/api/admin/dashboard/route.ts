@@ -28,6 +28,7 @@ interface AdminDashboardData {
   queries: QueryData[];
   statistics: DashboardStatistics;
   distributors: DistributorData[];
+  intermediaryNames: string[];
 }
 
 interface GroupedClientData {
@@ -290,11 +291,18 @@ export async function GET(request: NextRequest) {
       clientname: `${row.salutation || ''} ${row.firstname} ${row.middlename || ''} ${row.lastname}`.trim(),
     }));
 
+    // Fetch unique intermediary names
+    const intermediaryNamesResult = await query(
+      `SELECT DISTINCT intermediaryname FROM public.pms_clients_master WHERE intermediaryname IS NOT NULL ORDER BY intermediaryname`
+    );
+    const intermediaryNames = intermediaryNamesResult.rows.map((row: any) => row.intermediaryname);
+
     const dashboardData: AdminDashboardData = {
       clients: groupedClients,
       queries,
       statistics,
       distributors,
+      intermediaryNames,
     };
 
     return NextResponse.json({
