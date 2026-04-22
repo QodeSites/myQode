@@ -40,7 +40,8 @@ import {
   Download,
   Grid,
   List,
-  MoreHorizontal
+  MoreHorizontal,
+  Trash2
 } from "lucide-react";
 import {
   Dialog,
@@ -185,6 +186,19 @@ function AdminDashboardContent() {
   const [loginFilter, setLoginFilter] = useState<'all' | 'today' | 'week'>('all');
   const [distributors, setDistributors] = useState<DistributorData[]>([]);
   const [distributorSearch, setDistributorSearch] = useState('');
+  const [intermediaryNames, setIntermediaryNames] = useState<string[]>([]);
+  
+  const [showAddDistributorDialog, setShowAddDistributorDialog] = useState(false);
+  const [addingDistributor, setAddingDistributor] = useState(false);
+  const [newDistributor, setNewDistributor] = useState({
+    clientname: '',
+    email: '',
+    salutation: 'Mr',
+    firstname: '',
+    lastname: '',
+    intermediaryname: 'QODE ADVISORS LLP INT',
+    intermediary_fee_percentage: 50.00
+  });
   const [activeTab, setActiveTab] = useState<'owners' | 'distributors'>(
     isDistributorOnlyAdmin ? 'distributors' : 'owners'
   );
@@ -217,6 +231,9 @@ function AdminDashboardContent() {
           ...d,
           clientname: sanitizeName(d.clientname),
         })));
+        if (data.data.intermediaryNames) {
+          setIntermediaryNames(data.data.intermediaryNames);
+        }
       } else {
         setMessage('Failed to load dashboard data');
       }
@@ -403,6 +420,65 @@ function AdminDashboardContent() {
       setImpersonating(false);
     }
   };
+
+  const handleDeleteDistributor = async (email: string, id: string, name: string) => {
+    if (!window.confirm(`Are you sure you want to delete distributor ${name}? This action cannot be undone.`)) {
+      return;
+    }
+    
+    try {
+      const response = await fetch('/api/admin/distributors/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, id })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setMessage(`Distributor ${name} deleted successfully`);
+        fetchDashboardData();
+      } else {
+        setMessage(`Failed to delete distributor: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Delete distributor error:', error);
+      setMessage('Failed to delete distributor');
+    }
+  };
+
+  const handleAddDistributor = async () => {
+    if (!newDistributor.clientname || !newDistributor.email) {
+      setMessage('Client Name and Email are required.');
+      return;
+    }
+    setAddingDistributor(true);
+    try {
+      const response = await fetch('/api/admin/distributors/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newDistributor)
+      });
+      const data = await response.json();
+      if (data.success) {
+        setMessage('Distributor created successfully');
+        setShowAddDistributorDialog(false);
+        setNewDistributor({
+          clientname: '', email: '', salutation: 'Mr', firstname: '', lastname: '',
+          intermediaryname: 'QODE ADVISORS LLP INT', intermediary_fee_percentage: 50.00
+        });
+        fetchDashboardData();
+      } else {
+        setMessage(`Failed to create distributor: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Add distributor error:', error);
+      setMessage('Failed to create distributor');
+    } finally {
+      setAddingDistributor(false);
+    }
+  };
+
 
   const exportToCSV = (data: any[], filename: string, type: 'owners' | 'accounts') => {
     let csvContent = '';
@@ -1127,34 +1203,44 @@ function AdminDashboardContent() {
                     All registered distributors in the system
                   </p>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    const headers = ['Client Code', 'Name', 'Email', 'Mobile', 'Onboarding Status', 'Login Count', 'Last Login', 'Created Date'];
-                    const rows = filteredDistributors.map(d => [
-                      `"${d.clientcode}"`,
-                      `"${sanitizeName(d.clientname)}"`,
-                      `"${d.email}"`,
-                      `"${d.mobile || ''}"`,
-                      d.onboarding_status,
-                      d.login_count || 0,
-                      d.last_login_at ? new Date(d.last_login_at).toLocaleDateString() : 'Never',
-                      new Date(d.created_at).toLocaleDateString(),
-                    ].join(','));
-                    const csv = [headers.join(','), ...rows].join('\n');
-                    const blob = new Blob([csv], { type: 'text/csv' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'distributors.csv';
-                    a.click();
-                    URL.revokeObjectURL(url);
-                  }}
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  Export CSV
-                </Button>
+                <div className="flex space-x-2">
+                  <Button
+                    size="sm"
+                    onClick={() => setShowAddDistributorDialog(true)}
+                    className="bg-orange-500 hover:bg-orange-600 text-white"
+                  >
+                    <Building2 className="h-4 w-4 mr-2" />
+                    Add Distributor
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      const headers = ['Client Code', 'Name', 'Email', 'Mobile', 'Onboarding Status', 'Login Count', 'Last Login', 'Created Date'];
+                      const rows = filteredDistributors.map(d => [
+                        `"${d.clientcode}"`,
+                        `"${sanitizeName(d.clientname)}"`,
+                        `"${d.email}"`,
+                        `"${d.mobile || ''}"`,
+                        d.onboarding_status,
+                        d.login_count || 0,
+                        d.last_login_at ? new Date(d.last_login_at).toLocaleDateString() : 'Never',
+                        new Date(d.created_at).toLocaleDateString(),
+                      ].join(','));
+                      const csv = [headers.join(','), ...rows].join('\n');
+                      const blob = new Blob([csv], { type: 'text/csv' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = 'distributors.csv';
+                      a.click();
+                      URL.revokeObjectURL(url);
+                    }}
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Export CSV
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1216,16 +1302,26 @@ function AdminDashboardContent() {
                           </TableCell>
 
                           <TableCell>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={impersonating || !d.email}
-                              onClick={() => handleImpersonateDistributor(d.email, sanitizeName(d.clientname))}
-                              className="flex items-center gap-1 text-xs"
-                            >
-                              <UserCog className="h-3 w-3" />
-                              Login as
-                            </Button>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={impersonating || !d.email}
+                                onClick={() => handleImpersonateDistributor(d.email, sanitizeName(d.clientname))}
+                                className="flex items-center gap-1 text-xs"
+                              >
+                                <UserCog className="h-3 w-3" />
+                                Login as
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => handleDeleteDistributor(d.email || '', d.id || '', sanitizeName(d.clientname))}
+                                className="flex items-center gap-1 text-xs px-2 bg-red-600 hover:bg-red-700 text-white border-0"
+                                title="Delete Distributor"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))
@@ -1252,6 +1348,95 @@ function AdminDashboardContent() {
         </TabsContent>
 
       </Tabs>
+
+      {/* Add Distributor Dialog */}
+      <Dialog open={showAddDistributorDialog} onOpenChange={setShowAddDistributorDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add New Distributor</DialogTitle>
+            <DialogDescription>
+              Enter the initial details for the distributor.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Salutation</label>
+              <Select 
+                value={newDistributor.salutation} 
+                onValueChange={(val) => setNewDistributor({...newDistributor, salutation: val})}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select salutation" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Mr">Mr</SelectItem>
+                  <SelectItem value="Ms">Ms</SelectItem>
+                  <SelectItem value="Mrs">Mrs</SelectItem>
+                  <SelectItem value="Dr">Dr</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Distributor Name (Company/Person) *</label>
+              <Select
+                value={newDistributor.clientname}
+                onValueChange={(val) => setNewDistributor({
+                  ...newDistributor,
+                  clientname: val,
+                  firstname: val
+                })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select or type distributor name" />
+                </SelectTrigger>
+                <SelectContent>
+                  {intermediaryNames.map((name, idx) => (
+                    <SelectItem key={idx} value={name}>{name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Email Address *</label>
+              <Input
+                type="email"
+                placeholder="e.g. contact@distributor.com"
+                value={newDistributor.email}
+                onChange={e => setNewDistributor({...newDistributor, email: e.target.value})}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Intermediary Name</label>
+              <Input
+                placeholder="e.g. QODE ADVISORS LLP INT"
+                value={newDistributor.intermediaryname}
+                onChange={e => setNewDistributor({...newDistributor, intermediaryname: e.target.value})}
+              />
+            </div>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Intermediary Fee Percentage</label>
+              <Input
+                type="number"
+                placeholder="50.00"
+                value={newDistributor.intermediary_fee_percentage}
+                onChange={e => setNewDistributor({...newDistributor, intermediary_fee_percentage: parseFloat(e.target.value) || 0})}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAddDistributorDialog(false)} disabled={addingDistributor}>
+              Cancel
+            </Button>
+            <Button onClick={handleAddDistributor} disabled={addingDistributor || !newDistributor.clientname || !newDistributor.email}>
+              {addingDistributor ? 'Adding...' : 'Add Distributor'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Accounts Detail Dialog */}
       <Dialog open={showAccountsDialog} onOpenChange={setShowAccountsDialog}>
