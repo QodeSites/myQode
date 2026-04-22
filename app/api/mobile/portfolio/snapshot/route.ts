@@ -185,12 +185,14 @@ export async function GET(request: NextRequest) {
     const headOwner = owners.find(o => o.isHeadOfFamily) ?? owners[0]
 
     // "Combined Family View" only makes sense when there are multiple distinct
-    // owners. If the HoF's original group was fully matured and we fell back to
-    // email — and that email has accounts under a single owner — there is no
-    // family to aggregate. Return isHeadOfFamily: false + groupId: null so the
-    // StrategySelector hides the family-level option automatically.
+    // owners. The JWT isHeadOfFamily flag controls which *query path* we take
+    // (group-based vs email-based), but the UI capability should be based on
+    // what data actually came back. If multiple owners are found for the same
+    // email (e.g. family accounts with mismatched groupids in the DB, or
+    // cross-owner accounts like karan), show the combined view regardless of
+    // the JWT flag — it just means the DB hasn't been fully normalised yet.
     const hasMultipleOwners = owners.length > 1
-    const effectiveIsHoF = (user!.isHeadOfFamily ?? false) && hasMultipleOwners
+    const effectiveIsHoF = hasMultipleOwners
     const effectiveGroupId = hasMultipleOwners ? (headOwner?.groupId ?? null) : null
 
     return NextResponse.json({
