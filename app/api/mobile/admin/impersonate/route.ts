@@ -1,7 +1,8 @@
 // POST /api/mobile/admin/impersonate
 // Issues a new JWT scoped to a specific client, letting the super-admin
 // view the app exactly as that client would see it.
-// RESTRICTED: only accessible to karan@qodeinvest.com (isSuperAdmin in JWT).
+// RESTRICTED: only accessible to accounts with isSuperAdmin=true in the JWT
+// (karan@qodeinvest.com and admin@qodeinvest.com).
 //
 // Body: { clientCode: string }
 // Returns: { token, expiresIn, user }  — same shape as /api/mobile/auth/login

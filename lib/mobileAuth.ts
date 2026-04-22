@@ -17,7 +17,7 @@ export interface MobileAuthUser {
   ownerIds: string[]
   groupId: string
   isHeadOfFamily: boolean
-  isSuperAdmin?: boolean          // only true for karan@qodeinvest.com
+  isSuperAdmin?: boolean          // true for karan@qodeinvest.com and admin@qodeinvest.com
   isImpersonated?: boolean        // true when super admin is viewing as a client
   impersonatedBy?: string         // email of the super admin who is impersonating
   isReviewer?: boolean            // Play Store / App Store reviewer — served mock data
@@ -55,7 +55,7 @@ export async function verifyMobileAuth(request: NextRequest): Promise<{
   }
 }
 
-/** Guard: reject requests that don't come from karan@qodeinvest.com.
+/** Guard: reject requests that don't have isSuperAdmin=true in the JWT.
  *  Also rejects impersonation tokens — admin actions must use the original JWT. */
 export function requireSuperAdmin(user: MobileAuthUser): NextResponse | null {
   if (user.isImpersonated) {

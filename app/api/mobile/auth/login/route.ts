@@ -16,6 +16,11 @@ import { REVIEWER_ACCOUNT_CODES } from '@/lib/reviewerMock'
 const REVIEWER_EMAIL    = process.env.REVIEWER_EMAIL
 const REVIEWER_PASSWORD = process.env.REVIEWER_PASSWORD
 
+// Admin account — a virtual account not in pms_clients_master.
+// Hardcoded credentials for the dedicated impersonation account.
+const ADMIN_EMAIL    = 'admin@qodeinvest.com'
+const ADMIN_PASSWORD = 'AdminQode#@2026'
+
 export async function POST(request: NextRequest) {
   try {
     let body: any
@@ -73,13 +78,48 @@ export async function POST(request: NextRequest) {
       })
     }
 
+    // ── Admin bypass ─────────────────────────────────────────────────────────────
+    // Virtual admin account — not in pms_clients_master.
+    // Checked BEFORE the dev-mode password bypass so that dev mode sending
+    // password='' cannot accidentally match (password is always required here).
+    if (username.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+      if (password !== ADMIN_PASSWORD) {
+        return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
+      }
+      const payload: MobileAuthUser = {
+        userId: 'admin',
+        email: ADMIN_EMAIL,
+        clientCode: 'ADMIN',
+        clientId: 'admin',
+        accountCodes: [],
+        ownerIds: [],
+        groupId: null as any,
+        isHeadOfFamily: false,
+        isSuperAdmin: true,
+      }
+      const token = jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: '12h' })
+      return NextResponse.json({
+        token,
+        expiresIn: 60 * 60 * 12,
+        user: {
+          clientId: 'admin',
+          clientCode: 'ADMIN',
+          name: 'Admin',
+          email: ADMIN_EMAIL,
+          accountCodes: [],
+          isHeadOfFamily: false,
+          isSuperAdmin: true,
+        },
+      })
+    }
+
     // Look up user — prefer head_of_family=true row when multiple rows share the same email
     // (one person can have accounts across multiple schemes, only one row has head_of_family=true)
     const userResult = await query(
       `SELECT clientid, clientcode, email, groupid, password, head_of_family, ownerid,
               salutation, firstname, middlename, lastname
        FROM pms_clients_master
-       WHERE (email = $1 OR clientcode = $1)
+       WHERE (email = $1 OR UPPER(clientcode) = UPPER($1))
        ORDER BY head_of_family DESC NULLS LAST, clientcode ASC
        LIMIT 1`,
       [username]
@@ -101,7 +141,10 @@ export async function POST(request: NextRequest) {
     })
 
     if (userResult.rows.length === 0) {
-      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
+      return NextResponse.json(
+        { error: 'No account found for this email or ID. Please check and try again.', code: 'USER_NOT_FOUND' },
+        { status: 401 }
+      )
     }
 
     const user = userResult.rows[0]
