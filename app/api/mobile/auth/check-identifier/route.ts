@@ -26,11 +26,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ exists: true })
     }
 
+    const id = identifier.trim()
     const result = await query(
       `SELECT 1 FROM pms_clients_master
-       WHERE (email = $1 OR UPPER(clientcode) = UPPER($1))
+       WHERE email = $1 OR clientcode ILIKE $2
        LIMIT 1`,
-      [identifier.trim()]
+      [id, id]
     )
 
     return NextResponse.json({ exists: result.rows.length > 0 })
