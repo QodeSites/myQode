@@ -21,8 +21,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'identifier is required' }, { status: 400 })
     }
 
-    // Admin virtual account — always exists
-    if (identifier.trim().toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+    // Virtual accounts — always exist (not in DB)
+    const VIRTUAL_ACCOUNTS = ['admin@qodeinvest.com', 'reviewer@qodeinvest.com']
+    if (VIRTUAL_ACCOUNTS.includes(identifier.trim().toLowerCase())) {
       return NextResponse.json({ exists: true })
     }
 

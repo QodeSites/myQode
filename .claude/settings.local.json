@@ -37,7 +37,9 @@
       "Bash(kill -9 4017 4018 4019 4020 4022 3224 3225 3226 3227 3228)",
       "Bash(git fetch *)",
       "Bash(git remote *)",
-      "Bash(git config *)"
+      "Bash(git config *)",
+      "Bash(git --version)",
+      "Bash(git -C /Users/qodetech/Desktop/Projects/myQode for-each-ref --sort=-committerdate --format='%\\(refname\\)')"
     ],
     "deny": [],
     "ask": []

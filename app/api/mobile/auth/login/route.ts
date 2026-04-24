@@ -10,11 +10,10 @@ import jwt from 'jsonwebtoken'
 import type { MobileAuthUser } from '@/lib/mobileAuth'
 import { REVIEWER_ACCOUNT_CODES } from '@/lib/reviewerMock'
 
-// Reviewer credentials MUST be set via environment variables — no defaults allowed.
-// Set REVIEWER_EMAIL and REVIEWER_PASSWORD in .env.local / production environment.
-// If not set, the reviewer login path is simply disabled (login returns 401).
-const REVIEWER_EMAIL    = process.env.REVIEWER_EMAIL
-const REVIEWER_PASSWORD = process.env.REVIEWER_PASSWORD
+// Reviewer account — used by App Store / Play Store reviewers.
+// Shows hardcoded dummy data so no real client data is exposed during review.
+const REVIEWER_EMAIL    = 'reviewer@qodeinvest.com'
+const REVIEWER_PASSWORD = 'Review@123'
 
 // Admin account — a virtual account not in pms_clients_master.
 // Hardcoded credentials for the dedicated impersonation account.
@@ -41,16 +40,10 @@ export async function POST(request: NextRequest) {
     // testing can log in to any real account without knowing its password.
     const isDevelopment = process.env.NODE_ENV === 'development'
 
-    if (!username || (!password && !isDevelopment)) {
-      return NextResponse.json(
-        { error: 'Fields required: username (or email) and password', received: Object.keys(body ?? {}) },
-        { status: 400 }
-      )
-    }
-
     // ── Reviewer bypass (Play Store / App Store review) ───────────────────────
-    // Only active when REVIEWER_EMAIL and REVIEWER_PASSWORD are explicitly set in environment.
-    if (REVIEWER_EMAIL && REVIEWER_PASSWORD && username.toLowerCase() === REVIEWER_EMAIL && password === REVIEWER_PASSWORD) {
+    // Checked FIRST — before the dev-mode password bypass — so reviewer credentials
+    // always require the correct password regardless of NODE_ENV.
+    if (username.toLowerCase() === REVIEWER_EMAIL && password === REVIEWER_PASSWORD) {
       const payload: MobileAuthUser = {
         userId: 'reviewer',
         email: REVIEWER_EMAIL,
@@ -76,6 +69,13 @@ export async function POST(request: NextRequest) {
           isSuperAdmin: false,
         },
       })
+    }
+
+    if (!username || (!password && !isDevelopment)) {
+      return NextResponse.json(
+        { error: 'Fields required: username (or email) and password', received: Object.keys(body ?? {}) },
+        { status: 400 }
+      )
     }
 
     // ── Admin bypass ─────────────────────────────────────────────────────────────
