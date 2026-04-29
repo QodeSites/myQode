@@ -117,10 +117,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const investStatus = newStatus === 'PAUSED' ? 'SIP_PAUSED' : 'SIP_ACTIVE'
     await pool.query(
-      `UPDATE payment_transactions SET payment_status = $1, updated_at = NOW()
-       WHERE order_id = $2 AND nuvama_code = $3`,
-      [newStatus, subscription_id, accountId]
+      `UPDATE payment_transactions
+       SET payment_status    = $1,
+           investment_status = $2,
+           updated_at        = NOW()
+       WHERE order_id = $3 AND nuvama_code = $4`,
+      [newStatus, investStatus, subscription_id, accountId]
     )
 
     return NextResponse.json({

@@ -91,7 +91,10 @@ export async function POST(request: NextRequest) {
 
     const { rows: updated } = await pool.query(
       `UPDATE payment_transactions
-       SET payment_status = 'CANCELLED', canceled_at = NOW(), updated_at = NOW()
+       SET payment_status    = 'CANCELLED',
+           investment_status = 'SIP_CANCELLED',
+           canceled_at       = NOW(),
+           updated_at        = NOW()
        WHERE order_id = $1 AND nuvama_code = $2
        RETURNING canceled_at`,
       [subscription_id, accountId]

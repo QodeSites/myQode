@@ -483,13 +483,15 @@ async function handleSubscriptionEvent(data: any): Promise<void> {
 
   // ── SUBSCRIPTION_HOLD / SUBSCRIPTION_PAUSED ───────────────────────────────
   if (eventType === 'SUBSCRIPTION_HOLD' || eventType === 'SUBSCRIPTION_PAUSED') {
-    const newStatus = eventType === 'SUBSCRIPTION_PAUSED' ? 'PAUSED' : 'ON_HOLD'
+    const newPaymentStatus = eventType === 'SUBSCRIPTION_PAUSED' ? 'PAUSED' : 'ON_HOLD'
     await pool.query(
       `UPDATE payment_transactions SET
-         payment_status = $1,
-         updated_at     = NOW()
-       WHERE order_id = $2`,
-      [newStatus, subscriptionId]
+         payment_status    = $1,
+         investment_status = 'SIP_PAUSED',
+         updated_at        = NOW()
+       WHERE order_id = $2
+         AND investment_status NOT IN ('SIP_CANCELLED','SIP_COMPLETED','SIP_MANDATE_FAILED','EXPIRED')`,
+      [newPaymentStatus, subscriptionId]
     )
     return
   }
