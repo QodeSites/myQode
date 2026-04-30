@@ -45,11 +45,11 @@ export async function GET(request: NextRequest) {
 
     // Fetch live status from Cashfree
     const cashfree = initCashfree()
-    const orderResp = await cashfree.PGFetchOrder('2023-08-01', orderId)
+    const orderResp = await cashfree.PGFetchOrder(orderId)
     const cfOrder: any = orderResp.data
 
     // Fetch payments for this order
-    const paymentsResp = await cashfree.PGOrderFetchPayments('2023-08-01', orderId)
+    const paymentsResp = await cashfree.PGOrderFetchPayments(orderId)
     const payments: any[] = paymentsResp.data ?? []
 
     // Latest payment (highest cf_payment_id or most recent)
@@ -57,22 +57,43 @@ export async function GET(request: NextRequest) {
       Number(b.cf_payment_id) - Number(a.cf_payment_id)
     )[0] ?? null
 
-    const paymentStatus: string = latestPayment?.payment_status ?? cfOrder.order_status ?? 'UNKNOWN'
+    const paymentStatus: string = (latestPayment?.payment_status ?? cfOrder.order_status ?? 'UNKNOWN').toUpperCase()
 
-    // Sync status back to DB if changed
+    // Map Cashfree payment_status → Qode investment_status (mirrors webhook logic)
+    function toInvestmentStatus(ps: string): string {
+      switch (ps) {
+        case 'SUCCESS':      return 'PAYMENT_SUCCESS'
+        case 'FAILED':
+        case 'FLAGGED':      return 'PAYMENT_FAILED'
+        case 'USER_DROPPED':
+        case 'PENDING':      return 'PENDING_PAYMENT'
+        case 'CANCELLED':
+        case 'VOID':         return 'CANCELLED'
+        default:             return 'PENDING_PAYMENT'
+      }
+    }
+    const investStatus = toInvestmentStatus(paymentStatus)
+
+    // Sync status back to DB if changed — never downgrade terminal states
     if (latestPayment && tx.payment_status !== paymentStatus) {
       await pool.query(
         `UPDATE payment_transactions
-         SET payment_status = $1,
-             cf_payment_id  = $2,
-             payment_time   = $3,
-             bank_reference = $4,
-             payment_method = $5,
-             payment_message= $6,
+         SET payment_status    = $1,
+             investment_status = CASE
+               WHEN investment_status IN ('DEPLOYED','SETTLED','CANCELLED','PAYMENT_FAILED','EXPIRED')
+                 THEN investment_status
+               ELSE $2
+             END,
+             cf_payment_id  = $3,
+             payment_time   = $4,
+             bank_reference = $5,
+             payment_method = $6,
+             payment_message= $7,
              updated_at     = NOW()
-         WHERE order_id = $7`,
+         WHERE order_id = $8`,
         [
           paymentStatus,
+          investStatus,
           latestPayment.cf_payment_id ?? null,
           latestPayment.payment_time ? new Date(latestPayment.payment_time) : null,
           latestPayment.bank_reference ?? null,
