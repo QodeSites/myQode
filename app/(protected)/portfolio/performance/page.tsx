@@ -337,14 +337,14 @@ function findLatestBenchmarkBeforeOrOn(benchData: BenchmarkItem[], targetDateStr
   return null;
 }
 
-function getBusinessDaysAgo(sortedDates: Date[], currentDate: Date, businessDays: number): Date {
+function getBusinessDaysAgo(sortedDates: Date[], currentDate: Date, businessDays: number): Date | null {
   const currentIndex = sortedDates.findIndex(d => d.getTime() === currentDate.getTime());
   if (currentIndex === -1) {
-    return currentDate;
+    return null;
   }
   const targetIndex = currentIndex - businessDays;
   if (targetIndex < 0) {
-    return sortedDates[0];
+    return null;
   }
 
   return sortedDates[targetIndex];
@@ -439,9 +439,9 @@ function calculateTrailingReturnsForData(
 
     // Use actual trading dates for both 1W (5 days) and 10D
     const targetDate = getBusinessDaysAgo(sortedDates, latestDate, days);
-    const startPoint = findClosestDataPoint(targetDate);
+    const startPoint = targetDate ? findClosestDataPoint(targetDate) : null;
 
-    if (startPoint) {
+    if (startPoint && startPoint !== latest) {
       // Absolute return for day periods
       const returnValue = ((latest.nav / startPoint.nav) - 1) * 100;
       returns[period] = returnValue;
