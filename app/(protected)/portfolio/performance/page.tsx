@@ -417,7 +417,7 @@ function calculateTrailingReturnsForData(
   };
 
   const dayPeriods = {
-    '1W': 7,
+    '1W': 5,
     '10D': 10,
   };
 
@@ -437,15 +437,8 @@ function calculateTrailingReturnsForData(
       return;
     }
 
-    let targetDate: Date;
-    if (period === '1W') {
-      // 1 week = 7 calendar days ago
-      targetDate = new Date(latestDate);
-      targetDate.setDate(latestDate.getDate() - days);
-    } else {
-      // Use available data points (portfolio/benchmark trading dates) for business-day delta
-      targetDate = getBusinessDaysAgo(sortedDates, latestDate, days);
-    }
+    // Use actual trading dates for both 1W (5 days) and 10D
+    const targetDate = getBusinessDaysAgo(sortedDates, latestDate, days);
     const startPoint = findClosestDataPoint(targetDate);
 
     if (startPoint) {
