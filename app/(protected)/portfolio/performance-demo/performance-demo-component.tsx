@@ -328,13 +328,14 @@ const CustomTooltip = ({ active, payload, label, data }: any) => {
     const date = new Date(label);
     const formattedDate = `${date.getDate()}/${date.getMonth() + 1}/${date.getFullYear()}`;
     const tooltipData = data.find((d: any) => d.report_date === label);
+    const baseNav = data.length > 0 ? Number(data[0].normalized_nav) : 10;
     return (
       <div className="bg-background border border-border rounded-lg p-3 shadow-lg" style={{ fontFamily: 'Lato, sans-serif', fontSize: '12px' }}>
         <p className="text-sm font-medium mb-1">{formattedDate}</p>
         {payload.map((entry: any, index: number) => {
           const val = Number(entry.value);
           const isGrowth = entry.name === 'Portfolio Growth' || entry.name === 'BSE 500';
-          const display = isGrowth ? `${(val - 100).toFixed(2)}%` : `${val.toFixed(2)}%`;
+          const display = isGrowth ? `${((val / baseNav - 1) * 100).toFixed(2)}%` : `${val.toFixed(2)}%`;
           return (
             <div key={index}>
               <p
@@ -653,24 +654,39 @@ export default function DemoPortfolioPerformance() {
     const firstBenchItem = findLatestBenchmarkBeforeOrOn(sortedBench, incDate);
     const firstBench = firstBenchItem ? firstBenchItem.value : 0;
 
-    let portPeak = firstNav;
-    let benchPeak = firstBench > 0 ? 100 : 0;
+    // Prepend synthetic NAV=10 row one day before inception when first NAV ≠ 10
+    const needsSyntheticRow = firstNav !== 10;
+    let dataWithSynthetic = dummyHistoricalData;
+    if (needsSyntheticRow) {
+      const syntheticDate = new Date(incDate);
+      syntheticDate.setDate(syntheticDate.getDate() - 1);
+      const syntheticDateStr = syntheticDate.toISOString().split('T')[0];
+      const syntheticRow = { ...dummyHistoricalData[0], report_date: syntheticDateStr, nav: 10 };
+      dataWithSynthetic = [syntheticRow, ...dummyHistoricalData];
+    }
 
-    return dummyHistoricalData.map((item) => {
+    // Benchmark rebase target: 10 when synthetic row prepended, otherwise 100
+    const benchRebaseTarget = needsSyntheticRow ? 10 : 100;
+
+    let portPeak = needsSyntheticRow ? 10 : firstNav;
+    let benchPeak = firstBench > 0 ? benchRebaseTarget : 0;
+
+    return dataWithSynthetic.map((item) => {
       const currentNav = Number(item.nav);
       if (currentNav > portPeak) portPeak = currentNav;
       const portDD = -((currentNav - portPeak) / portPeak * 100);
 
-      const normNav = (currentNav / firstNav) * 100;
+      // Raw NAV (10-based PMS convention), no rebase
+      const normNav = currentNav;
 
-      let normBench = 100;
+      let normBench = benchRebaseTarget;
       let benchVal = firstBench;
       let benchDD = 0;
 
       if (sortedBench.length > 0 && firstBench > 0) {
         const benchItem = findLatestBenchmarkBeforeOrOn(sortedBench, item.report_date);
         benchVal = benchItem ? benchItem.value : firstBench;
-        normBench = (benchVal / firstBench) * 100;
+        normBench = (benchVal / firstBench) * benchRebaseTarget;
 
         if (normBench > benchPeak) benchPeak = normBench;
         benchDD = -((normBench - benchPeak) / benchPeak * 100);

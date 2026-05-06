@@ -291,13 +291,14 @@ const CustomTooltip = ({ active, payload, label, data, benchmarkLabel: bmLabel }
     const tooltipData = data.find((d: any) => d.report_date === label);
     const bmName = bmLabel ?? 'Benchmark';
     const bmDrawdownName = `${bmName} Drawdown`;
+    const baseNav = data.length > 0 ? Number(data[0].normalized_nav) : 10;
     return (
       <div className="bg-background border border-border rounded-lg p-3 shadow-lg" style={{ fontFamily: 'Lato, sans-serif', fontSize: '12px' }}>
         <p className="text-sm font-medium mb-1">{formattedDate}</p>
         {payload.map((entry: any, index: number) => {
           const val = Number(entry.value);
           const isGrowth = entry.name === 'Portfolio Growth' || entry.name === bmName;
-          const display = isGrowth ? `${(val - 100).toFixed(2)}%` : `${val.toFixed(2)}%`;
+          const display = isGrowth ? `${((val / baseNav - 1) * 100).toFixed(2)}%` : `${val.toFixed(2)}%`;
           return (
             <div key={index}>
               <p
@@ -1872,24 +1873,39 @@ const createConsolidatedData = useCallback(
     const firstBenchItem = sortedBench.length > 0 ? findLatestBenchmarkBeforeOrOn(sortedBench, incDate) : null;
     const firstBench = firstBenchItem ? firstBenchItem.value : 0;
 
-    let portPeak = firstNav;
-    let benchPeak = firstBench > 0 ? 100 : 0; // normalized
+    // Prepend synthetic NAV=10 row one day before inception when first NAV ≠ 10
+    const needsSyntheticRow = firstNav !== 10;
+    let dataWithSynthetic = dataToUse;
+    if (needsSyntheticRow) {
+      const syntheticDate = new Date(incDate);
+      syntheticDate.setDate(syntheticDate.getDate() - 1);
+      const syntheticDateStr = syntheticDate.toISOString().split('T')[0];
+      const syntheticRow = { ...dataToUse[0], report_date: syntheticDateStr, nav: 10 };
+      dataWithSynthetic = [syntheticRow, ...dataToUse];
+    }
 
-    const enriched = dataToUse.map((item, index) => {
+    // Benchmark rebase target: 10 when synthetic row prepended (firstNav), otherwise 100
+    const benchRebaseTarget = needsSyntheticRow ? 10 : 100;
+
+    let portPeak = needsSyntheticRow ? 10 : firstNav;
+    let benchPeak = firstBench > 0 ? benchRebaseTarget : 0;
+
+    const enriched = dataWithSynthetic.map((item) => {
       const currentNav = Number(item.nav);
       if (currentNav > portPeak) portPeak = currentNav;
       const portDD = -((currentNav - portPeak) / portPeak * 100); // positive
 
-      const normNav = (currentNav / firstNav) * 100;
+      // Raw NAV (10-based PMS convention), no rebase
+      const normNav = currentNav;
 
-      let normBench = 100;
+      let normBench = benchRebaseTarget;
       let benchVal = firstBench;
       let benchDD = 0;
 
       if (sortedBench.length > 0 && firstBench > 0) {
         const benchItem = findLatestBenchmarkBeforeOrOn(sortedBench, item.report_date);
         benchVal = benchItem ? benchItem.value : firstBench;
-        normBench = (benchVal / firstBench) * 100;
+        normBench = (benchVal / firstBench) * benchRebaseTarget;
 
         if (normBench > benchPeak) benchPeak = normBench;
         benchDD = -((normBench - benchPeak) / benchPeak * 100); // positive
@@ -1926,6 +1942,21 @@ const createConsolidatedData = useCallback(
         incDate,
         benchmark10DDate ? { exactStartDateByPeriod: { '10D': benchmark10DDate } } : undefined
       );
+
+      // Override Since Inception: anchor at NAV=10 dated inception_date − 1
+      const firstNav = Number(dataToUse[0].nav);
+      if (firstNav !== 10 && dataToUse.length > 0) {
+        const latestNav = Number(dataToUse[dataToUse.length - 1].nav);
+        const syntheticDate = new Date(incDate);
+        syntheticDate.setDate(syntheticDate.getDate() - 1);
+        const latestDate = new Date(dataToUse[dataToUse.length - 1].report_date);
+        const years = (latestDate.getTime() - syntheticDate.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
+        const sinceInception = years >= 1
+          ? (Math.pow(latestNav / 10, 1 / years) - 1) * 100
+          : ((latestNav / 10) - 1) * 100;
+        returns['Since Inception'] = isFinite(sinceInception) ? sinceInception : returns['Since Inception'];
+      }
+
       setTrailingReturns(returns);
     }
   }, [getActiveHistoricalData, benchmarkData]);
@@ -2088,18 +2119,23 @@ const createConsolidatedData = useCallback(
     if (firstNavRecord && latestNavRecord) {
       const firstNav = Number(firstNavRecord.nav);
       const latestNav = Number(latestNavRecord.nav);
-      const firstDate = new Date(firstNavRecord.report_date);
+      // When first NAV ≠ 10, anchor at synthetic NAV=10 dated one day before inception
+      const needsSyntheticAnchor = firstNav !== 10;
+      const baseNav = needsSyntheticAnchor ? 10 : firstNav;
+      const baseDate = needsSyntheticAnchor
+        ? (() => { const d = new Date(firstNavRecord.report_date); d.setDate(d.getDate() - 1); return d; })()
+        : new Date(firstNavRecord.report_date);
       const latestDate = new Date(latestNavRecord.report_date);
-      const daysDiff = (latestDate.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24);
+      const daysDiff = (latestDate.getTime() - baseDate.getTime()) / (1000 * 60 * 60 * 24);
       const years = daysDiff / 365.25;
 
-      if (years >= 1 && firstNav > 0 && latestNav > 0) {
+      if (years >= 1 && baseNav > 0 && latestNav > 0) {
         // CAGR for >= 1 year
-        const cagr = (Math.pow(latestNav / firstNav, 1 / years) - 1) * 100;
+        const cagr = (Math.pow(latestNav / baseNav, 1 / years) - 1) * 100;
         returnsPercent = isFinite(cagr) ? cagr : 0;
-      } else if (firstNav > 0 && latestNav > 0) {
+      } else if (baseNav > 0 && latestNav > 0) {
         // Absolute return for < 1 year
-        const absReturn = ((latestNav / firstNav) - 1) * 100;
+        const absReturn = ((latestNav / baseNav) - 1) * 100;
         returnsPercent = isFinite(absReturn) ? absReturn : 0;
       }
     }
