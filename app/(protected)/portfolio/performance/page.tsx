@@ -1877,8 +1877,8 @@ const createConsolidatedData = useCallback(
       dataWithSynthetic = [syntheticRow, ...dataToUse];
     }
 
-    // Benchmark rebase target: 10 when synthetic row prepended (firstNav), otherwise 100
-    const benchRebaseTarget = needsSyntheticRow ? 10 : 100;
+    // Benchmark always rebases to 10 (PMS convention) to match portfolio scale
+    const benchRebaseTarget = 10;
 
     let portPeak = needsSyntheticRow ? 10 : firstNav;
     let benchPeak = firstBench > 0 ? benchRebaseTarget : 0;
