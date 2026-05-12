@@ -4,7 +4,7 @@
 // Always returns 200 — the client must never wait for analytics.
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
-import pool from '@/lib/db'
+import pool from '@/lib/db1'
 
 interface AnalyticsEvent {
   type: 'screen' | 'event' | 'error'
@@ -57,7 +57,7 @@ export async function POST(request: NextRequest) {
     const versions   = events.map((e) => String(e.appVersion ?? '').slice(0, 20))
 
     await pool.query(
-      `INSERT INTO pms_mobile_analytics
+      `INSERT INTO pms_clients_tracker.pms_mobile_analytics
          (event_type, event_name, properties, user_id, session_id, occurred_at, platform, app_version)
        SELECT
          UNNEST($1::text[]),
@@ -86,7 +86,9 @@ async function ensureTableExists() {
   if (_tableChecked) return
   _tableChecked = true
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS pms_mobile_analytics (
+    CREATE SCHEMA IF NOT EXISTS pms_clients_tracker;
+
+    CREATE TABLE IF NOT EXISTS pms_clients_tracker.pms_mobile_analytics (
       id            BIGSERIAL PRIMARY KEY,
       event_type    TEXT         NOT NULL,
       event_name    TEXT         NOT NULL,
@@ -99,8 +101,8 @@ async function ensureTableExists() {
       created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
     );
 
-    CREATE INDEX IF NOT EXISTS idx_analytics_user      ON pms_mobile_analytics (user_id);
-    CREATE INDEX IF NOT EXISTS idx_analytics_name      ON pms_mobile_analytics (event_name);
-    CREATE INDEX IF NOT EXISTS idx_analytics_occurred  ON pms_mobile_analytics (occurred_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_analytics_user      ON pms_clients_tracker.pms_mobile_analytics (user_id);
+    CREATE INDEX IF NOT EXISTS idx_analytics_name      ON pms_clients_tracker.pms_mobile_analytics (event_name);
+    CREATE INDEX IF NOT EXISTS idx_analytics_occurred  ON pms_clients_tracker.pms_mobile_analytics (occurred_at DESC);
   `)
 }

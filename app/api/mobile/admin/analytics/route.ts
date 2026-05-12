@@ -3,7 +3,7 @@
 // Super-admin only.
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth, requireSuperAdmin } from '@/lib/mobileAuth'
-import pool from '@/lib/db'
+import pool from '@/lib/db1'
 
 export async function GET(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
          DATE_TRUNC('day', occurred_at AT TIME ZONE 'Asia/Kolkata')::date AS day,
          COUNT(DISTINCT user_id) AS active_users,
          COUNT(*) AS total_events
-       FROM pms_mobile_analytics
+       FROM pms_clients_tracker.pms_mobile_analytics
        WHERE occurred_at >= NOW() - INTERVAL '${days} days'
          ${platform ? `AND platform = $1` : ''}
        GROUP BY 1
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     // ── 2. Top screens (last N days) ─────────────────────────────────────────
     const screensResult = await pool.query(
       `SELECT event_name, COUNT(*) AS views, COUNT(DISTINCT user_id) AS unique_users
-       FROM pms_mobile_analytics
+       FROM pms_clients_tracker.pms_mobile_analytics
        WHERE event_type = 'screen'
          AND occurred_at >= NOW() - INTERVAL '${days} days'
          ${platform ? `AND platform = $1` : ''}
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
     // ── 3. Top events ────────────────────────────────────────────────────────
     const eventsResult = await pool.query(
       `SELECT event_name, COUNT(*) AS occurrences, COUNT(DISTINCT user_id) AS unique_users
-       FROM pms_mobile_analytics
+       FROM pms_clients_tracker.pms_mobile_analytics
        WHERE event_type = 'event'
          AND occurred_at >= NOW() - INTERVAL '${days} days'
          ${platform ? `AND platform = $1` : ''}
@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
     const errorsResult = await pool.query(
       `SELECT event_name, COUNT(*) AS occurrences, COUNT(DISTINCT user_id) AS affected_users,
               MAX(occurred_at) AS last_seen
-       FROM pms_mobile_analytics
+       FROM pms_clients_tracker.pms_mobile_analytics
        WHERE event_type = 'error'
          AND occurred_at >= NOW() - INTERVAL '${days} days'
          ${platform ? `AND platform = $1` : ''}
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
     // ── 5. Platform split ────────────────────────────────────────────────────
     const platformResult = await pool.query(
       `SELECT platform, COUNT(DISTINCT user_id) AS users, COUNT(DISTINCT session_id) AS sessions
-       FROM pms_mobile_analytics
+       FROM pms_clients_tracker.pms_mobile_analytics
        WHERE occurred_at >= NOW() - INTERVAL '${days} days'
        GROUP BY 1
        ORDER BY 2 DESC`
@@ -88,7 +88,7 @@ export async function GET(request: NextRequest) {
     // ── 6. App version split ─────────────────────────────────────────────────
     const versionResult = await pool.query(
       `SELECT app_version, COUNT(DISTINCT user_id) AS users
-       FROM pms_mobile_analytics
+       FROM pms_clients_tracker.pms_mobile_analytics
        WHERE occurred_at >= NOW() - INTERVAL '${days} days'
        GROUP BY 1
        ORDER BY 2 DESC
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
          COUNT(DISTINCT session_id) AS total_sessions,
          COUNT(*)                   AS total_events,
          MIN(occurred_at)           AS earliest_event
-       FROM pms_mobile_analytics
+       FROM pms_clients_tracker.pms_mobile_analytics
        WHERE occurred_at >= NOW() - INTERVAL '${days} days'
          ${platform ? `AND platform = $1` : ''}`,
       platform ? [platform] : []

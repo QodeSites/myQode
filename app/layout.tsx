@@ -5,6 +5,7 @@ import "@/app/globals.css"
 import { Lato, Playfair_Display } from "next/font/google"
 import { Suspense } from "react"
 import { ClientProvider } from "@/contexts/ClientContext"
+import { FirebaseAnalyticsProvider } from "@/components/firebase-analytics-provider"
 
 const lato = Lato({
   subsets: ["latin"],
@@ -107,7 +108,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       </head>
       <body className="font-sans bg-background text-foreground">
         <ClientProvider>
-          <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
+          <Suspense fallback={<div>Loading...</div>}>
+            <FirebaseAnalyticsProvider>{children}</FirebaseAnalyticsProvider>
+          </Suspense>
           <Analytics />
         </ClientProvider>
       </body>

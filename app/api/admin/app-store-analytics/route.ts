@@ -107,9 +107,11 @@ export async function GET(request: NextRequest) {
         )
       }
       const days = Math.min(parseInt(searchParams.get('days') ?? '7'), 30)
+      const debug = searchParams.get('debug') === '1'
       const dates = pastDates(days)
 
       const results: { date: string; rows: Record<string, string>[] }[] = []
+      const fetchLog: Array<{ date: string; status: 'ok' | '404' | 'error'; rowCount?: number; error?: string }> = []
 
       for (const date of dates) {
         try {
@@ -123,33 +125,67 @@ export async function GET(request: NextRequest) {
           })
           const raw = await ascFetch(`/salesReports?${qs}`, token)
           const { rows } = parseTsv(raw as string)
+          fetchLog.push({ date, status: 'ok', rowCount: rows.length })
           if (rows.length > 0) results.push({ date, rows })
         } catch (e: any) {
-          // 404 = no data for that date (weekends, no sales) — skip silently
-          if (!e.message?.includes('404')) throw e
+          if (e.message?.includes('404')) {
+            fetchLog.push({ date, status: '404' })
+          } else {
+            fetchLog.push({ date, status: 'error', error: e.message })
+            throw e
+          }
         }
       }
 
-      // Aggregate: sum Units and Proceeds per date
+      // Count installs as any product type that is NOT an update.
+      // Apple update types start with "7" (e.g. 7, 7F, 7T, 7E, 7EP, 7EU).
+      // Everything else with units (1, 1F, 1T, 1E, 1EP, 1EU, F1, IA1, FI1, ...)
+      // counts as a download/install/in-app purchase. We exclude in-app types
+      // (IA1, FI1) from the "install" tally to keep semantics clean.
+      const isInstallType = (t: string) => {
+        if (!t) return false
+        if (t.startsWith('7')) return false   // updates
+        if (t.startsWith('IA') || t.startsWith('FI')) return false // in-app purchases
+        return true
+      }
+
       const summary = results.map(({ date, rows }) => {
-        const installs = rows.reduce((sum, r) => {
+        let installs = 0
+        let updates = 0
+        let inApp = 0
+        const typeBreakdown: Record<string, number> = {}
+        for (const r of rows) {
           const units = parseInt(r['Units'] ?? r['units'] ?? '0') || 0
           const type = (r['Product Type Identifier'] ?? r['product_type_identifier'] ?? '').trim()
-          // type '1' = paid download, '1F' = free download/install
-          return type === '1' || type === '1F' || type === '1T' ? sum + units : sum
-        }, 0)
+          typeBreakdown[type] = (typeBreakdown[type] ?? 0) + units
+          if (isInstallType(type)) installs += units
+          else if (type.startsWith('7')) updates += units
+          else if (type.startsWith('IA') || type.startsWith('FI')) inApp += units
+        }
         const totalUnits = rows.reduce((sum, r) => sum + (parseInt(r['Units'] ?? '0') || 0), 0)
-        return { date, installs, totalUnits, rowCount: rows.length }
+        return {
+          date,
+          installs,
+          updates,
+          inApp,
+          totalUnits,
+          rowCount: rows.length,
+          ...(debug ? { typeBreakdown } : {}),
+        }
       })
 
       return NextResponse.json({
         vendorNumber,
         days,
         summary,
-        // Full raw rows for the most recent date available
         latestDate: results[0]?.date ?? null,
         latestRows: results[0]?.rows ?? [],
         latestHeaders: results[0] ? Object.keys(results[0].rows[0] ?? {}) : [],
+        diagnostics: {
+          fetchLog,
+          datesAttempted: dates.length,
+          datesWithData: results.length,
+        },
       })
     }
 

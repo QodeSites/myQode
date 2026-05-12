@@ -29,7 +29,19 @@
       "Bash(grep -r \"qode_microsite_inquiries\\\\|qode_inquiry_notes\" /Users/qodetech/Desktop/Projects/myQode --include=*.sql)",
       "Bash(find /Users/qodetech/Desktop/Projects/myQode -type f \\\\\\(-name *.sql -o -name *init* -o -name *migration* \\\\\\))",
       "mcp__claude_ai_Gmail__gmail_get_profile",
-      "Bash(git stash *)"
+      "Bash(git stash *)",
+      "Bash(grep *)",
+      "Bash(sed -n '1428,1807p' /Users/qodetech/dev/myQode-Full/myQode/app/admin/onboarding/page.tsx)",
+      "Read(//tmp/**)",
+      "Read(//private/tmp/**)",
+      "WebFetch(domain:support.google.com)",
+      "WebFetch(domain:developers.google.com)",
+      "Read(//Users/qodetech/Downloads/**)",
+      "Bash(xxd)",
+      "Bash(iconv -f UTF-16 -t UTF-8 \"/Users/qodetech/Downloads/stats_installs_installs_com.qodeinvest.myqode_202604_overview.csv\")",
+      "Bash(pnpm add *)",
+      "Read(//Users/qodetech/dev/myQode-Full/**)",
+      "Read(//Users/qodetech/dev/myQode-Full/myqode-mobile/**)"
     ],
     "deny": [],
     "ask": []
