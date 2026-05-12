@@ -64,7 +64,7 @@ export default function ReportsReviewsPage() {
         </InfoCard>
         <InfoCard title="Performance Updates" icon={BarChart3}>
           <p>
-            <strong>Content:</strong> Performance summary across all four Qode strategies (QAW, QTF, QGF, QFH).
+            <strong>Content:</strong> Performance summary across Qode strategies (QAW, QTF, QGF).
           </p>
         </InfoCard>
         <InfoCard title="Timeline & Purpose" icon={CalendarClock}>
