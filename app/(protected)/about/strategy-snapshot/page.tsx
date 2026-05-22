@@ -47,17 +47,6 @@ const SECTIONS: Section[] = [
     videoUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ",
     previewUrl: "https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
   },
-  {
-    title: "Qode Future Horizons (QFH)™",
-    color: "#A78C11",
-    accent: "#554602",
-    description:
-      "Qode Future Horizons (QFH) targets high-growth, under-researched small and micro-cap companies with limited institutional coverage. The strategy seeks asymmetric payoffs, accepting higher volatility and drawdowns.",
-    items: ["Quantamental", "Multi-bagger", "Concentrated", "Uncharted*"],
-    videoNote: "Watch video from Fund Manager",
-    videoUrl: "https://www.youtube.com/embed/dQw4w9WgXcQ",
-    previewUrl: "https://img.youtube.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
-  },
 ]
 
 const GLOSSARY = {
