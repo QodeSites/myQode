@@ -162,8 +162,7 @@ export default function PaymentSuccessPage() {
  const sendPaymentSuccessEmail = async (details) => {
   try {
     const strategy = {
-      'QFH': 'Qode Future Horizons',
-      'QAW': 'Qode All Weather', 
+      'QAW': 'Qode All Weather',
       'QTF': 'Qode Tactical Fund',
       'QGF': 'Qode Growth Fund'
     }
@@ -394,7 +393,6 @@ export default function PaymentSuccessPage() {
 
   const getStrategyName = (accountCode: string) => {
     const strategy = {
-      'QFH': 'Qode Future Horizons',
       'QAW': 'Qode All Weather',
       'QTF': 'Qode Tactical Fund',
       'QGF': 'Qode Growth Fund'

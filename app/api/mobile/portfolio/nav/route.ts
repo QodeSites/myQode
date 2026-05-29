@@ -1,4 +1,4 @@
-// GET /api/mobile/portfolio/nav?accountId=QFH0008&period=1Y
+// GET /api/mobile/portfolio/nav?accountId=QAW0009&period=1Y
 // Both portfolio and benchmark are rebased to 100 at the first portfolio date in the window.
 // Benchmark gaps are forward-filled to align with portfolio dates.
 import { NextRequest, NextResponse } from 'next/server'

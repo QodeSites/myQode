@@ -6,7 +6,7 @@
 
 const DATA_AS_OF   = '21 Mar 2025'
 const INCEPTION_1  = '15 Mar 2021'   // DEMO001 – Qode All Weather
-const INCEPTION_2  = '10 Jan 2022'   // DEMO002 – Qode Future Horizons
+const INCEPTION_2  = '10 Jan 2022'   // DEMO002 – Qode Growth Fund
 
 // ── NAV / Drawdown series (13 monthly points: Mar 2024 → Mar 2025) ────────────
 
@@ -217,9 +217,9 @@ export const REVIEWER_MOCK_SNAPSHOT = {
         },
         {
           id: 'DEMO002',
-          strategyPrefix: 'QFH',
-          strategyName: 'Qode Future Horizons',
-          strategyColor: '#8B5CF6',
+          strategyPrefix: 'QGF',
+          strategyName: 'Qode Growth Fund',
+          strategyColor: '#0A3452',
           type: 'Individual Account',
           clientId: 'DEMO_C2',
           lastUpdated: '2025-03-21',
@@ -245,7 +245,7 @@ export function reviewerMockPerformance(accountId: string) {
     isClosed: false,
     closedAt: null,
     strategy: isDemo2
-      ? { prefix: 'QFH', name: 'Qode Future Horizons', benchmark: 'NIFTY 500', color: '#8B5CF6' }
+      ? { prefix: 'QGF', name: 'Qode Growth Fund', benchmark: 'NIFTY SMLCAP 250', color: '#0A3452' }
       : { prefix: 'QAW', name: 'Qode All Weather',     benchmark: 'NIFTY 500', color: '#3B82F6' },
     amountInvested: isDemo2 ? 2000000 : 2500000,
     currentValue:   isDemo2 ? 2800000 : 3500000,
@@ -271,7 +271,7 @@ export function reviewerMockNav(accountId: string) {
     isClosed: false,
     closedAt: null,
     strategy: accountId === 'DEMO002'
-      ? { prefix: 'QFH', name: 'Qode Future Horizons', benchmark: 'NIFTY 500' }
+      ? { prefix: 'QGF', name: 'Qode Growth Fund', benchmark: 'NIFTY SMLCAP 250' }
       : { prefix: 'QAW', name: 'Qode All Weather',     benchmark: 'NIFTY 500' },
     series,
     minValue: +Math.min(...allValues).toFixed(2),

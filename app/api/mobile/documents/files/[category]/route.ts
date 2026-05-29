@@ -1,4 +1,4 @@
-// GET /api/mobile/documents/files/[category]?accountId=QFH0008
+// GET /api/mobile/documents/files/[category]?accountId=QAW0009
 // Returns signed S3 URLs for all files in the given document category.
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'

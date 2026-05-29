@@ -4,7 +4,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 
 const STRATEGIES: Record<string, string> = {
-  QFH: 'Qode Future Horizons',
   QAW: 'Qode All Weather',
   QTF: 'Qode Tactical Fund',
   QGF: 'Qode Growth Fund',

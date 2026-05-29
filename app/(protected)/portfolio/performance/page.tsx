@@ -201,28 +201,19 @@ const strategyColorConfig = {
     strategy: "#3b82f6",
     gradient1: "#0A3452",
     gradient2: "#051E31"
-  },
-  QFH: {
-    primary: "#A78C11",
-    secondary: "#A78C11",
-    strategy: "#A78C11",
-    gradient1: "#A78C11",
-    gradient2: "#A78C11"
   }
 };
 
 const strategyNames = {
   QAW: 'Qode All Weather',
   QTF: 'Qode Tactical Fund',
-  QGF: 'Qode Growth Fund',
-  QFH: 'Qode Future Horizons'
+  QGF: 'Qode Growth Fund'
 };
 
 const strategyBenchmark: Record<string, string> = {
   QAW: 'NIFTY 50',
   QTF: 'NIFTY MIDCAP 150',
   QGF: 'NIFTY SMLCAP 250',
-  QFH: 'NIFTY MICROCAP250',
 };
 
 const benchmarkDisplayName: Record<string, string> = {

@@ -1,4 +1,4 @@
-// GET /api/mobile/portfolio/monthly-pl?accountId=QFH0008
+// GET /api/mobile/portfolio/monthly-pl?accountId=QAW0009
 // Monthly P&L bucketed by year × month, in both % and ₹.
 // Calculation matches the web version exactly:
 //   % = (endMonthNAV / startMonthNAV − 1) × 100

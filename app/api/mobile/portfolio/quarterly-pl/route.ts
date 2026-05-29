@@ -1,4 +1,4 @@
-// GET /api/mobile/portfolio/quarterly-pl?accountId=QFH0008
+// GET /api/mobile/portfolio/quarterly-pl?accountId=QAW0009
 // Quarterly P&L bucketed by year × quarter, in both % and ₹.
 // Calculation matches the web version exactly:
 //   % = (endQuarterNAV / startQuarterNAV − 1) × 100

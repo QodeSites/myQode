@@ -1,4 +1,4 @@
-// GET /api/mobile/portfolio/drawdown?accountId=QFH0008&period=1Y
+// GET /api/mobile/portfolio/drawdown?accountId=QAW0009&period=1Y
 // Portfolio drawdown is taken from the DB column (pre-computed from inception).
 // Benchmark drawdown is computed from inception so the peak is accurate, then
 // both are aligned to the same portfolio dates (benchmark forward-filled).

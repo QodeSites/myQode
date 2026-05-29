@@ -1,4 +1,4 @@
-// GET /api/mobile/services/transactions?accountId=QFH0008
+// GET /api/mobile/services/transactions?accountId=QAW0009
 // Returns Cashfree payment transactions (one-time + SIP) for the given account.
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'

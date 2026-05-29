@@ -1,4 +1,4 @@
-// GET /api/mobile/portfolio/cashflow?accountId=QFH0008
+// GET /api/mobile/portfolio/cashflow?accountId=QAW0009
 // Returns cash-in / cash-out transactions derived from pms_master_sheet.cash_in_out.
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'

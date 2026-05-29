@@ -1,4 +1,4 @@
-// GET /api/mobile/payments/investment-status?accountId=QFH0008
+// GET /api/mobile/payments/investment-status?accountId=QAW0009
 // Returns all investments (one-time + SIP) for an account with:
 //  - Qode investment lifecycle status + human-readable label/message/color
 //  - Timeline of completed steps (for the step-indicator UI)

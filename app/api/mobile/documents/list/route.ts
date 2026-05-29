@@ -1,4 +1,4 @@
-// GET /api/mobile/documents/list?accountId=QFH0008
+// GET /api/mobile/documents/list?accountId=QAW0009
 // Returns document category metadata + per-category file counts from S3.
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'

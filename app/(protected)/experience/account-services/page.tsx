@@ -18,7 +18,6 @@ import {
 } from '@/components/ui/alert-dialog';
 
 const strategy = {
-  'QFH': 'Qode Future Horizons',
   'QAW': 'Qode All Weather',
   'QTF': 'Qode Tactical Fund',
   'QGF': 'Qode Growth Fund'
@@ -433,7 +432,6 @@ function AddFundsModal({
 
   // Strategy mapping
   const strategy = {
-    'QFH': 'Qode Future Horizons',
     'QAW': 'Qode All Weather',
     'QTF': 'Qode Tactical Fund',
     'QGF': 'Qode Growth Fund'
@@ -1672,7 +1670,6 @@ function SwitchReallocationModal({
 
   // Strategy mapping
   const strategy = {
-    'QFH': 'Qode Future Horizons',
     'QAW': 'Qode All Weather',
     'QTF': 'Qode Tactical Fund',
     'QGF': 'Qode Growth Fund'

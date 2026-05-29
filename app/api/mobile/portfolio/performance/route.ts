@@ -1,4 +1,4 @@
-// GET /api/mobile/portfolio/performance?accountId=QFH0008
+// GET /api/mobile/portfolio/performance?accountId=QAW0009
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
