@@ -41,7 +41,18 @@
       "Bash(iconv -f UTF-16 -t UTF-8 \"/Users/qodetech/Downloads/stats_installs_installs_com.qodeinvest.myqode_202604_overview.csv\")",
       "Bash(pnpm add *)",
       "Read(//Users/qodetech/dev/myQode-Full/**)",
-      "Read(//Users/qodetech/dev/myQode-Full/myqode-mobile/**)"
+      "Read(//Users/qodetech/dev/myQode-Full/myqode-mobile/**)",
+      "Bash(cp /tmp/probe.js /Users/qodetech/dev/myQode-Full/myQode/probe_tmp.js)",
+      "Bash(node /Users/qodetech/dev/myQode-Full/myQode/probe_tmp.js)",
+      "Bash(node *)",
+      "Bash(echo \"exit:$?\")",
+      "Bash(lsof -ti:3000)",
+      "Bash(lsof -ti:2069)",
+      "Bash(echo \"started pid $!\")",
+      "Bash(echo \"=== transactions from=2026-03-01 to=2026-03-31 \\(expect 2 contributions\\) ===\")",
+      "Bash(curl -s -H 'x-api-key: ob_live_1e1a51a6674a202d31c49de3a2ec6778b317a330acc003cef415d5235a1a9eff' 'http://localhost:2069/api/distributor-api/v1/transactions?from=2026-03-01&to=2026-03-31')",
+      "Bash(xargs kill)",
+      "Bash(rm -f /tmp/probe.js)"
     ],
     "deny": [],
     "ask": []

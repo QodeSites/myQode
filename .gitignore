@@ -57,3 +57,7 @@ NAV_ISSUE_VISUALIZATION.md
 .claude/settings.local.json
 .claude/settings.local.json
 .claude/settings.local.json
+
+# One Battalion (local only)
+onBattalion/
+oneBattalion.zip
