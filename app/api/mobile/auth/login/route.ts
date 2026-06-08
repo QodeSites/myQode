@@ -33,7 +33,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Accept both `username` and `email` as the login identifier
-    const username: string | undefined = body?.username ?? body?.email
+    // Strip any extra whitespace a user may have typed or copy-pasted around the email
+    const rawUsername: string | undefined = body?.username ?? body?.email
+    const username: string | undefined = typeof rawUsername === 'string' ? rawUsername.trim() : rawUsername
     const password: string | undefined = body?.password
 
     // Dev bypass: password is optional in development so Expo Go / simulator

@@ -18,7 +18,9 @@ interface ExtendedClientData {
 
 export async function POST(request: NextRequest) {
   try {
-    const { username, password, action, otp, newPassword, confirmPassword } = await request.json()
+    const { username: rawUsername, password, action, otp, newPassword, confirmPassword } = await request.json()
+    // Strip any extra whitespace a user may have typed or copy-pasted around the email
+    const username = typeof rawUsername === 'string' ? rawUsername.trim() : rawUsername
     const isDevelopment = process.env.NODE_ENV === 'development'
 
     // DEV MODE: Bypass authentication for any email in development
