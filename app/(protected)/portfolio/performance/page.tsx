@@ -1293,19 +1293,21 @@ const createConsolidatedData = useCallback(
           const owners = Array.from(ownerMap.values());
           setGroupedOwners(owners);
 
-          // Determine group ID for family-level consolidation
-          // Only show "Complete Family Portfolio" if there are multiple distinct owners
+          // Determine group ID for family-level consolidation.
+          // "Complete Family Portfolio" is only meaningful (and only rendered) when 2+ owners
+          // still have active accounts — closed-only owners are hidden from the dropdown.
           const groupId = accounts[0]?.groupid || null;
-          const hasMultipleOwners = owners.length > 1;
+          const activeOwners = owners.filter(o => o.accounts.some(acc => acc.status !== "Closed"));
+          const hasMultipleActiveOwners = activeOwners.length > 1;
 
-          // Set default selected account:
-          // - If multiple owners exist → default to GROUP_{groupId}
-          // - Else if this owner has multiple strategies → default to OWNER_{ownerid}
-          // - Else → default to first individual account
-          if (hasMultipleOwners && groupId) {
+          // Set default selected account (must match what the dropdown actually shows):
+          // - If 2+ owners have active accounts → default to GROUP_{groupId}
+          // - Else if the single active owner has multiple strategies → default to OWNER_{ownerid} (All Strategies)
+          // - Else → default to first individual active account
+          if (hasMultipleActiveOwners && groupId) {
             setSelectedAccount(`GROUP_${groupId}`);
-          } else if (owners.length === 1 && owners[0].clientcodes.length > 1) {
-            setSelectedAccount(`OWNER_${owners[0].ownerid}`);
+          } else if (activeOwners.length >= 1 && activeOwners[0].clientcodes.length > 1) {
+            setSelectedAccount(`OWNER_${activeOwners[0].ownerid}`);
           } else {
             const firstActive = accounts.find(acc => acc.status === "Active");
             if (firstActive) {
@@ -2244,8 +2246,8 @@ const createConsolidatedData = useCallback(
                     <SelectValue placeholder="Select Account" />
                   </SelectTrigger>
                   <SelectContent>
-                    {/* Group-level: only show when there are multiple distinct owners (true family group) */}
-                    {groupedOwners.length > 1 && familyAccounts[0]?.groupid && (
+                    {/* Group-level: only show when there are multiple distinct owners that still have active accounts (true active family group) */}
+                    {groupedOwners.filter(o => o.accounts.some(acc => acc.status !== "Closed")).length > 1 && familyAccounts[0]?.groupid && (
                       <>
                         {(() => {
                           const familyHasActive = familyAccounts.some(acc => acc.status !== "Closed");
@@ -2283,8 +2285,9 @@ const createConsolidatedData = useCallback(
                         return sanitizeName(a.ownerName || "").localeCompare(sanitizeName(b.ownerName || ""));
                       })
                       .map(owner => {
-                      if (owner.clientcodes.length > 1) {
-                        const ownerHasActive = owner.accounts.some(acc => acc.status !== "Closed");
+                      const ownerHasActive = owner.accounts.some(acc => acc.status !== "Closed");
+                      // Never show owners whose accounts are all closed/deactive.
+                      if (owner.clientcodes.length > 1 && ownerHasActive) {
                         return (
                           <SelectItem key={`OWNER_${owner.ownerid}`} value={`OWNER_${owner.ownerid}`}>
                             <div className="flex items-center justify-between gap-3">
@@ -2327,9 +2330,6 @@ const createConsolidatedData = useCallback(
 
                       const activeAccounts = familyAccounts
                         .filter((acc) => acc.status !== "Closed")
-                        .sort(byAccountOrder);
-                      const deactiveAccounts = familyAccounts
-                        .filter((acc) => acc.status === "Closed")
                         .sort(byAccountOrder);
 
                       const renderAccountItem = (acc: any) => {
@@ -2379,21 +2379,6 @@ const createConsolidatedData = useCallback(
                                 </div>
                               </div>
                               {activeAccounts.map(renderAccountItem)}
-                            </>
-                          )}
-
-                          {deactiveAccounts.length > 0 && (
-                            <>
-                              <div className="px-2 py-1 mt-1">
-                                <div className="flex items-center gap-2">
-                                  <div className="h-px flex-1 bg-red-200" />
-                                  <span className="text-[11px] font-semibold text-red-700 uppercase tracking-wide">
-                                    Deactive Accounts
-                                  </span>
-                                  <div className="h-px flex-1 bg-red-200" />
-                                </div>
-                              </div>
-                              {deactiveAccounts.map(renderAccountItem)}
                             </>
                           )}
                         </>

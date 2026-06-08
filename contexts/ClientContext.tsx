@@ -112,6 +112,9 @@ export function ClientProvider({ children }: { children: ReactNode }) {
           console.log('Individual member - available clients:', availableClients);
         }
 
+        // Never show closed accounts (status "Closed") in the account selector dropdown.
+        availableClients = availableClients.filter((c) => !isClosedClient(c));
+
         setClients(availableClients);
 
         if (availableClients.length > 0) {

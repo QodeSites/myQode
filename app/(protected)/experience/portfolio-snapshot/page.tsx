@@ -17,7 +17,7 @@ type FamAccWithPortfolio = {
   holderName: string;
   clientcode: string;
   clientid: string;
-  status: "Active" | "Pending KYC" | "Dormant";
+  status: "Active" | "Closed" | "Pending KYC" | "Dormant";
   groupid?: string;
   groupname?: string;
   groupemailid?: string;
@@ -182,6 +182,8 @@ export default function FamilyPortfolioSection() {
      ========================= */
   const filteredAccounts = useMemo(() => {
     return familyAccounts.filter(acc => {
+      // Never show closed accounts (latest portfolio value of 0) on the portfolio page.
+      if (acc.status === "Closed") return false;
       const q = searchTerm.toLowerCase();
       const matchesSearch =
         sanitizeName(acc.holderName)?.toLowerCase().includes(q) ||
