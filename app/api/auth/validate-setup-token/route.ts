@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { Resend } from 'resend';
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);

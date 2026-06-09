@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { Resend } from 'resend';
 
 // Generate password setup link
 export async function POST(request: NextRequest) {

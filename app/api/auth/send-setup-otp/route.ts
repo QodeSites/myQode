@@ -1,7 +1,7 @@
 // app/api/auth/send-setup-otp/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { Resend } from 'resend';
+import { graphMailer as resend } from '@/lib/graphEmail';
 import crypto from 'crypto';
 
 export async function POST(request: NextRequest) {
@@ -47,9 +47,7 @@ export async function POST(request: NextRequest) {
       [otp, otpExpires, email]
     );
 
-    // Send OTP via Resend
-    const resend = new Resend(process.env.RESEND_API_KEY);
-    
+    // Send OTP via Microsoft Graph
     const emailHtml = `
       <!DOCTYPE html>
       <html>

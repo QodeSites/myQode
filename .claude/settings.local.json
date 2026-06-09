@@ -52,7 +52,9 @@
       "Bash(echo \"=== transactions from=2026-03-01 to=2026-03-31 \\(expect 2 contributions\\) ===\")",
       "Bash(curl -s -H 'x-api-key: ob_live_1e1a51a6674a202d31c49de3a2ec6778b317a330acc003cef415d5235a1a9eff' 'http://localhost:2069/api/distributor-api/v1/transactions?from=2026-03-01&to=2026-03-31')",
       "Bash(xargs kill)",
-      "Bash(rm -f /tmp/probe.js)"
+      "Bash(rm -f /tmp/probe.js)",
+      "Bash(perl -0pi -e 's/console\\\\.error\\\\\\('\\\\''Resend email error:'\\\\'', error\\\\\\)/console.error\\('\\\\''Setup email error:'\\\\'', error\\)/' '$f')",
+      "Bash(echo \"updated both\")"
     ],
     "deny": [],
     "ask": []

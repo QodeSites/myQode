@@ -3,10 +3,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import crypto from 'crypto'
 
-// Optional: use Resend if you already have it
-import { Resend } from 'resend'
-const resendKey = process.env.RESEND_API_KEY
-const resend = resendKey ? new Resend(resendKey) : null
+// Email via Microsoft Graph (null when not configured → dev fallback below)
+import { graphMailer, isGraphEmailConfigured } from '@/lib/graphEmail'
+const resend = isGraphEmailConfigured() ? graphMailer : null
 
 const APP_URL = process.env.APP_URL ?? 'http://localhost:3000' // e.g. https://myqode.qodeinvest.com
 const TOKEN_TTL_MIN = 60 // token valid for 60 minutes
@@ -121,7 +120,7 @@ export async function POST(req: NextRequest) {
         </html>
       `
 
-      // Send email (Resend) or log in dev
+      // Send email (Microsoft Graph) or log in dev
       try {
         if (resend) {
           await resend.emails.send({

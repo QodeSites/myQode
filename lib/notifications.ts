@@ -2,7 +2,7 @@
  * lib/notifications.ts
  * ─────────────────────────────────────────────────────────────────────────────
  * Centralised notification service for all payment lifecycle events.
- * Handles: Email (Resend) + Expo Push Notifications + in-app (DB-driven).
+ * Handles: Email (Microsoft Graph) + Expo Push Notifications + in-app (DB-driven).
  *
  * Design principles:
  *  - Notifications NEVER throw. A failed notification must not crash the
@@ -12,12 +12,10 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import { Resend } from 'resend'
+import { graphMailer, isGraphEmailConfigured } from '@/lib/graphEmail'
 import pool from '@/lib/db'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-
-const FROM_EMAIL  = process.env.NOTIFICATION_FROM_EMAIL || 'investments@qodeinvest.com'
+const FROM_EMAIL  = process.env.NOTIFICATION_FROM_EMAIL || 'Qode Invest <investments@qodeinvest.com>'
 const APP_NAME    = 'Qode Invest'
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send'
 
@@ -376,17 +374,17 @@ async function sendPushNotifications(
   }
 }
 
-// ── Send email via Resend ─────────────────────────────────────────────────────
+// ── Send email via Microsoft Graph ────────────────────────────────────────────
 async function sendEmail(
   to: string,
   subject: string,
   html: string
 ): Promise<void> {
-  if (!process.env.RESEND_API_KEY) {
-    console.warn('[notifications] RESEND_API_KEY not set — skipping email')
+  if (!isGraphEmailConfigured()) {
+    console.warn('[notifications] Microsoft Graph email not configured — skipping email')
     return
   }
-  await resend.emails.send({ from: FROM_EMAIL, to, subject, html })
+  await graphMailer.emails.send({ from: FROM_EMAIL, to, subject, html })
 }
 
 // ── Main exported function ────────────────────────────────────────────────────

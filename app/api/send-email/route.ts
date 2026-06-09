@@ -1,9 +1,7 @@
 // app/api/send-email/route.ts
-import { Resend } from 'resend';
+import { graphMailer as resend } from '@/lib/graphEmail';
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db1';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function POST(request: NextRequest) {
   const client = await pool.connect();
@@ -108,7 +106,7 @@ export async function POST(request: NextRequest) {
         priority,
         JSON.stringify(inquirySpecificData), // Store inquiry-specific fields as JSON
         to,
-        from || 'onboarding@resend.dev',
+        from || 'investor.relations@qodeinvest.com',
       ];
 
       const { rows } = await client.query(insertQuery, values);
@@ -130,10 +128,14 @@ export async function POST(request: NextRequest) {
       emailPayload.cc = cc;
     }
 
-    // Send email using Resend
+    // Send email using Microsoft Graph
     const emailData = await resend.emails.send(emailPayload);
 
-    console.log('Email sent successfully via Resend:', emailData);
+    if (emailData.error) {
+      throw new Error(`Email send failed: ${emailData.error.message}`);
+    }
+
+    console.log('Email sent successfully via Microsoft Graph:', emailData);
 
     // Update email_sent status if inquiry was created
     if (inquiryId) {

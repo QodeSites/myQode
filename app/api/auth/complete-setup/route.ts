@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
-import { Resend } from 'resend';
+import { graphMailer as resend } from '@/lib/graphEmail';
 // app/api/auth/complete-setup/route.ts
 export async function POST(request: NextRequest) {
   try {
@@ -77,8 +77,6 @@ export async function POST(request: NextRequest) {
 // Email sending function
 // Email sending function
 async function sendSetupEmail(email: string, clientName: string, setupLink: string) {
-  const resend = new Resend(process.env.RESEND_API_KEY);
-
   try {
     await resend.emails.send({
       from: 'Qode Advisors <noreply@qodeinvest.com>',
@@ -648,7 +646,7 @@ async function sendSetupEmail(email: string, clientName: string, setupLink: stri
   `
     });
   } catch (error) {
-    console.error('Resend email error:', error);
+    console.error('Setup email error:', error);
     throw error;
   }
 }

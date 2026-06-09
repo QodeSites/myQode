@@ -4,10 +4,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import crypto from 'crypto'
-import { Resend } from 'resend'
+import { graphMailer, isGraphEmailConfigured } from '@/lib/graphEmail'
 
-const resendKey = process.env.RESEND_API_KEY
-const resend = resendKey ? new Resend(resendKey) : null
+const resend = isGraphEmailConfigured() ? graphMailer : null
 
 const APP_URL = process.env.APP_URL ?? 'https://myqode.qodeinvest.com'
 const TOKEN_TTL_MIN = 60

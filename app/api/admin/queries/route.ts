@@ -2,9 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import pool from '@/lib/db1';
-import { Resend } from 'resend';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import { graphMailer as resend } from '@/lib/graphEmail';
 
 interface QueryMessage {
   id: string;
