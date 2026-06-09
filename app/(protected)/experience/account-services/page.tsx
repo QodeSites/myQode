@@ -1369,10 +1369,6 @@ function AddFundsModal({
               </button>
             </div>
           </div>
-
-          <p className="mt-[12px] text-[12px] text-darkGray font-body leading-relaxed">
-            The transfer facility supports transactions from ₹100 onwards. For Qode PMS accounts, top-up investments are generally made in amounts of ₹1,00,000 or more, helping ensure efficient portfolio deployment and administration.
-          </p>
         </div>
 
         <form ref={formRef} className="space-y-[15px]">
@@ -1500,7 +1496,9 @@ function AddFundsModal({
                 required
               />
               {errors.amount && <p className="mt-[5px] text-[12px] text-brown font-body">{errors.amount}</p>}
-              <p className="mt-[5px] text-[12px] text-darkGray font-body">Minimum: ₹100</p>
+              <p className="mt-[5px] text-[12px] text-darkGray font-body leading-relaxed">
+                The transfer facility supports transactions from ₹100 onwards. For Qode PMS accounts, top-up investments are generally made in amounts of ₹1,00,000 or more, helping ensure efficient portfolio deployment and administration.
+              </p>
             </div>
           )}
 

@@ -54,7 +54,9 @@
       "Bash(xargs kill)",
       "Bash(rm -f /tmp/probe.js)",
       "Bash(perl -0pi -e 's/console\\\\.error\\\\\\('\\\\''Resend email error:'\\\\'', error\\\\\\)/console.error\\('\\\\''Setup email error:'\\\\'', error\\)/' '$f')",
-      "Bash(echo \"updated both\")"
+      "Bash(echo \"updated both\")",
+      "Bash(ls myqode-mobile *)",
+      "Bash(ls myQode-mobile)"
     ],
     "deny": [],
     "ask": []
