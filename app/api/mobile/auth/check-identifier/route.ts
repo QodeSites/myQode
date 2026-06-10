@@ -21,21 +21,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'identifier is required' }, { status: 400 })
     }
 
-    // Virtual accounts — always exist (not in DB)
+    // Virtual accounts — always exist (not in DB), never require setup
     const VIRTUAL_ACCOUNTS = ['admin@qodeinvest.com', 'reviewer@qodeinvest.com']
     if (VIRTUAL_ACCOUNTS.includes(identifier.trim().toLowerCase())) {
-      return NextResponse.json({ exists: true })
+      return NextResponse.json({ exists: true, requiresSetup: false })
     }
 
     const id = identifier.trim()
     const result = await query(
-      `SELECT 1 FROM pms_clients_master
+      `SELECT email, password, onboarding_status FROM pms_clients_master
        WHERE email = $1 OR clientcode ILIKE $2
        LIMIT 1`,
       [id, id]
     )
 
-    return NextResponse.json({ exists: result.rows.length > 0 })
+    if (result.rows.length === 0) {
+      return NextResponse.json({ exists: false, requiresSetup: false })
+    }
+
+    const row = result.rows[0]
+    // A user still needs to set a password if they're on the default password
+    // or their onboarding hasn't completed.
+    const requiresSetup = row.password === 'Qode@123' || row.onboarding_status === 'pending'
+
+    return NextResponse.json({
+      exists: true,
+      requiresSetup,
+      // Return the registered email so the setup flow can pre-fill it even when
+      // the user signed in with an account code.
+      email: requiresSetup ? row.email : undefined,
+    })
   } catch (err) {
     console.error('[mobile/auth/check-identifier]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
