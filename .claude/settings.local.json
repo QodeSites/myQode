@@ -97,7 +97,13 @@
       "Bash(rm -f /tmp/eas-ios-submit4.log)",
       "Bash(echo \"IOS_SUBMIT4_EXIT=$?\")",
       "Bash(echo \"=== my-file errors above \\(none = clean\\). Full error count: $\\(npx tsc --noEmit 2>&1)",
-      "Bash(echo \"mobile new errors above \\(none = clean\\); total: $\\(npx tsc --noEmit 2>&1)"
+      "Bash(echo \"mobile new errors above \\(none = clean\\); total: $\\(npx tsc --noEmit 2>&1)",
+      "Bash(rm -f /tmp/eas-ios-122.log build-ios-production.ipa)",
+      "Bash(echo \"IOS_EXIT=$?\")",
+      "Bash(rm -f /tmp/eas-and-122.log)",
+      "Bash(echo \"AND_EXIT=$?\")",
+      "Bash(echo \"SUBMIT_EXIT=$?\")",
+      "Bash(echo \"AND_SUBMIT_EXIT=$?\")"
     ],
     "deny": [],
     "ask": []

@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
 
     const id = identifier.trim()
     const result = await query(
-      `SELECT email, password, onboarding_status FROM pms_clients_master
+      `SELECT email, password FROM pms_clients_master
        WHERE email = $1 OR clientcode ILIKE $2
        LIMIT 1`,
       [id, id]
@@ -40,9 +40,8 @@ export async function POST(request: NextRequest) {
     }
 
     const row = result.rows[0]
-    // A user still needs to set a password if they're on the default password
-    // or their onboarding hasn't completed.
-    const requiresSetup = row.password === 'Qode@123' || row.onboarding_status === 'pending'
+    // A user still needs to set a password only if they're on the default password.
+    const requiresSetup = row.password === 'Qode@123'
 
     return NextResponse.json({
       exists: true,
