@@ -56,21 +56,25 @@ export function FullscreenLoader({
 
   return (
     <motion.div
+      role="status"
+      aria-live="polite"
+      aria-label={subtitle}
       initial={{ y: 0, opacity: 1 }}
       animate={{ y: 0, opacity: 1 }}
       exit={{ y: "-100%", opacity: 0.98 }}
       transition={{ type: "spring", stiffness: 140, damping: 18 }}
       className="fixed inset-0 z-[9999] bg-background/95 backdrop-blur-[1px] flex items-center justify-center"
-      aria-label="Loading"
     >
       {/* Soft vignette */}
-      <div className="pointer-events-none absolute inset-0 opacity-[0.08] [background:radial-gradient(60%_50%_at_50%_50%,theme(colors.primary/20),transparent_60%)]" />
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 opacity-[0.08] [background:radial-gradient(60%_50%_at_50%_50%,theme(colors.primary/20),transparent_60%)]" />
       {/* Gentle vertical fade */}
-      <div className="pointer-events-none absolute inset-0 [background:linear-gradient(180deg,transparent,theme(colors.background)_60%)]" />
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 [background:linear-gradient(180deg,transparent,theme(colors.background)_60%)]" />
 
       <div className="relative flex flex-col items-center px-6">
-        {/* Brand: plain text */}
-        <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tight text-primary">
+        {/* Brand: decorative during load — kept as <h1> to preserve the
+            heading/serif styling, hidden from assistive tech to avoid
+            redundant brand announcement (the subtitle live region speaks). */}
+        <h1 aria-hidden="true" className="text-5xl sm:text-6xl font-extrabold tracking-tight text-primary">
           {brand}
         </h1>
 
@@ -84,9 +88,16 @@ export function FullscreenLoader({
           {subtitle}
         </motion.div>
 
-        {/* Progress shimmer bar */}
-        <div className="mt-6 w-56 sm:w-64 h-1.5 rounded-full bg-primary/10 overflow-hidden">
+        {/* Progress shimmer bar — indeterminate */}
+        <div
+          role="progressbar"
+          aria-label="Loading portfolio data"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          className="mt-6 w-56 sm:w-64 h-1.5 rounded-full bg-primary/10 overflow-hidden"
+        >
           <motion.span
+            aria-hidden="true"
             className="block h-full w-1/3 bg-primary/60"
             initial={{ x: "-100%" }}
             animate={{ x: ["-100%", "150%"] }}

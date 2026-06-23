@@ -439,7 +439,7 @@ export default function LoginPage() {
     : Object.values(passwordStrength).every(Boolean)
 
   return (
-    <main className="min-h-screen flex flex-col items-center bg-background justify-center gap-8">
+    <main id="main-content" tabIndex={-1} className="min-h-screen flex flex-col items-center bg-background justify-center gap-8">
       <h1 className="font-serif text-4xl md:text-5xl text-primary font-bold text-center tracking-tight">
         <sub className="text-2xl">my</sub>Qode
       </h1>

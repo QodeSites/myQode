@@ -41,7 +41,7 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
             <DistributorQodeSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
             {/* Page content */}
-            <main className="flex-1 overflow-y-auto">
+            <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto">
               <div className="w-full h-fit rounded-lg bg-card p-4 sm:p-6">
                 <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
               </div>
@@ -62,7 +62,7 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
           <QodeSidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
           {/* Page content */}
-          <main className="flex-1 overflow-y-auto">
+          <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto">
             <div className="w-full h-fit rounded-lg bg-card p-4 sm:p-6">
               <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
             </div>

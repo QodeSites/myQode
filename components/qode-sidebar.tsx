@@ -56,12 +56,13 @@ function NavLink({
     <Link
       href={href}
       onClick={onClick}
+      aria-current={active ? "page" : undefined}
       className={cn(
         "flex items-center gap-2 rounded-md px-3 py-2 text-sm text-secondary hover:bg-muted/60",
         active && "bg-background text-primary"
       )}
     >
-      {icon}
+      <span aria-hidden="true">{icon}</span>
       {children}
     </Link>
   )
@@ -419,7 +420,7 @@ export default function QodeSidebar({ open = false, onClose }: QodeSidebarProps)
   )
 
   const SidebarContent = (
-    <nav className="h-full flex flex-col gap-1">
+    <nav aria-label="Portfolio navigation" className="h-full flex flex-col gap-1">
       <Accordion
         type="multiple"
         className="mt-1"
@@ -601,7 +602,7 @@ export default function QodeSidebar({ open = false, onClose }: QodeSidebarProps)
   )
 
   const SidebarContentMobile = ({ onClose }: { onClose?: () => void }) => (
-    <nav className="h-full flex flex-col gap-1 mt-5">
+    <nav aria-label="Portfolio navigation" className="h-full flex flex-col gap-1 mt-5">
       <Accordion
         type="multiple"
         className="mt-1"

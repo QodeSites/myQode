@@ -1,6 +1,6 @@
 export const metadata = {
-  title: 'Login - Qode',
-  description: 'Login to Qode Dashboard',
+  title: 'Login | myQode',
+  description: 'Log in to your myQode portfolio dashboard.',
 }
 
 export default function LoginLayout({

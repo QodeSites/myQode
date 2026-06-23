@@ -107,8 +107,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <link rel="apple-touch-startup-image" href="/icons/512.png" />
       </head>
       <body className="font-sans bg-background text-foreground">
+        {/* WCAG 2.4.1 Bypass Blocks — skip link as first focusable element */}
+        <a href="#main-content" className="skip-to-content">
+          Skip to main content
+        </a>
         <ClientProvider>
-          <Suspense fallback={<div>Loading...</div>}>
+          <Suspense fallback={<div role="status" aria-live="polite">Loading…</div>}>
             <FirebaseAnalyticsProvider>{children}</FirebaseAnalyticsProvider>
           </Suspense>
           <Analytics />
