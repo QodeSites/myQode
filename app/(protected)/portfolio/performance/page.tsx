@@ -31,7 +31,7 @@ import {
 } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import ExpiryDayBanner from "@/components/expiry-day-banner";
+// import ExpiryDayBanner from "@/components/expiry-day-banner";
 
 // Import Lato font
 const latoFontStyle = `
@@ -2236,7 +2236,7 @@ const createConsolidatedData = useCallback(
           <style>{latoFontStyle}</style>
 
           {/* Expiry-day reporting-discrepancy notice (only when value is spiked) */}
-          <ExpiryDayBanner />
+          {/* <ExpiryDayBanner /> */}
 
           {/* Header */}
           <div className="flex flex-col gap-4">
