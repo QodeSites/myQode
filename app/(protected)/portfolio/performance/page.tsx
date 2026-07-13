@@ -230,10 +230,12 @@ const strategyNames = {
   QLF: 'Qode Liquid Fund'
 };
 
-const strategyBenchmark: Record<string, string> = {
+// null = strategy has no comparable benchmark (e.g. liquid fund vs equity indices)
+const strategyBenchmark: Record<string, string | null> = {
   QAW: 'NIFTY 50',
   QTF: 'NIFTY MIDCAP 150',
   QGF: 'NIFTY SMLCAP 250',
+  QLF: null,
 };
 
 const benchmarkDisplayName: Record<string, string> = {
@@ -243,9 +245,9 @@ const benchmarkDisplayName: Record<string, string> = {
   'NIFTY MICROCAP250': 'Nifty MICRO',
 };
 
-const getBenchmarkForAccount = (accountCode: string): string => {
+const getBenchmarkForAccount = (accountCode: string): string | null => {
   const prefix = accountCode.substring(0, 3).toUpperCase();
-  return strategyBenchmark[prefix] ?? 'NIFTY 50';
+  return strategyBenchmark[prefix] !== undefined ? strategyBenchmark[prefix] : 'NIFTY 50';
 };
 
 const formatCurrency = (value: number | undefined | null) => {
@@ -1401,7 +1403,7 @@ const createConsolidatedData = useCallback(
             const incDate = rows[0].report_date;
             const latDate = latestRow.report_date;
             try {
-              const benchmarkIndex = getBenchmarkForAccount(groupCode);
+              const benchmarkIndex = getBenchmarkForAccount(groupCode) ?? 'NIFTY 50';
               const benchmarkRes = await fetch(`/api/getIndices?indices=${encodeURIComponent(benchmarkIndex)}&startDate=${incDate}&endDate=${latDate}`);
               const benchmarkRaw = await benchmarkRes.json();
               let benchArray: any[] = Array.isArray(benchmarkRaw) ? benchmarkRaw : (benchmarkRaw?.data && Array.isArray(benchmarkRaw.data) ? benchmarkRaw.data : []);
@@ -1452,7 +1454,7 @@ const createConsolidatedData = useCallback(
             const incDate = rows[0].report_date;
             const latDate = latestRow.report_date;
             try {
-              const benchmarkIndex = getBenchmarkForAccount(ownerCode);
+              const benchmarkIndex = getBenchmarkForAccount(ownerCode) ?? 'NIFTY 50';
               const benchmarkRes = await fetch(`/api/getIndices?indices=${encodeURIComponent(benchmarkIndex)}&startDate=${incDate}&endDate=${latDate}`);
               const benchmarkRaw = await benchmarkRes.json();
               let benchArray: any[] = Array.isArray(benchmarkRaw) ? benchmarkRaw : (benchmarkRaw?.data && Array.isArray(benchmarkRaw.data) ? benchmarkRaw.data : []);
@@ -1526,9 +1528,11 @@ const createConsolidatedData = useCallback(
             const incDate = dataForBenchmark[0].report_date;
             const latDate = dataForBenchmark[dataForBenchmark.length - 1].report_date;
 
-            // Fetch benchmark data
-            try {
-              const benchmarkIndex = getBenchmarkForAccount(selectedAccount);
+            // Fetch benchmark data (skipped for strategies without a benchmark, e.g. QLF)
+            const benchmarkIndex = getBenchmarkForAccount(selectedAccount);
+            if (!benchmarkIndex) {
+              setBenchmarkData([]);
+            } else try {
               const benchmarkUrl = `/api/getIndices?indices=${encodeURIComponent(benchmarkIndex)}&startDate=${incDate}&endDate=${latDate}`;
               const benchmarkRes = await fetch(benchmarkUrl);
               const benchmarkRaw = await benchmarkRes.json();
@@ -1896,6 +1900,8 @@ const createConsolidatedData = useCallback(
     let portPeak = needsSyntheticRow ? 10 : firstNav;
     let benchPeak = firstBench > 0 ? benchRebaseTarget : 0;
 
+    const hasBenchSeries = sortedBench.length > 0 && firstBench > 0;
+
     const enriched = dataWithSynthetic.map((item) => {
       const currentNav = Number(item.nav);
       if (currentNav > portPeak) portPeak = currentNav;
@@ -1904,18 +1910,22 @@ const createConsolidatedData = useCallback(
       // Raw NAV (10-based PMS convention), no rebase
       const normNav = currentNav;
 
-      let normBench = benchRebaseTarget;
-      let benchVal = firstBench;
-      let benchDD = 0;
-
-      if (sortedBench.length > 0 && firstBench > 0) {
-        const benchItem = findLatestBenchmarkBeforeOrOn(sortedBench, item.report_date);
-        benchVal = benchItem ? benchItem.value : firstBench;
-        normBench = (benchVal / firstBench) * benchRebaseTarget;
-
-        if (normBench > benchPeak) benchPeak = normBench;
-        benchDD = -((normBench - benchPeak) / benchPeak * 100); // positive
+      if (!hasBenchSeries) {
+        // No benchmark for this account (e.g. QLF) — omit benchmark fields so
+        // charts and tables skip the benchmark series entirely
+        return {
+          ...item,
+          normalized_nav: normNav,
+          drawdown_percent: portDD,
+        };
       }
+
+      const benchItem = findLatestBenchmarkBeforeOrOn(sortedBench, item.report_date);
+      const benchVal = benchItem ? benchItem.value : firstBench;
+      const normBench = (benchVal / firstBench) * benchRebaseTarget;
+
+      if (normBench > benchPeak) benchPeak = normBench;
+      const benchDD = -((normBench - benchPeak) / benchPeak * 100); // positive
 
       return {
         ...item,
@@ -1983,6 +1993,10 @@ const createConsolidatedData = useCallback(
         benchmark10DDate ? { exactStartDateByPeriod: { '10D': benchmark10DDate } } : undefined
       );
       setTrailingReturnsBenchmark(returns);
+    } else {
+      // No benchmark series (e.g. QLF) — clear any value left over from a
+      // previously selected account so the benchmark column doesn't go stale
+      setTrailingReturnsBenchmark(null);
     }
   }, [benchmarkData, getActiveHistoricalData]);
 
@@ -2169,7 +2183,7 @@ const createConsolidatedData = useCallback(
   const colors = strategyColorConfig[strategyCode] || strategyColorConfig.QAW;
   const strategyName = strategyNames[strategyCode as keyof typeof strategyNames] || 'Portfolio';
   const benchmarkIndex = selectedAccount ? getBenchmarkForAccount(selectedAccount) : 'NIFTY 50';
-  const benchmarkLabel = benchmarkDisplayName[benchmarkIndex] ?? benchmarkIndex;
+  const benchmarkLabel = benchmarkIndex ? (benchmarkDisplayName[benchmarkIndex] ?? benchmarkIndex) : 'Benchmark';
 
   // Calculate Y-axis domains
   const hasBenchmark = enrichedData.length > 0 && enrichedData[0]?.normalized_benchmark !== undefined;
@@ -2717,10 +2731,11 @@ const createConsolidatedData = useCallback(
                             benchmarkValue = trailingReturnsBenchmark?.[period.key];
                           }
                           
-                          // Only show if both values are available (not '-' and not undefined)
+                          // Only show if both values are available (not '-' and not undefined).
+                          // When the account has no benchmark (e.g. QLF), gate on portfolio only.
                           const portfolioAvailable = portfolioValue !== undefined && portfolioValue !== '-' && portfolioValue !== null;
                           const benchmarkAvailable = benchmarkValue !== undefined && benchmarkValue !== '-' && benchmarkValue !== null;
-                          const shouldShow = portfolioAvailable && benchmarkAvailable;
+                          const shouldShow = portfolioAvailable && (!trailingReturnsBenchmark || benchmarkAvailable);
                           
                           if (!shouldShow) {
                             return (
