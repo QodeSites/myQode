@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Exclude all account_codes that start with these patterns (QAW%, etc.)
-    const permanentExcludes = ["QAW", "QFH", "QTF", "QGF"];
+    const permanentExcludes = ["QAW", "QFH", "QTF", "QGF", "QLF"];
     // This is used to build NOT LIKE conditions
     const excludePatterns = permanentExcludes.map((code) => `${code}%`);
     

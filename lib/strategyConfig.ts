@@ -5,6 +5,7 @@ export const STRATEGY_NAMES: Record<string, string> = {
   QAW: 'Qode All Weather',
   QTF: 'Qode Tactical Fund',
   QGF: 'Qode Growth Fund',
+  QLF: 'Qode Liquid Fund',
 }
 
 export const STRATEGY_BENCHMARKS: Record<string, string> = {
@@ -17,6 +18,7 @@ export const STRATEGY_COLORS: Record<string, string> = {
   QAW: '#008455',
   QTF: '#550E0E',
   QGF: '#0A3452',
+  QLF: '#0E6B6B',
 }
 
 /** Extract the 3-char prefix from any account code. */

@@ -20,7 +20,8 @@ import {
 const strategy = {
   'QAW': 'Qode All Weather',
   'QTF': 'Qode Tactical Fund',
-  'QGF': 'Qode Growth Fund'
+  'QGF': 'Qode Growth Fund',
+  'QLF': 'Qode Liquid Fund'
 }
 /* ---------------------------
    Reusable Modal Component
@@ -434,7 +435,8 @@ function AddFundsModal({
   const strategy = {
     'QAW': 'Qode All Weather',
     'QTF': 'Qode Tactical Fund',
-    'QGF': 'Qode Growth Fund'
+    'QGF': 'Qode Growth Fund',
+    'QLF': 'Qode Liquid Fund'
   };
 
   // Get strategy name based on account code
@@ -1674,7 +1676,8 @@ function SwitchReallocationModal({
   const strategy = {
     'QAW': 'Qode All Weather',
     'QTF': 'Qode Tactical Fund',
-    'QGF': 'Qode Growth Fund'
+    'QGF': 'Qode Growth Fund',
+    'QLF': 'Qode Liquid Fund'
   };
 
   useEffect(() => {

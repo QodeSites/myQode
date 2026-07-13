@@ -164,7 +164,8 @@ export default function PaymentSuccessPage() {
     const strategy = {
       'QAW': 'Qode All Weather',
       'QTF': 'Qode Tactical Fund',
-      'QGF': 'Qode Growth Fund'
+      'QGF': 'Qode Growth Fund',
+      'QLF': 'Qode Liquid Fund'
     }
 
     const getStrategyName = (strategyCode) => {
@@ -395,7 +396,8 @@ export default function PaymentSuccessPage() {
     const strategy = {
       'QAW': 'Qode All Weather',
       'QTF': 'Qode Tactical Fund',
-      'QGF': 'Qode Growth Fund'
+      'QGF': 'Qode Growth Fund',
+      'QLF': 'Qode Liquid Fund'
     }
     const prefix = accountCode?.substring(0, 3).toUpperCase()
     return strategy[prefix] || 'Unknown Strategy'

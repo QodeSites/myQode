@@ -7,6 +7,7 @@ const STRATEGIES: Record<string, string> = {
   QAW: 'Qode All Weather',
   QTF: 'Qode Tactical Fund',
   QGF: 'Qode Growth Fund',
+  QLF: 'Qode Liquid Fund',
 }
 
 export async function POST(request: NextRequest) {

@@ -31,6 +31,7 @@ import {
 } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import ExpiryDayBanner from "@/components/expiry-day-banner";
 
 // Import Lato font
 const latoFontStyle = `
@@ -212,13 +213,21 @@ const strategyColorConfig = {
     strategy: "#3b82f6",
     gradient1: "#0A3452",
     gradient2: "#051E31"
+  },
+  QLF: {
+    primary: "#0E6B6B",
+    secondary: "#043A3A",
+    strategy: "#0E6B6B",
+    gradient1: "#0E6B6B",
+    gradient2: "#043A3A"
   }
 };
 
 const strategyNames = {
   QAW: 'Qode All Weather',
   QTF: 'Qode Tactical Fund',
-  QGF: 'Qode Growth Fund'
+  QGF: 'Qode Growth Fund',
+  QLF: 'Qode Liquid Fund'
 };
 
 const strategyBenchmark: Record<string, string> = {
@@ -1259,9 +1268,9 @@ const createConsolidatedData = useCallback(
         const familyData = await familyRes.json();
 
         if (familyData.success && familyData.family) {
-          // Only keep individual strategy accounts (QAW, QGF, QTF, QFH)
+          // Only keep individual strategy accounts (QAW, QGF, QTF, QFH, QLF)
           // Owner-level and group-level rows from pms_master_sheet are fetched directly by code
-          const individualPrefixes = ['QAW', 'QGF', 'QTF', 'QFH'];
+          const individualPrefixes = ['QAW', 'QGF', 'QTF', 'QFH', 'QLF'];
           const accounts: FamilyAccount[] = familyData.family
             .filter((member: any) => {
               const prefix = (member.clientcode || '').substring(0, 3).toUpperCase();
@@ -2211,6 +2220,9 @@ const createConsolidatedData = useCallback(
         >
           {/* Inject Lato font */}
           <style>{latoFontStyle}</style>
+
+          {/* Expiry-day reporting-discrepancy notice (only when value is spiked) */}
+          <ExpiryDayBanner />
 
           {/* Header */}
           <div className="flex flex-col gap-4">
