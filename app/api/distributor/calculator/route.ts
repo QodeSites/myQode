@@ -16,68 +16,50 @@ interface CalculatorRequest {
   endDate: string;   // required: 'YYYY-MM-DD'
 }
 
-const PERIOD_DATE_MAPPING = [
-  {
-    type: "Quarter",
-    label: "Q1 FY2025",
-    startDate: "1-Apr-24",
-    endDate: "30-Jun-24",
-  },
-  {
-    type: "Quarter",
-    label: "Q2 FY2025",
-    startDate: "1-Jul-24",
-    endDate: "30-Sep-24",
-  },
-  {
-    type: "Quarter",
-    label: "Q3 FY2025",
-    startDate: "1-Oct-24",
-    endDate: "31-Dec-24",
-  },
-  {
-    type: "Quarter",
-    label: "Q4 FY2025",
-    startDate: "1-Jan-25",
-    endDate: "31-Mar-25",
-  },
-  {
-    type: "Quarter",
-    label: "Q1 FY2026",
-    startDate: "1-Apr-25",
-    endDate: "30-Jun-25",
-  },
-  {
-    type: "Quarter",
-    label: "Q2 FY2026",
-    startDate: "1-Jul-25",
-    endDate: "30-Sep-25",
-  },
-  {
-    type: "Quarter",
-    label: "Q3 FY2026",
-    startDate: "1-Oct-25",
-    endDate: "31-Dec-25",
-  },
-  {
-    type: "Quarter",
-    label: "Q4 FY2026",
-    startDate: "1-Jan-26",
-    endDate: "31-Mar-26",
-  },
-  {
-    type: "Year",
-    label: "FY 2025",
-    startDate: "1-Apr-24",
-    endDate: "31-Mar-25",
-  },
-  {
-    type: "Year",
-    label: "FY 2026",
-    startDate: "1-Apr-25",
-    endDate: "31-Mar-26",
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// Date → "1-Apr-24"
+function formatDateLabel(d: Date): string {
+  return `${d.getDate()}-${MONTH_NAMES[d.getMonth()]}-${String(d.getFullYear()).slice(-2)}`;
+}
+
+// Fiscal year runs Apr–Mar; FY2025 starts 1-Apr-24. Only completed quarters are
+// listed — the in-progress quarter has no final data to bill against.
+const FIRST_FY_START_YEAR = 2024;
+
+function buildPeriodMapping(now: Date = new Date()) {
+  const currentFyStartYear = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  const quarters: { type: string; label: string; startDate: string; endDate: string }[] = [];
+  const years: { type: string; label: string; startDate: string; endDate: string }[] = [];
+
+  for (let y = FIRST_FY_START_YEAR; y <= currentFyStartYear; y++) {
+    const fy = y + 1;
+    const quarterDefs = [
+      { label: `Q1 FY${fy}`, start: new Date(y, 3, 1), end: new Date(y, 5, 30) },
+      { label: `Q2 FY${fy}`, start: new Date(y, 6, 1), end: new Date(y, 8, 30) },
+      { label: `Q3 FY${fy}`, start: new Date(y, 9, 1), end: new Date(y, 11, 31) },
+      { label: `Q4 FY${fy}`, start: new Date(y + 1, 0, 1), end: new Date(y + 1, 2, 31) },
+    ];
+    for (const q of quarterDefs) {
+      if (q.end < now) {
+        quarters.push({
+          type: "Quarter",
+          label: q.label,
+          startDate: formatDateLabel(q.start),
+          endDate: formatDateLabel(q.end),
+        });
+      }
+    }
+    years.push({
+      type: "Year",
+      label: `FY ${fy}`,
+      startDate: formatDateLabel(new Date(y, 3, 1)),
+      endDate: formatDateLabel(new Date(y + 1, 2, 31)),
+    });
   }
-];
+
+  return [...quarters, ...years];
+}
 
 // Converts `1-Apr-24` → Date
 function parseCustomDateLabel(dateStr: string): Date {
@@ -133,10 +115,11 @@ export async function GET() {
       : null;
 
   // ✅ FILTER PERIODS
-  let filteredPeriods = PERIOD_DATE_MAPPING;
+  const allPeriods = buildPeriodMapping();
+  let filteredPeriods = allPeriods;
 
   if (firstInceptionDate) {
-    filteredPeriods = PERIOD_DATE_MAPPING.filter(period => {
+    filteredPeriods = allPeriods.filter(period => {
       const end = parseCustomDateLabel(period.endDate);
       return end >= firstInceptionDate;
     });
