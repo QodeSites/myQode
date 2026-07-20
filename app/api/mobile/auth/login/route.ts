@@ -284,7 +284,8 @@ export async function POST(request: NextRequest) {
     // Track login
     await query(
       `UPDATE pms_clients_master
-       SET last_login_at = NOW(), login_count = COALESCE(login_count, 0) + 1
+       SET last_login_at = NOW(), login_count = COALESCE(login_count, 0) + 1,
+           last_app_login_at = NOW(), app_login_count = COALESCE(app_login_count, 0) + 1
        WHERE email = $1`,
       [user.email]
     )
