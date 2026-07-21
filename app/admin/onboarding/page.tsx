@@ -931,8 +931,8 @@ function AdminDashboardContent() {
     return (
       <div className="space-y-6">
         <Skeleton className="h-12 w-64" />
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
-          {Array(6).fill(0).map((_, i) => (
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          {Array(5).fill(0).map((_, i) => (
             <Skeleton key={i} className="h-24" />
           ))}
         </div>
@@ -962,7 +962,7 @@ function AdminDashboardContent() {
 
       {/* Enhanced Statistics Cards — hidden for distributor-only admins */}
       {statistics && !isDistributorOnlyAdmin && (
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <StatCard
             icon={Users}
             title="Total Owners"
@@ -991,21 +991,6 @@ function AdminDashboardContent() {
               color="text-orange-500"
             />
           </Link>
-          {/* Replace this StatCard */}
-          {/* Total Logins - Clickable */}
-          <div
-            onClick={() => { fetchLoginsData('all'); setShowLoginsDialog(true); }}
-            className="cursor-pointer hover:shadow-md transition-shadow rounded-lg"
-          >
-            <StatCard
-              icon={LogIn}
-              title="Total Logins"
-              value={statistics.totalLogins}
-              subtitle={`${statistics.uniqueLoginsThisWeek} this week`}
-              color="text-teal-500"
-            />
-          </div>
-
           {/* Today's Logins - Clickable */}
           <div
             onClick={() => { fetchLoginsData('today'); setShowLoginsDialog(true); }}
