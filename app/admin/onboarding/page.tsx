@@ -1668,6 +1668,62 @@ function AdminDashboardContent() {
             </CardContent>
           </Card>
 
+          {/* Investor Source breakdown, from Zoho CRM's Investor_Source field */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Users className="h-4 w-4 text-indigo-500" />
+                Platform Usage by Investor Source
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Investor_Source from Zoho CRM's Investors module, cross-referenced with real login activity.
+                Sorted by total investors per source.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {platformActivityLoading ? (
+                <div className="space-y-2">{Array(5).fill(0).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+              ) : (platformActivity?.sourceBreakdown ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">No source data available</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Source</TableHead>
+                      <TableHead className="text-right">Total</TableHead>
+                      <TableHead className="text-right">Web</TableHead>
+                      <TableHead className="text-right">App</TableHead>
+                      <TableHead className="text-right">Both</TableHead>
+                      <TableHead className="text-right">Never Logged In</TableHead>
+                      <TableHead className="text-right">Engagement Rate</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {platformActivity.sourceBreakdown.map((s: any) => {
+                      const engaged = s.total - s.never;
+                      const rate = s.total > 0 ? Math.round((engaged / s.total) * 100) : 0;
+                      return (
+                        <TableRow key={s.source}>
+                          <TableCell className="font-medium">{s.source}</TableCell>
+                          <TableCell className="text-right">{s.total}</TableCell>
+                          <TableCell className="text-right" style={{ color: PLATFORM_COLORS.web }}>{s.web}</TableCell>
+                          <TableCell className="text-right" style={{ color: PLATFORM_COLORS.app }}>{s.app}</TableCell>
+                          <TableCell className="text-right" style={{ color: PLATFORM_COLORS.both }}>{s.both}</TableCell>
+                          <TableCell className="text-right text-muted-foreground">{s.never}</TableCell>
+                          <TableCell className="text-right">
+                            <span className={rate >= 70 ? 'text-green-700 font-semibold' : rate <= 30 ? 'text-red-600 font-semibold' : ''}>
+                              {rate}%
+                            </span>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Onboarding funnel, split by platform */}
           <Card>
             <CardHeader>
@@ -1840,6 +1896,7 @@ function AdminDashboardContent() {
                       <TableHead>Name</TableHead>
                       <TableHead>Email</TableHead>
                       <TableHead>Account Type</TableHead>
+                      <TableHead>Investor Source</TableHead>
                       <TableHead>Platform</TableHead>
                       <TableHead className="text-right">Total Logins</TableHead>
                       <TableHead>Last Login (any)</TableHead>
@@ -1877,7 +1934,7 @@ function AdminDashboardContent() {
                       if (rows.length === 0) {
                         return (
                           <TableRow>
-                            <TableCell colSpan={11} className="text-center text-muted-foreground py-6">
+                            <TableCell colSpan={12} className="text-center text-muted-foreground py-6">
                               No matching clients
                             </TableCell>
                           </TableRow>
@@ -1895,6 +1952,7 @@ function AdminDashboardContent() {
                               {c.accountType === 'distributor' ? 'Distributor' : 'Investor'}
                             </Badge>
                           </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">{c.investorSource || '—'}</TableCell>
                           <TableCell>
                             <Badge
                               variant="outline"

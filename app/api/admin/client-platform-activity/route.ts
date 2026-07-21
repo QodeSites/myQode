@@ -11,9 +11,20 @@
 //                  (login_count > 0 but web/app counters are still 0)
 import { NextResponse } from 'next/server'
 import { query } from '@/lib/db'
+import { getInvestorSourceMap } from '@/lib/zoho'
 
 export async function GET() {
   try {
+    // Zoho CRM's Investor_Source per email — best-effort. A Zoho hiccup
+    // shouldn't take down the whole dashboard, so this degrades to "unknown"
+    // per client rather than failing the request.
+    let sourceMap = new Map<string, string>()
+    try {
+      sourceMap = await getInvestorSourceMap()
+    } catch (err) {
+      console.error('[admin/client-platform-activity] Zoho source fetch failed:', err)
+    }
+
     const result = await query(
       `SELECT DISTINCT ON (m.email)
               m.email,
@@ -94,6 +105,7 @@ export async function GET() {
         // hasn't seen a "DeviceNotRegistered" (uninstall) error for it yet.
         appInstalled: r.push_platform != null,
         installedOS: r.push_platform ?? null,
+        investorSource: sourceMap.get(String(r.email ?? '').toLowerCase()) ?? null,
       }
     })
 
@@ -128,7 +140,20 @@ export async function GET() {
       distributors: bucket(distributors),
     }
 
-    return NextResponse.json({ clients, summary })
+    // Which Investor_Source brings the most web/app users — investors only.
+    const bySource = new Map<string, { source: string; web: number; app: number; both: number; never: number; unclassified: number; total: number }>()
+    for (const c of investors) {
+      const key = c.investorSource ?? 'Unknown (not in Zoho)'
+      if (!bySource.has(key)) {
+        bySource.set(key, { source: key, web: 0, app: 0, both: 0, never: 0, unclassified: 0, total: 0 })
+      }
+      const entry = bySource.get(key)!
+      entry.total += 1
+      entry[c.platform] += 1
+    }
+    const sourceBreakdown = Array.from(bySource.values()).sort((a, b) => b.total - a.total)
+
+    return NextResponse.json({ clients, summary, sourceBreakdown })
   } catch (err: any) {
     console.error('[admin/client-platform-activity]', err)
     return NextResponse.json({ error: err?.message ?? 'Internal server error' }, { status: 500 })

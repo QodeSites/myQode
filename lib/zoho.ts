@@ -76,3 +76,45 @@ export async function findZohoRecordUrlByEmail(
   const tab = ZOHO_MODULE_TABS[moduleApiName]
   return `https://crm.zoho.${DATA_CENTER}/crm/org${ORG_ID}/tab/${tab}/${recordId}`
 }
+
+// ── Bulk Investor_Source lookup ──────────────────────────────────────────────
+// Investor_Source is a picklist field on the Investors module (values like
+// "Whatsapp", "Website", "Google Ads", "Distributor", etc.). Cached in-memory
+// for a few minutes — this is a full-module listing, not worth re-fetching on
+// every dashboard load, and Zoho API calls are rate-limited.
+
+let sourceCache: { data: Map<string, string>; expiresAt: number } | null = null
+const SOURCE_CACHE_TTL_MS = 5 * 60 * 1000
+
+export async function getInvestorSourceMap(): Promise<Map<string, string>> {
+  if (sourceCache && sourceCache.expiresAt > Date.now()) return sourceCache.data
+
+  const token = await getAccessToken()
+  const domain = crmApiDomain()
+  const map = new Map<string, string>()
+
+  let page = 1
+  let more = true
+  while (more) {
+    const res = await fetch(
+      `${domain}/crm/v2/Investors?fields=Email,Investor_Source&per_page=200&page=${page}`,
+      { headers: { Authorization: `Zoho-oauthtoken ${token}` }, cache: 'no-store' }
+    )
+    if (res.status === 204) break // no (more) records
+    if (!res.ok) {
+      throw new Error(`Zoho Investors listing failed: ${res.status} ${await res.text()}`)
+    }
+    const data = (await res.json()) as {
+      data?: Array<{ Email?: string; Investor_Source?: string }>
+      info?: { more_records?: boolean }
+    }
+    for (const rec of data.data ?? []) {
+      if (rec.Email) map.set(rec.Email.toLowerCase(), rec.Investor_Source || '-None-')
+    }
+    more = Boolean(data.info?.more_records)
+    page += 1
+  }
+
+  sourceCache = { data: map, expiresAt: Date.now() + SOURCE_CACHE_TTL_MS }
+  return map
+}
