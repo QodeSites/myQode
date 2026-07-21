@@ -72,6 +72,19 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Link from "next/link";
+import {
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip as RechartsTooltip,
+  Legend,
+  ResponsiveContainer,
+} from "recharts";
 
 interface GroupedClientData {
   ownerId: string;
@@ -219,13 +232,12 @@ function AdminDashboardContent() {
   // In-app analytics (pms_mobile_analytics — both iOS & Android)
   const [mobileData, setMobileData] = useState<any>(null);
   const [mobileLoading, setMobileLoading] = useState(false);
-  // Web vs app login split (real, from pms_clients_master platform counters)
-  const [loginSplitData, setLoginSplitData] = useState<any>(null);
-  const [loginSplitLoading, setLoginSplitLoading] = useState(false);
-  // Onboarded clients contact list (name, email, mobile)
-  const [onboardedClients, setOnboardedClients] = useState<any[]>([]);
-  const [onboardedClientsLoading, setOnboardedClientsLoading] = useState(false);
-  const [onboardedSearch, setOnboardedSearch] = useState('');
+  // Per-client platform activity — real data, one row per person
+  const [platformActivity, setPlatformActivity] = useState<any>(null);
+  const [platformActivityLoading, setPlatformActivityLoading] = useState(false);
+  const [platformSearch, setPlatformSearch] = useState('');
+  const [platformFilter, setPlatformFilter] = useState<'all' | 'never' | 'web' | 'app' | 'both' | 'unclassified'>('all');
+  const [platformSort, setPlatformSort] = useState<'lastLogin' | 'name'>('lastLogin');
 
   useEffect(() => {
     fetchDashboardData();
@@ -318,31 +330,17 @@ function AdminDashboardContent() {
     }
   };
 
-  const fetchLoginSplitData = async (days = analyticsDays) => {
-    setLoginSplitLoading(true);
+  const fetchPlatformActivity = async () => {
+    setPlatformActivityLoading(true);
     try {
-      const res = await fetch(`/api/admin/login-analytics?days=${days}`);
+      const res = await fetch(`/api/admin/client-platform-activity`);
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      setLoginSplitData(data);
+      setPlatformActivity(data);
     } catch (e: any) {
-      setAnalyticsError(`Login split: ${e.message}`);
+      setAnalyticsError(`Platform activity: ${e.message}`);
     } finally {
-      setLoginSplitLoading(false);
-    }
-  };
-
-  const fetchOnboardedClients = async () => {
-    setOnboardedClientsLoading(true);
-    try {
-      const res = await fetch(`/api/admin/onboarded-clients`);
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setOnboardedClients(data.clients ?? []);
-    } catch (e: any) {
-      setAnalyticsError(`Onboarded clients: ${e.message}`);
-    } finally {
-      setOnboardedClientsLoading(false);
+      setPlatformActivityLoading(false);
     }
   };
 
@@ -351,21 +349,25 @@ function AdminDashboardContent() {
     fetchSalesData(days, vendorNumber);
     fetchPlayData(days);
     fetchMobileData(days);
-    fetchLoginSplitData(days);
-    fetchOnboardedClients();
+    fetchPlatformActivity();
   };
 
-  // One-time estimate, computed 2026-07-21 from pms_clients_master (password-set
-  // status) joined against pms_master_sheet (first NAV date vs the Apr 7 2026
-  // app launch date). NOT live data — kept only until enough real logins have
-  // accumulated in web_login_count / app_login_count to replace it.
-  const ESTIMATED_PLATFORM_SPLIT = {
-    computedOn: '2026-07-21',
-    totalPeople: 228,
-    onboarded: 161,
-    notOnboarded: 67,
-    web: 78,
-    app: 83,
+  // Palette slots below are the validated first-four categorical hues from the
+  // dataviz skill's reference palette — checked with validate_palette.js
+  // (--pairs all, light + dark) for CVD-safe adjacent contrast.
+  const PLATFORM_COLORS: Record<string, string> = {
+    web:          '#2a78d6', // blue
+    app:          '#008300', // green
+    both:         '#e87ba4', // magenta
+    unclassified: '#eda100', // yellow — logged in before platform tracking existed
+    never:        '#898781', // muted ink — no activity at all
+  };
+  const PLATFORM_LABELS: Record<string, string> = {
+    web: 'Web only',
+    app: 'App only',
+    both: 'Both',
+    unclassified: 'Logged in (pre-tracking)',
+    never: 'Never logged in',
   };
 
   // Add this function after fetchDashboardData
@@ -1800,136 +1802,186 @@ function AdminDashboardContent() {
             </Card>
           </div>
 
-          {/* Web vs App login split */}
+          {/* Platform analytics: web vs app, real data only */}
           <Card>
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
                 <Users className="h-4 w-4 text-indigo-500" />
-                Web vs App — Login Split
+                Web vs App — Platform Analytics
               </CardTitle>
               <p className="text-xs text-muted-foreground mt-1">
-                How client logins break down between the web portal and the mobile app
+                Real login activity only, from pms_clients_master — no modeled/estimated numbers
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Live data */}
-              <div>
-                <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
-                  Live (tracked since platform-split rollout)
-                </div>
-                {loginSplitLoading ? (
-                  <Skeleton className="h-16 w-full" />
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="rounded-lg border p-3">
-                      <div className="text-xs text-muted-foreground">Distinct users — Web</div>
-                      <div className="text-2xl font-bold">{loginSplitData?.distinctUsers?.web ?? 0}</div>
+              {platformActivityLoading ? (
+                <Skeleton className="h-64 w-full" />
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    {/* Audience breakdown donut */}
+                    <div>
+                      <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+                        Audience breakdown ({platformActivity?.summary?.total ?? 0} people)
+                      </div>
+                      <ResponsiveContainer width="100%" height={260}>
+                        <PieChart>
+                          <Pie
+                            data={(['web', 'app', 'both', 'unclassified', 'never'] as const).map(k => ({
+                              key: k,
+                              name: PLATFORM_LABELS[k],
+                              value: platformActivity?.summary?.[k] ?? 0,
+                            })).filter(d => d.value > 0)}
+                            dataKey="value"
+                            nameKey="name"
+                            innerRadius={60}
+                            outerRadius={90}
+                            paddingAngle={2}
+                            label={({ name, value }) => `${name}: ${value}`}
+                          >
+                            {(['web', 'app', 'both', 'unclassified', 'never'] as const).map(k => (
+                              <Cell key={k} fill={PLATFORM_COLORS[k]} />
+                            ))}
+                          </Pie>
+                          <RechartsTooltip />
+                          <Legend verticalAlign="bottom" height={36} />
+                        </PieChart>
+                      </ResponsiveContainer>
                     </div>
-                    <div className="rounded-lg border p-3">
-                      <div className="text-xs text-muted-foreground">Distinct users — App</div>
-                      <div className="text-2xl font-bold">{loginSplitData?.distinctUsers?.app ?? 0}</div>
-                    </div>
-                    <div className="rounded-lg border p-3">
-                      <div className="text-xs text-muted-foreground">Used both</div>
-                      <div className="text-2xl font-bold">{loginSplitData?.distinctUsers?.both ?? 0}</div>
-                    </div>
-                  </div>
-                )}
-                <p className="text-xs text-muted-foreground mt-2">
-                  Sourced live from <span className="font-mono">/api/admin/login-analytics</span>. Will read
-                  zero/low until real logins accumulate on the new platform counters.
-                </p>
-              </div>
 
-              {/* Estimated snapshot — clearly separated from live data */}
-              <div className="border-t pt-4">
-                <div className="text-xs font-semibold text-amber-600 mb-2 uppercase tracking-wide">
-                  Estimated snapshot — not live data
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                    <div className="text-xs text-muted-foreground">Onboarded (password set)</div>
-                    <div className="text-2xl font-bold">{ESTIMATED_PLATFORM_SPLIT.onboarded}</div>
+                    {/* Total login volume by platform */}
+                    <div>
+                      <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+                        Total logins by platform
+                      </div>
+                      <ResponsiveContainer width="100%" height={260}>
+                        <BarChart
+                          data={[
+                            { name: 'Web', logins: platformActivity?.summary?.totalWebLogins ?? 0 },
+                            { name: 'App', logins: platformActivity?.summary?.totalAppLogins ?? 0 },
+                          ]}
+                          margin={{ top: 8, right: 8, left: 0, bottom: 8 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" stroke="#e1e0d9" />
+                          <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+                          <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+                          <RechartsTooltip />
+                          <Bar dataKey="logins" radius={[4, 4, 0, 0]}>
+                            <Cell fill={PLATFORM_COLORS.web} />
+                            <Cell fill={PLATFORM_COLORS.app} />
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
                   </div>
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                    <div className="text-xs text-muted-foreground">Modeled — Web</div>
-                    <div className="text-2xl font-bold">{ESTIMATED_PLATFORM_SPLIT.web}</div>
-                  </div>
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                    <div className="text-xs text-muted-foreground">Modeled — App</div>
-                    <div className="text-2xl font-bold">{ESTIMATED_PLATFORM_SPLIT.app}</div>
-                  </div>
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                    <div className="text-xs text-muted-foreground">Not onboarded yet</div>
-                    <div className="text-2xl font-bold">{ESTIMATED_PLATFORM_SPLIT.notOnboarded}</div>
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground mt-2">
-                  One-time estimate computed {ESTIMATED_PLATFORM_SPLIT.computedOn} from onboarding status and each
-                  client&apos;s first NAV date relative to the Apr 7, 2026 app launch — not observed login events.
-                  Replace with the live numbers above once real usage accumulates.
-                </p>
-              </div>
+
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-medium">Logged in (pre-tracking)</span> means the person has real login
+                    history but it predates the web/app split rollout, so which platform they used isn&apos;t known —
+                    it will shrink over time as those people log in again post-rollout and get reclassified.
+                  </p>
+                </>
+              )}
             </CardContent>
           </Card>
 
-          {/* Onboarded clients contact list */}
+          {/* Per-client detail table */}
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
                   <CardTitle className="text-sm flex items-center gap-2">
-                    <Users className="h-4 w-4 text-indigo-500" />
-                    Onboarded Clients ({onboardedClients.length})
+                    <Clock className="h-4 w-4 text-indigo-500" />
+                    Client Activity ({platformActivity?.clients?.length ?? 0})
                   </CardTitle>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Clients who have completed password setup — name, email, mobile, client code
+                    Who&apos;s using web vs app, and when they last logged in
                   </p>
                 </div>
-                <Input
-                  placeholder="Search name or email…"
-                  value={onboardedSearch}
-                  onChange={e => setOnboardedSearch(e.target.value)}
-                  className="w-64"
-                />
+                <div className="flex flex-wrap gap-2 items-center">
+                  <Select value={platformFilter} onValueChange={(v: any) => setPlatformFilter(v)}>
+                    <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All platforms</SelectItem>
+                      <SelectItem value="web">Web only</SelectItem>
+                      <SelectItem value="app">App only</SelectItem>
+                      <SelectItem value="both">Both</SelectItem>
+                      <SelectItem value="unclassified">Logged in (pre-tracking)</SelectItem>
+                      <SelectItem value="never">Never logged in</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={platformSort} onValueChange={(v: any) => setPlatformSort(v)}>
+                    <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="lastLogin">Sort: Last login</SelectItem>
+                      <SelectItem value="name">Sort: Name</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    placeholder="Search name or email…"
+                    value={platformSearch}
+                    onChange={e => setPlatformSearch(e.target.value)}
+                    className="w-56"
+                  />
+                </div>
               </div>
             </CardHeader>
             <CardContent>
-              {onboardedClientsLoading ? (
-                <div className="space-y-2">{Array(5).fill(0).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+              {platformActivityLoading ? (
+                <div className="space-y-2">{Array(6).fill(0).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
               ) : (
                 <Table>
                   <TableHeader>
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Email</TableHead>
-                      <TableHead>Mobile</TableHead>
-                      <TableHead>Client Code</TableHead>
+                      <TableHead>Platform</TableHead>
+                      <TableHead className="text-right">Total Logins</TableHead>
+                      <TableHead>Last Login (any)</TableHead>
+                      <TableHead>Last Web Login</TableHead>
+                      <TableHead>Last App Login</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {(() => {
-                      const q = onboardedSearch.trim().toLowerCase();
-                      const filtered = q
-                        ? onboardedClients.filter((c: any) =>
-                            (c.name ?? '').toLowerCase().includes(q) ||
-                            (c.email ?? '').toLowerCase().includes(q))
-                        : onboardedClients;
-                      if (filtered.length === 0) {
+                      const q = platformSearch.trim().toLowerCase();
+                      let rows = (platformActivity?.clients ?? []) as any[];
+                      if (platformFilter !== 'all') rows = rows.filter(c => c.platform === platformFilter);
+                      if (q) rows = rows.filter(c =>
+                        (c.name ?? '').toLowerCase().includes(q) ||
+                        (c.email ?? '').toLowerCase().includes(q));
+                      rows = [...rows].sort((a, b) => {
+                        if (platformSort === 'name') return (a.name ?? '').localeCompare(b.name ?? '');
+                        const at = a.lastLoginAt ? new Date(a.lastLoginAt).getTime() : 0;
+                        const bt = b.lastLoginAt ? new Date(b.lastLoginAt).getTime() : 0;
+                        return bt - at;
+                      });
+                      if (rows.length === 0) {
                         return (
                           <TableRow>
-                            <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
+                            <TableCell colSpan={7} className="text-center text-muted-foreground py-6">
                               No matching clients
                             </TableCell>
                           </TableRow>
                         );
                       }
-                      return filtered.map((c: any) => (
+                      const fmt = (d: string | null) => d ? new Date(d).toLocaleString() : '—';
+                      return rows.map((c: any) => (
                         <TableRow key={c.email}>
                           <TableCell className="font-medium">{c.name || '—'}</TableCell>
                           <TableCell className="text-muted-foreground">{c.email}</TableCell>
-                          <TableCell>{c.mobile || '—'}</TableCell>
-                          <TableCell className="font-mono text-xs">{c.clientcode || '—'}</TableCell>
+                          <TableCell>
+                            <Badge
+                              variant="outline"
+                              style={{ borderColor: PLATFORM_COLORS[c.platform], color: PLATFORM_COLORS[c.platform] }}
+                            >
+                              {PLATFORM_LABELS[c.platform]}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">{c.loginCount}</TableCell>
+                          <TableCell className="text-xs">{fmt(c.lastLoginAt)}</TableCell>
+                          <TableCell className="text-xs">{fmt(c.lastWebLoginAt)}</TableCell>
+                          <TableCell className="text-xs">{fmt(c.lastAppLoginAt)}</TableCell>
                         </TableRow>
                       ));
                     })()}
