@@ -1672,53 +1672,6 @@ function AdminDashboardContent() {
             </Card>
           </div>
 
-          {/* Daily Usage table */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
-                Daily Usage
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">
-                Active users and sessions per day from in-app analytics (iOS + Android)
-              </p>
-            </CardHeader>
-            <CardContent>
-              {mobileLoading ? (
-                <div className="space-y-2">{Array(5).fill(0).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead className="text-right">Active Users</TableHead>
-                      <TableHead className="text-right">Sessions</TableHead>
-                      <TableHead className="text-right">Events</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(mobileData?.dau ?? []).length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
-                          No usage data yet
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      mobileData.dau.map((row: any) => (
-                        <TableRow key={row.day}>
-                          <TableCell className="font-medium">{new Date(row.day).toLocaleDateString()}</TableCell>
-                          <TableCell className="text-right font-semibold text-blue-700">{parseInt(row.active_users ?? '0').toLocaleString()}</TableCell>
-                          <TableCell className="text-right">{parseInt(row.sessions ?? '0').toLocaleString()}</TableCell>
-                          <TableCell className="text-right text-muted-foreground">{parseInt(row.total_events ?? '0').toLocaleString()}</TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-
           {/* Platform analytics: web vs app, real data only */}
           <Card>
             <CardHeader>
