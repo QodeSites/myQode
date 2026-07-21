@@ -20,6 +20,7 @@ export async function GET() {
               COALESCE(NULLIF(TRIM(CONCAT_WS(' ', salutation, firstname, middlename, lastname)), ''), clientname) AS name,
               mobile,
               clientcode,
+              clienttype,
               (password IS NOT NULL AND password <> 'Qode@123') AS password_set,
               COALESCE(login_count, 0)      AS login_count,
               last_login_at,
@@ -35,6 +36,7 @@ export async function GET() {
       const webCount = parseInt(r.web_login_count ?? '0')
       const appCount = parseInt(r.app_login_count ?? '0')
       const loginCount = parseInt(r.login_count ?? '0')
+      const isDistributor = r.clienttype === 'DISTRIBUTORS'
 
       let platform: 'never' | 'web' | 'app' | 'both' | 'unclassified'
       if (loginCount === 0) platform = 'never'
@@ -48,6 +50,7 @@ export async function GET() {
         name: r.name,
         mobile: r.mobile,
         clientcode: r.clientcode,
+        accountType: isDistributor ? 'distributor' : 'investor',
         passwordSet: r.password_set,
         loginCount,
         lastLoginAt: r.last_login_at,
@@ -59,15 +62,28 @@ export async function GET() {
       }
     })
 
+    const investors = clients.filter(c => c.accountType === 'investor')
+    const distributors = clients.filter(c => c.accountType === 'distributor')
+
+    const bucket = (list: typeof clients) => ({
+      total: list.length,
+      never: list.filter(c => c.platform === 'never').length,
+      web: list.filter(c => c.platform === 'web').length,
+      app: list.filter(c => c.platform === 'app').length,
+      both: list.filter(c => c.platform === 'both').length,
+      unclassified: list.filter(c => c.platform === 'unclassified').length,
+      totalWebLogins: list.reduce((s, c) => s + c.webLoginCount, 0),
+      totalAppLogins: list.reduce((s, c) => s + c.appLoginCount, 0),
+    })
+
+    // Top-level summary covers everyone (kept for backward compatibility);
+    // investors/distributors are broken out separately since distributor
+    // accounts represent firms, not individual clients, and shouldn't be
+    // read as investor engagement.
     const summary = {
-      total: clients.length,
-      never: clients.filter(c => c.platform === 'never').length,
-      web: clients.filter(c => c.platform === 'web').length,
-      app: clients.filter(c => c.platform === 'app').length,
-      both: clients.filter(c => c.platform === 'both').length,
-      unclassified: clients.filter(c => c.platform === 'unclassified').length,
-      totalWebLogins: clients.reduce((s, c) => s + c.webLoginCount, 0),
-      totalAppLogins: clients.reduce((s, c) => s + c.appLoginCount, 0),
+      ...bucket(clients),
+      investors: bucket(investors),
+      distributors: bucket(distributors),
     }
 
     return NextResponse.json({ clients, summary })

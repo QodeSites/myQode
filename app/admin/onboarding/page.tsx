@@ -238,6 +238,7 @@ function AdminDashboardContent() {
   const [platformSearch, setPlatformSearch] = useState('');
   const [platformFilter, setPlatformFilter] = useState<'all' | 'never' | 'web' | 'app' | 'both'>('all');
   const [platformSort, setPlatformSort] = useState<'lastLogin' | 'name'>('lastLogin');
+  const [accountTypeFilter, setAccountTypeFilter] = useState<'all' | 'investor' | 'distributor'>('all');
 
   useEffect(() => {
     fetchDashboardData();
@@ -1808,7 +1809,8 @@ function AdminDashboardContent() {
                 Web vs App — Platform Analytics
               </CardTitle>
               <p className="text-xs text-muted-foreground mt-1">
-                Real login activity only, from pms_clients_master — no modeled/estimated numbers
+                Real login activity only, from pms_clients_master — no modeled/estimated numbers.
+                Distributor/intermediary firm accounts are excluded from these charts (see note below).
               </p>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -1817,10 +1819,10 @@ function AdminDashboardContent() {
               ) : (
                 <>
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Audience breakdown donut */}
+                    {/* Audience breakdown donut — individual investors only */}
                     <div>
                       <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
-                        Audience breakdown ({platformActivity?.summary?.total ?? 0} people)
+                        Audience breakdown ({platformActivity?.summary?.investors?.total ?? 0} individual investors)
                       </div>
                       <ResponsiveContainer width="100%" height={260}>
                         <PieChart>
@@ -1828,7 +1830,7 @@ function AdminDashboardContent() {
                             data={(['web', 'app', 'both', 'never'] as const).map(k => ({
                               key: k,
                               name: PLATFORM_LABELS[k],
-                              value: platformActivity?.summary?.[k] ?? 0,
+                              value: platformActivity?.summary?.investors?.[k] ?? 0,
                             })).filter(d => d.value > 0)}
                             dataKey="value"
                             nameKey="name"
@@ -1847,16 +1849,16 @@ function AdminDashboardContent() {
                       </ResponsiveContainer>
                     </div>
 
-                    {/* Total login volume by platform */}
+                    {/* Total login volume by platform — individual investors only */}
                     <div>
                       <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
-                        Total logins by platform
+                        Total logins by platform (investors only)
                       </div>
                       <ResponsiveContainer width="100%" height={260}>
                         <BarChart
                           data={[
-                            { name: 'Web', logins: platformActivity?.summary?.totalWebLogins ?? 0 },
-                            { name: 'App', logins: platformActivity?.summary?.totalAppLogins ?? 0 },
+                            { name: 'Web', logins: platformActivity?.summary?.investors?.totalWebLogins ?? 0 },
+                            { name: 'App', logins: platformActivity?.summary?.investors?.totalAppLogins ?? 0 },
                           ]}
                           margin={{ top: 8, right: 8, left: 0, bottom: 8 }}
                         >
@@ -1873,6 +1875,11 @@ function AdminDashboardContent() {
                     </div>
                   </div>
 
+                  <p className="text-xs text-muted-foreground">
+                    {platformActivity?.summary?.distributors?.total ?? 0} distributor/intermediary firm accounts
+                    (e.g. wealth management partners) are tracked separately and excluded above — they represent
+                    businesses, not individual investors. See the table below to view them (filter by Account Type).
+                  </p>
                 </>
               )}
             </CardContent>
@@ -1892,6 +1899,14 @@ function AdminDashboardContent() {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2 items-center">
+                  <Select value={accountTypeFilter} onValueChange={(v: any) => setAccountTypeFilter(v)}>
+                    <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All account types</SelectItem>
+                      <SelectItem value="investor">Investors only</SelectItem>
+                      <SelectItem value="distributor">Distributors only</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <Select value={platformFilter} onValueChange={(v: any) => setPlatformFilter(v)}>
                     <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -1927,6 +1942,7 @@ function AdminDashboardContent() {
                     <TableRow>
                       <TableHead>Name</TableHead>
                       <TableHead>Email</TableHead>
+                      <TableHead>Account Type</TableHead>
                       <TableHead>Platform</TableHead>
                       <TableHead className="text-right">Total Logins</TableHead>
                       <TableHead>Last Login (any)</TableHead>
@@ -1938,6 +1954,7 @@ function AdminDashboardContent() {
                     {(() => {
                       const q = platformSearch.trim().toLowerCase();
                       let rows = (platformActivity?.clients ?? []) as any[];
+                      if (accountTypeFilter !== 'all') rows = rows.filter(c => c.accountType === accountTypeFilter);
                       if (platformFilter !== 'all') rows = rows.filter(c => c.platform === platformFilter);
                       if (q) rows = rows.filter(c =>
                         (c.name ?? '').toLowerCase().includes(q) ||
@@ -1951,7 +1968,7 @@ function AdminDashboardContent() {
                       if (rows.length === 0) {
                         return (
                           <TableRow>
-                            <TableCell colSpan={7} className="text-center text-muted-foreground py-6">
+                            <TableCell colSpan={8} className="text-center text-muted-foreground py-6">
                               No matching clients
                             </TableCell>
                           </TableRow>
@@ -1962,6 +1979,11 @@ function AdminDashboardContent() {
                         <TableRow key={c.email}>
                           <TableCell className="font-medium">{c.name || '—'}</TableCell>
                           <TableCell className="text-muted-foreground">{c.email}</TableCell>
+                          <TableCell>
+                            <Badge variant={c.accountType === 'distributor' ? 'secondary' : 'outline'}>
+                              {c.accountType === 'distributor' ? 'Distributor' : 'Investor'}
+                            </Badge>
+                          </TableCell>
                           <TableCell>
                             <Badge
                               variant="outline"
