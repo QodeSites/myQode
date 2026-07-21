@@ -329,19 +329,19 @@ function AdminDashboardContent() {
     }
   };
 
-  const fetchPlayData = async (days = analyticsDays) => {
-    setPlayLoading(true);
-    try {
-      const res = await fetch(`/api/admin/play-store-analytics?days=${days}`);
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setPlayData(data);
-    } catch (e: any) {
-      setAnalyticsError(`Play Store: ${e.message}`);
-    } finally {
-      setPlayLoading(false);
-    }
-  };
+  // const fetchPlayData = async (days = analyticsDays) => {
+  //   setPlayLoading(true);
+  //   try {
+  //     const res = await fetch(`/api/admin/play-store-analytics?days=${days}`);
+  //     const data = await res.json();
+  //     if (data.error) throw new Error(data.error);
+  //     setPlayData(data);
+  //   } catch (e: any) {
+  //     setAnalyticsError(`Play Store: ${e.message}`);
+  //   } finally {
+  //     setPlayLoading(false);
+  //   }
+  // };
 
   const fetchMobileData = async (days = analyticsDays) => {
     setMobileLoading(true);
@@ -422,7 +422,7 @@ function AdminDashboardContent() {
   const fetchAllAnalytics = (days = analyticsDays) => {
     setAnalyticsError('');
     fetchSalesData(days, vendorNumber);
-    fetchPlayData(days);
+    // fetchPlayData(days);
     fetchMobileData(days);
     fetchPlatformActivity();
     fetchOnboardingFunnel();
