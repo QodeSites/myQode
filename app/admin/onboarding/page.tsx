@@ -236,7 +236,7 @@ function AdminDashboardContent() {
   const [platformActivity, setPlatformActivity] = useState<any>(null);
   const [platformActivityLoading, setPlatformActivityLoading] = useState(false);
   const [platformSearch, setPlatformSearch] = useState('');
-  const [platformFilter, setPlatformFilter] = useState<'all' | 'never' | 'web' | 'app' | 'both' | 'unclassified'>('all');
+  const [platformFilter, setPlatformFilter] = useState<'all' | 'never' | 'web' | 'app' | 'both'>('all');
   const [platformSort, setPlatformSort] = useState<'lastLogin' | 'name'>('lastLogin');
 
   useEffect(() => {
@@ -356,17 +356,15 @@ function AdminDashboardContent() {
   // dataviz skill's reference palette — checked with validate_palette.js
   // (--pairs all, light + dark) for CVD-safe adjacent contrast.
   const PLATFORM_COLORS: Record<string, string> = {
-    web:          '#2a78d6', // blue
-    app:          '#008300', // green
-    both:         '#e87ba4', // magenta
-    unclassified: '#eda100', // yellow — logged in before platform tracking existed
-    never:        '#898781', // muted ink — no activity at all
+    web:   '#2a78d6', // blue
+    app:   '#008300', // green
+    both:  '#e87ba4', // magenta
+    never: '#898781', // muted ink — no activity at all
   };
   const PLATFORM_LABELS: Record<string, string> = {
     web: 'Web only',
     app: 'App only',
     both: 'Both',
-    unclassified: 'Logged in (pre-tracking)',
     never: 'Never logged in',
   };
 
@@ -1827,7 +1825,7 @@ function AdminDashboardContent() {
                       <ResponsiveContainer width="100%" height={260}>
                         <PieChart>
                           <Pie
-                            data={(['web', 'app', 'both', 'unclassified', 'never'] as const).map(k => ({
+                            data={(['web', 'app', 'both', 'never'] as const).map(k => ({
                               key: k,
                               name: PLATFORM_LABELS[k],
                               value: platformActivity?.summary?.[k] ?? 0,
@@ -1839,7 +1837,7 @@ function AdminDashboardContent() {
                             paddingAngle={2}
                             label={({ name, value }) => `${name}: ${value}`}
                           >
-                            {(['web', 'app', 'both', 'unclassified', 'never'] as const).map(k => (
+                            {(['web', 'app', 'both', 'never'] as const).map(k => (
                               <Cell key={k} fill={PLATFORM_COLORS[k]} />
                             ))}
                           </Pie>
@@ -1875,11 +1873,6 @@ function AdminDashboardContent() {
                     </div>
                   </div>
 
-                  <p className="text-xs text-muted-foreground">
-                    <span className="font-medium">Logged in (pre-tracking)</span> means the person has real login
-                    history but it predates the web/app split rollout, so which platform they used isn&apos;t known —
-                    it will shrink over time as those people log in again post-rollout and get reclassified.
-                  </p>
                 </>
               )}
             </CardContent>
@@ -1906,7 +1899,6 @@ function AdminDashboardContent() {
                       <SelectItem value="web">Web only</SelectItem>
                       <SelectItem value="app">App only</SelectItem>
                       <SelectItem value="both">Both</SelectItem>
-                      <SelectItem value="unclassified">Logged in (pre-tracking)</SelectItem>
                       <SelectItem value="never">Never logged in</SelectItem>
                     </SelectContent>
                   </Select>
