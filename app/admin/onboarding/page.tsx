@@ -1627,6 +1627,37 @@ function AdminDashboardContent() {
                     </div>
                   </div>
 
+                  <div className="border-t pt-4">
+                    <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+                      Currently installed (real signal, not a login proxy)
+                    </div>
+                    <p className="text-xs text-muted-foreground mb-3">
+                      From active Expo push tokens — Apple/Google tell Expo when an app is uninstalled
+                      (a "DeviceNotRegistered" error), and we deactivate the token then. An active token means
+                      the app was still on the device as of its last successful push.
+                    </p>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                      <div className="rounded-lg border p-3">
+                        <div className="text-xs text-muted-foreground">Total investors installed</div>
+                        <div className="text-2xl font-bold">{platformActivity?.summary?.investors?.appInstalled ?? 0}</div>
+                      </div>
+                      <div className="rounded-lg border p-3">
+                        <div className="text-xs text-muted-foreground">iOS</div>
+                        <div className="text-2xl font-bold">{platformActivity?.summary?.investors?.appInstalledIos ?? 0}</div>
+                      </div>
+                      <div className="rounded-lg border p-3">
+                        <div className="text-xs text-muted-foreground">Android</div>
+                        <div className="text-2xl font-bold">{platformActivity?.summary?.investors?.appInstalledAndroid ?? 0}</div>
+                      </div>
+                    </div>
+                    {(platformActivity?.summary?.investors?.appInstalledAndroid ?? 0) === 0 && (
+                      <p className="text-xs text-amber-600 mt-2">
+                        No Android push tokens registered yet — this likely means Android push registration isn't
+                        wired up on that build, not that zero Android investors have the app installed.
+                      </p>
+                    )}
+                  </div>
+
                   <p className="text-xs text-muted-foreground">
                     {platformActivity?.summary?.distributors?.total ?? 0} distributor/intermediary firm accounts
                     (e.g. wealth management partners) are tracked separately and excluded above — they represent
@@ -1815,6 +1846,7 @@ function AdminDashboardContent() {
                       <TableHead className="text-right">Days Dormant</TableHead>
                       <TableHead>Last Web Login</TableHead>
                       <TableHead>Last App Login</TableHead>
+                      <TableHead>App Installed</TableHead>
                       <TableHead>Zoho</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -1845,7 +1877,7 @@ function AdminDashboardContent() {
                       if (rows.length === 0) {
                         return (
                           <TableRow>
-                            <TableCell colSpan={10} className="text-center text-muted-foreground py-6">
+                            <TableCell colSpan={11} className="text-center text-muted-foreground py-6">
                               No matching clients
                             </TableCell>
                           </TableRow>
@@ -1882,6 +1914,15 @@ function AdminDashboardContent() {
                           </TableCell>
                           <TableCell className="text-xs">{fmt(c.lastWebLoginAt)}</TableCell>
                           <TableCell className="text-xs">{fmt(c.lastAppLoginAt)}</TableCell>
+                          <TableCell>
+                            {c.appInstalled ? (
+                              <Badge variant="outline" className="text-green-700 border-green-300">
+                                {c.installedOS === 'ios' ? 'iOS' : 'Android'}
+                              </Badge>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </TableCell>
                           <TableCell>
                             <Button
                               size="sm"

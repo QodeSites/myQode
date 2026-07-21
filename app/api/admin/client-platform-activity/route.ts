@@ -15,21 +15,30 @@ import { query } from '@/lib/db'
 export async function GET() {
   try {
     const result = await query(
-      `SELECT DISTINCT ON (email)
-              email,
-              COALESCE(NULLIF(TRIM(CONCAT_WS(' ', salutation, firstname, middlename, lastname)), ''), clientname) AS name,
-              mobile,
-              clientcode,
-              clienttype,
-              (password IS NOT NULL AND password <> 'Qode@123') AS password_set,
-              COALESCE(login_count, 0)      AS login_count,
-              last_login_at,
-              COALESCE(web_login_count, 0)  AS web_login_count,
-              COALESCE(app_login_count, 0)  AS app_login_count,
-              last_web_login_at,
-              last_app_login_at
-       FROM pms_clients_master
-       ORDER BY email, head_of_family DESC NULLS LAST, clientcode ASC`
+      `SELECT DISTINCT ON (m.email)
+              m.email,
+              COALESCE(NULLIF(TRIM(CONCAT_WS(' ', m.salutation, m.firstname, m.middlename, m.lastname)), ''), m.clientname) AS name,
+              m.mobile,
+              m.clientcode,
+              m.clienttype,
+              (m.password IS NOT NULL AND m.password <> 'Qode@123') AS password_set,
+              COALESCE(m.login_count, 0)      AS login_count,
+              m.last_login_at,
+              COALESCE(m.web_login_count, 0)  AS web_login_count,
+              COALESCE(m.app_login_count, 0)  AS app_login_count,
+              m.last_web_login_at,
+              m.last_app_login_at,
+              pt.platform  AS push_platform,
+              pt.updated_at AS push_updated_at
+       FROM pms_clients_master m
+       LEFT JOIN LATERAL (
+         SELECT platform, updated_at
+         FROM client_push_tokens t
+         WHERE t.client_id = m.clientid AND t.is_active = TRUE
+         ORDER BY t.updated_at DESC
+         LIMIT 1
+       ) pt ON TRUE
+       ORDER BY m.email, m.head_of_family DESC NULLS LAST, m.clientcode ASC`
     )
 
     const clients = result.rows.map((r: any) => {
@@ -59,6 +68,10 @@ export async function GET() {
         lastWebLoginAt: r.last_web_login_at,
         lastAppLoginAt: r.last_app_login_at,
         platform,
+        // Real signal from client_push_tokens: an active token means Expo
+        // hasn't seen a "DeviceNotRegistered" (uninstall) error for it yet.
+        appInstalled: r.push_platform != null,
+        installedOS: r.push_platform ?? null,
       }
     })
 
@@ -74,6 +87,9 @@ export async function GET() {
       unclassified: list.filter(c => c.platform === 'unclassified').length,
       totalWebLogins: list.reduce((s, c) => s + c.webLoginCount, 0),
       totalAppLogins: list.reduce((s, c) => s + c.appLoginCount, 0),
+      appInstalled: list.filter(c => c.appInstalled).length,
+      appInstalledIos: list.filter(c => c.appInstalled && c.installedOS === 'ios').length,
+      appInstalledAndroid: list.filter(c => c.appInstalled && c.installedOS === 'android').length,
     })
 
     // Top-level summary covers everyone (kept for backward compatibility);
