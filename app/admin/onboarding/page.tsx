@@ -222,6 +222,10 @@ function AdminDashboardContent() {
   // Web vs app login split (real, from pms_clients_master platform counters)
   const [loginSplitData, setLoginSplitData] = useState<any>(null);
   const [loginSplitLoading, setLoginSplitLoading] = useState(false);
+  // Onboarded clients contact list (name, email, mobile)
+  const [onboardedClients, setOnboardedClients] = useState<any[]>([]);
+  const [onboardedClientsLoading, setOnboardedClientsLoading] = useState(false);
+  const [onboardedSearch, setOnboardedSearch] = useState('');
 
   useEffect(() => {
     fetchDashboardData();
@@ -328,12 +332,27 @@ function AdminDashboardContent() {
     }
   };
 
+  const fetchOnboardedClients = async () => {
+    setOnboardedClientsLoading(true);
+    try {
+      const res = await fetch(`/api/admin/onboarded-clients`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setOnboardedClients(data.clients ?? []);
+    } catch (e: any) {
+      setAnalyticsError(`Onboarded clients: ${e.message}`);
+    } finally {
+      setOnboardedClientsLoading(false);
+    }
+  };
+
   const fetchAllAnalytics = (days = analyticsDays) => {
     setAnalyticsError('');
     fetchSalesData(days, vendorNumber);
     fetchPlayData(days);
     fetchMobileData(days);
     fetchLoginSplitData(days);
+    fetchOnboardedClients();
   };
 
   // One-time estimate, computed 2026-07-21 from pms_clients_master (password-set
@@ -1851,6 +1870,72 @@ function AdminDashboardContent() {
                   Replace with the live numbers above once real usage accumulates.
                 </p>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Onboarded clients contact list */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Users className="h-4 w-4 text-indigo-500" />
+                    Onboarded Clients ({onboardedClients.length})
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Clients who have completed password setup — name, email, mobile, client code
+                  </p>
+                </div>
+                <Input
+                  placeholder="Search name or email…"
+                  value={onboardedSearch}
+                  onChange={e => setOnboardedSearch(e.target.value)}
+                  className="w-64"
+                />
+              </div>
+            </CardHeader>
+            <CardContent>
+              {onboardedClientsLoading ? (
+                <div className="space-y-2">{Array(5).fill(0).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Mobile</TableHead>
+                      <TableHead>Client Code</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(() => {
+                      const q = onboardedSearch.trim().toLowerCase();
+                      const filtered = q
+                        ? onboardedClients.filter((c: any) =>
+                            (c.name ?? '').toLowerCase().includes(q) ||
+                            (c.email ?? '').toLowerCase().includes(q))
+                        : onboardedClients;
+                      if (filtered.length === 0) {
+                        return (
+                          <TableRow>
+                            <TableCell colSpan={4} className="text-center text-muted-foreground py-6">
+                              No matching clients
+                            </TableCell>
+                          </TableRow>
+                        );
+                      }
+                      return filtered.map((c: any) => (
+                        <TableRow key={c.email}>
+                          <TableCell className="font-medium">{c.name || '—'}</TableCell>
+                          <TableCell className="text-muted-foreground">{c.email}</TableCell>
+                          <TableCell>{c.mobile || '—'}</TableCell>
+                          <TableCell className="font-mono text-xs">{c.clientcode || '—'}</TableCell>
+                        </TableRow>
+                      ));
+                    })()}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
 
