@@ -38,6 +38,13 @@ export async function POST(request: NextRequest) {
     const username: string | undefined = typeof rawUsername === 'string' ? rawUsername.trim() : rawUsername
     const password: string | undefined = body?.password
 
+    // Client-reported OS (Platform.OS from the RN app) — 'ios' | 'android' only.
+    // Anything else (missing, web, simulator quirks) is treated as unknown and
+    // simply doesn't get counted toward either OS bucket.
+    const rawPlatform = typeof body?.platform === 'string' ? body.platform.toLowerCase() : undefined
+    const clientOS: 'ios' | 'android' | null =
+      rawPlatform === 'ios' || rawPlatform === 'android' ? rawPlatform : null
+
     // Dev bypass: password is optional in development so Expo Go / simulator
     // testing can log in to any real account without knowing its password.
     const isDevelopment = process.env.NODE_ENV === 'development'
@@ -281,16 +288,35 @@ export async function POST(request: NextRequest) {
       total: accountCodes,
     })
 
-    // Track login
+    // Track login. OS-specific columns/timestamps only update when the client
+    // actually reported a recognized platform — an unrecognized value still
+    // counts toward the combined app_login_count, just not toward iOS/Android.
     await query(
-      `UPDATE pms_clients_master
-       SET last_login_at = NOW(), login_count = COALESCE(login_count, 0) + 1,
-           last_app_login_at = NOW(), app_login_count = COALESCE(app_login_count, 0) + 1,
-           first_app_login_at = COALESCE(first_app_login_at, NOW())
-       WHERE email = $1`,
+      clientOS === 'ios'
+        ? `UPDATE pms_clients_master
+           SET last_login_at = NOW(), login_count = COALESCE(login_count, 0) + 1,
+               last_app_login_at = NOW(), app_login_count = COALESCE(app_login_count, 0) + 1,
+               first_app_login_at = COALESCE(first_app_login_at, NOW()),
+               last_ios_login_at = NOW(), ios_login_count = COALESCE(ios_login_count, 0) + 1
+           WHERE email = $1`
+        : clientOS === 'android'
+        ? `UPDATE pms_clients_master
+           SET last_login_at = NOW(), login_count = COALESCE(login_count, 0) + 1,
+               last_app_login_at = NOW(), app_login_count = COALESCE(app_login_count, 0) + 1,
+               first_app_login_at = COALESCE(first_app_login_at, NOW()),
+               last_android_login_at = NOW(), android_login_count = COALESCE(android_login_count, 0) + 1
+           WHERE email = $1`
+        : `UPDATE pms_clients_master
+           SET last_login_at = NOW(), login_count = COALESCE(login_count, 0) + 1,
+               last_app_login_at = NOW(), app_login_count = COALESCE(app_login_count, 0) + 1,
+               first_app_login_at = COALESCE(first_app_login_at, NOW())
+           WHERE email = $1`,
       [user.email]
     )
-    await query(`INSERT INTO login_events (email, platform) VALUES ($1, 'app')`, [user.email])
+    await query(
+      `INSERT INTO login_events (email, platform, os) VALUES ($1, 'app', $2)`,
+      [user.email, clientOS]
+    )
 
     const clientName = [user.salutation, user.firstname, user.middlename, user.lastname]
       .filter(Boolean)

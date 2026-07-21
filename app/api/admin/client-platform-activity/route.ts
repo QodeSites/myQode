@@ -26,8 +26,12 @@ export async function GET() {
               m.last_login_at,
               COALESCE(m.web_login_count, 0)  AS web_login_count,
               COALESCE(m.app_login_count, 0)  AS app_login_count,
+              COALESCE(m.ios_login_count, 0)     AS ios_login_count,
+              COALESCE(m.android_login_count, 0) AS android_login_count,
               m.last_web_login_at,
               m.last_app_login_at,
+              m.last_ios_login_at,
+              m.last_android_login_at,
               pt.platform  AS push_platform,
               pt.updated_at AS push_updated_at
        FROM pms_clients_master m
@@ -44,6 +48,8 @@ export async function GET() {
     const clients = result.rows.map((r: any) => {
       const webCount = parseInt(r.web_login_count ?? '0')
       const appCount = parseInt(r.app_login_count ?? '0')
+      const iosCount = parseInt(r.ios_login_count ?? '0')
+      const androidCount = parseInt(r.android_login_count ?? '0')
       const loginCount = parseInt(r.login_count ?? '0')
       const isDistributor = r.clienttype === 'DISTRIBUTORS'
 
@@ -53,6 +59,17 @@ export async function GET() {
       else if (webCount > 0) platform = 'web'
       else if (appCount > 0) platform = 'app'
       else platform = 'unclassified' // real logins happened before platform tracking existed
+
+      // App-side OS split — only meaningful once appCount > 0. 'unclassified'
+      // means app logins exist but predate this OS-split rollout (or the
+      // client didn't report a recognized Platform.OS).
+      let appOS: 'ios' | 'android' | 'both' | 'unclassified' | null = null
+      if (appCount > 0) {
+        if (iosCount > 0 && androidCount > 0) appOS = 'both'
+        else if (iosCount > 0) appOS = 'ios'
+        else if (androidCount > 0) appOS = 'android'
+        else appOS = 'unclassified'
+      }
 
       return {
         email: r.email,
@@ -65,9 +82,14 @@ export async function GET() {
         lastLoginAt: r.last_login_at,
         webLoginCount: webCount,
         appLoginCount: appCount,
+        iosLoginCount: iosCount,
+        androidLoginCount: androidCount,
         lastWebLoginAt: r.last_web_login_at,
         lastAppLoginAt: r.last_app_login_at,
+        lastIosLoginAt: r.last_ios_login_at,
+        lastAndroidLoginAt: r.last_android_login_at,
         platform,
+        appOS,
         // Real signal from client_push_tokens: an active token means Expo
         // hasn't seen a "DeviceNotRegistered" (uninstall) error for it yet.
         appInstalled: r.push_platform != null,
@@ -87,6 +109,10 @@ export async function GET() {
       unclassified: list.filter(c => c.platform === 'unclassified').length,
       totalWebLogins: list.reduce((s, c) => s + c.webLoginCount, 0),
       totalAppLogins: list.reduce((s, c) => s + c.appLoginCount, 0),
+      iosOnly: list.filter(c => c.appOS === 'ios').length,
+      androidOnly: list.filter(c => c.appOS === 'android').length,
+      bothOS: list.filter(c => c.appOS === 'both').length,
+      unclassifiedOS: list.filter(c => c.appOS === 'unclassified').length,
       appInstalled: list.filter(c => c.appInstalled).length,
       appInstalledIos: list.filter(c => c.appInstalled && c.installedOS === 'ios').length,
       appInstalledAndroid: list.filter(c => c.appInstalled && c.installedOS === 'android').length,

@@ -1902,6 +1902,11 @@ function AdminDashboardContent() {
                             >
                               {PLATFORM_LABELS[c.platform]}
                             </Badge>
+                            {c.appOS && c.appOS !== 'unclassified' && (
+                              <div className="text-[10px] text-muted-foreground mt-0.5">
+                                {c.appOS === 'both' ? 'iOS + Android' : c.appOS === 'ios' ? 'iOS' : 'Android'}
+                              </div>
+                            )}
                           </TableCell>
                           <TableCell className="text-right">{c.loginCount}</TableCell>
                           <TableCell className="text-xs">{fmt(c.lastLoginAt)}</TableCell>
