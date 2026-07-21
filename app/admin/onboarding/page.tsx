@@ -239,6 +239,29 @@ function AdminDashboardContent() {
   const [platformFilter, setPlatformFilter] = useState<'all' | 'never' | 'web' | 'app' | 'both'>('all');
   const [platformSort, setPlatformSort] = useState<'lastLogin' | 'name'>('lastLogin');
   const [accountTypeFilter, setAccountTypeFilter] = useState<'all' | 'investor' | 'distributor'>('all');
+  const [zohoLookupLoading, setZohoLookupLoading] = useState<Set<string>>(new Set());
+
+  const openInZoho = async (email: string, accountType: 'investor' | 'distributor') => {
+    setZohoLookupLoading(prev => new Set(prev).add(email));
+    try {
+      const res = await fetch(`/api/admin/zoho-lookup?email=${encodeURIComponent(email)}&accountType=${accountType}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      if (data.found) {
+        window.open(data.url, '_blank', 'noopener,noreferrer');
+      } else {
+        window.alert(`No matching ${accountType} record found in Zoho CRM for ${email}`);
+      }
+    } catch (e: any) {
+      window.alert(`Zoho lookup failed: ${e.message}`);
+    } finally {
+      setZohoLookupLoading(prev => {
+        const next = new Set(prev);
+        next.delete(email);
+        return next;
+      });
+    }
+  };
 
   useEffect(() => {
     fetchDashboardData();
@@ -1843,6 +1866,7 @@ function AdminDashboardContent() {
                       <TableHead>Last Login (any)</TableHead>
                       <TableHead>Last Web Login</TableHead>
                       <TableHead>Last App Login</TableHead>
+                      <TableHead>Zoho</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1863,7 +1887,7 @@ function AdminDashboardContent() {
                       if (rows.length === 0) {
                         return (
                           <TableRow>
-                            <TableCell colSpan={8} className="text-center text-muted-foreground py-6">
+                            <TableCell colSpan={9} className="text-center text-muted-foreground py-6">
                               No matching clients
                             </TableCell>
                           </TableRow>
@@ -1891,6 +1915,20 @@ function AdminDashboardContent() {
                           <TableCell className="text-xs">{fmt(c.lastLoginAt)}</TableCell>
                           <TableCell className="text-xs">{fmt(c.lastWebLoginAt)}</TableCell>
                           <TableCell className="text-xs">{fmt(c.lastAppLoginAt)}</TableCell>
+                          <TableCell>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={zohoLookupLoading.has(c.email)}
+                              onClick={() => openInZoho(c.email, c.accountType)}
+                            >
+                              {zohoLookupLoading.has(c.email) ? (
+                                <RefreshCw className="h-3 w-3 animate-spin" />
+                              ) : (
+                                'View'
+                              )}
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ));
                     })()}
