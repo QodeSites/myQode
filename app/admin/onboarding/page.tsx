@@ -241,6 +241,7 @@ function AdminDashboardContent() {
   const [platformFilter, setPlatformFilter] = useState<'all' | 'never' | 'web' | 'app' | 'both'>('all');
   const [platformSort, setPlatformSort] = useState<'lastLogin' | 'name'>('lastLogin');
   const [accountTypeFilter, setAccountTypeFilter] = useState<'all' | 'investor' | 'distributor'>('all');
+  const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [zohoLookupLoading, setZohoLookupLoading] = useState<Set<string>>(new Set());
   const [funnelData, setFunnelData] = useState<any>(null);
   const [funnelLoading, setFunnelLoading] = useState(false);
@@ -1851,6 +1852,23 @@ function AdminDashboardContent() {
                       <SelectItem value="distributor">Distributors only</SelectItem>
                     </SelectContent>
                   </Select>
+                  <Select value={sourceFilter} onValueChange={(v: any) => setSourceFilter(v)}>
+                    <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All sources</SelectItem>
+                      {Array.from(
+                        new Set(
+                          ((platformActivity?.clients ?? []) as any[])
+                            .map(c => c.investorSource)
+                            .filter((s): s is string => !!s)
+                        )
+                      )
+                        .sort((a, b) => a.localeCompare(b))
+                        .map(source => (
+                          <SelectItem key={source} value={source}>{source}</SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
                   <Select value={platformFilter} onValueChange={(v: any) => setPlatformFilter(v)}>
                     <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
                     <SelectContent>
@@ -1914,6 +1932,7 @@ function AdminDashboardContent() {
                         d ? Math.floor((Date.now() - new Date(d).getTime()) / 86_400_000) : null;
                       let rows = (platformActivity?.clients ?? []) as any[];
                       if (accountTypeFilter !== 'all') rows = rows.filter(c => c.accountType === accountTypeFilter);
+                      if (sourceFilter !== 'all') rows = rows.filter(c => c.investorSource === sourceFilter);
                       if (platformFilter !== 'all') rows = rows.filter(c => c.platform === platformFilter);
                       if (dormancyFilter !== 'all') {
                         const threshold = parseInt(dormancyFilter);
