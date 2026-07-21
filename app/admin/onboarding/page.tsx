@@ -219,6 +219,9 @@ function AdminDashboardContent() {
   // In-app analytics (pms_mobile_analytics — both iOS & Android)
   const [mobileData, setMobileData] = useState<any>(null);
   const [mobileLoading, setMobileLoading] = useState(false);
+  // Web vs app login split (real, from pms_clients_master platform counters)
+  const [loginSplitData, setLoginSplitData] = useState<any>(null);
+  const [loginSplitLoading, setLoginSplitLoading] = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -311,11 +314,39 @@ function AdminDashboardContent() {
     }
   };
 
+  const fetchLoginSplitData = async (days = analyticsDays) => {
+    setLoginSplitLoading(true);
+    try {
+      const res = await fetch(`/api/admin/login-analytics?days=${days}`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setLoginSplitData(data);
+    } catch (e: any) {
+      setAnalyticsError(`Login split: ${e.message}`);
+    } finally {
+      setLoginSplitLoading(false);
+    }
+  };
+
   const fetchAllAnalytics = (days = analyticsDays) => {
     setAnalyticsError('');
     fetchSalesData(days, vendorNumber);
     fetchPlayData(days);
     fetchMobileData(days);
+    fetchLoginSplitData(days);
+  };
+
+  // One-time estimate, computed 2026-07-21 from pms_clients_master (password-set
+  // status) joined against pms_master_sheet (first NAV date vs the Apr 7 2026
+  // app launch date). NOT live data — kept only until enough real logins have
+  // accumulated in web_login_count / app_login_count to replace it.
+  const ESTIMATED_PLATFORM_SPLIT = {
+    computedOn: '2026-07-21',
+    totalPeople: 228,
+    onboarded: 161,
+    notOnboarded: 67,
+    web: 78,
+    app: 83,
   };
 
   // Add this function after fetchDashboardData
@@ -1749,6 +1780,79 @@ function AdminDashboardContent() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Web vs App login split */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Users className="h-4 w-4 text-indigo-500" />
+                Web vs App — Login Split
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                How client logins break down between the web portal and the mobile app
+              </p>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Live data */}
+              <div>
+                <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+                  Live (tracked since platform-split rollout)
+                </div>
+                {loginSplitLoading ? (
+                  <Skeleton className="h-16 w-full" />
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="rounded-lg border p-3">
+                      <div className="text-xs text-muted-foreground">Distinct users — Web</div>
+                      <div className="text-2xl font-bold">{loginSplitData?.distinctUsers?.web ?? 0}</div>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <div className="text-xs text-muted-foreground">Distinct users — App</div>
+                      <div className="text-2xl font-bold">{loginSplitData?.distinctUsers?.app ?? 0}</div>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <div className="text-xs text-muted-foreground">Used both</div>
+                      <div className="text-2xl font-bold">{loginSplitData?.distinctUsers?.both ?? 0}</div>
+                    </div>
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground mt-2">
+                  Sourced live from <span className="font-mono">/api/admin/login-analytics</span>. Will read
+                  zero/low until real logins accumulate on the new platform counters.
+                </p>
+              </div>
+
+              {/* Estimated snapshot — clearly separated from live data */}
+              <div className="border-t pt-4">
+                <div className="text-xs font-semibold text-amber-600 mb-2 uppercase tracking-wide">
+                  Estimated snapshot — not live data
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <div className="text-xs text-muted-foreground">Onboarded (password set)</div>
+                    <div className="text-2xl font-bold">{ESTIMATED_PLATFORM_SPLIT.onboarded}</div>
+                  </div>
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <div className="text-xs text-muted-foreground">Modeled — Web</div>
+                    <div className="text-2xl font-bold">{ESTIMATED_PLATFORM_SPLIT.web}</div>
+                  </div>
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <div className="text-xs text-muted-foreground">Modeled — App</div>
+                    <div className="text-2xl font-bold">{ESTIMATED_PLATFORM_SPLIT.app}</div>
+                  </div>
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                    <div className="text-xs text-muted-foreground">Not onboarded yet</div>
+                    <div className="text-2xl font-bold">{ESTIMATED_PLATFORM_SPLIT.notOnboarded}</div>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  One-time estimate computed {ESTIMATED_PLATFORM_SPLIT.computedOn} from onboarding status and each
+                  client&apos;s first NAV date relative to the Apr 7, 2026 app launch — not observed login events.
+                  Replace with the live numbers above once real usage accumulates.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
 
         </TabsContent>
 
