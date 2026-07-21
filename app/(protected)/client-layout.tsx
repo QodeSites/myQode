@@ -8,6 +8,7 @@ import DistributorQodeSidebar from "@/components/qode-distributor-sidebar";
 import QodeDistributorHeader from "@/components/qode-distributor-header";
 import { useClient } from "@/contexts/ClientContext";
 import { FullscreenLoader } from "./portfolio/performance/page";
+import { WebAnalyticsProvider } from "@/components/web-analytics-provider";
 
 type ClientLayoutProps = {
   children: ReactNode;
@@ -32,7 +33,7 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
   if (selectedClientType === "DISTRIBUTORS") {
     // Distributor layout: show only the distributor sidebar (mobile/desktop)
     return (
-      <>
+      <WebAnalyticsProvider>
         <QodeDistributorHeader setSidebarOpen={setSidebarOpen} />
 
         <div className="my-20 p-1 sm:p-6 md:p-2 flex-1">
@@ -48,13 +49,13 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
             </main>
           </div>
         </div>
-      </>
+      </WebAnalyticsProvider>
     );
   }
 
   // Default client layout
   return (
-    <>
+    <WebAnalyticsProvider>
       <QodeHeader setSidebarOpen={setSidebarOpen} />
       <div className="my-20 p-1 sm:p-6 md:p-2 flex-1">
         <div className="flex min-h-[calc(100vh-8rem)] gap-0 sm:gap-4 items-start px-2 sm:px-6 md:px-6">
@@ -69,6 +70,6 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
           </main>
         </div>
       </div>
-    </>
+    </WebAnalyticsProvider>
   );
 }

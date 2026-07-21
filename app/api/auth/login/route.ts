@@ -124,10 +124,12 @@ export async function POST(request: NextRequest) {
        SET last_login_at = NOW(),
            login_count = COALESCE(login_count, 0) + 1,
            last_web_login_at = NOW(),
-           web_login_count = COALESCE(web_login_count, 0) + 1
+           web_login_count = COALESCE(web_login_count, 0) + 1,
+           first_web_login_at = COALESCE(first_web_login_at, NOW())
        WHERE email = $1`,
       [user.email]
     )
+    await query(`INSERT INTO login_events (email, platform) VALUES ($1, 'web')`, [user.email])
 
     // Set session cookies with head of family information
     await setSessionCookies(user)
@@ -674,10 +676,12 @@ async function handleCompletePasswordSetup(email: string, otp: string, newPasswo
        SET last_login_at = NOW(),
            login_count = COALESCE(login_count, 0) + 1,
            last_web_login_at = NOW(),
-           web_login_count = COALESCE(web_login_count, 0) + 1
+           web_login_count = COALESCE(web_login_count, 0) + 1,
+           first_web_login_at = COALESCE(first_web_login_at, NOW())
        WHERE email = $1`,
       [email]
     )
+    await query(`INSERT INTO login_events (email, platform) VALUES ($1, 'web')`, [email])
 
     return NextResponse.json({
       success: true,

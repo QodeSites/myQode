@@ -78,6 +78,8 @@ import {
   Cell,
   BarChart,
   Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -240,6 +242,13 @@ function AdminDashboardContent() {
   const [platformSort, setPlatformSort] = useState<'lastLogin' | 'name'>('lastLogin');
   const [accountTypeFilter, setAccountTypeFilter] = useState<'all' | 'investor' | 'distributor'>('all');
   const [zohoLookupLoading, setZohoLookupLoading] = useState<Set<string>>(new Set());
+  const [funnelData, setFunnelData] = useState<any>(null);
+  const [funnelLoading, setFunnelLoading] = useState(false);
+  const [retentionData, setRetentionData] = useState<any>(null);
+  const [retentionLoading, setRetentionLoading] = useState(false);
+  const [errorLogData, setErrorLogData] = useState<any>(null);
+  const [errorLogLoading, setErrorLogLoading] = useState(false);
+  const [dormancyFilter, setDormancyFilter] = useState<'all' | '30' | '60' | '90'>('all');
 
   const openInZoho = async (email: string, accountType: 'investor' | 'distributor') => {
     setZohoLookupLoading(prev => new Set(prev).add(email));
@@ -368,12 +377,57 @@ function AdminDashboardContent() {
     }
   };
 
+  const fetchOnboardingFunnel = async () => {
+    setFunnelLoading(true);
+    try {
+      const res = await fetch(`/api/admin/onboarding-funnel`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setFunnelData(data);
+    } catch (e: any) {
+      setAnalyticsError(`Onboarding funnel: ${e.message}`);
+    } finally {
+      setFunnelLoading(false);
+    }
+  };
+
+  const fetchRetentionTrend = async () => {
+    setRetentionLoading(true);
+    try {
+      const res = await fetch(`/api/admin/retention-trend?weeks=12`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setRetentionData(data);
+    } catch (e: any) {
+      setAnalyticsError(`Retention trend: ${e.message}`);
+    } finally {
+      setRetentionLoading(false);
+    }
+  };
+
+  const fetchErrorLog = async () => {
+    setErrorLogLoading(true);
+    try {
+      const res = await fetch(`/api/admin/error-log?days=30`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setErrorLogData(data);
+    } catch (e: any) {
+      setAnalyticsError(`Error log: ${e.message}`);
+    } finally {
+      setErrorLogLoading(false);
+    }
+  };
+
   const fetchAllAnalytics = (days = analyticsDays) => {
     setAnalyticsError('');
     fetchSalesData(days, vendorNumber);
     fetchPlayData(days);
     fetchMobileData(days);
     fetchPlatformActivity();
+    fetchOnboardingFunnel();
+    fetchRetentionTrend();
+    fetchErrorLog();
   };
 
   // Palette slots below are the validated first-four categorical hues from the
@@ -1583,6 +1637,111 @@ function AdminDashboardContent() {
             </CardContent>
           </Card>
 
+          {/* Onboarding funnel, split by platform */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-indigo-500" />
+                Onboarding Funnel
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Individual investors only. Account Created → Password Set → First Login (by platform)
+              </p>
+            </CardHeader>
+            <CardContent>
+              {funnelLoading ? (
+                <Skeleton className="h-40 w-full" />
+              ) : (
+                (() => {
+                  const s = funnelData?.stages;
+                  if (!s) return <p className="text-sm text-muted-foreground">No data</p>;
+                  const stages = [
+                    { label: 'Account Created', value: s.created, color: '#898781' },
+                    { label: 'Password Set', value: s.passwordSet, color: '#2a78d6' },
+                    { label: 'First Login — Web', value: s.firstWebLogin, color: PLATFORM_COLORS.web },
+                    { label: 'First Login — App', value: s.firstAppLogin, color: PLATFORM_COLORS.app },
+                  ];
+                  const max = s.created || 1;
+                  return (
+                    <div className="space-y-3">
+                      {stages.map(stage => (
+                        <div key={stage.label}>
+                          <div className="flex justify-between text-xs mb-1">
+                            <span className="font-medium">{stage.label}</span>
+                            <span className="text-muted-foreground">
+                              {stage.value.toLocaleString()} ({max ? Math.round((stage.value / max) * 100) : 0}%)
+                            </span>
+                          </div>
+                          <div className="h-3 w-full rounded-full bg-muted overflow-hidden">
+                            <div
+                              className="h-full rounded-full"
+                              style={{ width: `${max ? (stage.value / max) * 100 : 0}%`, backgroundColor: stage.color }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                      <p className="text-xs text-muted-foreground pt-1">
+                        First-login-by-platform tracking rolled out {new Date().toLocaleDateString()} — these two
+                        bars will only reflect logins from that date forward, not historical activity.
+                      </p>
+                    </div>
+                  );
+                })()
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Weekly active investors trend, by platform */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Activity className="h-4 w-4 text-indigo-500" />
+                Weekly Active Investors
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Distinct investors who logged in each week, by platform. Only covers activity since login-event
+                tracking rolled out — will be sparse until more history accumulates.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {retentionLoading ? (
+                <Skeleton className="h-64 w-full" />
+              ) : (retentionData?.weeklyActive ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground py-6 text-center">
+                  No login events recorded yet — this will populate as real logins happen.
+                </p>
+              ) : (
+                <ResponsiveContainer width="100%" height={260}>
+                  <LineChart data={retentionData.weeklyActive} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e1e0d9" />
+                    <XAxis dataKey="week" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+                    <RechartsTooltip />
+                    <Legend />
+                    <Line type="monotone" dataKey="web" name="Web" stroke={PLATFORM_COLORS.web} strokeWidth={2} dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="app" name="App" stroke={PLATFORM_COLORS.app} strokeWidth={2} dot={{ r: 3 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+              {(retentionData?.retentionD7 ?? []).length > 0 && (
+                <div className="mt-4 pt-4 border-t">
+                  <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+                    Day-7 Retention by Cohort Week
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {retentionData.retentionD7.map((c: any) => (
+                      <div key={c.cohortWeek} className="rounded-lg border p-3">
+                        <div className="text-xs text-muted-foreground">{new Date(c.cohortWeek).toLocaleDateString()}</div>
+                        <div className="text-xl font-bold">{c.retentionRate}%</div>
+                        <div className="text-xs text-muted-foreground">{c.retained}/{c.cohortSize} retained</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Per-client detail table */}
           <Card>
             <CardHeader>
@@ -1622,6 +1781,15 @@ function AdminDashboardContent() {
                       <SelectItem value="name">Sort: Name</SelectItem>
                     </SelectContent>
                   </Select>
+                  <Select value={dormancyFilter} onValueChange={(v: any) => setDormancyFilter(v)}>
+                    <SelectTrigger className="w-44"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Any dormancy</SelectItem>
+                      <SelectItem value="30">Dormant 30+ days</SelectItem>
+                      <SelectItem value="60">Dormant 60+ days</SelectItem>
+                      <SelectItem value="90">Dormant 90+ days</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <Input
                     placeholder="Search name or email…"
                     value={platformSearch}
@@ -1644,6 +1812,7 @@ function AdminDashboardContent() {
                       <TableHead>Platform</TableHead>
                       <TableHead className="text-right">Total Logins</TableHead>
                       <TableHead>Last Login (any)</TableHead>
+                      <TableHead className="text-right">Days Dormant</TableHead>
                       <TableHead>Last Web Login</TableHead>
                       <TableHead>Last App Login</TableHead>
                       <TableHead>Zoho</TableHead>
@@ -1652,9 +1821,18 @@ function AdminDashboardContent() {
                   <TableBody>
                     {(() => {
                       const q = platformSearch.trim().toLowerCase();
+                      const daysSince = (d: string | null) =>
+                        d ? Math.floor((Date.now() - new Date(d).getTime()) / 86_400_000) : null;
                       let rows = (platformActivity?.clients ?? []) as any[];
                       if (accountTypeFilter !== 'all') rows = rows.filter(c => c.accountType === accountTypeFilter);
                       if (platformFilter !== 'all') rows = rows.filter(c => c.platform === platformFilter);
+                      if (dormancyFilter !== 'all') {
+                        const threshold = parseInt(dormancyFilter);
+                        rows = rows.filter(c => {
+                          const d = daysSince(c.lastLoginAt);
+                          return d !== null && d >= threshold;
+                        });
+                      }
                       if (q) rows = rows.filter(c =>
                         (c.name ?? '').toLowerCase().includes(q) ||
                         (c.email ?? '').toLowerCase().includes(q));
@@ -1667,14 +1845,16 @@ function AdminDashboardContent() {
                       if (rows.length === 0) {
                         return (
                           <TableRow>
-                            <TableCell colSpan={9} className="text-center text-muted-foreground py-6">
+                            <TableCell colSpan={10} className="text-center text-muted-foreground py-6">
                               No matching clients
                             </TableCell>
                           </TableRow>
                         );
                       }
                       const fmt = (d: string | null) => d ? new Date(d).toLocaleString() : '—';
-                      return rows.map((c: any) => (
+                      return rows.map((c: any) => {
+                        const dormantDays = daysSince(c.lastLoginAt);
+                        return (
                         <TableRow key={c.email}>
                           <TableCell className="font-medium">{c.name || '—'}</TableCell>
                           <TableCell className="text-muted-foreground">{c.email}</TableCell>
@@ -1693,6 +1873,13 @@ function AdminDashboardContent() {
                           </TableCell>
                           <TableCell className="text-right">{c.loginCount}</TableCell>
                           <TableCell className="text-xs">{fmt(c.lastLoginAt)}</TableCell>
+                          <TableCell className="text-right text-xs">
+                            {dormantDays === null ? '—' : (
+                              <span className={dormantDays >= 60 ? 'text-red-600 font-semibold' : dormantDays >= 30 ? 'text-amber-600 font-semibold' : ''}>
+                                {dormantDays}d
+                              </span>
+                            )}
+                          </TableCell>
                           <TableCell className="text-xs">{fmt(c.lastWebLoginAt)}</TableCell>
                           <TableCell className="text-xs">{fmt(c.lastAppLoginAt)}</TableCell>
                           <TableCell>
@@ -1710,8 +1897,60 @@ function AdminDashboardContent() {
                             </Button>
                           </TableCell>
                         </TableRow>
-                      ));
+                        );
+                      });
                     })()}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Top errors, both platforms */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-red-500" />
+                Top Errors (last 30 days)
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                From Analytics.error() calls, both platforms. Sparse until more error call-sites exist in the app.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {errorLogLoading ? (
+                <div className="space-y-2">{Array(4).fill(0).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Error</TableHead>
+                      <TableHead>Platform</TableHead>
+                      <TableHead className="text-right">Occurrences</TableHead>
+                      <TableHead className="text-right">Affected Users</TableHead>
+                      <TableHead>Last Seen</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(errorLogData?.errors ?? []).length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
+                          No errors logged in this window
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      errorLogData.errors.map((e: any, i: number) => (
+                        <TableRow key={i}>
+                          <TableCell className="font-medium">{e.eventName}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">{e.platform}</Badge>
+                          </TableCell>
+                          <TableCell className="text-right text-red-600 font-semibold">{e.occurrences}</TableCell>
+                          <TableCell className="text-right">{e.affectedUsers}</TableCell>
+                          <TableCell className="text-xs">{new Date(e.lastSeen).toLocaleString()}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
                   </TableBody>
                 </Table>
               )}

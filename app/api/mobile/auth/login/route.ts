@@ -285,10 +285,12 @@ export async function POST(request: NextRequest) {
     await query(
       `UPDATE pms_clients_master
        SET last_login_at = NOW(), login_count = COALESCE(login_count, 0) + 1,
-           last_app_login_at = NOW(), app_login_count = COALESCE(app_login_count, 0) + 1
+           last_app_login_at = NOW(), app_login_count = COALESCE(app_login_count, 0) + 1,
+           first_app_login_at = COALESCE(first_app_login_at, NOW())
        WHERE email = $1`,
       [user.email]
     )
+    await query(`INSERT INTO login_events (email, platform) VALUES ($1, 'app')`, [user.email])
 
     const clientName = [user.salutation, user.firstname, user.middlename, user.lastname]
       .filter(Boolean)
