@@ -1660,6 +1660,7 @@ function AdminDashboardContent() {
                     <TableRow>
                       <TableHead>Source</TableHead>
                       <TableHead className="text-right">Total People</TableHead>
+                      <TableHead className="text-right">Duplicates</TableHead>
                       <TableHead className="text-right">Using myQode</TableHead>
                       <TableHead className="text-right">Not Using</TableHead>
                       <TableHead className="text-right">Using Rate</TableHead>
@@ -1670,6 +1671,13 @@ function AdminDashboardContent() {
                       <TableRow key={s.source}>
                         <TableCell className="font-medium">{s.source}</TableCell>
                         <TableCell className="text-right">{s.totalPeople}</TableCell>
+                        <TableCell className="text-right">
+                          {s.duplicateEmails > 0 ? (
+                            <span className="text-orange-600 font-semibold">{s.duplicateEmails}</span>
+                          ) : (
+                            <span className="text-muted-foreground">0</span>
+                          )}
+                        </TableCell>
                         <TableCell className="text-right text-green-700 font-semibold">{s.using}</TableCell>
                         <TableCell className="text-right text-muted-foreground">{s.notUsing}</TableCell>
                         <TableCell className="text-right">
@@ -1681,6 +1689,7 @@ function AdminDashboardContent() {
                     ))}
                     {(() => {
                       const totalPeople = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.totalPeople, 0);
+                      const duplicateEmails = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.duplicateEmails, 0);
                       const using = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.using, 0);
                       const notUsing = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.notUsing, 0);
                       const usingRate = totalPeople > 0 ? Math.round((using / totalPeople) * 100) : 0;
@@ -1688,6 +1697,7 @@ function AdminDashboardContent() {
                         <TableRow className="border-t-2 font-semibold bg-muted/40">
                           <TableCell>Total</TableCell>
                           <TableCell className="text-right">{totalPeople}</TableCell>
+                          <TableCell className="text-right">{duplicateEmails}</TableCell>
                           <TableCell className="text-right text-green-700">{using}</TableCell>
                           <TableCell className="text-right text-muted-foreground">{notUsing}</TableCell>
                           <TableCell className="text-right">{usingRate}%</TableCell>

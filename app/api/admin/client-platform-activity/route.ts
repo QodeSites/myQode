@@ -172,6 +172,7 @@ export async function GET() {
         using,
         notUsing,
         usingRate: totalPeople > 0 ? Math.round((using / totalPeople) * 100) : 0,
+        duplicateEmails: z?.duplicateEmails ?? 0,
       }
     }).sort((a, b) => b.totalPeople - a.totalPeople)
 
