@@ -243,12 +243,6 @@ function AdminDashboardContent() {
   const [accountTypeFilter, setAccountTypeFilter] = useState<'all' | 'investor' | 'distributor'>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [zohoLookupLoading, setZohoLookupLoading] = useState<Set<string>>(new Set());
-  const [funnelData, setFunnelData] = useState<any>(null);
-  const [funnelLoading, setFunnelLoading] = useState(false);
-  const [retentionData, setRetentionData] = useState<any>(null);
-  const [retentionLoading, setRetentionLoading] = useState(false);
-  const [errorLogData, setErrorLogData] = useState<any>(null);
-  const [errorLogLoading, setErrorLogLoading] = useState(false);
   const [investorInsights, setInvestorInsights] = useState<any>(null);
   const [investorInsightsLoading, setInvestorInsightsLoading] = useState(false);
   const [dormancyFilter, setDormancyFilter] = useState<'all' | '30' | '60' | '90'>('all');
@@ -380,48 +374,6 @@ function AdminDashboardContent() {
     }
   };
 
-  const fetchOnboardingFunnel = async () => {
-    setFunnelLoading(true);
-    try {
-      const res = await fetch(`/api/admin/onboarding-funnel`);
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setFunnelData(data);
-    } catch (e: any) {
-      setAnalyticsError(`Onboarding funnel: ${e.message}`);
-    } finally {
-      setFunnelLoading(false);
-    }
-  };
-
-  const fetchRetentionTrend = async () => {
-    setRetentionLoading(true);
-    try {
-      const res = await fetch(`/api/admin/retention-trend?weeks=12`);
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setRetentionData(data);
-    } catch (e: any) {
-      setAnalyticsError(`Retention trend: ${e.message}`);
-    } finally {
-      setRetentionLoading(false);
-    }
-  };
-
-  const fetchErrorLog = async () => {
-    setErrorLogLoading(true);
-    try {
-      const res = await fetch(`/api/admin/error-log?days=30`);
-      const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setErrorLogData(data);
-    } catch (e: any) {
-      setAnalyticsError(`Error log: ${e.message}`);
-    } finally {
-      setErrorLogLoading(false);
-    }
-  };
-
   const fetchInvestorInsights = async () => {
     setInvestorInsightsLoading(true);
     try {
@@ -442,9 +394,6 @@ function AdminDashboardContent() {
     // fetchPlayData(days);
     fetchMobileData(days);
     fetchPlatformActivity();
-    fetchOnboardingFunnel();
-    fetchRetentionTrend();
-    fetchErrorLog();
     fetchInvestorInsights();
   };
 
@@ -1738,162 +1687,7 @@ function AdminDashboardContent() {
 
           {/* ── Investor Insights: CRM + myQode combined ─────────────────────── */}
 
-          {/* 1. Onboarding-to-adoption gap */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Clock className="h-4 w-4 text-indigo-500" />
-                Onboarding-to-Adoption Gap
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">
-                Days between Zoho's Activation Date (became a funded investor) and their first login on myQode.
-              </p>
-            </CardHeader>
-            <CardContent>
-              {investorInsightsLoading ? (
-                <Skeleton className="h-32 w-full" />
-              ) : !investorInsights?.onboardingGap ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">No data available</p>
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="rounded-lg border p-3">
-                      <div className="text-xs text-muted-foreground">Activated Investors</div>
-                      <div className="text-2xl font-bold">{investorInsights.onboardingGap.activatedCount}</div>
-                    </div>
-                    <div className="rounded-lg border p-3">
-                      <div className="text-xs text-muted-foreground">Avg Days to First Login</div>
-                      <div className="text-2xl font-bold">{investorInsights.onboardingGap.avgDays ?? '—'}</div>
-                    </div>
-                    <div className="rounded-lg border p-3">
-                      <div className="text-xs text-muted-foreground">Median Days</div>
-                      <div className="text-2xl font-bold">{investorInsights.onboardingGap.medianDays ?? '—'}</div>
-                    </div>
-                    <div className="rounded-lg border p-3">
-                      <div className="text-xs text-muted-foreground">Activated, Never Logged In</div>
-                      <div className="text-2xl font-bold text-red-600">{investorInsights.onboardingGap.neverLoggedInCount}</div>
-                    </div>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-3">{investorInsights.onboardingGap.coverageNote}</p>
-
-                  {(investorInsights.onboardingGap.activatedNeverLoggedIn ?? []).length > 0 && (
-                    <div className="mt-4">
-                      <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
-                        Longest-activated investors who've never logged in
-                      </div>
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Name</TableHead>
-                            <TableHead>Email</TableHead>
-                            <TableHead>Activation Date</TableHead>
-                            <TableHead className="text-right">Days Since</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {investorInsights.onboardingGap.activatedNeverLoggedIn.slice(0, 10).map((p: any) => (
-                            <TableRow key={p.email}>
-                              <TableCell className="font-medium">{p.name}</TableCell>
-                              <TableCell className="text-muted-foreground text-xs">{p.email}</TableCell>
-                              <TableCell className="text-xs">{p.activationDate}</TableCell>
-                              <TableCell className="text-right text-red-600 font-semibold">{p.daysSinceActivation}</TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* 2. Engagement by AUM */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-indigo-500" />
-                Platform Engagement by Investment Size
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">
-                From Zoho's Invested Amount / Investor Size fields — are your biggest clients actually using the platform?
-              </p>
-            </CardHeader>
-            <CardContent>
-              {investorInsightsLoading ? (
-                <Skeleton className="h-48 w-full" />
-              ) : (investorInsights?.aumBreakdown ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">No data available</p>
-              ) : (
-                <ResponsiveContainer width="100%" height={280}>
-                  <BarChart data={investorInsights.aumBreakdown} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e1e0d9" />
-                    <XAxis dataKey="bucket" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-                    <RechartsTooltip />
-                    <Legend />
-                    <Bar dataKey="web" name="Web" stackId="a" fill={PLATFORM_COLORS.web} />
-                    <Bar dataKey="app" name="App" stackId="a" fill={PLATFORM_COLORS.app} />
-                    <Bar dataKey="both" name="Both" stackId="a" fill={PLATFORM_COLORS.both} />
-                    <Bar dataKey="never" name="Never" stackId="a" fill={PLATFORM_COLORS.never} />
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* 3. RM leaderboard */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Users className="h-4 w-4 text-indigo-500" />
-                RM Leaderboard — App/Web Adoption
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">
-                Which relationship managers' clients actually use the platform, from Zoho's Investor Owner field.
-              </p>
-            </CardHeader>
-            <CardContent>
-              {investorInsightsLoading ? (
-                <div className="space-y-2">{Array(4).fill(0).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
-              ) : (investorInsights?.rmLeaderboard ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">No data available</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>RM</TableHead>
-                      <TableHead className="text-right">Book Size</TableHead>
-                      <TableHead className="text-right">Web</TableHead>
-                      <TableHead className="text-right">App</TableHead>
-                      <TableHead className="text-right">Both</TableHead>
-                      <TableHead className="text-right">Never</TableHead>
-                      <TableHead className="text-right">Engagement Rate</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {investorInsights.rmLeaderboard.map((r: any) => (
-                      <TableRow key={r.rmName}>
-                        <TableCell className="font-medium">{r.rmName}</TableCell>
-                        <TableCell className="text-right">{r.total}</TableCell>
-                        <TableCell className="text-right" style={{ color: PLATFORM_COLORS.web }}>{r.web}</TableCell>
-                        <TableCell className="text-right" style={{ color: PLATFORM_COLORS.app }}>{r.app}</TableCell>
-                        <TableCell className="text-right" style={{ color: PLATFORM_COLORS.both }}>{r.both}</TableCell>
-                        <TableCell className="text-right text-muted-foreground">{r.never}</TableCell>
-                        <TableCell className="text-right">
-                          <span className={r.engagementRate >= 70 ? 'text-green-700 font-semibold' : r.engagementRate <= 30 ? 'text-red-600 font-semibold' : ''}>
-                            {r.engagementRate}%
-                          </span>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* 4. Cohort trend by activation month */}
+          {/* Cohort trend by activation month */}
           <Card>
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
@@ -1972,110 +1766,6 @@ function AdminDashboardContent() {
             </CardContent>
           </Card>
 
-          {/* Onboarding funnel, split by platform */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-indigo-500" />
-                Onboarding Funnel
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">
-                Individual investors only. Account Created → Password Set → First Login (by platform)
-              </p>
-            </CardHeader>
-            <CardContent>
-              {funnelLoading ? (
-                <Skeleton className="h-40 w-full" />
-              ) : (
-                (() => {
-                  const s = funnelData?.stages;
-                  if (!s) return <p className="text-sm text-muted-foreground">No data</p>;
-                  const stages = [
-                    { label: 'Account Created', value: s.created, color: '#898781' },
-                    { label: 'Password Set', value: s.passwordSet, color: '#2a78d6' },
-                    { label: 'First Login — Web', value: s.firstWebLogin, color: PLATFORM_COLORS.web },
-                    { label: 'First Login — App', value: s.firstAppLogin, color: PLATFORM_COLORS.app },
-                  ];
-                  const max = s.created || 1;
-                  return (
-                    <div className="space-y-3">
-                      {stages.map(stage => (
-                        <div key={stage.label}>
-                          <div className="flex justify-between text-xs mb-1">
-                            <span className="font-medium">{stage.label}</span>
-                            <span className="text-muted-foreground">
-                              {stage.value.toLocaleString()} ({max ? Math.round((stage.value / max) * 100) : 0}%)
-                            </span>
-                          </div>
-                          <div className="h-3 w-full rounded-full bg-muted overflow-hidden">
-                            <div
-                              className="h-full rounded-full"
-                              style={{ width: `${max ? (stage.value / max) * 100 : 0}%`, backgroundColor: stage.color }}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                      <p className="text-xs text-muted-foreground pt-1">
-                        First-login-by-platform tracking rolled out {new Date().toLocaleDateString()} — these two
-                        bars will only reflect logins from that date forward, not historical activity.
-                      </p>
-                    </div>
-                  );
-                })()
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Weekly active investors trend, by platform */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Activity className="h-4 w-4 text-indigo-500" />
-                Weekly Active Investors
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">
-                Distinct investors who logged in each week, by platform. Only covers activity since login-event
-                tracking rolled out — will be sparse until more history accumulates.
-              </p>
-            </CardHeader>
-            <CardContent>
-              {retentionLoading ? (
-                <Skeleton className="h-64 w-full" />
-              ) : (retentionData?.weeklyActive ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground py-6 text-center">
-                  No login events recorded yet — this will populate as real logins happen.
-                </p>
-              ) : (
-                <ResponsiveContainer width="100%" height={260}>
-                  <LineChart data={retentionData.weeklyActive} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e1e0d9" />
-                    <XAxis dataKey="week" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-                    <RechartsTooltip />
-                    <Legend />
-                    <Line type="monotone" dataKey="web" name="Web" stroke={PLATFORM_COLORS.web} strokeWidth={2} dot={{ r: 3 }} />
-                    <Line type="monotone" dataKey="app" name="App" stroke={PLATFORM_COLORS.app} strokeWidth={2} dot={{ r: 3 }} />
-                  </LineChart>
-                </ResponsiveContainer>
-              )}
-              {(retentionData?.retentionD7 ?? []).length > 0 && (
-                <div className="mt-4 pt-4 border-t">
-                  <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
-                    Day-7 Retention by Cohort Week
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                    {retentionData.retentionD7.map((c: any) => (
-                      <div key={c.cohortWeek} className="rounded-lg border p-3">
-                        <div className="text-xs text-muted-foreground">{new Date(c.cohortWeek).toLocaleDateString()}</div>
-                        <div className="text-xl font-bold">{c.retentionRate}%</div>
-                        <div className="text-xs text-muted-foreground">{c.retained}/{c.cohortSize} retained</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </CardContent>
-          </Card>
 
           {/* Per-client detail table */}
           <Card>
@@ -2276,56 +1966,6 @@ function AdminDashboardContent() {
             </CardContent>
           </Card>
 
-          {/* Top errors, both platforms */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-red-500" />
-                Top Errors (last 30 days)
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">
-                From Analytics.error() calls, both platforms. Sparse until more error call-sites exist in the app.
-              </p>
-            </CardHeader>
-            <CardContent>
-              {errorLogLoading ? (
-                <div className="space-y-2">{Array(4).fill(0).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Error</TableHead>
-                      <TableHead>Platform</TableHead>
-                      <TableHead className="text-right">Occurrences</TableHead>
-                      <TableHead className="text-right">Affected Users</TableHead>
-                      <TableHead>Last Seen</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {(errorLogData?.errors ?? []).length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={5} className="text-center text-muted-foreground py-6">
-                          No errors logged in this window
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      errorLogData.errors.map((e: any, i: number) => (
-                        <TableRow key={i}>
-                          <TableCell className="font-medium">{e.eventName}</TableCell>
-                          <TableCell>
-                            <Badge variant="outline">{e.platform}</Badge>
-                          </TableCell>
-                          <TableCell className="text-right text-red-600 font-semibold">{e.occurrences}</TableCell>
-                          <TableCell className="text-right">{e.affectedUsers}</TableCell>
-                          <TableCell className="text-xs">{new Date(e.lastSeen).toLocaleString()}</TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
 
         </TabsContent>
 
