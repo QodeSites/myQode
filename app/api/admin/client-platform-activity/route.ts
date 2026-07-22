@@ -159,14 +159,19 @@ export async function GET() {
     // matching myQode account exists) vs. how many of those actually have one.
     // zohoActivated is Zoho's own "reached the funding/conversion milestone"
     // marker (Activation_Date set) — NOT the same thing as myqodeMatched.
+    //
+    // zohoTotal = raw record count — matches what you see filtering the
+    // Investors list view in Zoho directly, since that view doesn't dedupe.
+    // zohoDistinctPeople = same records collapsed by email (a few people
+    // have more than one Zoho record — see duplicateEmails).
     const myqodeBySource = new Map(sourceBreakdown.map(s => [s.source, s.total]))
     const sourceReconciliation = zohoSourceTotals.map(z => ({
       source: z.source,
-      zohoTotal: z.zohoTotal,
+      zohoTotal: z.rawRecords,
+      zohoDistinctPeople: z.zohoTotal,
       zohoActivated: z.zohoActivated,
       myqodeMatched: myqodeBySource.get(z.source) ?? 0,
       duplicateEmails: z.duplicateEmails,
-      rawRecords: z.rawRecords,
     })).sort((a, b) => b.zohoTotal - a.zohoTotal)
 
     return NextResponse.json({ clients, summary, sourceBreakdown, sourceReconciliation })

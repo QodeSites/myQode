@@ -1734,11 +1734,12 @@ function AdminDashboardContent() {
               </CardTitle>
               <p className="text-xs text-muted-foreground mt-1">
                 Why Zoho's numbers and myQode's numbers for the same source don't always match. "Zoho Total" is
-                distinct people with that source (raw record count shown in parens when higher — some people have
-                multiple Zoho records); "Duplicate Emails" is how many people that affects; "Zoho Activated" is
-                Zoho's own Activation_Date milestone (what the CRM's "Investor Funding Conversion" dashboard
-                counts); "myQode Matched" is how many actually have a real client account here. These are
-                different questions, not the same number measured three ways.
+                the raw record count — matches what you see filtering the Investors list view in Zoho directly
+                (people count shown in parens when lower — a few people have more than one Zoho record, see
+                "Duplicate Emails"); "Zoho Activated" is Zoho's own Activation_Date milestone (what the CRM's
+                "Investor Funding Conversion" dashboard counts); "myQode Matched" is how many actually have a real
+                client account here, as a % of distinct people. These are different questions, not the same
+                number measured three ways.
               </p>
             </CardHeader>
             <CardContent>
@@ -1760,14 +1761,14 @@ function AdminDashboardContent() {
                   </TableHeader>
                   <TableBody>
                     {platformActivity.sourceReconciliation.map((s: any) => {
-                      const matchRate = s.zohoTotal > 0 ? Math.round((s.myqodeMatched / s.zohoTotal) * 100) : 0;
+                      const matchRate = s.zohoDistinctPeople > 0 ? Math.round((s.myqodeMatched / s.zohoDistinctPeople) * 100) : 0;
                       return (
                         <TableRow key={s.source}>
                           <TableCell className="font-medium">{s.source}</TableCell>
                           <TableCell className="text-right">
                             {s.zohoTotal}
-                            {s.rawRecords > s.zohoTotal && (
-                              <span className="text-muted-foreground text-xs"> ({s.rawRecords} raw)</span>
+                            {s.zohoDistinctPeople < s.zohoTotal && (
+                              <span className="text-muted-foreground text-xs"> ({s.zohoDistinctPeople} people)</span>
                             )}
                           </TableCell>
                           <TableCell className="text-right">
