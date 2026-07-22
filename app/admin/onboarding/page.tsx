@@ -1679,6 +1679,21 @@ function AdminDashboardContent() {
                         </TableCell>
                       </TableRow>
                     ))}
+                    {(() => {
+                      const totalPeople = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.totalPeople, 0);
+                      const using = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.using, 0);
+                      const notUsing = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.notUsing, 0);
+                      const usingRate = totalPeople > 0 ? Math.round((using / totalPeople) * 100) : 0;
+                      return (
+                        <TableRow className="border-t-2 font-semibold bg-muted/40">
+                          <TableCell>Total</TableCell>
+                          <TableCell className="text-right">{totalPeople}</TableCell>
+                          <TableCell className="text-right text-green-700">{using}</TableCell>
+                          <TableCell className="text-right text-muted-foreground">{notUsing}</TableCell>
+                          <TableCell className="text-right">{usingRate}%</TableCell>
+                        </TableRow>
+                      );
+                    })()}
                   </TableBody>
                 </Table>
               )}
