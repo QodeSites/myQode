@@ -103,7 +103,7 @@ async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> 
 
   const token = await getAccessToken()
   const domain = crmApiDomain()
-  const map = new Map<string, ZohoInvestorRecord>()
+  const rawByEmail = new Map<string, Array<{ source: string; activated: boolean }>>()
 
   let page = 1
   let more = true
@@ -123,16 +123,38 @@ async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> 
     for (const rec of data.data ?? []) {
       if (!rec.Email) continue
       const key = rec.Email.toLowerCase()
-      // Duplicate records for the same email: prefer the one with an
-      // Activation_Date set, so a duplicate doesn't hide a real conversion.
-      const existing = map.get(key)
-      const activated = Boolean(rec.Activation_Date)
-      if (!existing || (activated && !existing.activated)) {
-        map.set(key, { source: rec.Investor_Source || '-None-', activated })
-      }
+      if (!rawByEmail.has(key)) rawByEmail.set(key, [])
+      rawByEmail.get(key)!.push({
+        source: rec.Investor_Source || '-None-',
+        activated: Boolean(rec.Activation_Date),
+      })
     }
     more = Boolean(data.info?.more_records)
     page += 1
+  }
+
+  // A handful of emails have multiple Zoho records under DIFFERENT sources
+  // (e.g. one "Investor Referral" record and several "Personal Relation"
+  // ones for the same person). Picking whichever happened to load first
+  // made counts unstable across fetches. Instead: majority source wins
+  // (ties broken by first-seen), and activated = true if ANY of their
+  // records reached the milestone.
+  const map = new Map<string, ZohoInvestorRecord>()
+  for (const [email, recs] of rawByEmail) {
+    const counts = new Map<string, number>()
+    for (const r of recs) counts.set(r.source, (counts.get(r.source) ?? 0) + 1)
+    let majoritySource = recs[0].source
+    let bestCount = 0
+    for (const [source, count] of counts) {
+      if (count > bestCount) {
+        bestCount = count
+        majoritySource = source
+      }
+    }
+    map.set(email, {
+      source: majoritySource,
+      activated: recs.some(r => r.activated),
+    })
   }
 
   sourceCache = { data: map, expiresAt: Date.now() + SOURCE_CACHE_TTL_MS }
