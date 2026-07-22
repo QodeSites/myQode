@@ -11,7 +11,7 @@
 //                  (login_count > 0 but web/app counters are still 0)
 import { NextResponse } from 'next/server'
 import { query } from '@/lib/db'
-import { getInvestorSourceMap, getZohoSourceTotals } from '@/lib/zoho'
+import { getInvestorSourceMap, getRawInvestorRecords } from '@/lib/zoho'
 
 export async function GET() {
   try {
@@ -19,10 +19,10 @@ export async function GET() {
     // shouldn't take down the whole dashboard, so this degrades to "unknown"
     // per client rather than failing the request.
     let sourceMap = new Map<string, string>()
-    let zohoSourceTotals: Array<{ source: string; zohoTotal: number; zohoActivated: number; duplicateEmails: number; rawRecords: number }> = []
+    let rawZohoRecords: Array<{ email: string; source: string; activated: boolean }> = []
     try {
       sourceMap = await getInvestorSourceMap()
-      zohoSourceTotals = await getZohoSourceTotals()
+      rawZohoRecords = await getRawInvestorRecords()
     } catch (err) {
       console.error('[admin/client-platform-activity] Zoho source fetch failed:', err)
     }
@@ -142,45 +142,37 @@ export async function GET() {
       distributors: bucket(distributors),
     }
 
-    // Which Investor_Source brings the most web/app users — investors only.
-    const bySource = new Map<string, { source: string; web: number; app: number; both: number; never: number; unclassified: number; total: number }>()
-    for (const c of investors) {
-      const key = c.investorSource ?? 'Unknown (not in Zoho)'
-      if (!bySource.has(key)) {
-        bySource.set(key, { source: key, web: 0, app: 0, both: 0, never: 0, unclassified: 0, total: 0 })
-      }
-      const entry = bySource.get(key)!
+    // Platform Usage by Investor Source — counted by RAW ZOHO RECORD, not
+    // deduped by email. A shared email (e.g. a family office where several
+    // members'/HUFs' separate accounts list one contact email) represents
+    // genuinely distinct investors, each with their own record and their own
+    // funded status — collapsing them by email undercounts real investors.
+    // Where a record's email has myQode login activity, that activity is
+    // attributed to every record sharing that email, since myQode itself
+    // can't tell which family member behind a shared login actually logged in.
+    const emailToPlatform = new Map(investors.map(c => [c.email.toLowerCase(), c.platform]))
+    const bySource = new Map<string, { source: string; total: number; funded: number; using: number }>()
+    for (const r of rawZohoRecords) {
+      if (!bySource.has(r.source)) bySource.set(r.source, { source: r.source, total: 0, funded: 0, using: 0 })
+      const entry = bySource.get(r.source)!
       entry.total += 1
-      entry[c.platform] += 1
+      if (r.activated) entry.funded += 1
+      const platform = emailToPlatform.get(r.email)
+      if (platform === 'web' || platform === 'app' || platform === 'both') entry.using += 1
     }
 
-    // Simple version: out of every unique person Zoho has for this source,
-    // how many actually use myQode (logged in at least once, any platform)
-    // vs. don't (either no myQode account at all, or an account they've
-    // never logged into). One question, one pair of numbers, per source.
-    const zohoBySource = new Map(zohoSourceTotals.map(z => [z.source, z]))
-    const allSourceKeys = new Set([...bySource.keys(), ...zohoBySource.keys()])
-    const sourceInsights = Array.from(allSourceKeys).map(source => {
-      const my = bySource.get(source)
-      const z = zohoBySource.get(source)
-      const totalPeople = z?.zohoTotal ?? my?.total ?? 0
-      const using = (my?.web ?? 0) + (my?.app ?? 0) + (my?.both ?? 0)
-      const notUsing = Math.max(totalPeople - using, 0)
-      const zohoFunded = z?.zohoActivated ?? 0
-      return {
-        source,
-        totalPeople,
-        duplicateEmails: z?.duplicateEmails ?? 0,
-        // Zoho side: reached the CRM's own funding/conversion milestone
-        // (Activation_Date set) — a business/investment status, not app usage.
-        zohoFunded,
-        zohoFundedRate: totalPeople > 0 ? Math.round((zohoFunded / totalPeople) * 100) : 0,
-        // myQode side: actually logged into the app or website at least once.
-        using,
-        notUsing,
-        usingRate: totalPeople > 0 ? Math.round((using / totalPeople) * 100) : 0,
-      }
-    }).sort((a, b) => b.totalPeople - a.totalPeople)
+    const sourceInsights = Array.from(bySource.values()).map(s => ({
+      source: s.source,
+      totalPeople: s.total,
+      // Zoho side: reached the CRM's own funding/conversion milestone
+      // (Activation_Date set) — a business/investment status, not app usage.
+      zohoFunded: s.funded,
+      zohoFundedRate: s.total > 0 ? Math.round((s.funded / s.total) * 100) : 0,
+      // myQode side: the record's email has logged into the app or website.
+      using: s.using,
+      notUsing: s.total - s.using,
+      usingRate: s.total > 0 ? Math.round((s.using / s.total) * 100) : 0,
+    })).sort((a, b) => b.totalPeople - a.totalPeople)
 
     return NextResponse.json({ clients, summary, sourceInsights })
   } catch (err: any) {

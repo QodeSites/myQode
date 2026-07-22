@@ -112,6 +112,7 @@ type RawRecord = {
 }
 
 let sourceCache: { data: Map<string, ZohoInvestorRecord>; expiresAt: number } | null = null
+let rawRecordsCache: { data: Array<{ email: string; source: string; activated: boolean }>; expiresAt: number } | null = null
 const SOURCE_CACHE_TTL_MS = 5 * 60 * 1000
 
 async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> {
@@ -120,6 +121,7 @@ async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> 
   const token = await getAccessToken()
   const domain = crmApiDomain()
   const rawByEmail = new Map<string, RawRecord[]>()
+  const flatRawRecords: Array<{ email: string; source: string; activated: boolean }> = []
 
   let page = 1
   let more = true
@@ -148,15 +150,18 @@ async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> 
       if (!rec.Email) continue
       const key = rec.Email.toLowerCase()
       if (!rawByEmail.has(key)) rawByEmail.set(key, [])
+      const source = rec.Investor_Source || '-None-'
+      const activated = Boolean(rec.Activation_Date)
       rawByEmail.get(key)!.push({
-        source: rec.Investor_Source || '-None-',
-        activated: Boolean(rec.Activation_Date),
+        source,
+        activated,
         activationDate: rec.Activation_Date ?? null,
         investorSize: rec.Investor_Size != null ? parseFloat(String(rec.Investor_Size)) : null,
         investedAmount: rec.Invested_Amount != null ? parseFloat(String(rec.Invested_Amount)) : null,
         ownerName: rec.Owner?.name ?? null,
         annualReviewStatus: rec.Annual_Review_Status ?? null,
       })
+      flatRawRecords.push({ email: key, source, activated })
     }
     more = Boolean(data.info?.more_records)
     page += 1
@@ -195,7 +200,19 @@ async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> 
   }
 
   sourceCache = { data: map, expiresAt: Date.now() + SOURCE_CACHE_TTL_MS }
+  rawRecordsCache = { data: flatRawRecords, expiresAt: Date.now() + SOURCE_CACHE_TTL_MS }
   return map
+}
+
+async function fetchFlatRawRecords(): Promise<Array<{ email: string; source: string; activated: boolean }>> {
+  if (rawRecordsCache && rawRecordsCache.expiresAt > Date.now()) return rawRecordsCache.data
+  await fetchInvestorRecords() // populates rawRecordsCache as a side effect
+  return rawRecordsCache?.data ?? []
+}
+
+/** Every raw Zoho Investors record (email, source, activated) — not deduped. */
+export async function getRawInvestorRecords(): Promise<Array<{ email: string; source: string; activated: boolean }>> {
+  return fetchFlatRawRecords()
 }
 
 /** Full per-email Zoho record — used for cross-cutting analytics (AUM, RM, activation timing). */
@@ -212,30 +229,27 @@ export async function getInvestorSourceMap(): Promise<Map<string, string>> {
 }
 
 /**
- * Per-source totals straight from Zoho (deduped by email), independent of
- * whether that person has a matching account in myQode. Used to reconcile
- * against myQode's own per-source counts.
+ * Per-source totals, counted by RAW RECORD — not deduped by email.
+ *
+ * Zoho records genuinely represent distinct investor entities even when they
+ * share an email address (e.g. a family office where several members' or
+ * HUFs' separate accounts all list one shared contact email) — so counting
+ * records is the accurate "how many real investors" number, not an inflated
+ * one. This replaced an earlier email-deduped version that undercounted
+ * families sharing an email.
  */
 export async function getZohoSourceTotals(): Promise<
-  Array<{ source: string; zohoTotal: number; zohoActivated: number; duplicateEmails: number; rawRecords: number }>
+  Array<{ source: string; total: number; activated: number }>
 > {
-  const records = await fetchInvestorRecords()
-  const bySource = new Map<string, { total: number; activated: number; duplicateEmails: number; rawRecords: number }>()
-  for (const r of records.values()) {
-    if (!bySource.has(r.source)) bySource.set(r.source, { total: 0, activated: 0, duplicateEmails: 0, rawRecords: 0 })
+  const flat = await fetchFlatRawRecords()
+  const bySource = new Map<string, { total: number; activated: number }>()
+  for (const r of flat) {
+    if (!bySource.has(r.source)) bySource.set(r.source, { total: 0, activated: 0 })
     const entry = bySource.get(r.source)!
     entry.total += 1
-    entry.rawRecords += r.recordCount
     if (r.activated) entry.activated += 1
-    if (r.recordCount > 1) entry.duplicateEmails += 1
   }
   return Array.from(bySource.entries())
-    .map(([source, v]) => ({
-      source,
-      zohoTotal: v.total,
-      zohoActivated: v.activated,
-      duplicateEmails: v.duplicateEmails,
-      rawRecords: v.rawRecords,
-    }))
-    .sort((a, b) => b.zohoTotal - a.zohoTotal)
+    .map(([source, v]) => ({ source, total: v.total, activated: v.activated }))
+    .sort((a, b) => b.total - a.total)
 }

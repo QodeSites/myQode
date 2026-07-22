@@ -1645,9 +1645,10 @@ function AdminDashboardContent() {
                 Platform Usage by Investor Source
               </CardTitle>
               <p className="text-xs text-muted-foreground mt-1">
-                Two different questions, side by side: did they fund an investment (Zoho's CRM status) vs. do
-                they actually use myQode (real login activity). A source can score high on one and low on the
-                other — that's a real gap, not an error.
+                Counted per real investor from Zoho, matching the same numbers you'd see in Zoho's own funnel
+                dashboard. Two different questions side by side: did they fund an investment (Zoho's CRM status)
+                vs. do they actually use myQode (real login activity) — a source can score high on one and low
+                on the other, that's a real gap, not an error.
               </p>
             </CardHeader>
             <CardContent>
@@ -1661,8 +1662,7 @@ function AdminDashboardContent() {
                     <TableHeader>
                       <TableRow>
                         <TableHead rowSpan={2} className="align-bottom">Source</TableHead>
-                        <TableHead rowSpan={2} className="text-right align-bottom">Total People</TableHead>
-                        <TableHead rowSpan={2} className="text-right align-bottom">Duplicates</TableHead>
+                        <TableHead rowSpan={2} className="text-right align-bottom">Total Investors</TableHead>
                         <TableHead colSpan={2} className="text-center border-l">Zoho CRM — Funded</TableHead>
                         <TableHead colSpan={3} className="text-center border-l">myQode — Actually Using</TableHead>
                       </TableRow>
@@ -1679,13 +1679,6 @@ function AdminDashboardContent() {
                         <TableRow key={s.source}>
                           <TableCell className="font-medium">{s.source}</TableCell>
                           <TableCell className="text-right">{s.totalPeople}</TableCell>
-                          <TableCell className="text-right">
-                            {s.duplicateEmails > 0 ? (
-                              <span className="text-orange-600 font-semibold">{s.duplicateEmails}</span>
-                            ) : (
-                              <span className="text-muted-foreground">0</span>
-                            )}
-                          </TableCell>
                           <TableCell className="text-right border-l text-amber-700 font-semibold">{s.zohoFunded}</TableCell>
                           <TableCell className="text-right text-muted-foreground">{s.zohoFundedRate}%</TableCell>
                           <TableCell className="text-right border-l text-green-700 font-semibold">{s.using}</TableCell>
@@ -1699,7 +1692,6 @@ function AdminDashboardContent() {
                       ))}
                       {(() => {
                         const totalPeople = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.totalPeople, 0);
-                        const duplicateEmails = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.duplicateEmails, 0);
                         const zohoFunded = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.zohoFunded, 0);
                         const using = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.using, 0);
                         const notUsing = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.notUsing, 0);
@@ -1709,7 +1701,6 @@ function AdminDashboardContent() {
                           <TableRow className="border-t-2 font-semibold bg-muted/40">
                             <TableCell>Total</TableCell>
                             <TableCell className="text-right">{totalPeople}</TableCell>
-                            <TableCell className="text-right">{duplicateEmails}</TableCell>
                             <TableCell className="text-right border-l text-amber-700">{zohoFunded}</TableCell>
                             <TableCell className="text-right text-muted-foreground">{zohoFundedRate}%</TableCell>
                             <TableCell className="text-right border-l text-green-700">{using}</TableCell>
