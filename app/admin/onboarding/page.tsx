@@ -1725,6 +1725,56 @@ function AdminDashboardContent() {
             </CardContent>
           </Card>
 
+          {/* CRM vs myQode reconciliation, per source */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                CRM vs myQode — Investor Source Reconciliation
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Why Zoho's numbers and myQode's numbers for the same source don't always match. "Zoho Total" is
+                every record with that source (deduped by email); "Zoho Activated" is Zoho's own Activation_Date
+                milestone (what the CRM's "Investor Funding Conversion" dashboard counts); "myQode Matched" is how
+                many of those actually have a real client account here. These are three different questions, not
+                the same number measured three times.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {platformActivityLoading ? (
+                <div className="space-y-2">{Array(5).fill(0).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+              ) : (platformActivity?.sourceReconciliation ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">No reconciliation data available</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Source</TableHead>
+                      <TableHead className="text-right">Zoho Total</TableHead>
+                      <TableHead className="text-right">Zoho Activated</TableHead>
+                      <TableHead className="text-right">myQode Matched</TableHead>
+                      <TableHead className="text-right">Match Rate</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {platformActivity.sourceReconciliation.map((s: any) => {
+                      const matchRate = s.zohoTotal > 0 ? Math.round((s.myqodeMatched / s.zohoTotal) * 100) : 0;
+                      return (
+                        <TableRow key={s.source}>
+                          <TableCell className="font-medium">{s.source}</TableCell>
+                          <TableCell className="text-right">{s.zohoTotal}</TableCell>
+                          <TableCell className="text-right text-amber-600">{s.zohoActivated}</TableCell>
+                          <TableCell className="text-right text-indigo-600">{s.myqodeMatched}</TableCell>
+                          <TableCell className="text-right text-muted-foreground">{matchRate}%</TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Onboarding funnel, split by platform */}
           <Card>
             <CardHeader>

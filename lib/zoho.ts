@@ -77,27 +77,39 @@ export async function findZohoRecordUrlByEmail(
   return `https://crm.zoho.${DATA_CENTER}/crm/org${ORG_ID}/tab/${tab}/${recordId}`
 }
 
-// ── Bulk Investor_Source lookup ──────────────────────────────────────────────
+// ── Bulk Investor_Source + Activation_Date lookup ────────────────────────────
 // Investor_Source is a picklist field on the Investors module (values like
-// "Whatsapp", "Website", "Google Ads", "Distributor", etc.). Cached in-memory
-// for a few minutes — this is a full-module listing, not worth re-fetching on
-// every dashboard load, and Zoho API calls are rate-limited.
+// "Whatsapp", "Website", "Google Ads", "Distributor", etc.). Activation_Date
+// is Zoho's own "reached the funding/conversion milestone" marker — this is
+// what the "Investor Funding Conversion" CRM dashboard component counts, and
+// it does NOT mean "has a real myQode account" (that's a separate, smaller
+// overlap we compute against pms_clients_master).
+//
+// Cached in-memory for a few minutes — this is a full-module listing, not
+// worth re-fetching on every dashboard load, and Zoho API calls are
+// rate-limited. Raw records are deduped by email (Zoho has some duplicate
+// records per person) before being cached.
 
-let sourceCache: { data: Map<string, string>; expiresAt: number } | null = null
+export interface ZohoInvestorRecord {
+  source: string
+  activated: boolean
+}
+
+let sourceCache: { data: Map<string, ZohoInvestorRecord>; expiresAt: number } | null = null
 const SOURCE_CACHE_TTL_MS = 5 * 60 * 1000
 
-export async function getInvestorSourceMap(): Promise<Map<string, string>> {
+async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> {
   if (sourceCache && sourceCache.expiresAt > Date.now()) return sourceCache.data
 
   const token = await getAccessToken()
   const domain = crmApiDomain()
-  const map = new Map<string, string>()
+  const map = new Map<string, ZohoInvestorRecord>()
 
   let page = 1
   let more = true
   while (more) {
     const res = await fetch(
-      `${domain}/crm/v2/Investors?fields=Email,Investor_Source&per_page=200&page=${page}`,
+      `${domain}/crm/v2/Investors?fields=Email,Investor_Source,Activation_Date&per_page=200&page=${page}`,
       { headers: { Authorization: `Zoho-oauthtoken ${token}` }, cache: 'no-store' }
     )
     if (res.status === 204) break // no (more) records
@@ -105,11 +117,19 @@ export async function getInvestorSourceMap(): Promise<Map<string, string>> {
       throw new Error(`Zoho Investors listing failed: ${res.status} ${await res.text()}`)
     }
     const data = (await res.json()) as {
-      data?: Array<{ Email?: string; Investor_Source?: string }>
+      data?: Array<{ Email?: string; Investor_Source?: string; Activation_Date?: string }>
       info?: { more_records?: boolean }
     }
     for (const rec of data.data ?? []) {
-      if (rec.Email) map.set(rec.Email.toLowerCase(), rec.Investor_Source || '-None-')
+      if (!rec.Email) continue
+      const key = rec.Email.toLowerCase()
+      // Duplicate records for the same email: prefer the one with an
+      // Activation_Date set, so a duplicate doesn't hide a real conversion.
+      const existing = map.get(key)
+      const activated = Boolean(rec.Activation_Date)
+      if (!existing || (activated && !existing.activated)) {
+        map.set(key, { source: rec.Investor_Source || '-None-', activated })
+      }
     }
     more = Boolean(data.info?.more_records)
     page += 1
@@ -117,4 +137,33 @@ export async function getInvestorSourceMap(): Promise<Map<string, string>> {
 
   sourceCache = { data: map, expiresAt: Date.now() + SOURCE_CACHE_TTL_MS }
   return map
+}
+
+/** email (lowercase) -> Investor_Source, for merging into per-client rows. */
+export async function getInvestorSourceMap(): Promise<Map<string, string>> {
+  const records = await fetchInvestorRecords()
+  const map = new Map<string, string>()
+  for (const [email, r] of records) map.set(email, r.source)
+  return map
+}
+
+/**
+ * Per-source totals straight from Zoho (deduped by email), independent of
+ * whether that person has a matching account in myQode. Used to reconcile
+ * against myQode's own per-source counts.
+ */
+export async function getZohoSourceTotals(): Promise<
+  Array<{ source: string; zohoTotal: number; zohoActivated: number }>
+> {
+  const records = await fetchInvestorRecords()
+  const bySource = new Map<string, { total: number; activated: number }>()
+  for (const r of records.values()) {
+    if (!bySource.has(r.source)) bySource.set(r.source, { total: 0, activated: 0 })
+    const entry = bySource.get(r.source)!
+    entry.total += 1
+    if (r.activated) entry.activated += 1
+  }
+  return Array.from(bySource.entries())
+    .map(([source, v]) => ({ source, zohoTotal: v.total, zohoActivated: v.activated }))
+    .sort((a, b) => b.zohoTotal - a.zohoTotal)
 }

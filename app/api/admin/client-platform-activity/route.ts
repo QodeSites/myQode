@@ -11,7 +11,7 @@
 //                  (login_count > 0 but web/app counters are still 0)
 import { NextResponse } from 'next/server'
 import { query } from '@/lib/db'
-import { getInvestorSourceMap } from '@/lib/zoho'
+import { getInvestorSourceMap, getZohoSourceTotals } from '@/lib/zoho'
 
 export async function GET() {
   try {
@@ -19,8 +19,10 @@ export async function GET() {
     // shouldn't take down the whole dashboard, so this degrades to "unknown"
     // per client rather than failing the request.
     let sourceMap = new Map<string, string>()
+    let zohoSourceTotals: Array<{ source: string; zohoTotal: number; zohoActivated: number }> = []
     try {
       sourceMap = await getInvestorSourceMap()
+      zohoSourceTotals = await getZohoSourceTotals()
     } catch (err) {
       console.error('[admin/client-platform-activity] Zoho source fetch failed:', err)
     }
@@ -153,7 +155,19 @@ export async function GET() {
     }
     const sourceBreakdown = Array.from(bySource.values()).sort((a, b) => b.total - a.total)
 
-    return NextResponse.json({ clients, summary, sourceBreakdown })
+    // Reconciliation: Zoho's raw per-source totals (independent of whether a
+    // matching myQode account exists) vs. how many of those actually have one.
+    // zohoActivated is Zoho's own "reached the funding/conversion milestone"
+    // marker (Activation_Date set) — NOT the same thing as myqodeMatched.
+    const myqodeBySource = new Map(sourceBreakdown.map(s => [s.source, s.total]))
+    const sourceReconciliation = zohoSourceTotals.map(z => ({
+      source: z.source,
+      zohoTotal: z.zohoTotal,
+      zohoActivated: z.zohoActivated,
+      myqodeMatched: myqodeBySource.get(z.source) ?? 0,
+    })).sort((a, b) => b.zohoTotal - a.zohoTotal)
+
+    return NextResponse.json({ clients, summary, sourceBreakdown, sourceReconciliation })
   } catch (err: any) {
     console.error('[admin/client-platform-activity]', err)
     return NextResponse.json({ error: err?.message ?? 'Internal server error' }, { status: 500 })
