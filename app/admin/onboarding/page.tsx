@@ -1529,7 +1529,9 @@ function AdminDashboardContent() {
                 Web vs App — Platform Analytics
               </CardTitle>
               <p className="text-xs text-muted-foreground mt-1">
-                Real login activity only, from pms_clients_master — no modeled/estimated numbers.
+                Real login activity only, from pms_clients_master — no modeled/estimated numbers. Counted per
+                myQode login account (one per email — a family sharing one email logs in as a single account
+                here, unlike the record-level counts in the Investor Source table below).
                 Distributor/intermediary firm accounts are excluded from these charts (see note below).
               </p>
             </CardHeader>
@@ -1728,7 +1730,9 @@ function AdminDashboardContent() {
                     Adoption Trend by Cohort
                   </CardTitle>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Investors grouped by the month they were activated in Zoho — is app/web adoption improving over time?
+                    myQode accounts grouped by the month they were activated in Zoho — is app/web adoption
+                    improving over time? One row per myQode account; a shared family email uses its earliest
+                    activation date.
                   </p>
                 </div>
                 <Select value={cohortRange} onValueChange={(v: any) => setCohortRange(v)}>
