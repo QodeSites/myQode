@@ -1655,32 +1655,32 @@ function AdminDashboardContent() {
               ) : (platformActivity?.sourceInsights ?? []).length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4 text-center">No source data available</p>
               ) : (
-                <div className="space-y-4">
-                  {platformActivity.sourceInsights.map((s: any) => (
-                    <div key={s.source}>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span className="font-medium">{s.source}</span>
-                        <span className="text-muted-foreground">
-                          {s.using} using / {s.totalPeople} total ({s.usingRate}%)
-                        </span>
-                      </div>
-                      <div className="h-4 w-full rounded-full bg-muted overflow-hidden flex">
-                        <div
-                          className="h-full bg-green-500"
-                          style={{ width: `${s.totalPeople ? (s.using / s.totalPeople) * 100 : 0}%` }}
-                        />
-                        <div
-                          className="h-full bg-gray-300"
-                          style={{ width: `${s.totalPeople ? (s.notUsing / s.totalPeople) * 100 : 0}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2 border-t">
-                    <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-green-500" /> Using myQode</span>
-                    <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-gray-300" /> Not Using</span>
-                  </div>
-                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Source</TableHead>
+                      <TableHead className="text-right">Total People</TableHead>
+                      <TableHead className="text-right">Using myQode</TableHead>
+                      <TableHead className="text-right">Not Using</TableHead>
+                      <TableHead className="text-right">Using Rate</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {platformActivity.sourceInsights.map((s: any) => (
+                      <TableRow key={s.source}>
+                        <TableCell className="font-medium">{s.source}</TableCell>
+                        <TableCell className="text-right">{s.totalPeople}</TableCell>
+                        <TableCell className="text-right text-green-700 font-semibold">{s.using}</TableCell>
+                        <TableCell className="text-right text-muted-foreground">{s.notUsing}</TableCell>
+                        <TableCell className="text-right">
+                          <span className={s.usingRate >= 70 ? 'text-green-700 font-semibold' : s.usingRate <= 30 ? 'text-red-600 font-semibold' : ''}>
+                            {s.usingRate}%
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               )}
             </CardContent>
           </Card>
