@@ -166,13 +166,19 @@ export async function GET() {
       const totalPeople = z?.zohoTotal ?? my?.total ?? 0
       const using = (my?.web ?? 0) + (my?.app ?? 0) + (my?.both ?? 0)
       const notUsing = Math.max(totalPeople - using, 0)
+      const zohoFunded = z?.zohoActivated ?? 0
       return {
         source,
         totalPeople,
+        duplicateEmails: z?.duplicateEmails ?? 0,
+        // Zoho side: reached the CRM's own funding/conversion milestone
+        // (Activation_Date set) — a business/investment status, not app usage.
+        zohoFunded,
+        zohoFundedRate: totalPeople > 0 ? Math.round((zohoFunded / totalPeople) * 100) : 0,
+        // myQode side: actually logged into the app or website at least once.
         using,
         notUsing,
         usingRate: totalPeople > 0 ? Math.round((using / totalPeople) * 100) : 0,
-        duplicateEmails: z?.duplicateEmails ?? 0,
       }
     }).sort((a, b) => b.totalPeople - a.totalPeople)
 

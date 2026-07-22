@@ -1644,9 +1644,9 @@ function AdminDashboardContent() {
                 Platform Usage by Investor Source
               </CardTitle>
               <p className="text-xs text-muted-foreground mt-1">
-                Out of every real person Zoho has for each source, how many actually log into myQode (any
-                platform) vs. don't. "Not Using" covers both "no myQode account" and "has an account, never
-                logged in."
+                Two different questions, side by side: did they fund an investment (Zoho's CRM status) vs. do
+                they actually use myQode (real login activity). A source can score high on one and low on the
+                other — that's a real gap, not an error.
               </p>
             </CardHeader>
             <CardContent>
@@ -1655,57 +1655,71 @@ function AdminDashboardContent() {
               ) : (platformActivity?.sourceInsights ?? []).length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4 text-center">No source data available</p>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Source</TableHead>
-                      <TableHead className="text-right">Total People</TableHead>
-                      <TableHead className="text-right">Duplicates</TableHead>
-                      <TableHead className="text-right">Using myQode</TableHead>
-                      <TableHead className="text-right">Not Using</TableHead>
-                      <TableHead className="text-right">Using Rate</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {platformActivity.sourceInsights.map((s: any) => (
-                      <TableRow key={s.source}>
-                        <TableCell className="font-medium">{s.source}</TableCell>
-                        <TableCell className="text-right">{s.totalPeople}</TableCell>
-                        <TableCell className="text-right">
-                          {s.duplicateEmails > 0 ? (
-                            <span className="text-orange-600 font-semibold">{s.duplicateEmails}</span>
-                          ) : (
-                            <span className="text-muted-foreground">0</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-right text-green-700 font-semibold">{s.using}</TableCell>
-                        <TableCell className="text-right text-muted-foreground">{s.notUsing}</TableCell>
-                        <TableCell className="text-right">
-                          <span className={s.usingRate >= 70 ? 'text-green-700 font-semibold' : s.usingRate <= 30 ? 'text-red-600 font-semibold' : ''}>
-                            {s.usingRate}%
-                          </span>
-                        </TableCell>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead rowSpan={2} className="align-bottom">Source</TableHead>
+                        <TableHead rowSpan={2} className="text-right align-bottom">Total People</TableHead>
+                        <TableHead rowSpan={2} className="text-right align-bottom">Duplicates</TableHead>
+                        <TableHead colSpan={2} className="text-center border-l">Zoho CRM — Funded</TableHead>
+                        <TableHead colSpan={3} className="text-center border-l">myQode — Actually Using</TableHead>
                       </TableRow>
-                    ))}
-                    {(() => {
-                      const totalPeople = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.totalPeople, 0);
-                      const duplicateEmails = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.duplicateEmails, 0);
-                      const using = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.using, 0);
-                      const notUsing = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.notUsing, 0);
-                      const usingRate = totalPeople > 0 ? Math.round((using / totalPeople) * 100) : 0;
-                      return (
-                        <TableRow className="border-t-2 font-semibold bg-muted/40">
-                          <TableCell>Total</TableCell>
-                          <TableCell className="text-right">{totalPeople}</TableCell>
-                          <TableCell className="text-right">{duplicateEmails}</TableCell>
-                          <TableCell className="text-right text-green-700">{using}</TableCell>
-                          <TableCell className="text-right text-muted-foreground">{notUsing}</TableCell>
-                          <TableCell className="text-right">{usingRate}%</TableCell>
+                      <TableRow>
+                        <TableHead className="text-right border-l">Funded</TableHead>
+                        <TableHead className="text-right">Rate</TableHead>
+                        <TableHead className="text-right border-l">Using</TableHead>
+                        <TableHead className="text-right">Not Using</TableHead>
+                        <TableHead className="text-right">Rate</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {platformActivity.sourceInsights.map((s: any) => (
+                        <TableRow key={s.source}>
+                          <TableCell className="font-medium">{s.source}</TableCell>
+                          <TableCell className="text-right">{s.totalPeople}</TableCell>
+                          <TableCell className="text-right">
+                            {s.duplicateEmails > 0 ? (
+                              <span className="text-orange-600 font-semibold">{s.duplicateEmails}</span>
+                            ) : (
+                              <span className="text-muted-foreground">0</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right border-l text-amber-700 font-semibold">{s.zohoFunded}</TableCell>
+                          <TableCell className="text-right text-muted-foreground">{s.zohoFundedRate}%</TableCell>
+                          <TableCell className="text-right border-l text-green-700 font-semibold">{s.using}</TableCell>
+                          <TableCell className="text-right text-muted-foreground">{s.notUsing}</TableCell>
+                          <TableCell className="text-right">
+                            <span className={s.usingRate >= 70 ? 'text-green-700 font-semibold' : s.usingRate <= 30 ? 'text-red-600 font-semibold' : ''}>
+                              {s.usingRate}%
+                            </span>
+                          </TableCell>
                         </TableRow>
-                      );
-                    })()}
-                  </TableBody>
-                </Table>
+                      ))}
+                      {(() => {
+                        const totalPeople = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.totalPeople, 0);
+                        const duplicateEmails = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.duplicateEmails, 0);
+                        const zohoFunded = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.zohoFunded, 0);
+                        const using = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.using, 0);
+                        const notUsing = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.notUsing, 0);
+                        const zohoFundedRate = totalPeople > 0 ? Math.round((zohoFunded / totalPeople) * 100) : 0;
+                        const usingRate = totalPeople > 0 ? Math.round((using / totalPeople) * 100) : 0;
+                        return (
+                          <TableRow className="border-t-2 font-semibold bg-muted/40">
+                            <TableCell>Total</TableCell>
+                            <TableCell className="text-right">{totalPeople}</TableCell>
+                            <TableCell className="text-right">{duplicateEmails}</TableCell>
+                            <TableCell className="text-right border-l text-amber-700">{zohoFunded}</TableCell>
+                            <TableCell className="text-right text-muted-foreground">{zohoFundedRate}%</TableCell>
+                            <TableCell className="text-right border-l text-green-700">{using}</TableCell>
+                            <TableCell className="text-right text-muted-foreground">{notUsing}</TableCell>
+                            <TableCell className="text-right">{usingRate}%</TableCell>
+                          </TableRow>
+                        );
+                      })()}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </CardContent>
           </Card>
