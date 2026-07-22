@@ -1686,7 +1686,8 @@ function AdminDashboardContent() {
             </CardContent>
           </Card>
 
-          {/* Investor Source breakdown, from Zoho CRM's Investor_Source field */}
+          {/* Investor Source breakdown, from Zoho CRM's Investor_Source field,
+              merged with the CRM-vs-myQode reconciliation for the same source */}
           <Card>
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
@@ -1695,91 +1696,39 @@ function AdminDashboardContent() {
               </CardTitle>
               <p className="text-xs text-muted-foreground mt-1">
                 Investor_Source from Zoho CRM's Investors module, cross-referenced with real login activity.
-                Sorted by total investors per source.
+                "Zoho Total" is the raw record count — matches what you see filtering the Investors list view in
+                Zoho directly (people count in parens when lower — some people have more than one Zoho record,
+                see "Duplicate Emails"). "Zoho Activated" is Zoho's own Activation_Date milestone (what the CRM's
+                "Investor Funding Conversion" dashboard counts). "myQode Matched" is how many of those people
+                actually have a real client account here. These are different questions, not the same number
+                measured multiple ways. Sorted by Zoho Total.
               </p>
             </CardHeader>
             <CardContent>
               {platformActivityLoading ? (
                 <div className="space-y-2">{Array(5).fill(0).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
-              ) : (platformActivity?.sourceBreakdown ?? []).length === 0 ? (
+              ) : (platformActivity?.sourceInsights ?? []).length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4 text-center">No source data available</p>
               ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Source</TableHead>
-                      <TableHead className="text-right">Total</TableHead>
-                      <TableHead className="text-right">Web</TableHead>
-                      <TableHead className="text-right">App</TableHead>
-                      <TableHead className="text-right">Both</TableHead>
-                      <TableHead className="text-right">Never Logged In</TableHead>
-                      <TableHead className="text-right">Engagement Rate</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {platformActivity.sourceBreakdown.map((s: any) => {
-                      const engaged = s.total - s.never;
-                      const rate = s.total > 0 ? Math.round((engaged / s.total) * 100) : 0;
-                      return (
-                        <TableRow key={s.source}>
-                          <TableCell className="font-medium">{s.source}</TableCell>
-                          <TableCell className="text-right">{s.total}</TableCell>
-                          <TableCell className="text-right" style={{ color: PLATFORM_COLORS.web }}>{s.web}</TableCell>
-                          <TableCell className="text-right" style={{ color: PLATFORM_COLORS.app }}>{s.app}</TableCell>
-                          <TableCell className="text-right" style={{ color: PLATFORM_COLORS.both }}>{s.both}</TableCell>
-                          <TableCell className="text-right text-muted-foreground">{s.never}</TableCell>
-                          <TableCell className="text-right">
-                            <span className={rate >= 70 ? 'text-green-700 font-semibold' : rate <= 30 ? 'text-red-600 font-semibold' : ''}>
-                              {rate}%
-                            </span>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* CRM vs myQode reconciliation, per source */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-amber-500" />
-                CRM vs myQode — Investor Source Reconciliation
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">
-                Why Zoho's numbers and myQode's numbers for the same source don't always match. "Zoho Total" is
-                the raw record count — matches what you see filtering the Investors list view in Zoho directly
-                (people count shown in parens when lower — a few people have more than one Zoho record, see
-                "Duplicate Emails"); "Zoho Activated" is Zoho's own Activation_Date milestone (what the CRM's
-                "Investor Funding Conversion" dashboard counts); "myQode Matched" is how many actually have a real
-                client account here, as a % of distinct people. These are different questions, not the same
-                number measured three ways.
-              </p>
-            </CardHeader>
-            <CardContent>
-              {platformActivityLoading ? (
-                <div className="space-y-2">{Array(5).fill(0).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
-              ) : (platformActivity?.sourceReconciliation ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">No reconciliation data available</p>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Source</TableHead>
-                      <TableHead className="text-right">Zoho Total</TableHead>
-                      <TableHead className="text-right">Duplicate Emails</TableHead>
-                      <TableHead className="text-right">Zoho Activated</TableHead>
-                      <TableHead className="text-right">myQode Matched</TableHead>
-                      <TableHead className="text-right">Match Rate</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {platformActivity.sourceReconciliation.map((s: any) => {
-                      const matchRate = s.zohoDistinctPeople > 0 ? Math.round((s.myqodeMatched / s.zohoDistinctPeople) * 100) : 0;
-                      return (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Source</TableHead>
+                        <TableHead className="text-right">Zoho Total</TableHead>
+                        <TableHead className="text-right">Duplicate Emails</TableHead>
+                        <TableHead className="text-right">Zoho Activated</TableHead>
+                        <TableHead className="text-right">myQode Matched</TableHead>
+                        <TableHead className="text-right">Match Rate</TableHead>
+                        <TableHead className="text-right">Web</TableHead>
+                        <TableHead className="text-right">App</TableHead>
+                        <TableHead className="text-right">Both</TableHead>
+                        <TableHead className="text-right">Never</TableHead>
+                        <TableHead className="text-right">Engagement Rate</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {platformActivity.sourceInsights.map((s: any) => (
                         <TableRow key={s.source}>
                           <TableCell className="font-medium">{s.source}</TableCell>
                           <TableCell className="text-right">
@@ -1797,12 +1746,21 @@ function AdminDashboardContent() {
                           </TableCell>
                           <TableCell className="text-right text-amber-600">{s.zohoActivated}</TableCell>
                           <TableCell className="text-right text-indigo-600">{s.myqodeMatched}</TableCell>
-                          <TableCell className="text-right text-muted-foreground">{matchRate}%</TableCell>
+                          <TableCell className="text-right text-muted-foreground">{s.matchRate}%</TableCell>
+                          <TableCell className="text-right" style={{ color: PLATFORM_COLORS.web }}>{s.web}</TableCell>
+                          <TableCell className="text-right" style={{ color: PLATFORM_COLORS.app }}>{s.app}</TableCell>
+                          <TableCell className="text-right" style={{ color: PLATFORM_COLORS.both }}>{s.both}</TableCell>
+                          <TableCell className="text-right text-muted-foreground">{s.never}</TableCell>
+                          <TableCell className="text-right">
+                            <span className={s.engagementRate >= 70 ? 'text-green-700 font-semibold' : s.engagementRate <= 30 ? 'text-red-600 font-semibold' : ''}>
+                              {s.engagementRate}%
+                            </span>
+                          </TableCell>
                         </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </CardContent>
           </Card>

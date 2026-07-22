@@ -153,28 +153,40 @@ export async function GET() {
       entry.total += 1
       entry[c.platform] += 1
     }
-    const sourceBreakdown = Array.from(bySource.values()).sort((a, b) => b.total - a.total)
 
-    // Reconciliation: Zoho's raw per-source totals (independent of whether a
-    // matching myQode account exists) vs. how many of those actually have one.
-    // zohoActivated is Zoho's own "reached the funding/conversion milestone"
-    // marker (Activation_Date set) — NOT the same thing as myqodeMatched.
-    //
-    // zohoTotal = raw record count — matches what you see filtering the
-    // Investors list view in Zoho directly, since that view doesn't dedupe.
-    // zohoDistinctPeople = same records collapsed by email (a few people
-    // have more than one Zoho record — see duplicateEmails).
-    const myqodeBySource = new Map(sourceBreakdown.map(s => [s.source, s.total]))
-    const sourceReconciliation = zohoSourceTotals.map(z => ({
-      source: z.source,
-      zohoTotal: z.rawRecords,
-      zohoDistinctPeople: z.zohoTotal,
-      zohoActivated: z.zohoActivated,
-      myqodeMatched: myqodeBySource.get(z.source) ?? 0,
-      duplicateEmails: z.duplicateEmails,
-    })).sort((a, b) => b.zohoTotal - a.zohoTotal)
+    // One merged per-source table: myQode's platform breakdown (web/app/both/
+    // never among matched investors) alongside Zoho's own counts for the same
+    // source. zohoTotal = raw record count (matches filtering the Investors
+    // list view in Zoho directly); zohoDistinctPeople = same records collapsed
+    // by email (duplicateEmails = how many people that affects);
+    // zohoActivated = Zoho's own Activation_Date milestone — NOT the same
+    // thing as myqodeMatched (= this row's "total", how many of those people
+    // actually have a myQode account).
+    const zohoBySource = new Map(zohoSourceTotals.map(z => [z.source, z]))
+    const allSourceKeys = new Set([...bySource.keys(), ...zohoBySource.keys()])
+    const sourceInsights = Array.from(allSourceKeys).map(source => {
+      const my = bySource.get(source)
+      const z = zohoBySource.get(source)
+      const total = my?.total ?? 0
+      const never = my?.never ?? 0
+      return {
+        source,
+        web: my?.web ?? 0,
+        app: my?.app ?? 0,
+        both: my?.both ?? 0,
+        never,
+        unclassified: my?.unclassified ?? 0,
+        myqodeMatched: total,
+        engagementRate: total > 0 ? Math.round(((total - never) / total) * 100) : 0,
+        zohoTotal: z?.rawRecords ?? 0,
+        zohoDistinctPeople: z?.zohoTotal ?? 0,
+        zohoActivated: z?.zohoActivated ?? 0,
+        duplicateEmails: z?.duplicateEmails ?? 0,
+        matchRate: z && z.zohoTotal > 0 ? Math.round((total / z.zohoTotal) * 100) : 0,
+      }
+    }).sort((a, b) => b.zohoTotal - a.zohoTotal || b.myqodeMatched - a.myqodeMatched)
 
-    return NextResponse.json({ clients, summary, sourceBreakdown, sourceReconciliation })
+    return NextResponse.json({ clients, summary, sourceInsights })
   } catch (err: any) {
     console.error('[admin/client-platform-activity]', err)
     return NextResponse.json({ error: err?.message ?? 'Internal server error' }, { status: 500 })
