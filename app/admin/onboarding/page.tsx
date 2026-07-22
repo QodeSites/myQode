@@ -244,6 +244,7 @@ function AdminDashboardContent() {
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [zohoLookupLoading, setZohoLookupLoading] = useState<Set<string>>(new Set());
   const [investorInsights, setInvestorInsights] = useState<any>(null);
+  const [cohortRange, setCohortRange] = useState<'3m' | '1y' | 'all'>('all');
   const [investorInsightsLoading, setInvestorInsightsLoading] = useState(false);
   const [dormancyFilter, setDormancyFilter] = useState<'all' | '30' | '60' | '90'>('all');
 
@@ -1729,13 +1730,25 @@ function AdminDashboardContent() {
           {/* Cohort trend by activation month */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Activity className="h-4 w-4 text-indigo-500" />
-                Adoption Trend by Cohort
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">
-                Investors grouped by the month they were activated in Zoho — is app/web adoption improving over time?
-              </p>
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Activity className="h-4 w-4 text-indigo-500" />
+                    Adoption Trend by Cohort
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Investors grouped by the month they were activated in Zoho — is app/web adoption improving over time?
+                  </p>
+                </div>
+                <Select value={cohortRange} onValueChange={(v: any) => setCohortRange(v)}>
+                  <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="3m">Last 3 months</SelectItem>
+                    <SelectItem value="1y">Last 1 year</SelectItem>
+                    <SelectItem value="all">All time</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </CardHeader>
             <CardContent>
               {investorInsightsLoading ? (
@@ -1743,16 +1756,31 @@ function AdminDashboardContent() {
               ) : (investorInsights?.cohortTrend ?? []).length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4 text-center">No data available</p>
               ) : (
-                <ResponsiveContainer width="100%" height={280}>
-                  <LineChart data={investorInsights.cohortTrend} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e1e0d9" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11 }} angle={-40} textAnchor="end" height={60} />
-                    <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-                    <RechartsTooltip />
-                    <Legend />
-                    <Line type="monotone" dataKey="engagementRate" name="Engagement Rate %" stroke="#4a3aa7" strokeWidth={2} dot={{ r: 3 }} />
-                  </LineChart>
-                </ResponsiveContainer>
+                (() => {
+                  const allCohorts = investorInsights.cohortTrend as any[];
+                  const monthsBack = cohortRange === '3m' ? 3 : cohortRange === '1y' ? 12 : Infinity;
+                  const cutoff = new Date();
+                  cutoff.setMonth(cutoff.getMonth() - monthsBack);
+                  const cutoffMonth = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}`;
+                  const filtered = monthsBack === Infinity
+                    ? allCohorts
+                    : allCohorts.filter(c => c.month >= cutoffMonth);
+                  if (filtered.length === 0) {
+                    return <p className="text-sm text-muted-foreground py-4 text-center">No cohorts in this range</p>;
+                  }
+                  return (
+                    <ResponsiveContainer width="100%" height={280}>
+                      <LineChart data={filtered} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e1e0d9" />
+                        <XAxis dataKey="month" tick={{ fontSize: 11 }} angle={-40} textAnchor="end" height={60} />
+                        <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+                        <RechartsTooltip />
+                        <Legend />
+                        <Line type="monotone" dataKey="engagementRate" name="Engagement Rate %" stroke="#4a3aa7" strokeWidth={2} dot={{ r: 3 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  );
+                })()
               )}
             </CardContent>
           </Card>
