@@ -1734,10 +1734,11 @@ function AdminDashboardContent() {
               </CardTitle>
               <p className="text-xs text-muted-foreground mt-1">
                 Why Zoho's numbers and myQode's numbers for the same source don't always match. "Zoho Total" is
-                every record with that source (deduped by email); "Zoho Activated" is Zoho's own Activation_Date
-                milestone (what the CRM's "Investor Funding Conversion" dashboard counts); "myQode Matched" is how
-                many of those actually have a real client account here. These are three different questions, not
-                the same number measured three times.
+                distinct people with that source (raw record count shown in parens when higher — some people have
+                multiple Zoho records); "Duplicate Emails" is how many people that affects; "Zoho Activated" is
+                Zoho's own Activation_Date milestone (what the CRM's "Investor Funding Conversion" dashboard
+                counts); "myQode Matched" is how many actually have a real client account here. These are
+                different questions, not the same number measured three ways.
               </p>
             </CardHeader>
             <CardContent>
@@ -1751,6 +1752,7 @@ function AdminDashboardContent() {
                     <TableRow>
                       <TableHead>Source</TableHead>
                       <TableHead className="text-right">Zoho Total</TableHead>
+                      <TableHead className="text-right">Duplicate Emails</TableHead>
                       <TableHead className="text-right">Zoho Activated</TableHead>
                       <TableHead className="text-right">myQode Matched</TableHead>
                       <TableHead className="text-right">Match Rate</TableHead>
@@ -1762,7 +1764,19 @@ function AdminDashboardContent() {
                       return (
                         <TableRow key={s.source}>
                           <TableCell className="font-medium">{s.source}</TableCell>
-                          <TableCell className="text-right">{s.zohoTotal}</TableCell>
+                          <TableCell className="text-right">
+                            {s.zohoTotal}
+                            {s.rawRecords > s.zohoTotal && (
+                              <span className="text-muted-foreground text-xs"> ({s.rawRecords} raw)</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            {s.duplicateEmails > 0 ? (
+                              <span className="text-orange-600 font-semibold">{s.duplicateEmails}</span>
+                            ) : (
+                              <span className="text-muted-foreground">0</span>
+                            )}
+                          </TableCell>
                           <TableCell className="text-right text-amber-600">{s.zohoActivated}</TableCell>
                           <TableCell className="text-right text-indigo-600">{s.myqodeMatched}</TableCell>
                           <TableCell className="text-right text-muted-foreground">{matchRate}%</TableCell>

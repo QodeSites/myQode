@@ -93,6 +93,7 @@ export async function findZohoRecordUrlByEmail(
 export interface ZohoInvestorRecord {
   source: string
   activated: boolean
+  recordCount: number // how many raw Zoho records collapsed into this one person
 }
 
 let sourceCache: { data: Map<string, ZohoInvestorRecord>; expiresAt: number } | null = null
@@ -154,6 +155,7 @@ async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> 
     map.set(email, {
       source: majoritySource,
       activated: recs.some(r => r.activated),
+      recordCount: recs.length,
     })
   }
 
@@ -175,17 +177,25 @@ export async function getInvestorSourceMap(): Promise<Map<string, string>> {
  * against myQode's own per-source counts.
  */
 export async function getZohoSourceTotals(): Promise<
-  Array<{ source: string; zohoTotal: number; zohoActivated: number }>
+  Array<{ source: string; zohoTotal: number; zohoActivated: number; duplicateEmails: number; rawRecords: number }>
 > {
   const records = await fetchInvestorRecords()
-  const bySource = new Map<string, { total: number; activated: number }>()
+  const bySource = new Map<string, { total: number; activated: number; duplicateEmails: number; rawRecords: number }>()
   for (const r of records.values()) {
-    if (!bySource.has(r.source)) bySource.set(r.source, { total: 0, activated: 0 })
+    if (!bySource.has(r.source)) bySource.set(r.source, { total: 0, activated: 0, duplicateEmails: 0, rawRecords: 0 })
     const entry = bySource.get(r.source)!
     entry.total += 1
+    entry.rawRecords += r.recordCount
     if (r.activated) entry.activated += 1
+    if (r.recordCount > 1) entry.duplicateEmails += 1
   }
   return Array.from(bySource.entries())
-    .map(([source, v]) => ({ source, zohoTotal: v.total, zohoActivated: v.activated }))
+    .map(([source, v]) => ({
+      source,
+      zohoTotal: v.total,
+      zohoActivated: v.activated,
+      duplicateEmails: v.duplicateEmails,
+      rawRecords: v.rawRecords,
+    }))
     .sort((a, b) => b.zohoTotal - a.zohoTotal)
 }

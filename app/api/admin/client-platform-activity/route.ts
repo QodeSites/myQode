@@ -19,7 +19,7 @@ export async function GET() {
     // shouldn't take down the whole dashboard, so this degrades to "unknown"
     // per client rather than failing the request.
     let sourceMap = new Map<string, string>()
-    let zohoSourceTotals: Array<{ source: string; zohoTotal: number; zohoActivated: number }> = []
+    let zohoSourceTotals: Array<{ source: string; zohoTotal: number; zohoActivated: number; duplicateEmails: number; rawRecords: number }> = []
     try {
       sourceMap = await getInvestorSourceMap()
       zohoSourceTotals = await getZohoSourceTotals()
@@ -165,6 +165,8 @@ export async function GET() {
       zohoTotal: z.zohoTotal,
       zohoActivated: z.zohoActivated,
       myqodeMatched: myqodeBySource.get(z.source) ?? 0,
+      duplicateEmails: z.duplicateEmails,
+      rawRecords: z.rawRecords,
     })).sort((a, b) => b.zohoTotal - a.zohoTotal)
 
     return NextResponse.json({ clients, summary, sourceBreakdown, sourceReconciliation })
