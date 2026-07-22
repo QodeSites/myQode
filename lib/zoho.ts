@@ -94,6 +94,21 @@ export interface ZohoInvestorRecord {
   source: string
   activated: boolean
   recordCount: number // how many raw Zoho records collapsed into this one person
+  activationDate: string | null // Zoho's funding/conversion milestone date
+  investorSize: number | null
+  investedAmount: number | null
+  ownerName: string | null // RM/Investor Owner
+  annualReviewStatus: string | null
+}
+
+type RawRecord = {
+  source: string
+  activated: boolean
+  activationDate: string | null
+  investorSize: number | null
+  investedAmount: number | null
+  ownerName: string | null
+  annualReviewStatus: string | null
 }
 
 let sourceCache: { data: Map<string, ZohoInvestorRecord>; expiresAt: number } | null = null
@@ -104,13 +119,13 @@ async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> 
 
   const token = await getAccessToken()
   const domain = crmApiDomain()
-  const rawByEmail = new Map<string, Array<{ source: string; activated: boolean }>>()
+  const rawByEmail = new Map<string, RawRecord[]>()
 
   let page = 1
   let more = true
   while (more) {
     const res = await fetch(
-      `${domain}/crm/v2/Investors?fields=Email,Investor_Source,Activation_Date&per_page=200&page=${page}`,
+      `${domain}/crm/v2/Investors?fields=Email,Investor_Source,Activation_Date,Investor_Size,Invested_Amount,Owner,Annual_Review_Status&per_page=200&page=${page}`,
       { headers: { Authorization: `Zoho-oauthtoken ${token}` }, cache: 'no-store' }
     )
     if (res.status === 204) break // no (more) records
@@ -118,7 +133,15 @@ async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> 
       throw new Error(`Zoho Investors listing failed: ${res.status} ${await res.text()}`)
     }
     const data = (await res.json()) as {
-      data?: Array<{ Email?: string; Investor_Source?: string; Activation_Date?: string }>
+      data?: Array<{
+        Email?: string
+        Investor_Source?: string
+        Activation_Date?: string
+        Investor_Size?: number | string
+        Invested_Amount?: number | string
+        Owner?: { name?: string }
+        Annual_Review_Status?: string
+      }>
       info?: { more_records?: boolean }
     }
     for (const rec of data.data ?? []) {
@@ -128,6 +151,11 @@ async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> 
       rawByEmail.get(key)!.push({
         source: rec.Investor_Source || '-None-',
         activated: Boolean(rec.Activation_Date),
+        activationDate: rec.Activation_Date ?? null,
+        investorSize: rec.Investor_Size != null ? parseFloat(String(rec.Investor_Size)) : null,
+        investedAmount: rec.Invested_Amount != null ? parseFloat(String(rec.Invested_Amount)) : null,
+        ownerName: rec.Owner?.name ?? null,
+        annualReviewStatus: rec.Annual_Review_Status ?? null,
       })
     }
     more = Boolean(data.info?.more_records)
@@ -139,7 +167,8 @@ async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> 
   // ones for the same person). Picking whichever happened to load first
   // made counts unstable across fetches. Instead: majority source wins
   // (ties broken by first-seen), and activated = true if ANY of their
-  // records reached the milestone.
+  // records reached the milestone. For the other fields, prefer whichever
+  // duplicate record is activated (most likely to be the "real"/complete one).
   const map = new Map<string, ZohoInvestorRecord>()
   for (const [email, recs] of rawByEmail) {
     const counts = new Map<string, number>()
@@ -152,15 +181,26 @@ async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> 
         majoritySource = source
       }
     }
+    const primary = recs.find(r => r.activated) ?? recs[0]
     map.set(email, {
       source: majoritySource,
       activated: recs.some(r => r.activated),
       recordCount: recs.length,
+      activationDate: recs.map(r => r.activationDate).filter(Boolean).sort()[0] ?? null,
+      investorSize: primary.investorSize,
+      investedAmount: primary.investedAmount,
+      ownerName: primary.ownerName,
+      annualReviewStatus: primary.annualReviewStatus,
     })
   }
 
   sourceCache = { data: map, expiresAt: Date.now() + SOURCE_CACHE_TTL_MS }
   return map
+}
+
+/** Full per-email Zoho record — used for cross-cutting analytics (AUM, RM, activation timing). */
+export async function getInvestorRecordMap(): Promise<Map<string, ZohoInvestorRecord>> {
+  return fetchInvestorRecords()
 }
 
 /** email (lowercase) -> Investor_Source, for merging into per-client rows. */

@@ -249,6 +249,8 @@ function AdminDashboardContent() {
   const [retentionLoading, setRetentionLoading] = useState(false);
   const [errorLogData, setErrorLogData] = useState<any>(null);
   const [errorLogLoading, setErrorLogLoading] = useState(false);
+  const [investorInsights, setInvestorInsights] = useState<any>(null);
+  const [investorInsightsLoading, setInvestorInsightsLoading] = useState(false);
   const [dormancyFilter, setDormancyFilter] = useState<'all' | '30' | '60' | '90'>('all');
 
   const openInZoho = async (email: string, accountType: 'investor' | 'distributor') => {
@@ -420,6 +422,20 @@ function AdminDashboardContent() {
     }
   };
 
+  const fetchInvestorInsights = async () => {
+    setInvestorInsightsLoading(true);
+    try {
+      const res = await fetch(`/api/admin/investor-insights`);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setInvestorInsights(data);
+    } catch (e: any) {
+      setAnalyticsError(`Investor insights: ${e.message}`);
+    } finally {
+      setInvestorInsightsLoading(false);
+    }
+  };
+
   const fetchAllAnalytics = (days = analyticsDays) => {
     setAnalyticsError('');
     fetchSalesData(days, vendorNumber);
@@ -429,6 +445,7 @@ function AdminDashboardContent() {
     fetchOnboardingFunnel();
     fetchRetentionTrend();
     fetchErrorLog();
+    fetchInvestorInsights();
   };
 
   // Palette slots below are the validated first-four categorical hues from the
@@ -1784,6 +1801,242 @@ function AdminDashboardContent() {
                         </TableRow>
                       );
                     })}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* ── Investor Insights: CRM + myQode combined ─────────────────────── */}
+
+          {/* 1. Onboarding-to-adoption gap */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Clock className="h-4 w-4 text-indigo-500" />
+                Onboarding-to-Adoption Gap
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Days between Zoho's Activation Date (became a funded investor) and their first login on myQode.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {investorInsightsLoading ? (
+                <Skeleton className="h-32 w-full" />
+              ) : !investorInsights?.onboardingGap ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">No data available</p>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div className="rounded-lg border p-3">
+                      <div className="text-xs text-muted-foreground">Activated Investors</div>
+                      <div className="text-2xl font-bold">{investorInsights.onboardingGap.activatedCount}</div>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <div className="text-xs text-muted-foreground">Avg Days to First Login</div>
+                      <div className="text-2xl font-bold">{investorInsights.onboardingGap.avgDays ?? '—'}</div>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <div className="text-xs text-muted-foreground">Median Days</div>
+                      <div className="text-2xl font-bold">{investorInsights.onboardingGap.medianDays ?? '—'}</div>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <div className="text-xs text-muted-foreground">Activated, Never Logged In</div>
+                      <div className="text-2xl font-bold text-red-600">{investorInsights.onboardingGap.neverLoggedInCount}</div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-3">{investorInsights.onboardingGap.coverageNote}</p>
+
+                  {(investorInsights.onboardingGap.activatedNeverLoggedIn ?? []).length > 0 && (
+                    <div className="mt-4">
+                      <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
+                        Longest-activated investors who've never logged in
+                      </div>
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Name</TableHead>
+                            <TableHead>Email</TableHead>
+                            <TableHead>Activation Date</TableHead>
+                            <TableHead className="text-right">Days Since</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {investorInsights.onboardingGap.activatedNeverLoggedIn.slice(0, 10).map((p: any) => (
+                            <TableRow key={p.email}>
+                              <TableCell className="font-medium">{p.name}</TableCell>
+                              <TableCell className="text-muted-foreground text-xs">{p.email}</TableCell>
+                              <TableCell className="text-xs">{p.activationDate}</TableCell>
+                              <TableCell className="text-right text-red-600 font-semibold">{p.daysSinceActivation}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 2. Engagement by AUM */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <TrendingUp className="h-4 w-4 text-indigo-500" />
+                Platform Engagement by Investment Size
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                From Zoho's Invested Amount / Investor Size fields — are your biggest clients actually using the platform?
+              </p>
+            </CardHeader>
+            <CardContent>
+              {investorInsightsLoading ? (
+                <Skeleton className="h-48 w-full" />
+              ) : (investorInsights?.aumBreakdown ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">No data available</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={investorInsights.aumBreakdown} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e1e0d9" />
+                    <XAxis dataKey="bucket" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+                    <RechartsTooltip />
+                    <Legend />
+                    <Bar dataKey="web" name="Web" stackId="a" fill={PLATFORM_COLORS.web} />
+                    <Bar dataKey="app" name="App" stackId="a" fill={PLATFORM_COLORS.app} />
+                    <Bar dataKey="both" name="Both" stackId="a" fill={PLATFORM_COLORS.both} />
+                    <Bar dataKey="never" name="Never" stackId="a" fill={PLATFORM_COLORS.never} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 3. RM leaderboard */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Users className="h-4 w-4 text-indigo-500" />
+                RM Leaderboard — App/Web Adoption
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Which relationship managers' clients actually use the platform, from Zoho's Investor Owner field.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {investorInsightsLoading ? (
+                <div className="space-y-2">{Array(4).fill(0).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+              ) : (investorInsights?.rmLeaderboard ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">No data available</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>RM</TableHead>
+                      <TableHead className="text-right">Book Size</TableHead>
+                      <TableHead className="text-right">Web</TableHead>
+                      <TableHead className="text-right">App</TableHead>
+                      <TableHead className="text-right">Both</TableHead>
+                      <TableHead className="text-right">Never</TableHead>
+                      <TableHead className="text-right">Engagement Rate</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {investorInsights.rmLeaderboard.map((r: any) => (
+                      <TableRow key={r.rmName}>
+                        <TableCell className="font-medium">{r.rmName}</TableCell>
+                        <TableCell className="text-right">{r.total}</TableCell>
+                        <TableCell className="text-right" style={{ color: PLATFORM_COLORS.web }}>{r.web}</TableCell>
+                        <TableCell className="text-right" style={{ color: PLATFORM_COLORS.app }}>{r.app}</TableCell>
+                        <TableCell className="text-right" style={{ color: PLATFORM_COLORS.both }}>{r.both}</TableCell>
+                        <TableCell className="text-right text-muted-foreground">{r.never}</TableCell>
+                        <TableCell className="text-right">
+                          <span className={r.engagementRate >= 70 ? 'text-green-700 font-semibold' : r.engagementRate <= 30 ? 'text-red-600 font-semibold' : ''}>
+                            {r.engagementRate}%
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 4. Cohort trend by activation month */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Activity className="h-4 w-4 text-indigo-500" />
+                Adoption Trend by Cohort
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Investors grouped by the month they were activated in Zoho — is app/web adoption improving over time?
+              </p>
+            </CardHeader>
+            <CardContent>
+              {investorInsightsLoading ? (
+                <Skeleton className="h-64 w-full" />
+              ) : (investorInsights?.cohortTrend ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">No data available</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={280}>
+                  <LineChart data={investorInsights.cohortTrend} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e1e0d9" />
+                    <XAxis dataKey="month" tick={{ fontSize: 11 }} angle={-40} textAnchor="end" height={60} />
+                    <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+                    <RechartsTooltip />
+                    <Legend />
+                    <Line type="monotone" dataKey="engagementRate" name="Engagement Rate %" stroke="#4a3aa7" strokeWidth={2} dot={{ r: 3 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* 5. Annual review due + dormant worklist */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-red-500" />
+                Review Due + Dormant Worklist
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Zoho's Annual Review Status is "Not Done" AND they haven't logged in for 30+ days (or ever) —
+                the people an RM should proactively call.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {investorInsightsLoading ? (
+                <div className="space-y-2">{Array(4).fill(0).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+              ) : (investorInsights?.reviewDueWorklist ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">Nobody currently matches this criteria</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>RM</TableHead>
+                      <TableHead>Last Login</TableHead>
+                      <TableHead className="text-right">Days Since</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {investorInsights.reviewDueWorklist.map((p: any) => (
+                      <TableRow key={p.email}>
+                        <TableCell className="font-medium">{p.name}</TableCell>
+                        <TableCell className="text-muted-foreground text-xs">{p.email}</TableCell>
+                        <TableCell className="text-xs">{p.rmName}</TableCell>
+                        <TableCell className="text-xs">{p.lastLoginAt ? new Date(p.lastLoginAt).toLocaleDateString() : 'Never'}</TableCell>
+                        <TableCell className="text-right">
+                          <span className={(p.daysSinceLastLogin ?? 9999) >= 60 ? 'text-red-600 font-semibold' : 'text-amber-600 font-semibold'}>
+                            {p.daysSinceLastLogin ?? '—'}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
               )}
