@@ -1687,7 +1687,7 @@ function AdminDashboardContent() {
           </Card>
 
           {/* Investor Source breakdown, from Zoho CRM's Investor_Source field,
-              merged with the CRM-vs-myQode reconciliation for the same source */}
+              simplified to answer one question per source: are these people actually using myQode? */}
           <Card>
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
@@ -1695,13 +1695,9 @@ function AdminDashboardContent() {
                 Platform Usage by Investor Source
               </CardTitle>
               <p className="text-xs text-muted-foreground mt-1">
-                Investor_Source from Zoho CRM's Investors module, cross-referenced with real login activity.
-                "Zoho Total" is the raw record count — matches what you see filtering the Investors list view in
-                Zoho directly (people count in parens when lower — some people have more than one Zoho record,
-                see "Duplicate Emails"). "Zoho Activated" is Zoho's own Activation_Date milestone (what the CRM's
-                "Investor Funding Conversion" dashboard counts). "myQode Matched" is how many of those people
-                actually have a real client account here. These are different questions, not the same number
-                measured multiple ways. Sorted by Zoho Total.
+                Out of every real person Zoho has for each source, how many actually log into myQode (any
+                platform) vs. don't. "Not Using" covers both "no myQode account" and "has an account, never
+                logged in."
               </p>
             </CardHeader>
             <CardContent>
@@ -1710,56 +1706,31 @@ function AdminDashboardContent() {
               ) : (platformActivity?.sourceInsights ?? []).length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4 text-center">No source data available</p>
               ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Source</TableHead>
-                        <TableHead className="text-right">Zoho Total</TableHead>
-                        <TableHead className="text-right">Duplicate Emails</TableHead>
-                        <TableHead className="text-right">Zoho Activated</TableHead>
-                        <TableHead className="text-right">myQode Matched</TableHead>
-                        <TableHead className="text-right">Match Rate</TableHead>
-                        <TableHead className="text-right">Web</TableHead>
-                        <TableHead className="text-right">App</TableHead>
-                        <TableHead className="text-right">Both</TableHead>
-                        <TableHead className="text-right">Never</TableHead>
-                        <TableHead className="text-right">Engagement Rate</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {platformActivity.sourceInsights.map((s: any) => (
-                        <TableRow key={s.source}>
-                          <TableCell className="font-medium">{s.source}</TableCell>
-                          <TableCell className="text-right">
-                            {s.zohoTotal}
-                            {s.zohoDistinctPeople < s.zohoTotal && (
-                              <span className="text-muted-foreground text-xs"> ({s.zohoDistinctPeople} people)</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {s.duplicateEmails > 0 ? (
-                              <span className="text-orange-600 font-semibold">{s.duplicateEmails}</span>
-                            ) : (
-                              <span className="text-muted-foreground">0</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right text-amber-600">{s.zohoActivated}</TableCell>
-                          <TableCell className="text-right text-indigo-600">{s.myqodeMatched}</TableCell>
-                          <TableCell className="text-right text-muted-foreground">{s.matchRate}%</TableCell>
-                          <TableCell className="text-right" style={{ color: PLATFORM_COLORS.web }}>{s.web}</TableCell>
-                          <TableCell className="text-right" style={{ color: PLATFORM_COLORS.app }}>{s.app}</TableCell>
-                          <TableCell className="text-right" style={{ color: PLATFORM_COLORS.both }}>{s.both}</TableCell>
-                          <TableCell className="text-right text-muted-foreground">{s.never}</TableCell>
-                          <TableCell className="text-right">
-                            <span className={s.engagementRate >= 70 ? 'text-green-700 font-semibold' : s.engagementRate <= 30 ? 'text-red-600 font-semibold' : ''}>
-                              {s.engagementRate}%
-                            </span>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                <div className="space-y-4">
+                  {platformActivity.sourceInsights.map((s: any) => (
+                    <div key={s.source}>
+                      <div className="flex justify-between text-sm mb-1">
+                        <span className="font-medium">{s.source}</span>
+                        <span className="text-muted-foreground">
+                          {s.using} using / {s.totalPeople} total ({s.usingRate}%)
+                        </span>
+                      </div>
+                      <div className="h-4 w-full rounded-full bg-muted overflow-hidden flex">
+                        <div
+                          className="h-full bg-green-500"
+                          style={{ width: `${s.totalPeople ? (s.using / s.totalPeople) * 100 : 0}%` }}
+                        />
+                        <div
+                          className="h-full bg-gray-300"
+                          style={{ width: `${s.totalPeople ? (s.notUsing / s.totalPeople) * 100 : 0}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2 border-t">
+                    <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-green-500" /> Using myQode</span>
+                    <span className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full bg-gray-300" /> Not Using</span>
+                  </div>
                 </div>
               )}
             </CardContent>

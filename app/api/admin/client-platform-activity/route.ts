@@ -154,37 +154,26 @@ export async function GET() {
       entry[c.platform] += 1
     }
 
-    // One merged per-source table: myQode's platform breakdown (web/app/both/
-    // never among matched investors) alongside Zoho's own counts for the same
-    // source. zohoTotal = raw record count (matches filtering the Investors
-    // list view in Zoho directly); zohoDistinctPeople = same records collapsed
-    // by email (duplicateEmails = how many people that affects);
-    // zohoActivated = Zoho's own Activation_Date milestone — NOT the same
-    // thing as myqodeMatched (= this row's "total", how many of those people
-    // actually have a myQode account).
+    // Simple version: out of every unique person Zoho has for this source,
+    // how many actually use myQode (logged in at least once, any platform)
+    // vs. don't (either no myQode account at all, or an account they've
+    // never logged into). One question, one pair of numbers, per source.
     const zohoBySource = new Map(zohoSourceTotals.map(z => [z.source, z]))
     const allSourceKeys = new Set([...bySource.keys(), ...zohoBySource.keys()])
     const sourceInsights = Array.from(allSourceKeys).map(source => {
       const my = bySource.get(source)
       const z = zohoBySource.get(source)
-      const total = my?.total ?? 0
-      const never = my?.never ?? 0
+      const totalPeople = z?.zohoTotal ?? my?.total ?? 0
+      const using = (my?.web ?? 0) + (my?.app ?? 0) + (my?.both ?? 0)
+      const notUsing = Math.max(totalPeople - using, 0)
       return {
         source,
-        web: my?.web ?? 0,
-        app: my?.app ?? 0,
-        both: my?.both ?? 0,
-        never,
-        unclassified: my?.unclassified ?? 0,
-        myqodeMatched: total,
-        engagementRate: total > 0 ? Math.round(((total - never) / total) * 100) : 0,
-        zohoTotal: z?.rawRecords ?? 0,
-        zohoDistinctPeople: z?.zohoTotal ?? 0,
-        zohoActivated: z?.zohoActivated ?? 0,
-        duplicateEmails: z?.duplicateEmails ?? 0,
-        matchRate: z && z.zohoTotal > 0 ? Math.round((total / z.zohoTotal) * 100) : 0,
+        totalPeople,
+        using,
+        notUsing,
+        usingRate: totalPeople > 0 ? Math.round((using / totalPeople) * 100) : 0,
       }
-    }).sort((a, b) => b.zohoTotal - a.zohoTotal || b.myqodeMatched - a.myqodeMatched)
+    }).sort((a, b) => b.totalPeople - a.totalPeople)
 
     return NextResponse.json({ clients, summary, sourceInsights })
   } catch (err: any) {
