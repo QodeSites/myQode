@@ -269,7 +269,10 @@ export async function POST(request: NextRequest) {
       // and issue the JWT — the portfolio screens will simply show no data.
     }
 
-    const individualCodes: string[] = accounts.map((a: any) => a.clientcode).filter(Boolean)
+    // Exclude QLF (Qode Liquid Fund) accounts — not offered through the mobile app.
+    const individualCodes: string[] = accounts
+      .map((a: any) => a.clientcode)
+      .filter((code: string) => Boolean(code) && !code.toUpperCase().startsWith('QLF'))
 
     // Include group-level and owner-level consolidated account codes so the
     // portfolio APIs (which check accountCodes) allow GROUP/OWNER aggregated views.
