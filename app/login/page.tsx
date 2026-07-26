@@ -486,7 +486,7 @@ export default function LoginPage() {
         </div>
 
         {error && (
-          <div className="text-sm text-red-600 text-center p-2 bg-red-50 rounded-md mb-4">
+          <div id="login-error" role="alert" aria-live="assertive" className="text-sm text-red-600 text-center p-2 bg-red-50 rounded-md mb-4">
             {error}
           </div>
         )}
@@ -514,6 +514,8 @@ export default function LoginPage() {
                 className="h-10 rounded-md border bg-background px-3 text-sm outline-none ring-0 focus:border-ring"
                 placeholder="you@example.com or Account ID"
                 disabled={isLoading || requirePasswordSetup}
+                aria-invalid={error ? true : undefined}
+                aria-describedby={error ? 'login-error' : undefined}
                 autoComplete="email"
                 onKeyPress={(e) => e.key === 'Enter' && !requirePasswordSetup && checkPasswordStatus()}
               />
@@ -594,11 +596,14 @@ export default function LoginPage() {
                   className="h-10 rounded-md border w-full bg-background px-3 pr-10 text-sm outline-none ring-0 focus:border-ring"
                   placeholder={isDevelopment ? "Leave blank in dev mode (optional)" : "Enter your password"}
                   disabled={isLoading}
+                  aria-invalid={error ? true : undefined}
+                  aria-describedby={error ? 'login-error' : undefined}
                   autoComplete="current-password"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
                   className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
                   disabled={isLoading}
                 >
@@ -701,6 +706,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowNewPassword(!showNewPassword)}
+                  aria-label={showNewPassword ? 'Hide password' : 'Show password'}
                   className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
                   disabled={isLoading}
                 >
@@ -729,6 +735,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
                   className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
                   disabled={isLoading}
                 >
