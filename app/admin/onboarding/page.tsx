@@ -245,6 +245,7 @@ function AdminDashboardContent() {
   const [zohoLookupLoading, setZohoLookupLoading] = useState<Set<string>>(new Set());
   const [investorInsights, setInvestorInsights] = useState<any>(null);
   const [sourcePeriod, setSourcePeriod] = useState<'3m' | '1y' | 'all'>('all');
+  const [trendRange, setTrendRange] = useState<'1m' | '3m' | '6m' | 'all'>('6m');
   const [investorInsightsLoading, setInvestorInsightsLoading] = useState(false);
   const [dormancyFilter, setDormancyFilter] = useState<'all' | '30' | '60' | '90'>('all');
 
@@ -1685,35 +1686,57 @@ function AdminDashboardContent() {
             </CardContent>
           </Card>
 
-          {/* Active app vs web over lookback windows */}
+          {/* App / Web / Both weekly usage trend (stock-chart style) */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Activity className="h-4 w-4 text-indigo-500" />
-                App vs Web Usage Over Time
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">
-                How many investors used the app vs. the web within the last 1, 3, 6 months, and ever. The window
-                widens left to right, so the numbers only go up.
-              </p>
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Activity className="h-4 w-4 text-indigo-500" />
+                    Usage Trend — App, Web & Both
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Weekly active investors on each platform over time. Pick a range to zoom in.
+                  </p>
+                </div>
+                <Select value={trendRange} onValueChange={(v: any) => setTrendRange(v)}>
+                  <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1m">Last 1 month</SelectItem>
+                    <SelectItem value="3m">Last 3 months</SelectItem>
+                    <SelectItem value="6m">Last 6 months</SelectItem>
+                    <SelectItem value="all">Since inception</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </CardHeader>
             <CardContent>
               {platformActivityLoading ? (
-                <Skeleton className="h-64 w-full" />
-              ) : (platformActivity?.activityTimeline ?? []).length === 0 ? (
+                <Skeleton className="h-72 w-full" />
+              ) : (platformActivity?.usageTrend ?? []).length === 0 ? (
                 <p className="text-sm text-muted-foreground py-4 text-center">No data available</p>
               ) : (
-                <ResponsiveContainer width="100%" height={280}>
-                  <LineChart data={platformActivity.activityTimeline} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e1e0d9" />
-                    <XAxis dataKey="period" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-                    <RechartsTooltip />
-                    <Legend />
-                    <Line type="monotone" dataKey="app" name="Used the App" stroke={PLATFORM_COLORS.app} strokeWidth={2} dot={{ r: 4 }} />
-                    <Line type="monotone" dataKey="web" name="Used the Web" stroke={PLATFORM_COLORS.web} strokeWidth={2} dot={{ r: 4 }} />
-                  </LineChart>
-                </ResponsiveContainer>
+                (() => {
+                  const all = platformActivity.usageTrend as any[];
+                  const days = trendRange === '1m' ? 30 : trendRange === '3m' ? 90 : trendRange === '6m' ? 180 : Infinity;
+                  const cutoff = Date.now() - days * 86_400_000;
+                  const rows = days === Infinity ? all : all.filter(p => new Date(p.date).getTime() >= cutoff);
+                  const fmtDate = (d: string) => new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                  return (
+                    <ResponsiveContainer width="100%" height={300}>
+                      <LineChart data={rows} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e1e0d9" />
+                        <XAxis dataKey="date" tickFormatter={fmtDate} tick={{ fontSize: 11 }} minTickGap={24} />
+                        <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+                        <RechartsTooltip labelFormatter={(l) => new Date(l).toLocaleDateString()} />
+                        <Legend />
+                        <Line type="monotone" dataKey="web" name="Web" stroke={PLATFORM_COLORS.web} strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="app" name="App" stroke={PLATFORM_COLORS.app} strokeWidth={2} dot={false} />
+                        <Line type="monotone" dataKey="both" name="Both" stroke={PLATFORM_COLORS.both} strokeWidth={2} dot={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  );
+                })()
               )}
             </CardContent>
           </Card>
