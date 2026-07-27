@@ -11,18 +11,23 @@
 //                  (login_count > 0 but web/app counters are still 0)
 import { NextResponse } from 'next/server'
 import { query } from '@/lib/db'
-import { getInvestorSourceMap, getRawInvestorRecords } from '@/lib/zoho'
+import { getInvestorSourceMap, getInvestorRecordMap } from '@/lib/zoho'
 
 export async function GET() {
   try {
     // Zoho CRM's Investor_Source per email — best-effort. A Zoho hiccup
     // shouldn't take down the whole dashboard, so this degrades to "unknown"
     // per client rather than failing the request.
+    //
+    // zohoInvestors is deduped by email (one row per person — no repeated
+    // emails), each with its majority source and whether they've funded
+    // (Activation_Date set). We use ONLY funded investors as the comparison
+    // base, so the numbers are "real, unique, funded investors from Zoho".
     let sourceMap = new Map<string, string>()
-    let rawZohoRecords: Array<{ email: string; source: string; activated: boolean }> = []
+    let zohoInvestors = new Map<string, { source: string; activated: boolean }>()
     try {
       sourceMap = await getInvestorSourceMap()
-      rawZohoRecords = await getRawInvestorRecords()
+      zohoInvestors = await getInvestorRecordMap()
     } catch (err) {
       console.error('[admin/client-platform-activity] Zoho source fetch failed:', err)
     }
@@ -154,21 +159,22 @@ export async function GET() {
       distributors: bucket(distributors),
     }
 
-    // Simple per-source view: total investors from Zoho (raw record count,
-    // matching Zoho directly), how many installed the app, how many use it now.
-    // App activity is looked up by email; a shared family email's activity is
-    // attributed to each Zoho record under it.
+    // Simple per-source view. Base = UNIQUE FUNDED investors from Zoho (one
+    // row per email, only those with Activation_Date set) — no repeated
+    // emails, no unfunded leads. Then, of those, how many installed the app,
+    // on which OS, how many use the web, and how many are using it now.
     const byEmail = new Map(investors.map(c => [c.email.toLowerCase(), c]))
     const bySource = new Map<string, {
       source: string; total: number; installed: number; installedIos: number; installedAndroid: number; web: number; usingNow: number
     }>()
-    for (const r of rawZohoRecords) {
-      if (!bySource.has(r.source)) {
-        bySource.set(r.source, { source: r.source, total: 0, installed: 0, installedIos: 0, installedAndroid: 0, web: 0, usingNow: 0 })
+    for (const [email, zi] of zohoInvestors) {
+      if (!zi.activated) continue // funded investors only
+      if (!bySource.has(zi.source)) {
+        bySource.set(zi.source, { source: zi.source, total: 0, installed: 0, installedIos: 0, installedAndroid: 0, web: 0, usingNow: 0 })
       }
-      const entry = bySource.get(r.source)!
+      const entry = bySource.get(zi.source)!
       entry.total += 1
-      const c = byEmail.get(r.email)
+      const c = byEmail.get(email)
       if (c?.appInstalled) {
         entry.installed += 1
         if (c.installOS === 'ios') entry.installedIos += 1

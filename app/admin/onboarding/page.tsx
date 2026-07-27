@@ -1540,10 +1540,9 @@ function AdminDashboardContent() {
                     The Big Picture
                   </CardTitle>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Of everyone in the Zoho CRM, how many downloaded the myQode app and how many actually use it.
-                    (This counts Zoho CRM investor records, which is a wider list than the "Total Owners" client
-                    count at the top of the page — that groups a whole family under one owner, and only counts
-                    people who became myQode clients.)
+                    Base = unique investors from Zoho CRM who have funded their account (one per person, no
+                    repeated emails, no unfunded leads). Of those, how many downloaded the myQode app and how
+                    many actually use it.
                   </p>
                 </CardHeader>
                 <CardContent>
@@ -1552,9 +1551,9 @@ function AdminDashboardContent() {
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="rounded-lg border p-4">
-                        <div className="text-xs text-muted-foreground">Total Investors (Zoho CRM)</div>
+                        <div className="text-xs text-muted-foreground">Funded Investors (Zoho CRM)</div>
                         <div className="text-3xl font-bold">{totalInvestors}</div>
-                        <div className="text-xs text-muted-foreground mt-1">everyone in the CRM</div>
+                        <div className="text-xs text-muted-foreground mt-1">unique, funded accounts</div>
                       </div>
                       <div className="rounded-lg border p-4">
                         <div className="text-xs text-muted-foreground">Installed the App</div>
@@ -1583,8 +1582,8 @@ function AdminDashboardContent() {
                 Where Investors Come From
               </CardTitle>
               <p className="text-xs text-muted-foreground mt-1">
-                For each way an investor found us (from Zoho CRM), how many downloaded the app and how many are
-                using it now. Totals match "The Big Picture" above.
+                For each way a funded investor found us (unique investors from Zoho CRM who funded their account),
+                how many downloaded the app and how many are using it now. Totals match "The Big Picture" above.
               </p>
             </CardHeader>
             <CardContent>
@@ -1598,7 +1597,7 @@ function AdminDashboardContent() {
                     <TableHeader>
                       <TableRow>
                         <TableHead>How They Found Us</TableHead>
-                        <TableHead className="text-right">Total Investors</TableHead>
+                        <TableHead className="text-right">Funded Investors</TableHead>
                         <TableHead className="text-right">Installed the App</TableHead>
                         <TableHead className="text-right">On iPhone</TableHead>
                         <TableHead className="text-right">On Android</TableHead>
