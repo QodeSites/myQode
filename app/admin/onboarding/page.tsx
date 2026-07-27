@@ -249,6 +249,24 @@ function AdminDashboardContent() {
   const [investorInsightsLoading, setInvestorInsightsLoading] = useState(false);
   const [dormancyFilter, setDormancyFilter] = useState<'all' | '30' | '60' | '90'>('all');
 
+  // Export any table to a CSV file (opens in Excel). BOM added so Excel reads UTF-8.
+  const exportToCsv = (filename: string, headers: string[], rows: (string | number | null | undefined)[][]) => {
+    const esc = (v: string | number | null | undefined) => {
+      const s = String(v ?? '');
+      return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+    };
+    const csv = [headers.map(esc).join(','), ...rows.map(r => r.map(esc).join(','))].join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const openInZoho = async (email: string, accountType: 'investor' | 'distributor') => {
     setZohoLookupLoading(prev => new Set(prev).add(email));
     try {
@@ -1599,14 +1617,24 @@ function AdminDashboardContent() {
                     are using it now, and how many have done nothing yet (no app, no web). Filter by when they funded.
                   </p>
                 </div>
-                <Select value={sourcePeriod} onValueChange={(v: any) => setSourcePeriod(v)}>
-                  <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="3m">Funded last 3 months</SelectItem>
-                    <SelectItem value="1y">Funded last 1 year</SelectItem>
-                    <SelectItem value="all">All time</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center gap-2">
+                  <Select value={sourcePeriod} onValueChange={(v: any) => setSourcePeriod(v)}>
+                    <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="3m">Funded last 3 months</SelectItem>
+                      <SelectItem value="1y">Funded last 1 year</SelectItem>
+                      <SelectItem value="all">All time</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button size="sm" variant="outline" onClick={() => {
+                    const rows = (platformActivity?.sourceInsightsByPeriod?.[sourcePeriod] ?? platformActivity?.sourceInsights ?? []) as any[];
+                    exportToCsv('investors-by-source.csv',
+                      ['Source', 'Funded Investors', 'Installed the App', 'On iPhone', 'On Android', 'On Web', 'Using It Now', 'Nothing Yet'],
+                      rows.map(s => [s.source, s.totalInvestors, s.installed, s.installedIos, s.installedAndroid, s.web, s.usingNow, s.nothing]));
+                  }}>
+                    <Download className="h-4 w-4 mr-1" /> Excel
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -1725,13 +1753,22 @@ function AdminDashboardContent() {
           {/* Slipping away: installed the app but gone quiet */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-amber-500" />
-                Slipping Away ({platformActivity?.slippingAway?.length ?? 0})
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">
-                Investors who installed the app but haven't opened it in over 30 days — worth a nudge.
-              </p>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-500" />
+                    Slipping Away ({platformActivity?.slippingAway?.length ?? 0})
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Investors who installed the app but haven't opened it in over 30 days — worth a nudge.
+                  </p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => exportToCsv('slipping-away.csv',
+                  ['Name', 'Email', 'Source', 'Last Opened App', 'Days Quiet'],
+                  (platformActivity?.slippingAway ?? []).map((p: any) => [p.name, p.email, p.source, p.lastAppLoginAt ?? '', p.daysSinceApp ?? '']))}>
+                  <Download className="h-4 w-4 mr-1" /> Excel
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {platformActivityLoading ? (
@@ -1772,14 +1809,23 @@ function AdminDashboardContent() {
           {/* 5. Annual review due + dormant worklist */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-red-500" />
-                Review Due + Dormant Worklist
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">
-                Zoho's Annual Review Status is "Not Done" AND they haven't logged in for 30+ days (or ever) —
-                the people an RM should proactively call.
-              </p>
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-red-500" />
+                    Review Due + Dormant Worklist
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Zoho's Annual Review Status is "Not Done" AND they haven't logged in for 30+ days (or ever) —
+                    the people an RM should proactively call.
+                  </p>
+                </div>
+                <Button size="sm" variant="outline" onClick={() => exportToCsv('review-due-worklist.csv',
+                  ['Name', 'Email', 'RM', 'Last Login', 'Days Since'],
+                  (investorInsights?.reviewDueWorklist ?? []).map((p: any) => [p.name, p.email, p.rmName, p.lastLoginAt ?? 'Never', p.daysSinceLastLogin ?? '']))}>
+                  <Download className="h-4 w-4 mr-1" /> Excel
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
               {investorInsightsLoading ? (
@@ -1818,7 +1864,8 @@ function AdminDashboardContent() {
           </Card>
 
 
-          {/* Per-client detail table */}
+          {/* Per-client detail table — hidden for now (toggle `false` to show again) */}
+          {false && (
           <Card>
             <CardHeader>
               <div className="flex items-center justify-between flex-wrap gap-4">
@@ -1889,6 +1936,16 @@ function AdminDashboardContent() {
                     onChange={e => setPlatformSearch(e.target.value)}
                     className="w-56"
                   />
+                  <Button size="sm" variant="outline" onClick={() => exportToCsv('client-activity.csv',
+                    ['Name', 'Email', 'Account Type', 'Investor Source', 'Platform', 'Total Logins', 'Last Login', 'Last Web Login', 'Last App Login', 'App Installed'],
+                    ((platformActivity?.clients ?? []) as any[]).map(c => [
+                      c.name, c.email, c.accountType, c.investorSource ?? '',
+                      PLATFORM_LABELS[c.platform] ?? c.platform,
+                      c.loginCount, c.lastLoginAt ?? '', c.lastWebLoginAt ?? '', c.lastAppLoginAt ?? '',
+                      c.appInstalled ? (c.installOS === 'android' ? 'Android' : 'iPhone') : '',
+                    ]))}>
+                    <Download className="h-4 w-4 mr-1" /> Excel
+                  </Button>
                 </div>
               </div>
             </CardHeader>
@@ -2016,6 +2073,7 @@ function AdminDashboardContent() {
               )}
             </CardContent>
           </Card>
+          )}
 
 
         </TabsContent>
