@@ -23,7 +23,7 @@ export async function GET() {
     // each with its source and whether it's funded (Activation_Date set). We
     // use funded records as the comparison base, counting raw records.
     let sourceMap = new Map<string, string>()
-    let rawZohoRecords: Array<{ email: string; source: string; activated: boolean }> = []
+    let rawZohoRecords: Array<{ email: string; source: string; activated: boolean; activationDate: string | null }> = []
     try {
       sourceMap = await getInvestorSourceMap()
       rawZohoRecords = await getRawInvestorRecords()
@@ -161,40 +161,62 @@ export async function GET() {
     // Simple per-source view. Base = funded Zoho records (Activation_Date set),
     // counted raw — NOT deduped by email. Then, of those, how many installed
     // the app, on which OS, how many use the web, and how many are using it now.
-    // A record's email is looked up for its app/web activity.
+    // A record's email is looked up for its app/web activity. Computed for
+    // three funding windows (by Activation_Date) so the client can filter
+    // without a refetch.
     const byEmail = new Map(investors.map(c => [c.email.toLowerCase(), c]))
-    const bySource = new Map<string, {
-      source: string; total: number; installed: number; installedIos: number; installedAndroid: number; web: number; usingNow: number
-    }>()
-    for (const r of rawZohoRecords) {
-      if (!r.activated) continue // funded records only
-      if (!bySource.has(r.source)) {
-        bySource.set(r.source, { source: r.source, total: 0, installed: 0, installedIos: 0, installedAndroid: 0, web: 0, usingNow: 0 })
+    const buildBreakdown = (cutoff: Date | null) => {
+      const bySource = new Map<string, {
+        source: string; total: number; installed: number; installedIos: number; installedAndroid: number; web: number; usingNow: number
+      }>()
+      for (const r of rawZohoRecords) {
+        if (!r.activated) continue // funded records only
+        if (cutoff) {
+          const funded = r.activationDate ? new Date(r.activationDate) : null
+          if (!funded || funded < cutoff) continue
+        }
+        if (!bySource.has(r.source)) {
+          bySource.set(r.source, { source: r.source, total: 0, installed: 0, installedIos: 0, installedAndroid: 0, web: 0, usingNow: 0 })
+        }
+        const entry = bySource.get(r.source)!
+        entry.total += 1
+        const c = byEmail.get(r.email)
+        if (c?.appInstalled) {
+          entry.installed += 1
+          if (c.installOS === 'ios') entry.installedIos += 1
+          else if (c.installOS === 'android') entry.installedAndroid += 1
+          if (c.usingNow) entry.usingNow += 1
+        }
+        // Web = uses the browser version (has any web login), independent of app.
+        if (c && (c.platform === 'web' || c.platform === 'both')) entry.web += 1
       }
-      const entry = bySource.get(r.source)!
-      entry.total += 1
-      const c = byEmail.get(r.email)
-      if (c?.appInstalled) {
-        entry.installed += 1
-        if (c.installOS === 'ios') entry.installedIos += 1
-        else if (c.installOS === 'android') entry.installedAndroid += 1
-        if (c.usingNow) entry.usingNow += 1
-      }
-      // Web = uses the browser version (has any web login), independent of app.
-      if (c && (c.platform === 'web' || c.platform === 'both')) entry.web += 1
+      return Array.from(bySource.values())
+        .map(s => ({
+          source: s.source,
+          totalInvestors: s.total,
+          installed: s.installed,
+          installedIos: s.installedIos,
+          installedAndroid: s.installedAndroid,
+          web: s.web,
+          usingNow: s.usingNow,
+        }))
+        .sort((a, b) => b.totalInvestors - a.totalInvestors)
     }
 
-    const sourceInsights = Array.from(bySource.values()).map(s => ({
-      source: s.source,
-      totalInvestors: s.total,
-      installed: s.installed,
-      installedIos: s.installedIos,
-      installedAndroid: s.installedAndroid,
-      web: s.web,
-      usingNow: s.usingNow,
-    })).sort((a, b) => b.totalInvestors - a.totalInvestors)
+    const now = Date.now()
+    const cut3m = new Date(now - 90 * 86_400_000)
+    const cut1y = new Date(now - 365 * 86_400_000)
 
-    return NextResponse.json({ clients, summary, sourceInsights })
+    return NextResponse.json({
+      clients,
+      summary,
+      sourceInsights: buildBreakdown(null),           // all time (kept for compat)
+      sourceInsightsByPeriod: {
+        all: buildBreakdown(null),
+        '1y': buildBreakdown(cut1y),
+        '3m': buildBreakdown(cut3m),
+      },
+    })
   } catch (err: any) {
     console.error('[admin/client-platform-activity]', err)
     return NextResponse.json({ error: err?.message ?? 'Internal server error' }, { status: 500 })

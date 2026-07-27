@@ -244,7 +244,7 @@ function AdminDashboardContent() {
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [zohoLookupLoading, setZohoLookupLoading] = useState<Set<string>>(new Set());
   const [investorInsights, setInvestorInsights] = useState<any>(null);
-  const [cohortRange, setCohortRange] = useState<'3m' | '1y' | 'all'>('all');
+  const [sourcePeriod, setSourcePeriod] = useState<'3m' | '1y' | 'all'>('all');
   const [investorInsightsLoading, setInvestorInsightsLoading] = useState(false);
   const [dormancyFilter, setDormancyFilter] = useState<'all' | '30' | '60' | '90'>('all');
 
@@ -1525,7 +1525,7 @@ function AdminDashboardContent() {
           {(() => {
             // Derive every headline number from the SAME per-source table below,
             // so the KPI cards and the table's Total row are always identical.
-            const si = (platformActivity?.sourceInsights ?? []) as any[];
+            const si = (platformActivity?.sourceInsightsByPeriod?.[sourcePeriod] ?? platformActivity?.sourceInsights ?? []) as any[];
             const sum = (k: string) => si.reduce((s, x) => s + (x[k] ?? 0), 0);
             const totalInvestors = sum('totalInvestors');
             const installed = sum('installed');
@@ -1576,20 +1576,34 @@ function AdminDashboardContent() {
           {/* Where investors come from, and how many use the app */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Users className="h-4 w-4 text-indigo-500" />
-                Where Investors Come From
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">
-                For each way a funded investor found us (from Zoho CRM), how many downloaded the app and how many
-                are using it now. Totals match "The Big Picture" above.
-              </p>
+              <div className="flex items-center justify-between flex-wrap gap-4">
+                <div>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Users className="h-4 w-4 text-indigo-500" />
+                    Where Investors Come From
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    For each way a funded investor found us (from Zoho CRM), how many downloaded the app and how
+                    many are using it now. Totals match "The Big Picture" above. Filter by when they funded.
+                  </p>
+                </div>
+                <Select value={sourcePeriod} onValueChange={(v: any) => setSourcePeriod(v)}>
+                  <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="3m">Funded last 3 months</SelectItem>
+                    <SelectItem value="1y">Funded last 1 year</SelectItem>
+                    <SelectItem value="all">All time</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </CardHeader>
             <CardContent>
-              {platformActivityLoading ? (
+              {(() => {
+                const rows = (platformActivity?.sourceInsightsByPeriod?.[sourcePeriod] ?? platformActivity?.sourceInsights ?? []) as any[];
+                return platformActivityLoading ? (
                 <div className="space-y-2">{Array(5).fill(0).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
-              ) : (platformActivity?.sourceInsights ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">No source data available</p>
+              ) : rows.length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">No funded investors in this period</p>
               ) : (
                 <div className="overflow-x-auto">
                   <Table>
@@ -1605,7 +1619,7 @@ function AdminDashboardContent() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {platformActivity.sourceInsights.map((s: any) => (
+                      {rows.map((s: any) => (
                         <TableRow key={s.source}>
                           <TableCell className="font-medium">{s.source}</TableCell>
                           <TableCell className="text-right">{s.totalInvestors}</TableCell>
@@ -1617,7 +1631,7 @@ function AdminDashboardContent() {
                         </TableRow>
                       ))}
                       {(() => {
-                        const sum = (k: string) => platformActivity.sourceInsights.reduce((a: number, s: any) => a + s[k], 0);
+                        const sum = (k: string) => rows.reduce((a: number, s: any) => a + s[k], 0);
                         return (
                           <TableRow className="border-t-2 font-semibold bg-muted/40">
                             <TableCell>Total</TableCell>
@@ -1633,69 +1647,8 @@ function AdminDashboardContent() {
                     </TableBody>
                   </Table>
                 </div>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* ── Investor Insights: CRM + myQode combined ─────────────────────── */}
-
-          {/* Cohort trend by activation month */}
-          <Card>
-            <CardHeader>
-              <div className="flex items-center justify-between flex-wrap gap-4">
-                <div>
-                  <CardTitle className="text-sm flex items-center gap-2">
-                    <Activity className="h-4 w-4 text-indigo-500" />
-                    Adoption Trend by Cohort
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    myQode accounts grouped by the month they were activated in Zoho — is app/web adoption
-                    improving over time? One row per myQode account; a shared family email uses its earliest
-                    activation date.
-                  </p>
-                </div>
-                <Select value={cohortRange} onValueChange={(v: any) => setCohortRange(v)}>
-                  <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="3m">Last 3 months</SelectItem>
-                    <SelectItem value="1y">Last 1 year</SelectItem>
-                    <SelectItem value="all">All time</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardHeader>
-            <CardContent>
-              {investorInsightsLoading ? (
-                <Skeleton className="h-64 w-full" />
-              ) : (investorInsights?.cohortTrend ?? []).length === 0 ? (
-                <p className="text-sm text-muted-foreground py-4 text-center">No data available</p>
-              ) : (
-                (() => {
-                  const allCohorts = investorInsights.cohortTrend as any[];
-                  const monthsBack = cohortRange === '3m' ? 3 : cohortRange === '1y' ? 12 : Infinity;
-                  const cutoff = new Date();
-                  cutoff.setMonth(cutoff.getMonth() - monthsBack);
-                  const cutoffMonth = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}`;
-                  const filtered = monthsBack === Infinity
-                    ? allCohorts
-                    : allCohorts.filter(c => c.month >= cutoffMonth);
-                  if (filtered.length === 0) {
-                    return <p className="text-sm text-muted-foreground py-4 text-center">No cohorts in this range</p>;
-                  }
-                  return (
-                    <ResponsiveContainer width="100%" height={280}>
-                      <LineChart data={filtered} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e1e0d9" />
-                        <XAxis dataKey="month" tick={{ fontSize: 11 }} angle={-40} textAnchor="end" height={60} />
-                        <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-                        <RechartsTooltip />
-                        <Legend />
-                        <Line type="monotone" dataKey="engagementRate" name="Engagement Rate %" stroke="#4a3aa7" strokeWidth={2} dot={{ r: 3 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  );
-                })()
-              )}
+              );
+              })()}
             </CardContent>
           </Card>
 

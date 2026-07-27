@@ -112,7 +112,7 @@ type RawRecord = {
 }
 
 let sourceCache: { data: Map<string, ZohoInvestorRecord>; expiresAt: number } | null = null
-let rawRecordsCache: { data: Array<{ email: string; source: string; activated: boolean }>; expiresAt: number } | null = null
+let rawRecordsCache: { data: Array<{ email: string; source: string; activated: boolean; activationDate: string | null }>; expiresAt: number } | null = null
 const SOURCE_CACHE_TTL_MS = 5 * 60 * 1000
 
 async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> {
@@ -121,7 +121,7 @@ async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> 
   const token = await getAccessToken()
   const domain = crmApiDomain()
   const rawByEmail = new Map<string, RawRecord[]>()
-  const flatRawRecords: Array<{ email: string; source: string; activated: boolean }> = []
+  const flatRawRecords: Array<{ email: string; source: string; activated: boolean; activationDate: string | null }> = []
 
   let page = 1
   let more = true
@@ -161,7 +161,7 @@ async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> 
         ownerName: rec.Owner?.name ?? null,
         annualReviewStatus: rec.Annual_Review_Status ?? null,
       })
-      flatRawRecords.push({ email: key, source, activated })
+      flatRawRecords.push({ email: key, source, activated, activationDate: rec.Activation_Date ?? null })
     }
     more = Boolean(data.info?.more_records)
     page += 1
@@ -204,14 +204,14 @@ async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> 
   return map
 }
 
-async function fetchFlatRawRecords(): Promise<Array<{ email: string; source: string; activated: boolean }>> {
+async function fetchFlatRawRecords(): Promise<Array<{ email: string; source: string; activated: boolean; activationDate: string | null }>> {
   if (rawRecordsCache && rawRecordsCache.expiresAt > Date.now()) return rawRecordsCache.data
   await fetchInvestorRecords() // populates rawRecordsCache as a side effect
   return rawRecordsCache?.data ?? []
 }
 
 /** Every raw Zoho Investors record (email, source, activated) — not deduped. */
-export async function getRawInvestorRecords(): Promise<Array<{ email: string; source: string; activated: boolean }>> {
+export async function getRawInvestorRecords(): Promise<Array<{ email: string; source: string; activated: boolean; activationDate: string | null }>> {
   return fetchFlatRawRecords()
 }
 
