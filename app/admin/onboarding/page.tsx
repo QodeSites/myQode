@@ -1521,136 +1521,64 @@ function AdminDashboardContent() {
             </Alert>
           )}
 
-          {/* Platform analytics: web vs app, real data only */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm flex items-center gap-2">
-                <Users className="h-4 w-4 text-indigo-500" />
-                Web vs App — Platform Analytics
-              </CardTitle>
-              <p className="text-xs text-muted-foreground mt-1">
-                Real login activity only, from pms_clients_master — no modeled/estimated numbers. Counted per
-                myQode login account (one per email — a family sharing one email logs in as a single account
-                here, unlike the record-level counts in the Investor Source table below).
-                Distributor/intermediary firm accounts are excluded from these charts (see note below).
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {platformActivityLoading ? (
-                <Skeleton className="h-64 w-full" />
-              ) : (
-                <>
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Audience breakdown donut — individual investors only */}
-                    <div>
-                      <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
-                        Audience breakdown ({platformActivity?.summary?.investors?.total ?? 0} individual investors)
-                      </div>
-                      <ResponsiveContainer width="100%" height={260}>
-                        <PieChart>
-                          <Pie
-                            data={(['web', 'app', 'both', 'never'] as const).map(k => ({
-                              key: k,
-                              name: PLATFORM_LABELS[k],
-                              value: platformActivity?.summary?.investors?.[k] ?? 0,
-                            })).filter(d => d.value > 0)}
-                            dataKey="value"
-                            nameKey="name"
-                            innerRadius={60}
-                            outerRadius={90}
-                            paddingAngle={2}
-                            label={({ name, value }) => `${name}: ${value}`}
-                          >
-                            {(['web', 'app', 'both', 'never'] as const).map(k => (
-                              <Cell key={k} fill={PLATFORM_COLORS[k]} />
-                            ))}
-                          </Pie>
-                          <RechartsTooltip />
-                          <Legend verticalAlign="bottom" height={36} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-
-                    {/* Total login volume by platform — individual investors only */}
-                    <div>
-                      <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
-                        Total logins by platform (investors only)
-                      </div>
-                      <ResponsiveContainer width="100%" height={260}>
-                        <BarChart
-                          data={[
-                            { name: 'Web', logins: platformActivity?.summary?.investors?.totalWebLogins ?? 0 },
-                            { name: 'App', logins: platformActivity?.summary?.investors?.totalAppLogins ?? 0 },
-                          ]}
-                          margin={{ top: 8, right: 8, left: 0, bottom: 8 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e1e0d9" />
-                          <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-                          <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
-                          <RechartsTooltip />
-                          <Bar dataKey="logins" radius={[4, 4, 0, 0]}>
-                            <Cell fill={PLATFORM_COLORS.web} />
-                            <Cell fill={PLATFORM_COLORS.app} />
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-
-                  <div className="border-t pt-4">
-                    <div className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wide">
-                      Currently installed (real signal, not a login proxy)
-                    </div>
-                    <p className="text-xs text-muted-foreground mb-3">
-                      From active Expo push tokens — Apple/Google tell Expo when an app is uninstalled
-                      (a "DeviceNotRegistered" error), and we deactivate the token then. An active token means
-                      the app was still on the device as of its last successful push.
-                    </p>
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                      <div className="rounded-lg border p-3">
-                        <div className="text-xs text-muted-foreground">Total investors installed</div>
-                        <div className="text-2xl font-bold">{platformActivity?.summary?.investors?.appInstalled ?? 0}</div>
-                      </div>
-                      <div className="rounded-lg border p-3">
-                        <div className="text-xs text-muted-foreground">iOS</div>
-                        <div className="text-2xl font-bold">{platformActivity?.summary?.investors?.appInstalledIos ?? 0}</div>
-                      </div>
-                      <div className="rounded-lg border p-3">
-                        <div className="text-xs text-muted-foreground">Android</div>
-                        <div className="text-2xl font-bold">{platformActivity?.summary?.investors?.appInstalledAndroid ?? 0}</div>
-                      </div>
-                    </div>
-                    {(platformActivity?.summary?.investors?.appInstalledAndroid ?? 0) === 0 && (
-                      <p className="text-xs text-amber-600 mt-2">
-                        No Android push tokens registered yet — this likely means Android push registration isn't
-                        wired up on that build, not that zero Android investors have the app installed.
-                      </p>
-                    )}
-                  </div>
-
-                  <p className="text-xs text-muted-foreground">
-                    {platformActivity?.summary?.distributors?.total ?? 0} distributor/intermediary firm accounts
-                    (e.g. wealth management partners) are tracked separately and excluded above — they represent
-                    businesses, not individual investors. See the table below to view them (filter by Account Type).
+          {/* ── The big picture: total investors → installed → using ─────────── */}
+          {(() => {
+            const si = (platformActivity?.sourceInsights ?? []) as any[];
+            const totalInvestors = si.reduce((s, x) => s + x.totalInvestors, 0);
+            const inv = platformActivity?.summary?.investors ?? {};
+            const installed = inv.installed ?? 0;
+            const installedIos = inv.installedIos ?? 0;
+            const installedAndroid = inv.installedAndroid ?? 0;
+            const usingNow = inv.usingNow ?? 0;
+            return (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-sm flex items-center gap-2">
+                    <Users className="h-4 w-4 text-indigo-500" />
+                    The Big Picture
+                  </CardTitle>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Of all our investors, how many downloaded the myQode app, and how many actually use it.
                   </p>
-                </>
-              )}
-            </CardContent>
-          </Card>
+                </CardHeader>
+                <CardContent>
+                  {platformActivityLoading ? (
+                    <Skeleton className="h-24 w-full" />
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="rounded-lg border p-4">
+                        <div className="text-xs text-muted-foreground">Total Investors</div>
+                        <div className="text-3xl font-bold">{totalInvestors}</div>
+                        <div className="text-xs text-muted-foreground mt-1">everyone in our CRM</div>
+                      </div>
+                      <div className="rounded-lg border p-4">
+                        <div className="text-xs text-muted-foreground">Installed the App</div>
+                        <div className="text-3xl font-bold text-blue-600">{installed}</div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {installedIos} on iPhone · {installedAndroid} on Android
+                        </div>
+                      </div>
+                      <div className="rounded-lg border p-4">
+                        <div className="text-xs text-muted-foreground">Using It Now</div>
+                        <div className="text-3xl font-bold text-green-600">{usingNow}</div>
+                        <div className="text-xs text-muted-foreground mt-1">opened it in the last 30 days</div>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })()}
 
-          {/* Investor Source breakdown, from Zoho CRM's Investor_Source field,
-              simplified to answer one question per source: are these people actually using myQode? */}
+          {/* Where investors come from, and how many use the app */}
           <Card>
             <CardHeader>
               <CardTitle className="text-sm flex items-center gap-2">
                 <Users className="h-4 w-4 text-indigo-500" />
-                Platform Usage by Investor Source
+                Where Investors Come From
               </CardTitle>
               <p className="text-xs text-muted-foreground mt-1">
-                Counted per real investor from Zoho, matching the same numbers you'd see in Zoho's own funnel
-                dashboard. Two different questions side by side: did they fund an investment (Zoho's CRM status)
-                vs. do they actually use myQode (real login activity) — a source can score high on one and low
-                on the other, that's a real gap, not an error.
+                For each way an investor found us, how many downloaded the app and how many are using it now.
               </p>
             </CardHeader>
             <CardContent>
@@ -1663,51 +1591,35 @@ function AdminDashboardContent() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead rowSpan={2} className="align-bottom">Source</TableHead>
-                        <TableHead rowSpan={2} className="text-right align-bottom">Total Investors</TableHead>
-                        <TableHead colSpan={2} className="text-center border-l">Zoho CRM — Funded</TableHead>
-                        <TableHead colSpan={3} className="text-center border-l">myQode — Actually Using</TableHead>
-                      </TableRow>
-                      <TableRow>
-                        <TableHead className="text-right border-l">Funded</TableHead>
-                        <TableHead className="text-right">Rate</TableHead>
-                        <TableHead className="text-right border-l">Using</TableHead>
-                        <TableHead className="text-right">Not Using</TableHead>
-                        <TableHead className="text-right">Rate</TableHead>
+                        <TableHead>How They Found Us</TableHead>
+                        <TableHead className="text-right">Total Investors</TableHead>
+                        <TableHead className="text-right">Installed the App</TableHead>
+                        <TableHead className="text-right">On iPhone</TableHead>
+                        <TableHead className="text-right">On Android</TableHead>
+                        <TableHead className="text-right">Using It Now</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {platformActivity.sourceInsights.map((s: any) => (
                         <TableRow key={s.source}>
                           <TableCell className="font-medium">{s.source}</TableCell>
-                          <TableCell className="text-right">{s.totalPeople}</TableCell>
-                          <TableCell className="text-right border-l text-amber-700 font-semibold">{s.zohoFunded}</TableCell>
-                          <TableCell className="text-right text-muted-foreground">{s.zohoFundedRate}%</TableCell>
-                          <TableCell className="text-right border-l text-green-700 font-semibold">{s.using}</TableCell>
-                          <TableCell className="text-right text-muted-foreground">{s.notUsing}</TableCell>
-                          <TableCell className="text-right">
-                            <span className={s.usingRate >= 70 ? 'text-green-700 font-semibold' : s.usingRate <= 30 ? 'text-red-600 font-semibold' : ''}>
-                              {s.usingRate}%
-                            </span>
-                          </TableCell>
+                          <TableCell className="text-right">{s.totalInvestors}</TableCell>
+                          <TableCell className="text-right text-blue-600 font-semibold">{s.installed}</TableCell>
+                          <TableCell className="text-right text-muted-foreground">{s.installedIos}</TableCell>
+                          <TableCell className="text-right text-muted-foreground">{s.installedAndroid}</TableCell>
+                          <TableCell className="text-right text-green-700 font-semibold">{s.usingNow}</TableCell>
                         </TableRow>
                       ))}
                       {(() => {
-                        const totalPeople = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.totalPeople, 0);
-                        const zohoFunded = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.zohoFunded, 0);
-                        const using = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.using, 0);
-                        const notUsing = platformActivity.sourceInsights.reduce((sum: number, s: any) => sum + s.notUsing, 0);
-                        const zohoFundedRate = totalPeople > 0 ? Math.round((zohoFunded / totalPeople) * 100) : 0;
-                        const usingRate = totalPeople > 0 ? Math.round((using / totalPeople) * 100) : 0;
+                        const sum = (k: string) => platformActivity.sourceInsights.reduce((a: number, s: any) => a + s[k], 0);
                         return (
                           <TableRow className="border-t-2 font-semibold bg-muted/40">
                             <TableCell>Total</TableCell>
-                            <TableCell className="text-right">{totalPeople}</TableCell>
-                            <TableCell className="text-right border-l text-amber-700">{zohoFunded}</TableCell>
-                            <TableCell className="text-right text-muted-foreground">{zohoFundedRate}%</TableCell>
-                            <TableCell className="text-right border-l text-green-700">{using}</TableCell>
-                            <TableCell className="text-right text-muted-foreground">{notUsing}</TableCell>
-                            <TableCell className="text-right">{usingRate}%</TableCell>
+                            <TableCell className="text-right">{sum('totalInvestors')}</TableCell>
+                            <TableCell className="text-right text-blue-600">{sum('installed')}</TableCell>
+                            <TableCell className="text-right text-muted-foreground">{sum('installedIos')}</TableCell>
+                            <TableCell className="text-right text-muted-foreground">{sum('installedAndroid')}</TableCell>
+                            <TableCell className="text-right text-green-700">{sum('usingNow')}</TableCell>
                           </TableRow>
                         );
                       })()}
@@ -1998,7 +1910,7 @@ function AdminDashboardContent() {
                           <TableCell>
                             {c.appInstalled ? (
                               <Badge variant="outline" className="text-green-700 border-green-300">
-                                {c.installedOS === 'ios' ? 'iOS' : 'Android'}
+                                {c.installOS === 'android' ? 'Android' : 'iPhone'}
                               </Badge>
                             ) : (
                               <span className="text-xs text-muted-foreground">—</span>

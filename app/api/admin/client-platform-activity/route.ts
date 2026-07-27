@@ -84,6 +84,17 @@ export async function GET() {
         else appOS = 'unclassified'
       }
 
+      // "Installed the app" = has any app login history (they downloaded it
+      // and opened it). Its OS comes from the iOS/Android login split.
+      // (Push tokens can't be the install signal — Android can't register a
+      // token until a new Android build ships, so it would always read 0.)
+      const appInstalled = appCount > 0
+      const installOS: 'ios' | 'android' | null =
+        !appInstalled ? null : (androidCount > iosCount ? 'android' : 'ios')
+      // "Using it now" = opened the app in the last 30 days.
+      const lastApp = r.last_app_login_at ? new Date(r.last_app_login_at) : null
+      const usingNow = Boolean(lastApp && (Date.now() - lastApp.getTime()) <= 30 * 86_400_000)
+
       return {
         email: r.email,
         name: r.name,
@@ -103,10 +114,9 @@ export async function GET() {
         lastAndroidLoginAt: r.last_android_login_at,
         platform,
         appOS,
-        // Real signal from client_push_tokens: an active token means Expo
-        // hasn't seen a "DeviceNotRegistered" (uninstall) error for it yet.
-        appInstalled: r.push_platform != null,
-        installedOS: r.push_platform ?? null,
+        appInstalled,
+        installOS,
+        usingNow,
         investorSource: sourceMap.get(String(r.email ?? '').toLowerCase()) ?? null,
       }
     })
@@ -127,9 +137,11 @@ export async function GET() {
       androidOnly: list.filter(c => c.appOS === 'android').length,
       bothOS: list.filter(c => c.appOS === 'both').length,
       unclassifiedOS: list.filter(c => c.appOS === 'unclassified').length,
-      appInstalled: list.filter(c => c.appInstalled).length,
-      appInstalledIos: list.filter(c => c.appInstalled && c.installedOS === 'ios').length,
-      appInstalledAndroid: list.filter(c => c.appInstalled && c.installedOS === 'android').length,
+      // Simple "installed / using" model
+      installed: list.filter(c => c.appInstalled).length,
+      installedIos: list.filter(c => c.appInstalled && c.installOS === 'ios').length,
+      installedAndroid: list.filter(c => c.appInstalled && c.installOS === 'android').length,
+      usingNow: list.filter(c => c.usingNow).length,
     })
 
     // Top-level summary covers everyone (kept for backward compatibility);
@@ -142,37 +154,37 @@ export async function GET() {
       distributors: bucket(distributors),
     }
 
-    // Platform Usage by Investor Source — counted by RAW ZOHO RECORD, not
-    // deduped by email. A shared email (e.g. a family office where several
-    // members'/HUFs' separate accounts list one contact email) represents
-    // genuinely distinct investors, each with their own record and their own
-    // funded status — collapsing them by email undercounts real investors.
-    // Where a record's email has myQode login activity, that activity is
-    // attributed to every record sharing that email, since myQode itself
-    // can't tell which family member behind a shared login actually logged in.
-    const emailToPlatform = new Map(investors.map(c => [c.email.toLowerCase(), c.platform]))
-    const bySource = new Map<string, { source: string; total: number; funded: number; using: number }>()
+    // Simple per-source view: total investors from Zoho (raw record count,
+    // matching Zoho directly), how many installed the app, how many use it now.
+    // App activity is looked up by email; a shared family email's activity is
+    // attributed to each Zoho record under it.
+    const byEmail = new Map(investors.map(c => [c.email.toLowerCase(), c]))
+    const bySource = new Map<string, {
+      source: string; total: number; installed: number; installedIos: number; installedAndroid: number; usingNow: number
+    }>()
     for (const r of rawZohoRecords) {
-      if (!bySource.has(r.source)) bySource.set(r.source, { source: r.source, total: 0, funded: 0, using: 0 })
+      if (!bySource.has(r.source)) {
+        bySource.set(r.source, { source: r.source, total: 0, installed: 0, installedIos: 0, installedAndroid: 0, usingNow: 0 })
+      }
       const entry = bySource.get(r.source)!
       entry.total += 1
-      if (r.activated) entry.funded += 1
-      const platform = emailToPlatform.get(r.email)
-      if (platform === 'web' || platform === 'app' || platform === 'both') entry.using += 1
+      const c = byEmail.get(r.email)
+      if (c?.appInstalled) {
+        entry.installed += 1
+        if (c.installOS === 'ios') entry.installedIos += 1
+        else if (c.installOS === 'android') entry.installedAndroid += 1
+        if (c.usingNow) entry.usingNow += 1
+      }
     }
 
     const sourceInsights = Array.from(bySource.values()).map(s => ({
       source: s.source,
-      totalPeople: s.total,
-      // Zoho side: reached the CRM's own funding/conversion milestone
-      // (Activation_Date set) — a business/investment status, not app usage.
-      zohoFunded: s.funded,
-      zohoFundedRate: s.total > 0 ? Math.round((s.funded / s.total) * 100) : 0,
-      // myQode side: the record's email has logged into the app or website.
-      using: s.using,
-      notUsing: s.total - s.using,
-      usingRate: s.total > 0 ? Math.round((s.using / s.total) * 100) : 0,
-    })).sort((a, b) => b.totalPeople - a.totalPeople)
+      totalInvestors: s.total,
+      installed: s.installed,
+      installedIos: s.installedIos,
+      installedAndroid: s.installedAndroid,
+      usingNow: s.usingNow,
+    })).sort((a, b) => b.totalInvestors - a.totalInvestors)
 
     return NextResponse.json({ clients, summary, sourceInsights })
   } catch (err: any) {
