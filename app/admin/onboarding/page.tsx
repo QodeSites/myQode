@@ -1665,6 +1665,7 @@ function AdminDashboardContent() {
                         <TableHead className="text-right">On Web</TableHead>
                         <TableHead className="text-right">Using It Now</TableHead>
                         <TableHead className="text-right">Nothing Yet</TableHead>
+                        <TableHead className="text-right">List</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1678,6 +1679,16 @@ function AdminDashboardContent() {
                           <TableCell className="text-right text-muted-foreground">{s.web}</TableCell>
                           <TableCell className="text-right text-green-700 font-semibold">{s.usingNow}</TableCell>
                           <TableCell className="text-right text-red-600 font-semibold">{s.nothing}</TableCell>
+                          <TableCell className="text-right">
+                            <Button size="sm" variant="ghost" title={`Download ${s.source} investors`} onClick={() => {
+                              const list = ((platformActivity?.fundedInvestorList ?? []) as any[]).filter(p => p.source === s.source);
+                              exportToCsv(`investors-${s.source.replace(/[^a-z0-9]+/gi, '-').toLowerCase()}.csv`,
+                                ['Name', 'Email', 'Source', 'Installed App', 'Device', 'Uses Web', 'Status'],
+                                list.map(p => [p.name, p.email, p.source, p.installed, p.installedOS, p.usesWeb, p.status]));
+                            }}>
+                              <Download className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       ))}
                       {(() => {
@@ -1692,6 +1703,7 @@ function AdminDashboardContent() {
                             <TableCell className="text-right text-muted-foreground">{sum('web')}</TableCell>
                             <TableCell className="text-right text-green-700">{sum('usingNow')}</TableCell>
                             <TableCell className="text-right text-red-600">{sum('nothing')}</TableCell>
+                            <TableCell></TableCell>
                           </TableRow>
                         );
                       })()}
