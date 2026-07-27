@@ -1583,21 +1583,23 @@ function AdminDashboardContent() {
                   {!platformActivityLoading && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 pt-4 border-t">
                       <div className="rounded-lg border p-4">
-                        <div className="text-xs text-muted-foreground">App Adoption Rate</div>
+                        <div className="text-xs text-muted-foreground">Out of 100 investors, how many got the app</div>
                         <div className="text-3xl font-bold text-blue-600">
-                          {totalInvestors > 0 ? Math.round((installed / totalInvestors) * 100) : 0}%
+                          {totalInvestors > 0 ? Math.round((installed / totalInvestors) * 100) : 0}
+                          <span className="text-lg"> got it</span>
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">
-                          of funded investors installed the app ({installed} of {totalInvestors})
+                          {installed} of {totalInvestors} investors downloaded the app
                         </div>
                       </div>
                       <div className="rounded-lg border p-4">
-                        <div className="text-xs text-muted-foreground">Stickiness</div>
+                        <div className="text-xs text-muted-foreground">Out of 100 who got the app, how many still use it</div>
                         <div className="text-3xl font-bold text-green-600">
-                          {installed > 0 ? Math.round((usingNow / installed) * 100) : 0}%
+                          {installed > 0 ? Math.round((usingNow / installed) * 100) : 0}
+                          <span className="text-lg"> still use it</span>
                         </div>
                         <div className="text-xs text-muted-foreground mt-1">
-                          of app installers still use it ({usingNow} of {installed})
+                          {usingNow} of {installed} who downloaded it still open it
                         </div>
                       </div>
                     </div>
