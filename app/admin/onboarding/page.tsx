@@ -1536,6 +1536,7 @@ function AdminDashboardContent() {
             const installed = sum('installed');
             const installedIos = sum('installedIos');
             const installedAndroid = sum('installedAndroid');
+            const webOnly = sum('webOnly');
             const usingNow = sum('usingNow');
             return (
               <Card>
@@ -1553,7 +1554,7 @@ function AdminDashboardContent() {
                   {platformActivityLoading ? (
                     <Skeleton className="h-24 w-full" />
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                       <div className="rounded-lg border p-4">
                         <div className="text-xs text-muted-foreground">Funded Investors (Zoho CRM)</div>
                         <div className="text-3xl font-bold">{totalInvestors}</div>
@@ -1567,9 +1568,14 @@ function AdminDashboardContent() {
                         </div>
                       </div>
                       <div className="rounded-lg border p-4">
+                        <div className="text-xs text-muted-foreground">Web Only (No App)</div>
+                        <div className="text-3xl font-bold text-amber-600">{webOnly}</div>
+                        <div className="text-xs text-muted-foreground mt-1">use the browser, never installed the app</div>
+                      </div>
+                      <div className="rounded-lg border p-4">
                         <div className="text-xs text-muted-foreground">Using It Now</div>
                         <div className="text-3xl font-bold text-green-600">{usingNow}</div>
-                        <div className="text-xs text-muted-foreground mt-1">opened it in the last 30 days</div>
+                        <div className="text-xs text-muted-foreground mt-1">opened the app in the last 30 days</div>
                       </div>
                     </div>
                   )}
