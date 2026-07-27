@@ -167,7 +167,7 @@ export async function GET() {
     const byEmail = new Map(investors.map(c => [c.email.toLowerCase(), c]))
     const buildBreakdown = (cutoff: Date | null) => {
       const bySource = new Map<string, {
-        source: string; total: number; installed: number; installedIos: number; installedAndroid: number; web: number; webOnly: number; usingNow: number
+        source: string; total: number; installed: number; installedIos: number; installedAndroid: number; web: number; webOnly: number; usingNow: number; nothing: number
       }>()
       for (const r of rawZohoRecords) {
         if (!r.activated) continue // funded records only
@@ -176,7 +176,7 @@ export async function GET() {
           if (!funded || funded < cutoff) continue
         }
         if (!bySource.has(r.source)) {
-          bySource.set(r.source, { source: r.source, total: 0, installed: 0, installedIos: 0, installedAndroid: 0, web: 0, webOnly: 0, usingNow: 0 })
+          bySource.set(r.source, { source: r.source, total: 0, installed: 0, installedIos: 0, installedAndroid: 0, web: 0, webOnly: 0, usingNow: 0, nothing: 0 })
         }
         const entry = bySource.get(r.source)!
         entry.total += 1
@@ -188,9 +188,13 @@ export async function GET() {
           if (c.usingNow) entry.usingNow += 1
         }
         // Web = uses the browser version (has any web login), independent of app.
-        if (c && (c.platform === 'web' || c.platform === 'both')) entry.web += 1
+        const usesWeb = c ? (c.platform === 'web' || c.platform === 'both') : false
+        if (usesWeb) entry.web += 1
         // Web only = uses the web but hasn't installed the app.
         if (c && c.platform === 'web') entry.webOnly += 1
+        // Nothing yet = hasn't installed the app AND hasn't used the web
+        // (no myQode account, or an account they've never really used).
+        if (!c?.appInstalled && !usesWeb) entry.nothing += 1
       }
       return Array.from(bySource.values())
         .map(s => ({
@@ -202,6 +206,7 @@ export async function GET() {
           web: s.web,
           webOnly: s.webOnly,
           usingNow: s.usingNow,
+          nothing: s.nothing,
         }))
         .sort((a, b) => b.totalInvestors - a.totalInvestors)
     }

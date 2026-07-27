@@ -1595,8 +1595,8 @@ function AdminDashboardContent() {
                     Where Investors Come From
                   </CardTitle>
                   <p className="text-xs text-muted-foreground mt-1">
-                    For each way a funded investor found us (from Zoho CRM), how many downloaded the app and how
-                    many are using it now. Totals match "The Big Picture" above. Filter by when they funded.
+                    For each way a funded investor found us (from Zoho CRM), how many downloaded the app, how many
+                    are using it now, and how many have done nothing yet (no app, no web). Filter by when they funded.
                   </p>
                 </div>
                 <Select value={sourcePeriod} onValueChange={(v: any) => setSourcePeriod(v)}>
@@ -1628,6 +1628,7 @@ function AdminDashboardContent() {
                         <TableHead className="text-right">On Android</TableHead>
                         <TableHead className="text-right">On Web</TableHead>
                         <TableHead className="text-right">Using It Now</TableHead>
+                        <TableHead className="text-right">Nothing Yet</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -1640,6 +1641,7 @@ function AdminDashboardContent() {
                           <TableCell className="text-right text-muted-foreground">{s.installedAndroid}</TableCell>
                           <TableCell className="text-right text-muted-foreground">{s.web}</TableCell>
                           <TableCell className="text-right text-green-700 font-semibold">{s.usingNow}</TableCell>
+                          <TableCell className="text-right text-red-600 font-semibold">{s.nothing}</TableCell>
                         </TableRow>
                       ))}
                       {(() => {
@@ -1653,6 +1655,7 @@ function AdminDashboardContent() {
                             <TableCell className="text-right text-muted-foreground">{sum('installedAndroid')}</TableCell>
                             <TableCell className="text-right text-muted-foreground">{sum('web')}</TableCell>
                             <TableCell className="text-right text-green-700">{sum('usingNow')}</TableCell>
+                            <TableCell className="text-right text-red-600">{sum('nothing')}</TableCell>
                           </TableRow>
                         );
                       })()}
