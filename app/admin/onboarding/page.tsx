@@ -406,12 +406,17 @@ function AdminDashboardContent() {
     app:   '#008300', // green
     both:  '#e87ba4', // magenta
     never: '#898781', // muted ink — no activity at all
+    unclassified: '#eda100', // amber — logged in, but which device wasn't recorded
   };
   const PLATFORM_LABELS: Record<string, string> = {
     web: 'Web only',
     app: 'App only',
     both: 'Both',
     never: 'Never logged in',
+    // Has real logins (login_count > 0) but the web/app split is 0, so we
+    // can't tell the device — happens for brand-new logins not yet in the
+    // platform-split tracking.
+    unclassified: 'Logged in — device not tracked',
   };
 
   // Add this function after fetchDashboardData
