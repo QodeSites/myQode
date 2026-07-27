@@ -95,7 +95,7 @@ export function FullscreenLoader({
           aria-label="Loading portfolio data"
           aria-valuemin={0}
           aria-valuemax={100}
-          className="mt-6 w-56 sm:w-64 h-1.5 rounded-full bg-primary/10 overflow-hidden"
+          className="mt-6 w-56 sm:w-64 h-1.5 rounded-full bg-primary/15 border border-border overflow-hidden"
         >
           <motion.span
             aria-hidden="true"
