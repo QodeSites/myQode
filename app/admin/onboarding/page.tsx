@@ -1523,13 +1523,15 @@ function AdminDashboardContent() {
 
           {/* ── The big picture: total investors → installed → using ─────────── */}
           {(() => {
+            // Derive every headline number from the SAME per-source table below,
+            // so the KPI cards and the table's Total row are always identical.
             const si = (platformActivity?.sourceInsights ?? []) as any[];
-            const totalInvestors = si.reduce((s, x) => s + x.totalInvestors, 0);
-            const inv = platformActivity?.summary?.investors ?? {};
-            const installed = inv.installed ?? 0;
-            const installedIos = inv.installedIos ?? 0;
-            const installedAndroid = inv.installedAndroid ?? 0;
-            const usingNow = inv.usingNow ?? 0;
+            const sum = (k: string) => si.reduce((s, x) => s + (x[k] ?? 0), 0);
+            const totalInvestors = sum('totalInvestors');
+            const installed = sum('installed');
+            const installedIos = sum('installedIos');
+            const installedAndroid = sum('installedAndroid');
+            const usingNow = sum('usingNow');
             return (
               <Card>
                 <CardHeader>
