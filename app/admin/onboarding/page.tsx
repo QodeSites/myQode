@@ -1540,7 +1540,10 @@ function AdminDashboardContent() {
                     The Big Picture
                   </CardTitle>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Of all our investors, how many downloaded the myQode app, and how many actually use it.
+                    Of everyone in the Zoho CRM, how many downloaded the myQode app and how many actually use it.
+                    (This counts Zoho CRM investor records, which is a wider list than the "Total Owners" client
+                    count at the top of the page — that groups a whole family under one owner, and only counts
+                    people who became myQode clients.)
                   </p>
                 </CardHeader>
                 <CardContent>
@@ -1549,9 +1552,9 @@ function AdminDashboardContent() {
                   ) : (
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="rounded-lg border p-4">
-                        <div className="text-xs text-muted-foreground">Total Investors</div>
+                        <div className="text-xs text-muted-foreground">Total Investors (Zoho CRM)</div>
                         <div className="text-3xl font-bold">{totalInvestors}</div>
-                        <div className="text-xs text-muted-foreground mt-1">everyone in our CRM</div>
+                        <div className="text-xs text-muted-foreground mt-1">everyone in the CRM</div>
                       </div>
                       <div className="rounded-lg border p-4">
                         <div className="text-xs text-muted-foreground">Installed the App</div>
@@ -1580,7 +1583,8 @@ function AdminDashboardContent() {
                 Where Investors Come From
               </CardTitle>
               <p className="text-xs text-muted-foreground mt-1">
-                For each way an investor found us, how many downloaded the app and how many are using it now.
+                For each way an investor found us (from Zoho CRM), how many downloaded the app and how many are
+                using it now. Totals match "The Big Picture" above.
               </p>
             </CardHeader>
             <CardContent>
