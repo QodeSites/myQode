@@ -160,11 +160,11 @@ export async function GET() {
     // attributed to each Zoho record under it.
     const byEmail = new Map(investors.map(c => [c.email.toLowerCase(), c]))
     const bySource = new Map<string, {
-      source: string; total: number; installed: number; installedIos: number; installedAndroid: number; usingNow: number
+      source: string; total: number; installed: number; installedIos: number; installedAndroid: number; web: number; usingNow: number
     }>()
     for (const r of rawZohoRecords) {
       if (!bySource.has(r.source)) {
-        bySource.set(r.source, { source: r.source, total: 0, installed: 0, installedIos: 0, installedAndroid: 0, usingNow: 0 })
+        bySource.set(r.source, { source: r.source, total: 0, installed: 0, installedIos: 0, installedAndroid: 0, web: 0, usingNow: 0 })
       }
       const entry = bySource.get(r.source)!
       entry.total += 1
@@ -175,6 +175,8 @@ export async function GET() {
         else if (c.installOS === 'android') entry.installedAndroid += 1
         if (c.usingNow) entry.usingNow += 1
       }
+      // Web = uses the browser version (has any web login), independent of app.
+      if (c && (c.platform === 'web' || c.platform === 'both')) entry.web += 1
     }
 
     const sourceInsights = Array.from(bySource.values()).map(s => ({
@@ -183,6 +185,7 @@ export async function GET() {
       installed: s.installed,
       installedIos: s.installedIos,
       installedAndroid: s.installedAndroid,
+      web: s.web,
       usingNow: s.usingNow,
     })).sort((a, b) => b.totalInvestors - a.totalInvestors)
 

@@ -1602,6 +1602,7 @@ function AdminDashboardContent() {
                         <TableHead className="text-right">Installed the App</TableHead>
                         <TableHead className="text-right">On iPhone</TableHead>
                         <TableHead className="text-right">On Android</TableHead>
+                        <TableHead className="text-right">On Web</TableHead>
                         <TableHead className="text-right">Using It Now</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -1613,6 +1614,7 @@ function AdminDashboardContent() {
                           <TableCell className="text-right text-blue-600 font-semibold">{s.installed}</TableCell>
                           <TableCell className="text-right text-muted-foreground">{s.installedIos}</TableCell>
                           <TableCell className="text-right text-muted-foreground">{s.installedAndroid}</TableCell>
+                          <TableCell className="text-right text-muted-foreground">{s.web}</TableCell>
                           <TableCell className="text-right text-green-700 font-semibold">{s.usingNow}</TableCell>
                         </TableRow>
                       ))}
@@ -1625,6 +1627,7 @@ function AdminDashboardContent() {
                             <TableCell className="text-right text-blue-600">{sum('installed')}</TableCell>
                             <TableCell className="text-right text-muted-foreground">{sum('installedIos')}</TableCell>
                             <TableCell className="text-right text-muted-foreground">{sum('installedAndroid')}</TableCell>
+                            <TableCell className="text-right text-muted-foreground">{sum('web')}</TableCell>
                             <TableCell className="text-right text-green-700">{sum('usingNow')}</TableCell>
                           </TableRow>
                         );
