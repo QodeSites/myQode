@@ -210,6 +210,21 @@ export async function GET() {
     const cut3m = new Date(now - 90 * 86_400_000)
     const cut1y = new Date(now - 365 * 86_400_000)
 
+    // "Slipping away" — investors who installed the app but haven't opened it
+    // in 30+ days (appInstalled but not usingNow). A short re-engagement list.
+    const slippingAway = investors
+      .filter(c => c.appInstalled && !c.usingNow)
+      .map(c => ({
+        name: c.name,
+        email: c.email,
+        source: c.investorSource ?? '—',
+        lastAppLoginAt: c.lastAppLoginAt,
+        daysSinceApp: c.lastAppLoginAt
+          ? Math.floor((now - new Date(c.lastAppLoginAt).getTime()) / 86_400_000)
+          : null,
+      }))
+      .sort((a, b) => (b.daysSinceApp ?? 99999) - (a.daysSinceApp ?? 99999))
+
     return NextResponse.json({
       clients,
       summary,
@@ -219,6 +234,7 @@ export async function GET() {
         '1y': buildBreakdown(cut1y),
         '3m': buildBreakdown(cut3m),
       },
+      slippingAway,
     })
   } catch (err: any) {
     console.error('[admin/client-platform-activity]', err)

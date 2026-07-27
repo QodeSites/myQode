@@ -1579,6 +1579,28 @@ function AdminDashboardContent() {
                       </div>
                     </div>
                   )}
+                  {!platformActivityLoading && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 pt-4 border-t">
+                      <div className="rounded-lg border p-4">
+                        <div className="text-xs text-muted-foreground">App Adoption Rate</div>
+                        <div className="text-3xl font-bold text-blue-600">
+                          {totalInvestors > 0 ? Math.round((installed / totalInvestors) * 100) : 0}%
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          of funded investors installed the app ({installed} of {totalInvestors})
+                        </div>
+                      </div>
+                      <div className="rounded-lg border p-4">
+                        <div className="text-xs text-muted-foreground">Stickiness</div>
+                        <div className="text-3xl font-bold text-green-600">
+                          {installed > 0 ? Math.round((usingNow / installed) * 100) : 0}%
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          of app installers still use it ({usingNow} of {installed})
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             );
@@ -1660,6 +1682,53 @@ function AdminDashboardContent() {
                 </div>
               );
               })()}
+            </CardContent>
+          </Card>
+
+          {/* Slipping away: installed the app but gone quiet */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                Slipping Away ({platformActivity?.slippingAway?.length ?? 0})
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                Investors who installed the app but haven't opened it in over 30 days — worth a nudge.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {platformActivityLoading ? (
+                <div className="space-y-2">{Array(4).fill(0).map((_, i) => <Skeleton key={i} className="h-8 w-full" />)}</div>
+              ) : (platformActivity?.slippingAway ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">Nobody's slipping — every app installer is active.</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Source</TableHead>
+                      <TableHead>Last Opened App</TableHead>
+                      <TableHead className="text-right">Days Quiet</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {platformActivity.slippingAway.map((p: any) => (
+                      <TableRow key={p.email}>
+                        <TableCell className="font-medium">{p.name}</TableCell>
+                        <TableCell className="text-muted-foreground text-xs">{p.email}</TableCell>
+                        <TableCell className="text-xs">{p.source}</TableCell>
+                        <TableCell className="text-xs">{p.lastAppLoginAt ? new Date(p.lastAppLoginAt).toLocaleDateString() : '—'}</TableCell>
+                        <TableCell className="text-right">
+                          <span className={(p.daysSinceApp ?? 0) >= 60 ? 'text-red-600 font-semibold' : 'text-amber-600 font-semibold'}>
+                            {p.daysSinceApp ?? '—'}d
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
 
