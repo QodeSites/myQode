@@ -1628,11 +1628,19 @@ function AdminDashboardContent() {
                   </Select>
                   <Button size="sm" variant="outline" onClick={() => {
                     const rows = (platformActivity?.sourceInsightsByPeriod?.[sourcePeriod] ?? platformActivity?.sourceInsights ?? []) as any[];
-                    exportToCsv('investors-by-source.csv',
+                    exportToCsv('investors-by-source-summary.csv',
                       ['Source', 'Funded Investors', 'Installed the App', 'On iPhone', 'On Android', 'On Web', 'Using It Now', 'Nothing Yet'],
                       rows.map(s => [s.source, s.totalInvestors, s.installed, s.installedIos, s.installedAndroid, s.web, s.usingNow, s.nothing]));
                   }}>
-                    <Download className="h-4 w-4 mr-1" /> Excel
+                    <Download className="h-4 w-4 mr-1" /> Summary
+                  </Button>
+                  <Button size="sm" onClick={() => {
+                    exportToCsv('investors-full-list.csv',
+                      ['Name', 'Email', 'Source', 'Installed App', 'Device', 'Uses Web', 'Status'],
+                      ((platformActivity?.fundedInvestorList ?? []) as any[]).map(p =>
+                        [p.name, p.email, p.source, p.installed, p.installedOS, p.usesWeb, p.status]));
+                  }}>
+                    <Download className="h-4 w-4 mr-1" /> Download Full List
                   </Button>
                 </div>
               </div>

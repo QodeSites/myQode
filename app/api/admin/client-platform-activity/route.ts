@@ -23,7 +23,7 @@ export async function GET() {
     // each with its source and whether it's funded (Activation_Date set). We
     // use funded records as the comparison base, counting raw records.
     let sourceMap = new Map<string, string>()
-    let rawZohoRecords: Array<{ email: string; source: string; activated: boolean; activationDate: string | null }> = []
+    let rawZohoRecords: Array<{ email: string; source: string; activated: boolean; activationDate: string | null; name: string | null }> = []
     try {
       sourceMap = await getInvestorSourceMap()
       rawZohoRecords = await getRawInvestorRecords()
@@ -261,6 +261,32 @@ export async function GET() {
       }
     }
 
+    // Full per-investor funded list (one row per funded Zoho record) with
+    // name, email, source, and their myQode app/web status — for the
+    // "download list" button on Where Investors Come From.
+    const statusFor = (c: (typeof investors)[number] | undefined): string => {
+      if (!c) return 'Nothing yet'
+      if (c.platform === 'both') return 'Uses app + web'
+      if (c.appInstalled) return c.usingNow ? 'Uses app (active)' : 'Installed app (quiet)'
+      if (c.platform === 'web') return 'Uses web only'
+      return 'Nothing yet'
+    }
+    const fundedInvestorList = rawZohoRecords
+      .filter(r => r.activated)
+      .map(r => {
+        const c = byEmail.get(r.email)
+        return {
+          name: r.name ?? c?.name ?? '',
+          email: r.email,
+          source: r.source,
+          installed: c?.appInstalled ? 'Yes' : 'No',
+          installedOS: c?.appInstalled ? (c.installOS === 'android' ? 'Android' : 'iPhone') : '',
+          usesWeb: c && (c.platform === 'web' || c.platform === 'both') ? 'Yes' : 'No',
+          status: statusFor(c),
+        }
+      })
+      .sort((a, b) => a.source.localeCompare(b.source) || a.name.localeCompare(b.name))
+
     return NextResponse.json({
       clients,
       summary,
@@ -272,6 +298,7 @@ export async function GET() {
       },
       slippingAway,
       usageTrend,
+      fundedInvestorList,
     })
   } catch (err: any) {
     console.error('[admin/client-platform-activity]', err)
