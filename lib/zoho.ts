@@ -113,6 +113,7 @@ type RawRecord = {
 
 let sourceCache: { data: Map<string, ZohoInvestorRecord>; expiresAt: number } | null = null
 let rawRecordsCache: { data: Array<{ email: string; source: string; activated: boolean; activationDate: string | null }>; expiresAt: number } | null = null
+let secondaryIndexCache: { data: Map<string, string>; expiresAt: number } | null = null
 const SOURCE_CACHE_TTL_MS = 5 * 60 * 1000
 
 async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> {
@@ -122,12 +123,13 @@ async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> 
   const domain = crmApiDomain()
   const rawByEmail = new Map<string, RawRecord[]>()
   const flatRawRecords: Array<{ email: string; source: string; activated: boolean; activationDate: string | null }> = []
+  const secondaryIndex = new Map<string, string>() // alt-email -> source
 
   let page = 1
   let more = true
   while (more) {
     const res = await fetch(
-      `${domain}/crm/v2/Investors?fields=Email,Investor_Source,Activation_Date,Investor_Size,Invested_Amount,Owner,Annual_Review_Status&per_page=200&page=${page}`,
+      `${domain}/crm/v2/Investors?fields=Email,Secondary_Email,Investor_Source,Activation_Date,Investor_Size,Invested_Amount,Owner,Annual_Review_Status&per_page=200&page=${page}`,
       { headers: { Authorization: `Zoho-oauthtoken ${token}` }, cache: 'no-store' }
     )
     if (res.status === 204) break // no (more) records
@@ -137,6 +139,7 @@ async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> 
     const data = (await res.json()) as {
       data?: Array<{
         Email?: string
+        Secondary_Email?: string
         Investor_Source?: string
         Activation_Date?: string
         Investor_Size?: number | string
@@ -162,6 +165,13 @@ async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> 
         annualReviewStatus: rec.Annual_Review_Status ?? null,
       })
       flatRawRecords.push({ email: key, source, activated, activationDate: rec.Activation_Date ?? null })
+      // A person's alternate email (e.g. a family member listed on the same
+      // record) — indexed so source lookups by that email still resolve.
+      // Primary emails win over secondary if both point somewhere.
+      if (rec.Secondary_Email) {
+        const sk = rec.Secondary_Email.toLowerCase()
+        if (sk !== key && !secondaryIndex.has(sk)) secondaryIndex.set(sk, source)
+      }
     }
     more = Boolean(data.info?.more_records)
     page += 1
@@ -201,6 +211,7 @@ async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> 
 
   sourceCache = { data: map, expiresAt: Date.now() + SOURCE_CACHE_TTL_MS }
   rawRecordsCache = { data: flatRawRecords, expiresAt: Date.now() + SOURCE_CACHE_TTL_MS }
+  secondaryIndexCache = { data: secondaryIndex, expiresAt: Date.now() + SOURCE_CACHE_TTL_MS }
   return map
 }
 
@@ -220,10 +231,17 @@ export async function getInvestorRecordMap(): Promise<Map<string, ZohoInvestorRe
   return fetchInvestorRecords()
 }
 
-/** email (lowercase) -> Investor_Source, for merging into per-client rows. */
+/**
+ * email (lowercase) -> Investor_Source, for merging into per-client rows.
+ * Includes secondary/alternate emails (e.g. a family member listed on the
+ * same Zoho record) so a myQode email that only appears as a Zoho secondary
+ * email still resolves to a source. Primary emails take precedence.
+ */
 export async function getInvestorSourceMap(): Promise<Map<string, string>> {
   const records = await fetchInvestorRecords()
   const map = new Map<string, string>()
+  // Secondary emails first, so primaries overwrite on any collision.
+  if (secondaryIndexCache) for (const [email, source] of secondaryIndexCache.data) map.set(email, source)
   for (const [email, r] of records) map.set(email, r.source)
   return map
 }

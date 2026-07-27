@@ -1685,6 +1685,39 @@ function AdminDashboardContent() {
             </CardContent>
           </Card>
 
+          {/* Active app vs web over lookback windows */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Activity className="h-4 w-4 text-indigo-500" />
+                App vs Web Usage Over Time
+              </CardTitle>
+              <p className="text-xs text-muted-foreground mt-1">
+                How many investors used the app vs. the web within the last 1, 3, 6 months, and ever. The window
+                widens left to right, so the numbers only go up.
+              </p>
+            </CardHeader>
+            <CardContent>
+              {platformActivityLoading ? (
+                <Skeleton className="h-64 w-full" />
+              ) : (platformActivity?.activityTimeline ?? []).length === 0 ? (
+                <p className="text-sm text-muted-foreground py-4 text-center">No data available</p>
+              ) : (
+                <ResponsiveContainer width="100%" height={280}>
+                  <LineChart data={platformActivity.activityTimeline} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e1e0d9" />
+                    <XAxis dataKey="period" tick={{ fontSize: 12 }} />
+                    <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+                    <RechartsTooltip />
+                    <Legend />
+                    <Line type="monotone" dataKey="app" name="Used the App" stroke={PLATFORM_COLORS.app} strokeWidth={2} dot={{ r: 4 }} />
+                    <Line type="monotone" dataKey="web" name="Used the Web" stroke={PLATFORM_COLORS.web} strokeWidth={2} dot={{ r: 4 }} />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </CardContent>
+          </Card>
+
           {/* Slipping away: installed the app but gone quiet */}
           <Card>
             <CardHeader>

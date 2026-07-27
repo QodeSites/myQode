@@ -225,6 +225,26 @@ export async function GET() {
       }))
       .sort((a, b) => (b.daysSinceApp ?? 99999) - (a.daysSinceApp ?? 99999))
 
+    // Activity over lookback windows: how many investors used the app vs. web
+    // within the last 1M / 3M / 6M, and ever (since inception). Widening the
+    // window can only add people, so the lines rise left→right.
+    const activeWithin = (dateStr: string | null, days: number | null) => {
+      if (!dateStr) return false
+      if (days === null) return true // since inception = ever
+      return (now - new Date(dateStr).getTime()) <= days * 86_400_000
+    }
+    const windows: Array<{ label: string; days: number | null }> = [
+      { label: 'Last 1 month', days: 30 },
+      { label: 'Last 3 months', days: 90 },
+      { label: 'Last 6 months', days: 180 },
+      { label: 'Since inception', days: null },
+    ]
+    const activityTimeline = windows.map(w => ({
+      period: w.label,
+      app: investors.filter(c => activeWithin(c.lastAppLoginAt, w.days)).length,
+      web: investors.filter(c => activeWithin(c.lastWebLoginAt, w.days)).length,
+    }))
+
     return NextResponse.json({
       clients,
       summary,
@@ -235,6 +255,7 @@ export async function GET() {
         '3m': buildBreakdown(cut3m),
       },
       slippingAway,
+      activityTimeline,
     })
   } catch (err: any) {
     console.error('[admin/client-platform-activity]', err)
