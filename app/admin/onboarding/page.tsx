@@ -244,7 +244,7 @@ function AdminDashboardContent() {
   const [sourceFilter, setSourceFilter] = useState<string>('all');
   const [zohoLookupLoading, setZohoLookupLoading] = useState<Set<string>>(new Set());
   const [investorInsights, setInvestorInsights] = useState<any>(null);
-  const [sourcePeriod, setSourcePeriod] = useState<'3m' | '1y' | 'all'>('all');
+  const [sourcePeriod, setSourcePeriod] = useState<'3m' | '6m' | '1y' | 'all'>('all');
   const [trendRange, setTrendRange] = useState<'1m' | '3m' | '6m' | 'all'>('6m');
   const [investorInsightsLoading, setInvestorInsightsLoading] = useState(false);
   const [dormancyFilter, setDormancyFilter] = useState<'all' | '30' | '60' | '90'>('all');
@@ -1538,6 +1538,14 @@ function AdminDashboardContent() {
         {/* ── APP ANALYTICS TAB ── */}
         <TabsContent value="app-analytics" className="space-y-6 mt-4">
 
+          {platformActivity?.generatedAt && (
+            <p className="text-xs text-muted-foreground">
+              Data as of {new Date(platformActivity.generatedAt).toLocaleString(undefined, {
+                day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+              })}
+            </p>
+          )}
+
           {analyticsError && (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
@@ -1557,6 +1565,8 @@ function AdminDashboardContent() {
             const installedAndroid = sum('installedAndroid');
             const webOnly = sum('webOnly');
             const usingNow = sum('usingNow');
+            const webActive = sum('webActive');
+            const active = sum('active');
             return (
               <Card>
                 <CardHeader>
@@ -1573,7 +1583,7 @@ function AdminDashboardContent() {
                   {platformActivityLoading ? (
                     <Skeleton className="h-24 w-full" />
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       <div className="rounded-lg border p-4">
                         <div className="text-xs text-muted-foreground">Funded Investors (Zoho CRM)</div>
                         <div className="text-3xl font-bold">{totalInvestors}</div>
@@ -1592,9 +1602,19 @@ function AdminDashboardContent() {
                         <div className="text-xs text-muted-foreground mt-1">use the browser, never installed the app</div>
                       </div>
                       <div className="rounded-lg border p-4">
-                        <div className="text-xs text-muted-foreground">Using It Now</div>
+                        <div className="text-xs text-muted-foreground">Using the App (Last 30 Days)</div>
                         <div className="text-3xl font-bold text-green-600">{usingNow}</div>
                         <div className="text-xs text-muted-foreground mt-1">opened the app in the last 30 days</div>
+                      </div>
+                      <div className="rounded-lg border p-4">
+                        <div className="text-xs text-muted-foreground">Used Web (Last 30 Days)</div>
+                        <div className="text-3xl font-bold text-teal-600">{webActive}</div>
+                        <div className="text-xs text-muted-foreground mt-1">logged in on the browser in the last 30 days</div>
+                      </div>
+                      <div className="rounded-lg border p-4">
+                        <div className="text-xs text-muted-foreground">Active on App or Web (Last 30 Days)</div>
+                        <div className="text-3xl font-bold text-indigo-600">{active}</div>
+                        <div className="text-xs text-muted-foreground mt-1">logged in anywhere in the last 30 days</div>
                       </div>
                     </div>
                   )}
@@ -1622,6 +1642,7 @@ function AdminDashboardContent() {
                     <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="3m">Funded last 3 months</SelectItem>
+                      <SelectItem value="6m">Funded last 6 months</SelectItem>
                       <SelectItem value="1y">Funded last 1 year</SelectItem>
                       <SelectItem value="all">All time</SelectItem>
                     </SelectContent>
@@ -1725,7 +1746,8 @@ function AdminDashboardContent() {
                     Usage Trend — App, Web & Both
                   </CardTitle>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Weekly active investors on each platform over time. Pick a range to zoom in.
+                    Weekly active investors on each platform over time, against total investors on the books
+                    (dashed). Pick a range to zoom in.
                   </p>
                 </div>
                 <Select value={trendRange} onValueChange={(v: any) => setTrendRange(v)}>
@@ -1759,6 +1781,7 @@ function AdminDashboardContent() {
                         <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
                         <RechartsTooltip labelFormatter={(l) => new Date(l).toLocaleDateString()} />
                         <Legend />
+                        <Line type="monotone" dataKey="total" name="Total Investors" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 4" dot={false} />
                         <Line type="monotone" dataKey="web" name="Web" stroke={PLATFORM_COLORS.web} strokeWidth={2} dot={false} />
                         <Line type="monotone" dataKey="app" name="App" stroke={PLATFORM_COLORS.app} strokeWidth={2} dot={false} />
                         <Line type="monotone" dataKey="both" name="Both" stroke={PLATFORM_COLORS.both} strokeWidth={2} dot={false} />

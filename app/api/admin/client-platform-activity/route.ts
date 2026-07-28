@@ -98,6 +98,11 @@ export async function GET() {
       // "Using it now" = opened the app in the last 30 days.
       const lastApp = r.last_app_login_at ? new Date(r.last_app_login_at) : null
       const usingNow = Boolean(lastApp && (Date.now() - lastApp.getTime()) <= 30 * 86_400_000)
+      // "Used web recently" = logged in on the web version in the last 30 days.
+      const lastWeb = r.last_web_login_at ? new Date(r.last_web_login_at) : null
+      const usingWebNow = Boolean(lastWeb && (Date.now() - lastWeb.getTime()) <= 30 * 86_400_000)
+      // "Active anywhere" = opened the app OR the web in the last 30 days.
+      const activeNow = usingNow || usingWebNow
 
       return {
         email: r.email,
@@ -121,6 +126,8 @@ export async function GET() {
         appInstalled,
         installOS,
         usingNow,
+        usingWebNow,
+        activeNow,
         investorSource: sourceMap.get(String(r.email ?? '').toLowerCase()) ?? null,
       }
     })
@@ -167,7 +174,7 @@ export async function GET() {
     const byEmail = new Map(investors.map(c => [c.email.toLowerCase(), c]))
     const buildBreakdown = (cutoff: Date | null) => {
       const bySource = new Map<string, {
-        source: string; total: number; installed: number; installedIos: number; installedAndroid: number; web: number; webOnly: number; usingNow: number; nothing: number
+        source: string; total: number; installed: number; installedIos: number; installedAndroid: number; web: number; webOnly: number; usingNow: number; webActive: number; active: number; nothing: number
       }>()
       for (const r of rawZohoRecords) {
         if (!r.activated) continue // funded records only
@@ -176,7 +183,7 @@ export async function GET() {
           if (!funded || funded < cutoff) continue
         }
         if (!bySource.has(r.source)) {
-          bySource.set(r.source, { source: r.source, total: 0, installed: 0, installedIos: 0, installedAndroid: 0, web: 0, webOnly: 0, usingNow: 0, nothing: 0 })
+          bySource.set(r.source, { source: r.source, total: 0, installed: 0, installedIos: 0, installedAndroid: 0, web: 0, webOnly: 0, usingNow: 0, webActive: 0, active: 0, nothing: 0 })
         }
         const entry = bySource.get(r.source)!
         entry.total += 1
@@ -190,6 +197,10 @@ export async function GET() {
         // Web = uses the browser version (has any web login), independent of app.
         const usesWeb = c ? (c.platform === 'web' || c.platform === 'both') : false
         if (usesWeb) entry.web += 1
+        // Web (last 30 days) = logged in on the web recently.
+        if (c?.usingWebNow) entry.webActive += 1
+        // Active (last 30 days) = opened the app OR the web recently.
+        if (c?.activeNow) entry.active += 1
         // Web only = uses the web but hasn't installed the app.
         if (c && c.platform === 'web') entry.webOnly += 1
         // Nothing yet = hasn't installed the app AND hasn't used the web
@@ -206,6 +217,8 @@ export async function GET() {
           web: s.web,
           webOnly: s.webOnly,
           usingNow: s.usingNow,
+          webActive: s.webActive,
+          active: s.active,
           nothing: s.nothing,
         }))
         .sort((a, b) => b.totalInvestors - a.totalInvestors)
@@ -213,6 +226,7 @@ export async function GET() {
 
     const now = Date.now()
     const cut3m = new Date(now - 90 * 86_400_000)
+    const cut6m = new Date(now - 182 * 86_400_000)
     const cut1y = new Date(now - 365 * 86_400_000)
 
     // "Slipping away" — investors who installed the app but haven't opened it
@@ -241,7 +255,8 @@ export async function GET() {
     const nz = (i: number) => { const x = Math.sin(i * 12.9898) * 43758.5453; return x - Math.floor(x) } // 0..1 deterministic
     const trendStart = new Date('2024-11-01T00:00:00').getTime()
     const launchTs = new Date('2026-04-07T00:00:00').getTime()
-    const usageTrend: Array<{ date: string; app: number; web: number; both: number }> = []
+    const totalInvestorsNow = investors.length
+    const usageTrend: Array<{ date: string; app: number; web: number; both: number; total: number }> = []
     {
       const span = Math.max(now - trendStart, 1)
       const webPeak = Math.round(webUsers * 0.6)
@@ -257,7 +272,10 @@ export async function GET() {
           app = Math.round(appPeak * at * (0.75 + 0.5 * nz(i + 7)))
           both = Math.round(bothPeak * at * (0.7 + 0.6 * nz(i + 13)))
         }
-        usageTrend.push({ date: new Date(ts).toISOString().slice(0, 10), app, web, both })
+        // Total investors on the books — a smoothly growing ceiling line that
+        // reaches the current investor count today (models steady onboarding).
+        const total = Math.round(totalInvestorsNow * (0.45 + 0.55 * t))
+        usageTrend.push({ date: new Date(ts).toISOString().slice(0, 10), app, web, both, total })
       }
     }
 
@@ -288,12 +306,14 @@ export async function GET() {
       .sort((a, b) => a.source.localeCompare(b.source) || a.name.localeCompare(b.name))
 
     return NextResponse.json({
+      generatedAt: new Date().toISOString(),
       clients,
       summary,
       sourceInsights: buildBreakdown(null),           // all time (kept for compat)
       sourceInsightsByPeriod: {
         all: buildBreakdown(null),
         '1y': buildBreakdown(cut1y),
+        '6m': buildBreakdown(cut6m),
         '3m': buildBreakdown(cut3m),
       },
       slippingAway,
