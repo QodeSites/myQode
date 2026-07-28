@@ -1567,6 +1567,9 @@ function AdminDashboardContent() {
             const usingNow = sum('usingNow');
             const webActive = sum('webActive');
             const active = sum('active');
+            const range = (platformActivity?.periodRanges?.[sourcePeriod]) as { from?: string; to?: string } | undefined;
+            const fmtDay = (s?: string) => s ? new Date(s).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null;
+            const rangeLabel = range?.from && range?.to ? `Funded ${fmtDay(range.from)} → ${fmtDay(range.to)}` : null;
             return (
               <Card>
                 <CardHeader>
@@ -1578,6 +1581,9 @@ function AdminDashboardContent() {
                     Base = investors from Zoho CRM who have funded their account. Of those, how many downloaded
                     the myQode app and how many actually use it.
                   </p>
+                  {rangeLabel && (
+                    <p className="text-xs font-medium text-foreground mt-1">Showing: {rangeLabel}</p>
+                  )}
                 </CardHeader>
                 <CardContent>
                   {platformActivityLoading ? (
@@ -1636,6 +1642,13 @@ function AdminDashboardContent() {
                     For each way a funded investor found us (from Zoho CRM), how many downloaded the app, how many
                     are using it now, and how many have done nothing yet (no app, no web). Filter by when they funded.
                   </p>
+                  {(() => {
+                    const r = (platformActivity?.periodRanges?.[sourcePeriod]) as { from?: string; to?: string } | undefined;
+                    const f = (s?: string) => s ? new Date(s).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null;
+                    return r?.from && r?.to
+                      ? <p className="text-xs font-medium text-foreground mt-1">Showing: Funded {f(r.from)} → {f(r.to)}</p>
+                      : null;
+                  })()}
                 </div>
                 <div className="flex items-center gap-2">
                   <Select value={sourcePeriod} onValueChange={(v: any) => setSourcePeriod(v)}>
@@ -1773,7 +1786,14 @@ function AdminDashboardContent() {
                   const cutoff = Date.now() - days * 86_400_000;
                   const rows = days === Infinity ? all : all.filter(p => new Date(p.date).getTime() >= cutoff);
                   const fmtDate = (d: string) => new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                  const fmtFull = (d: string) => new Date(d).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
                   return (
+                    <>
+                    {rows.length > 0 && (
+                      <p className="text-xs font-medium text-foreground mb-2">
+                        Showing: {fmtFull(rows[0].date)} → {fmtFull(rows[rows.length - 1].date)}
+                      </p>
+                    )}
                     <ResponsiveContainer width="100%" height={300}>
                       <LineChart data={rows} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e1e0d9" />
@@ -1787,6 +1807,7 @@ function AdminDashboardContent() {
                         <Line type="monotone" dataKey="both" name="Both" stroke={PLATFORM_COLORS.both} strokeWidth={2} dot={false} />
                       </LineChart>
                     </ResponsiveContainer>
+                    </>
                   );
                 })()
               )}

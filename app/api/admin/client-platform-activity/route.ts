@@ -229,6 +229,27 @@ export async function GET() {
     const cut6m = new Date(now - 182 * 86_400_000)
     const cut1y = new Date(now - 365 * 86_400_000)
 
+    // The actual span of funding dates covered by each period filter, so the UI
+    // can show "showing investors funded <from> → <to>". `from` is the earliest
+    // funded record in the window (for windowed periods this is ~the cutoff; for
+    // "all" it's the very first funded investor); `to` is the most recent.
+    const periodRange = (cutoff: Date | null) => {
+      let min: number | null = null
+      let max: number | null = null
+      for (const r of rawZohoRecords) {
+        if (!r.activated || !r.activationDate) continue
+        const f = new Date(r.activationDate).getTime()
+        if (Number.isNaN(f)) continue
+        if (cutoff && f < cutoff.getTime()) continue
+        if (min === null || f < min) min = f
+        if (max === null || f > max) max = f
+      }
+      return {
+        from: min !== null ? new Date(min).toISOString() : null,
+        to: max !== null ? new Date(max).toISOString() : null,
+      }
+    }
+
     // "Slipping away" — investors who installed the app but haven't opened it
     // in 30+ days (appInstalled but not usingNow). A short re-engagement list.
     const slippingAway = investors
@@ -315,6 +336,12 @@ export async function GET() {
         '1y': buildBreakdown(cut1y),
         '6m': buildBreakdown(cut6m),
         '3m': buildBreakdown(cut3m),
+      },
+      periodRanges: {
+        all: periodRange(null),
+        '1y': periodRange(cut1y),
+        '6m': periodRange(cut6m),
+        '3m': periodRange(cut3m),
       },
       slippingAway,
       usageTrend,
