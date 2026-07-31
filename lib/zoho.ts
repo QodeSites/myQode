@@ -5,7 +5,11 @@
 // Only what's needed for read-only search-by-email + building a direct
 // record URL. No lead/contact creation here (that lives in new-qode-website).
 
-const DATA_CENTER = process.env.ZOHO_DATA_CENTER || 'in'
+// ZOHO_CRM_DATA_CENTER is the name used alongside the other ZOHO_CRM_* vars;
+// ZOHO_DATA_CENTER is accepted too, since the Recruit credentials in this
+// project share that name and both point at the same region.
+const DATA_CENTER =
+  process.env.ZOHO_CRM_DATA_CENTER || process.env.ZOHO_DATA_CENTER || 'in'
 const ORG_ID = process.env.ZOHO_CRM_ORG_ID || ''
 
 // Module API name -> UI tab identifier (from /crm/v2/settings/modules
