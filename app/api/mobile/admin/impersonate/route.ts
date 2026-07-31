@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth, requireSuperAdmin } from '@/lib/mobileAuth'
 import type { MobileAuthUser } from '@/lib/mobileAuth'
 import { query } from '@/lib/db'
+import { normaliseAccountCode } from '@/lib/utils'
 import jwt from 'jsonwebtoken'
 
 export async function POST(request: NextRequest) {
@@ -72,10 +73,14 @@ export async function POST(request: NextRequest) {
     // Include group-level and owner-level consolidated account codes so portfolio
     // APIs allow GROUP/OWNER aggregated views (rows in pms_master_sheet where
     // account_code = groupid / ownerid).
+    // Normalised: ownerid/groupid are stored float-formatted ("65941.0") but
+    // account_code is not. See normaliseAccountCode.
     const uniqueOwnerIds: string[] = [...new Set(
-      accounts.map((r: any) => r.ownerid).filter(Boolean)
+      accounts.map((r: any) => normaliseAccountCode(r.ownerid)).filter(Boolean)
     )] as string[]
-    const groupCode: string[] = target.head_of_family && target.groupid ? [target.groupid] : []
+    const groupCode: string[] = target.head_of_family && target.groupid
+      ? [normaliseAccountCode(target.groupid)]
+      : []
 
     const accountCodes: string[] = [...individualCodes, ...uniqueOwnerIds, ...groupCode]
 

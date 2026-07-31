@@ -1,4 +1,5 @@
 import pool from "@/lib/db";
+import { normaliseAccountCode } from "@/lib/utils";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -12,6 +13,11 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Owner/group ids arrive as "65941.0" (see normaliseAccountCode) while
+    // pms_master_sheet.account_code has no float suffix. Normalise here rather
+    // than at each call site so every caller is covered.
+    const normalised_code = normaliseAccountCode(account_code);
 
     const query = `
       SELECT
@@ -36,7 +42,17 @@ export async function GET(request: NextRequest) {
       ORDER BY report_date ASC
     `;
 
-    const result = await pool.query(query, [account_code.trim()]);
+    const result = await pool.query(query, [normalised_code]);
+
+    if (result.rows.length === 0) {
+      // Surface the miss instead of returning a silently empty chart.
+      console.warn(
+        `[portfolio-history-by-code] no rows for account_code="${normalised_code}"` +
+          (normalised_code !== account_code.trim()
+            ? ` (normalised from "${account_code.trim()}")`
+            : "")
+      );
+    }
 
     return NextResponse.json({
       success: true,
