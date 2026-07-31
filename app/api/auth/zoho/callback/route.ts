@@ -68,7 +68,10 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url)
   const code = url.searchParams.get('code')
   const oauthError = url.searchParams.get('error')
-  const reveal = url.searchParams.get('reveal') === '1'
+  // `reveal` may arrive directly, or via the `state` Zoho echoes back from
+  // /authorize — Zoho discards any other params we try to pass through.
+  const reveal =
+    url.searchParams.get('reveal') === '1' || url.searchParams.get('state') === 'reveal'
 
   // ── Gate: same secret as /authorize ─────────────────────────────────────
   // Zoho does not forward our query params, so the secret is only enforced

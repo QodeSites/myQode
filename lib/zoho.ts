@@ -50,6 +50,12 @@ function crmApiDomain(): string {
   return `https://www.zohoapis.${DATA_CENTER}`
 }
 
+// Re-exported so other Zoho modules (lib/zohoDistributorFees.ts) share this
+// token cache rather than each refreshing their own — Zoho rate-limits token
+// requests, and duplicate caches would multiply them for no benefit.
+export const getZohoAccessToken = getAccessToken
+export const zohoApiDomain = crmApiDomain
+
 /**
  * Search a Zoho CRM module by email and return the record's direct UI URL,
  * or null if no record matches.

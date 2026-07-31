@@ -70,16 +70,31 @@ export async function GET(request: NextRequest) {
     const data = await res.json().catch(() => ({}) as any)
 
     if (!data.access_token) {
+      // Surface Zoho's own response. Without it "no access token" is a dead end
+      // — the useful detail is always in the body, not the HTTP status.
+      const zohoError = data.error ?? null
+      const nextByError: Record<string, string> = {
+        invalid_code:
+          'The refresh token does not belong to this client id. Re-run /api/auth/zoho/authorize.',
+        invalid_client:
+          'The client id or secret is wrong, or belongs to a different Zoho data centre.',
+        invalid_grant:
+          'The refresh token has been revoked or superseded. Re-run /api/auth/zoho/authorize.',
+        'Access Denied':
+          'This Self Client is not permitted to issue CRM tokens. Create the Self Client from Zoho CRM.',
+      }
+
       return NextResponse.json(
         {
           ok: false,
           stage: 'token_refresh',
-          error: data.error ?? 'No access token returned',
+          error: zohoError ?? 'No access token returned',
+          zohoResponse: data,           // the actual payload Zoho sent back
+          httpStatus: res.status,
           env,
           next:
-            data.error === 'invalid_code'
-              ? 'The refresh token does not belong to this client id. Re-run /api/auth/zoho/authorize.'
-              : 'Check the client id and secret.',
+            (zohoError && nextByError[zohoError]) ??
+            'Check the client id and secret, and that they match the data centre above.',
         },
         { status: 502 },
       )

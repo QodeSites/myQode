@@ -72,6 +72,12 @@ export async function GET(request: NextRequest) {
   authUrl.searchParams.set('scope', SCOPES)
   authUrl.searchParams.set('client_id', clientId)
   authUrl.searchParams.set('response_type', 'code')
+  // Zoho drops any extra query params we add, but echoes `state` back verbatim.
+  // That is the only way to carry `reveal` through the redirect, so someone
+  // without server-log access can still retrieve the token from the callback.
+  if (url.searchParams.get('reveal') === '1') {
+    authUrl.searchParams.set('state', 'reveal')
+  }
   // offline is what makes Zoho return a refresh_token rather than only an
   // access token — without it the callback succeeds but yields nothing durable.
   authUrl.searchParams.set('access_type', 'offline')

@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
 import { query as query1 } from '@/lib/db1';
+import {
+  getShareForDistributor,
+  type DistributorShare,
+} from '@/lib/zohoDistributorFees';
 
 interface UserContext {
   clientid: string;
@@ -194,7 +198,45 @@ export async function POST(req: Request) {
     }
     const distributor = distributorResult.rows[0];
     const intermediaryName = distributor.clientname;
-    const fees_percentage: number = parseFloat(distributor.intermediary_fee_percentage) || 0;
+
+    // Legacy rate from pms_clients_master. Retained only as a fallback: the
+    // column is populated for 15 of 507 clients, so on its own it silently
+    // produced a 0% share — and therefore ₹0 — for ~97% of the book.
+    const legacyFeePercentage: number =
+      parseFloat(distributor.intermediary_fee_percentage) || 0;
+
+    // The authoritative rate is Distributor_Share_Category on the Zoho
+    // Distributor module — the fraction of billed fees this distributor keeps.
+    // One rate per distributor, applied to every client under them.
+    //
+    // Zoho being unreachable must not blank out the whole page, so a failure
+    // degrades to the legacy column and is surfaced per row via rateSource.
+    let zohoShare: DistributorShare | null = null;
+    let zohoAvailable = true;
+    try {
+      zohoShare = await getShareForDistributor(email);
+    } catch (err) {
+      zohoAvailable = false;
+      console.error('[distributor/calculator] Zoho share lookup failed:', err);
+    }
+
+    // Resolution order: Zoho category → legacy column → nothing configured.
+    const sharePct: number =
+      zohoShare?.sharePct != null ? zohoShare.sharePct : legacyFeePercentage;
+
+    const rateSource: 'zoho' | 'legacy' | 'unmapped' =
+      zohoShare?.sharePct != null
+        ? 'zoho'
+        : legacyFeePercentage > 0
+          ? 'legacy'
+          : 'unmapped';
+
+    if (rateSource === 'unmapped') {
+      console.warn(
+        `[distributor/calculator] no share rate for ${email} ` +
+        `(zoho ${zohoAvailable ? 'reachable, no category set' : 'unreachable'}) — share will be 0`,
+      );
+    }
 
     // Related clients
     const clientsResult = await query(
@@ -292,8 +334,13 @@ export async function POST(req: Request) {
       const fixedFeesBeforeGst = fixedFeesRaw - gstOnFixed;
       const totalFeesBeforeGst = totalFeesRaw - gstOnTotal;
 
-      // Distributor share on GST-deducted total
-      const distributorShare = totalFeesRaw * (fees_percentage / 100);
+      // ── Distributor share ──────────────────────────────────────────────
+      // A single revenue-share rate (Distributor_Share_Category) applied to
+      // the fees billed. Split across the two fee types purely so the UI can
+      // show where the amount came from — the rate is the same for both.
+      const distributorShareFixed = fixedFeesRaw * (sharePct / 100);
+      const distributorSharePerf = perfFeesRaw * (sharePct / 100);
+      const distributorShare = totalFeesRaw * (sharePct / 100);
 
       return {
         id: idx + 1,
@@ -325,8 +372,17 @@ export async function POST(req: Request) {
         totalFeesGst: gstOnTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         totalFeesCollected: totalFeesRaw.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
 
-        distributorPercentage: fees_percentage.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        // The revenue-share slab from Zoho's Distributor_Share_Category.
+        distributorPercentage: sharePct.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
         distributorShare: distributorShare.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+
+        // Split by fee type so the UI can show how the share was made up.
+        distributorShareFixed: distributorShareFixed.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        distributorSharePerf: distributorSharePerf.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+        /** The raw Zoho picklist value, e.g. "65%". */
+        distributorShareCategory: zohoShare?.shareCategory ?? null,
+        /** 'zoho' | 'legacy' | 'unmapped' — where this row's rate came from. */
+        rateSource,
 
         accountcode
       };
