@@ -138,16 +138,73 @@ export async function GET(request: NextRequest) {
     const body = await probe.json().catch(() => ({}) as any)
     const sample = body?.data?.[0]
 
+    // A REST read succeeding does NOT mean the fee lookup works: that uses
+    // COQL, a different endpoint with its own scope. Testing only REST is what
+    // let this route report ok:true while the fee lookup silently fell back to
+    // legacy rates. Exercise the exact query the calculator runs.
+    let coqlOk = false
+    let coqlError: string | null = null
+    let shareCategoryRows = 0
+    let sampleShare: { name: string | null; email: string | null; secondary: string | null; category: string | null } | null =
+      null
+
+    try {
+      const coqlRes = await fetch(`https://www.zohoapis.${dataCenter}/crm/v3/coql`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Zoho-oauthtoken ${data.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          select_query:
+            'select Email, Secondary_Email, Name, Distributor_Share_Category, Base_Distributor_Share ' +
+            'from Distributor where Distributor_Share_Category is not null limit 0, 200',
+        }),
+        cache: 'no-store',
+      })
+
+      if (coqlRes.status === 204) {
+        coqlOk = true                       // valid query, simply no rows
+      } else if (coqlRes.ok) {
+        coqlOk = true
+        const coqlBody = await coqlRes.json().catch(() => ({}) as any)
+        const rows: any[] = coqlBody?.data ?? []
+        shareCategoryRows = rows.length
+        const first = rows[0]
+        if (first) {
+          sampleShare = {
+            name: first.Name ?? null,
+            email: first.Email ?? null,
+            secondary: first.Secondary_Email ?? null,
+            category: first.Distributor_Share_Category ?? null,
+          }
+        }
+      } else {
+        coqlError = `HTTP ${coqlRes.status}: ${(await coqlRes.text()).slice(0, 200)}`
+      }
+    } catch (err) {
+      coqlError = err instanceof Error ? err.message : String(err)
+    }
+
     return NextResponse.json({
-      ok: true,
+      ok: coqlOk,
       grantedScope: scope,
       accessTokenExpiresIn: data.expires_in,
       distributorModuleReadable: true,
       sampleDistributor: sample ? { name: sample.Name ?? null } : null,
+      // The part that actually drives distributor fee rates.
+      coqlWorking: coqlOk,
+      coqlError,
+      distributorsWithShareCategory: shareCategoryRows,
+      sampleShare,
       env,
-      next: orgId
-        ? 'Zoho is fully configured.'
-        : 'Working. Add ZOHO_CRM_ORG_ID (CRM → Setup → Company Details) to enable record links.',
+      next: !coqlOk
+        ? 'COQL is failing — distributor fee rates will fall back to legacy values. Re-run /api/auth/zoho/authorize to grant ZohoCRM.coql.READ.'
+        : shareCategoryRows === 0
+          ? 'COQL works but no distributor has Distributor_Share_Category set in Zoho.'
+          : orgId
+            ? 'Zoho is fully configured.'
+            : 'Working. Add ZOHO_CRM_ORG_ID (CRM → Setup → Company Details) to enable record links.',
     })
   } catch (err) {
     console.error('[zoho/status] error:', err)
