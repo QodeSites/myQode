@@ -9,7 +9,6 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import type { MobileAuthUser } from '@/lib/mobileAuth'
 import { REVIEWER_ACCOUNT_CODES } from '@/lib/reviewerMock'
-import { normaliseAccountCode } from '@/lib/utils'
 
 // Reviewer account — used by App Store / Play Store reviewers.
 // Shows hardcoded dummy data so no real client data is exposed during review.
@@ -278,15 +277,16 @@ export async function POST(request: NextRequest) {
     // Include group-level and owner-level consolidated account codes so the
     // portfolio APIs (which check accountCodes) allow GROUP/OWNER aggregated views.
     // These match rows in pms_master_sheet where account_code = groupid / ownerid.
-    // ownerid/groupid are stored float-formatted ("65941.0") but account_code
-    // is not, so they must be normalised or every GROUP/OWNER authorisation
-    // check silently fails to match. See normaliseAccountCode.
+    // NOTE: these are deliberately NOT stripped of their ".0" suffix.
+    // ownerid/groupid are stored float-formatted ("65941.0") and the mobile app
+    // sends that same raw value as `accountId`. The portfolio routes authorise
+    // with a strict `accountCodes.includes(accountId)`, so normalising here
+    // would make every GROUP/OWNER request 403. The suffix is stripped at the
+    // point of the DB lookup instead (see /api/portfolio-history-by-code).
     const uniqueOwnerIds: string[] = [...new Set(
-      accounts.map((a: any) => normaliseAccountCode(a.ownerid)).filter(Boolean)
+      accounts.map((a: any) => a.ownerid).filter(Boolean)
     )] as string[]
-    const groupCode: string[] = user.head_of_family && user.groupid
-      ? [normaliseAccountCode(user.groupid)]
-      : []
+    const groupCode: string[] = user.head_of_family && user.groupid ? [user.groupid] : []
 
     const accountCodes: string[] = [...individualCodes, ...uniqueOwnerIds, ...groupCode]
 
