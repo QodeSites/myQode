@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { query } from "@/lib/db";
+import {
+  getInvestorCrmDetails,
+  type InvestorCrmDetail,
+} from "@/lib/zohoInvestorDetails";
 
 interface UserContext {
   email: string;
@@ -10,10 +14,18 @@ interface ClientSummary {
   id: number;
   name: string;
   accountcode: string;
+  /** Stable per-person identity (email, or a normalised name). One investor
+   *  may appear across several rows — one per strategy account. */
+  investorKey: string;
   scheme: string | null;
   latestAum: string;
   investedAmount: string;
   sinceInception: string | null;
+  /** From Zoho CRM. Null when the investor has no CRM record, or when Zoho
+   *  was unreachable — the portal's own figures still render either way. */
+  activationDate: string | null;
+  relationshipManager: string | null;
+  annualReviewStatus: string | null;
 }
 
 function formatCurrency(value: any): string {
@@ -76,6 +88,21 @@ export async function GET() {
 
     const accountCodes = clientRows.map((row: any) => row.clientcode);
 
+    // CRM details from Zoho, looked up AFTER the ownership filter above — the
+    // distributor only ever sees rows for clients already scoped to them by
+    // intermediaryname. The lookup itself enforces nothing, so the ordering
+    // matters: never fetch CRM data for a client list that has not been
+    // filtered first.
+    //
+    // Zoho being unreachable must not break the page: the portal's own data is
+    // the substance here, and the CRM fields are enrichment.
+    let crmDetails = new Map<string, InvestorCrmDetail>();
+    try {
+      crmDetails = await getInvestorCrmDetails();
+    } catch (err) {
+      console.error("[distributor/clients] Zoho investor lookup failed:", err);
+    }
+
     // Use public.pms_master_sheet for all metrics
     // Latest AUM (portfolio_value) per account_code
     const latestAumResult = await query(
@@ -124,15 +151,45 @@ export async function GET() {
       const invested = investedMap.get(accountcode) ?? 0;
       const inceptionRaw = inceptionMap.get(accountcode);
 
+      // One row per strategy account, but a single investor commonly holds
+      // several (QAW + QGF + QTF). investorKey identifies the *person* so the
+      // UI can count clients without double-counting their accounts.
+      //
+      // Keyed on email AND name, not email alone: families and HUFs routinely
+      // share one contact address (jiten@… covers five distinct entities —
+      // two individuals plus three HUFs). Keying on email alone would merge
+      // them into a single client and undercount just as badly as counting
+      // rows overcounts. Name is normalised because the source data has
+      // inconsistent spacing and casing ("Amit  Paliwal" vs "AMIT PALIWAL").
+      const normalisedName = String(client.clientname ?? '')
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ');
+      const normalisedEmail = String(client.email ?? '').trim().toLowerCase();
+      const investorKey: string = normalisedEmail
+        ? `${normalisedEmail}|${normalisedName}`
+        : `name:${normalisedName}`;
+
+      // Safe to look up unconditionally: clientRows was already filtered to
+      // this distributor's own book above.
+      const crm = normalisedEmail ? crmDetails.get(normalisedEmail) : undefined;
+
       return {
         id: idx + 1,
         name: client.clientname,
         accountcode,
+        investorKey,
         // scheme code: first three letters of account_code
         scheme: accountcode ? accountcode.substring(0, 3) : null,
         latestAum: formatCurrency(latestAum),
         investedAmount: formatCurrency(invested),
         sinceInception: formatDate(inceptionRaw),
+
+        // CRM enrichment. Keyed on the client's own email; absent when the
+        // investor has no Zoho record or Zoho was unreachable.
+        activationDate: crm?.activationDate ?? null,
+        relationshipManager: crm?.relationshipManager ?? null,
+        annualReviewStatus: crm?.annualReviewStatus ?? null,
       };
     });
 
