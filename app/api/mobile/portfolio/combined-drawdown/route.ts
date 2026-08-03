@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
 import db2 from '@/lib/db2'
+import { normaliseAccountCode } from '@/lib/utils'
 import { REVIEWER_MOCK_COMBINED_DRAWDOWN } from '@/lib/reviewerMock'
 
 const PERIOD_DAYS: Record<string, number> = {
@@ -46,6 +47,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
+  // Owner/group ids are float-formatted ("65941.0") in the JWT — deliberately so,
+  // because the authorisation check above compares against those raw values.
+  // pms_master_sheet.account_code has no such suffix, so strip it before querying
+  // or the combined view silently returns zero rows.
+  const dbAccountId = normaliseAccountCode(accountId)
+
   const days = PERIOD_DAYS[period] ?? PERIOD_DAYS['1Y']
 
   try {
@@ -53,7 +60,7 @@ export async function GET(request: NextRequest) {
     const closedCheckRes = await pool.query(
       `SELECT report_date, portfolio_value FROM public.pms_master_sheet
        WHERE account_code = $1 ORDER BY report_date DESC LIMIT 2`,
-      [accountId]
+      [dbAccountId]
     )
     const last2 = closedCheckRes.rows
     const isClosed = last2.length >= 2 &&
@@ -65,7 +72,7 @@ export async function GET(request: NextRequest) {
         `SELECT report_date FROM public.pms_master_sheet
          WHERE account_code = $1 AND portfolio_value > 0
          ORDER BY report_date DESC LIMIT 1`,
-        [accountId]
+        [dbAccountId]
       )
       closedAt = caRes.rows[0]?.report_date ? String(caRes.rows[0].report_date).split('T')[0] : null
     }
@@ -89,7 +96,7 @@ export async function GET(request: NextRequest) {
            WHERE account_code = $1
              AND report_date >= $2
            ORDER BY report_date ASC`,
-      closedAt ? [accountId, cutoffStr, closedAt] : [accountId, cutoffStr]
+      closedAt ? [dbAccountId, cutoffStr, closedAt] : [dbAccountId, cutoffStr]
     )
 
     const portRows = portResult.rows

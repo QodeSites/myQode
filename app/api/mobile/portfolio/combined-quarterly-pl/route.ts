@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
+import { normaliseAccountCode } from '@/lib/utils'
 import { REVIEWER_MOCK_COMBINED_QUARTERLY_PL } from '@/lib/reviewerMock'
 
 export async function GET(request: NextRequest) {
@@ -25,13 +26,19 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
+  // Owner/group ids are float-formatted ("65941.0") in the JWT — deliberately so,
+  // because the authorisation check above compares against those raw values.
+  // pms_master_sheet.account_code has no such suffix, so strip it before querying
+  // or the combined view silently returns zero rows.
+  const dbAccountId = normaliseAccountCode(accountId)
+
   try {
     const result = await pool.query(
       `SELECT report_date, nav, portfolio_value, cash_in_out
        FROM public.pms_master_sheet
        WHERE account_code = $1
        ORDER BY report_date ASC`,
-      [accountId]
+      [dbAccountId]
     )
 
     let rows = result.rows

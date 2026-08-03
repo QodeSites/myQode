@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
+import { normaliseAccountCode } from '@/lib/utils'
 import { REVIEWER_MOCK_COMBINED_CASHFLOW } from '@/lib/reviewerMock'
 
 function formatINR(amount: number): string {
@@ -31,12 +32,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
 
+  // Owner/group ids are float-formatted ("65941.0") in the JWT — deliberately so,
+  // because the authorisation check above compares against those raw values.
+  // pms_master_sheet.account_code has no such suffix, so strip it before querying
+  // or the combined view silently returns zero rows.
+  const dbAccountId = normaliseAccountCode(accountId)
+
   try {
     // Detect closed account via pre-computed row
     const closedCheckRes = await pool.query(
       `SELECT report_date, portfolio_value FROM public.pms_master_sheet
        WHERE account_code = $1 ORDER BY report_date DESC LIMIT 2`,
-      [accountId]
+      [dbAccountId]
     )
     const last2 = closedCheckRes.rows
     const isClosed = last2.length >= 2 &&
@@ -48,7 +55,7 @@ export async function GET(request: NextRequest) {
         `SELECT report_date FROM public.pms_master_sheet
          WHERE account_code = $1 AND portfolio_value > 0
          ORDER BY report_date DESC LIMIT 1`,
-        [accountId]
+        [dbAccountId]
       )
       closedAt = caRes.rows[0]?.report_date ? String(caRes.rows[0].report_date).split('T')[0] : null
     }
@@ -61,7 +68,7 @@ export async function GET(request: NextRequest) {
          AND cash_in_out IS NOT NULL AND cash_in_out != 0
          ${closedAt ? `AND report_date <= '${closedAt}'` : ''}
        ORDER BY report_date ASC`,
-      [accountId]
+      [dbAccountId]
     )
 
     const transactions = result.rows.map((r: any) => {
