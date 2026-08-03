@@ -8,6 +8,7 @@ import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
 import db2 from '@/lib/db2'
 import { getStrategyName, getStrategyBenchmark, getPrefix } from '@/lib/strategyConfig'
+import { normaliseAccountCode } from '@/lib/utils'
 import { reviewerMockDrawdown } from '@/lib/reviewerMock'
 
 const PERIOD_DAYS: Record<string, number> = {
@@ -44,7 +45,16 @@ export async function GET(request: NextRequest) {
   if (!accountId) {
     return NextResponse.json({ error: 'accountId is required', available: user!.accountCodes }, { status: 400 })
   }
-  if (!user!.accountCodes?.includes(accountId)) {
+  // Owner/group ids reach us float-formatted ("58282.0") — pms_clients_master
+  // stores them that way, and the snapshot route echoes ownerid straight back to
+  // the app. Authorise against either form, since accountCodes may hold the raw
+  // suffixed value from the JWT while the app now sends the clean one (or vice
+  // versa). Strategy codes like QGF00014 are left untouched by the normaliser.
+  const dbAccountId = normaliseAccountCode(accountId)
+  const isAuthorised = user!.accountCodes?.some(
+    (code) => code === accountId || normaliseAccountCode(code) === dbAccountId
+  )
+  if (!isAuthorised) {
     return NextResponse.json({ error: 'Forbidden', available: user!.accountCodes }, { status: 403 })
   }
 
@@ -56,7 +66,7 @@ export async function GET(request: NextRequest) {
     const closedCheckRes = await pool.query(
       `SELECT report_date, portfolio_value FROM public.pms_master_sheet
        WHERE account_code = $1 ORDER BY report_date DESC LIMIT 2`,
-      [accountId]
+      [dbAccountId]
     )
     const last2 = closedCheckRes.rows
     const isClosed = last2.length >= 2 &&
@@ -68,7 +78,7 @@ export async function GET(request: NextRequest) {
         `SELECT report_date FROM public.pms_master_sheet
          WHERE account_code = $1 AND portfolio_value > 0
          ORDER BY report_date DESC LIMIT 1`,
-        [accountId]
+        [dbAccountId]
       )
       closedAt = caRes.rows[0]?.report_date ?? null
     }
@@ -93,7 +103,7 @@ export async function GET(request: NextRequest) {
            WHERE account_code = $1
              AND report_date >= $2
            ORDER BY report_date ASC`,
-      closedAt ? [accountId, cutoffStr, closedAt] : [accountId, cutoffStr]
+      closedAt ? [dbAccountId, cutoffStr, closedAt] : [dbAccountId, cutoffStr]
     )
 
     const portRows = portResult.rows

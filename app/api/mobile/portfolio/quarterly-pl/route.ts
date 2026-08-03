@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
+import { normaliseAccountCode } from '@/lib/utils'
 import { reviewerMockQuarterlyPL } from '@/lib/reviewerMock'
 
 export async function GET(request: NextRequest) {
@@ -20,7 +21,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'accountId is required', available: user!.accountCodes }, { status: 400 })
   }
 
-  if (!user!.accountCodes?.includes(accountId)) {
+  // Owner/group ids reach us float-formatted ("58282.0") — pms_clients_master
+  // stores them that way, and the snapshot route echoes ownerid straight back to
+  // the app. Authorise against either form, since accountCodes may hold the raw
+  // suffixed value from the JWT while the app now sends the clean one (or vice
+  // versa). Strategy codes like QGF00014 are left untouched by the normaliser.
+  const dbAccountId = normaliseAccountCode(accountId)
+  const isAuthorised = user!.accountCodes?.some(
+    (code) => code === accountId || normaliseAccountCode(code) === dbAccountId
+  )
+  if (!isAuthorised) {
     return NextResponse.json({ error: 'Forbidden', available: user!.accountCodes }, { status: 403 })
   }
 
@@ -30,7 +40,7 @@ export async function GET(request: NextRequest) {
        FROM public.pms_master_sheet
        WHERE account_code = $1
        ORDER BY report_date ASC`,
-      [accountId]
+      [dbAccountId]
     )
 
     let rows = result.rows
