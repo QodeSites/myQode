@@ -171,7 +171,13 @@ export async function GET() {
     // A record's email is looked up for its app/web activity. Computed for
     // three funding windows (by Activation_Date) so the client can filter
     // without a refetch.
-    const byEmail = new Map(investors.map(c => [c.email.toLowerCase(), c]))
+    // pms_clients_master.email is nullable, so guard before lowercasing —
+    // a single NULL-email row would otherwise take down the whole route.
+    const byEmail = new Map(
+      investors
+        .filter(c => c.email)
+        .map(c => [String(c.email).toLowerCase(), c])
+    )
     const buildBreakdown = (cutoff: Date | null) => {
       const bySource = new Map<string, {
         source: string; total: number; installed: number; installedIos: number; installedAndroid: number; web: number; webOnly: number; usingNow: number; webActive: number; active: number; nothing: number
