@@ -34,8 +34,16 @@ export async function middleware(request: NextRequest) {
     });
   }
 
-  // Admin route protection (existing behaviour)
-  if (request.nextUrl.pathname.startsWith('/admin')) {
+  // Admin route protection (existing behaviour).
+  //
+  // /distributors/internal is included because it exposes every distributor's
+  // book to the Qode team. This provides the login REDIRECT only — the cookie
+  // is not validated here (see the comment below), so the route's own
+  // getSession() check against Redis is the actual security boundary.
+  if (
+    request.nextUrl.pathname.startsWith('/admin') ||
+    request.nextUrl.pathname.startsWith('/distributors/internal')
+  ) {
     if (
       request.nextUrl.pathname === '/admin/login' ||
       request.nextUrl.pathname.startsWith('/api/auth/')
@@ -67,5 +75,13 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/admin/:path*', '/api/:path*'],
+  // '/distributors/internal' is listed separately from its ':path*' form —
+  // the wildcard alone does not match the bare route, which would leave the
+  // page itself unmatched.
+  matcher: [
+    '/admin/:path*',
+    '/api/:path*',
+    '/distributors/internal',
+    '/distributors/internal/:path*',
+  ],
 };
