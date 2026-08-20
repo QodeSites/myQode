@@ -22,8 +22,15 @@
 - **Never trust middleware for authorization** — it only checks cookie existence (`middleware.ts:63`). Always call `getSession()` server-side.
 - **Buttons:** the `default` variant is broken (white on cream). Use `variant="secondary"` with `bg-primary text-primary-foreground` overrides, or `variant="outline"`.
 
-**Scratchpad path** (for probe scripts, referenced throughout):
-`C:\Users\tech\AppData\Local\Temp\claude\c--Users-tech-Qode-Desktop-development-qode-microsite\dec2936f-be3b-4244-bf3b-5e7722d6742a\scratchpad`
+**Scratchpad path** (for probe scripts, referenced throughout): use the
+session scratchpad directory given in the environment prompt, referred to
+below as `<scratchpad>`.
+
+> Do not paste an absolute Windows path into any file under `docs/`. Tailwind
+> v4 scans this directory for class names, and a backslash followed by hex
+> characters (as in `...\dec293...`) parses as a CSS unicode escape — which
+> threw `RangeError: Invalid code point` and broke every page build until the
+> path was removed. Keep paths POSIX-style or symbolic here.
 
 ---
 
