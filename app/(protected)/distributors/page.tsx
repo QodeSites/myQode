@@ -37,6 +37,8 @@ type JourneyResponse = {
   referralLinks: { individual: string; nonIndividual: string };
   journey: { clients: JourneyClient[]; stageCounts: Record<string, number> } | null;
   zohoAvailable: boolean;
+  /** False when no CRM record carries this distributor's login address. */
+  crmLinked: boolean;
   portalClientCount: number;
 };
 
@@ -248,6 +250,34 @@ export default function DistributorsPage() {
             <p className="text-sm text-muted-foreground">
               We couldn&apos;t load client journey data from our CRM just now. Your
               referral links above are unaffected — please try again shortly.
+            </p>
+          </div>
+        ) : !data.crmLinked ? (
+          // Their login address is on no CRM record, so we cannot look up their
+          // clients — which is NOT the same as having none. Saying "no referrals
+          // yet" here would be false for every distributor in this state.
+          <div className="rounded-md border border-border/20 bg-background px-4 py-6 text-center">
+            <p className="text-sm text-muted-foreground">
+              We couldn&apos;t link this login to your CRM record, so your clients&apos;
+              journey can&apos;t be shown yet.
+              {data.portalClientCount > 0 ? (
+                <>
+                  {" "}
+                  You currently have{" "}
+                  <span className="font-bold text-foreground">
+                    {data.portalClientCount}
+                  </span>{" "}
+                  {data.portalClientCount === 1 ? "account" : "accounts"} with us.
+                </>
+              ) : null}{" "}
+              Email{" "}
+              <a
+                className="font-bold text-primary underline underline-offset-4 dark:text-primary-foreground"
+                href="mailto:partnerships@qodeinvest.com"
+              >
+                partnerships@qodeinvest.com
+              </a>{" "}
+              and we&apos;ll connect it.
             </p>
           </div>
         ) : clients.length === 0 ? (

@@ -63,10 +63,25 @@ export async function GET() {
 
     // Zoho is enrichment: if it is unreachable the referral links and portal
     // counts still render. Never let a CRM outage blank the whole page.
+    //
+    // `crmLinked` distinguishes two cases the UI must not conflate:
+    //   - a matched distributor with no referrals yet (journey, no clients)
+    //   - a distributor whose login address is on no Zoho record at all
+    // Verified 2026-08-21: 3 of 16 distributors fall in the second group,
+    // because their portal login differs from their Zoho Email and their
+    // Secondary_Email is empty (e.g. Factorlab signs in as
+    // sudhamsh@factorlab.in but Zoho holds research@factorlab.in). Telling
+    // them "no investors have been referred yet" would be false — they have
+    // clients; we simply cannot match them. The fix is to add the login
+    // address to Secondary_Email in Zoho, so the UI says exactly that rather
+    // than guessing at a name match, which could attribute one distributor's
+    // clients to another.
     let journey = null;
     let zohoAvailable = true;
+    let crmLinked = true;
     try {
       journey = await getJourneyForDistributor(distributor.email);
+      crmLinked = journey !== null;
     } catch (err) {
       console.error("[distributor/journey] Zoho lookup failed:", err);
       zohoAvailable = false;
@@ -79,6 +94,7 @@ export async function GET() {
         ? { clients: journey.clients, stageCounts: journey.stageCounts }
         : null,
       zohoAvailable,
+      crmLinked,
       portalClientCount,
     });
   } catch (error) {
