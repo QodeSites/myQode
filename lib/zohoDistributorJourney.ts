@@ -22,12 +22,19 @@
 // real funnel. Leads convert to Investors already, so nothing is lost.
 import { getZohoAccessToken, zohoApiDomain } from "@/lib/zoho";
 
-/** The six values present in production, funnel order first, drops last. */
+/**
+ * The seven values present in production, funnel order first, inactive last.
+ *
+ * Counts across all 401 investor records on 2026-08-21: First Fund Initiated
+ * 155, Regular Investor 95, Onboarding 51, Dropped before account opening 45,
+ * Account Live 25, Dropped after account opening 17, Dormant Investor 13.
+ */
 export const STAGE_ORDER = [
   "Onboarding",
   "First Fund Initiated",
   "Account Live",
   "Regular Investor",
+  "Dormant Investor",
   "Dropped before account opening",
   "Dropped after account opening",
 ] as const;
