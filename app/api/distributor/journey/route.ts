@@ -11,25 +11,27 @@ const ONBOARDING_BASE = "https://onboarding.qodeinvest.com";
 /**
  * Builds the partner referral links.
  *
- * The distributor is carried as a display name in the URL, prefixed "Mr " —
- * the convention the live links use, including for companies and LLPs. The
- * name comes from pms_clients_master.clientname because that is what matches
- * the live links; Zoho's Name field is truncated and would mis-attribute.
+ * NO SALUTATION. Earlier links carried an "Mr " prefix — applied even to
+ * companies and LLPs ("Mr FUTUREWISE TECHNOLOGIES PVT LTD"). Zoho's
+ * Distributor module has no salutation field at all: it stores the firm in
+ * `Name` and the contact person in First_Name/Last_Name. The prefix was only
+ * ever added by this function, so it is gone.
  *
- * Verified 2026-08-20 against the 16 live links: 8 of the 8 whose exact URL
- * was available match character-for-character, including punctuation
- * ("Pvt. Ltd.") and casing ("FUTUREWISE ... PVT LTD").
+ * Verified against the live onboarding app on 2026-08-21: the un-prefixed
+ * name is accepted and echoed back on the rendered page, so attribution is
+ * unaffected by the removal.
  *
- * The remaining 8 distributors are labelled differently in the operator's
- * list than in the DB (e.g. DB "ENSO FINSERV LLP" vs listed "Mr EnzoFinserv";
- * DB "First Quartile Private Limited" vs listed "Mr Chedda"). They are the
- * same firms — the email addresses match — but their exact live URL was not
- * available to compare. If attribution misses for one of them, the fix is to
- * store the canonical link on the Zoho Distributor record and read it here,
- * NOT to hand-patch names in this function.
+ * The name comes from pms_clients_master.clientname, not Zoho's `Name`:
+ * Zoho's is a shortened display label ("One Battalion Ventures", "Funds
+ * India") while the portal holds the full legal name the links use.
+ *
+ * NOTE: the onboarding app does not validate this parameter — a fabricated
+ * firm name is echoed back just as readily as a real one. Attribution is
+ * therefore a plain unsigned string, and anyone can edit it. Out of scope
+ * here, but it is the reason a signed referral code is worth doing.
  */
 function buildReferralLinks(clientname: string) {
-  const param = encodeURIComponent(`Mr ${clientname}`);
+  const param = encodeURIComponent(clientname);
   return {
     individual: `${ONBOARDING_BASE}/apply?distributor=${param}`,
     nonIndividual: `${ONBOARDING_BASE}/entity?distributor=${param}`,

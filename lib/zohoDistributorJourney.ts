@@ -263,6 +263,74 @@ export async function getDistributorEmailsById(): Promise<Map<string, string[]>>
   return out;
 }
 
+/**
+ * A distributor's own CRM record — the relationship, not their clients.
+ *
+ * Distinct from DistributorJourney, which describes the investors they
+ * referred. This is the partner themselves: which stage the relationship is
+ * in, who they are, and when they were last spoken to.
+ */
+export type DistributorRecord = {
+  zohoId: string;
+  name: string | null;
+  email: string | null;
+  secondaryEmail: string | null;
+  /** The distributor relationship pipeline — NOT an investor's stage. */
+  stage: string | null;
+  type: string | null;
+  aum: number | null;
+  lastContactDate: string | null;
+  nextContactDate: string | null;
+  sharePct: number | null;
+  revenueSharingModel: string | null;
+};
+
+/**
+ * Every distributor record in the CRM — 140 as of 2026-08-21, of which only
+ * 16 have a portal login and ~19 have referred an investor. The internal view
+ * needs all of them: a partner with no referrals yet is precisely the one the
+ * team may need to chase.
+ *
+ * INTERNAL USE ONLY — callers must have verified an admin session first.
+ */
+export async function getAllDistributorRecords(): Promise<DistributorRecord[]> {
+  const out: DistributorRecord[] = [];
+  let offset = 0;
+
+  for (let page = 0; page < 40; page++) {
+    const rows = await coql(
+      `select id, Name, Email, Secondary_Email, Investor_Stage,
+              Type_of_Distributor, AUM, Last_Contact_Date, Next_Contact_Date,
+              Base_Distributor_Share, Revenue_Sharing_Model
+         from Distributor
+        where id is not null
+        limit ${offset}, 200`,
+    );
+    if (!rows.length) break;
+
+    for (const r of rows) {
+      out.push({
+        zohoId: String(r.id),
+        name: r.Name ?? null,
+        email: r.Email ?? null,
+        secondaryEmail: r.Secondary_Email ?? null,
+        stage: r.Investor_Stage ?? null,
+        type: r.Type_of_Distributor ?? null,
+        aum: r.AUM ?? null,
+        lastContactDate: r.Last_Contact_Date ?? null,
+        nextContactDate: r.Next_Contact_Date ?? null,
+        sharePct: r.Base_Distributor_Share ?? null,
+        revenueSharingModel: r.Revenue_Sharing_Model ?? null,
+      });
+    }
+
+    if (rows.length < 200) break;
+    offset += 200;
+  }
+
+  return out;
+}
+
 /** Clears the cache — for a manual refresh after editing Zoho. */
 export function clearJourneyCache(): void {
   journeyCache = null;

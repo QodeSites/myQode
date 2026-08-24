@@ -3,18 +3,37 @@ import { getSession } from "@/lib/session-store";
 import { query } from "@/lib/db";
 import {
   getAllDistributorJourneys,
-  getDistributorEmailsById,
+  getAllDistributorRecords,
   STAGE_ORDER,
 } from "@/lib/zohoDistributorJourney";
 
 /**
- * Internal overview — every distributor's book in one view.
+ * Internal distributor management view.
  *
  * AUTHORIZATION IS ENFORCED HERE, NOT IN MIDDLEWARE.
  * middleware.ts only checks that an admin-session cookie EXISTS; it
  * explicitly defers validation. A forged cookie passes it. So this route
  * validates the session against Redis itself before returning anything.
+ *
+ * WHAT THIS RETURNS AND WHY
+ * Three datasets are joined, because none alone describes a distributor:
+ *   - Zoho Distributor records (140): the relationship — stage, terms, contact
+ *     cadence. Includes partners who have never referred anyone.
+ *   - Zoho Investors grouped by Primary_distributo (~19 distributors): the
+ *     investors they actually referred.
+ *   - pms_clients_master (16 rows with clientcode IS NULL): who can log in.
+ *
+ * The gaps between these three are the actionable part — a distributor in
+ * Zoho with no portal login cannot sign in, and one whose login address is on
+ * no CRM record gets an empty journey page. Both are surfaced as `issues`
+ * rather than left for someone to notice.
  */
+
+/** Today in ISO form, for comparing against Zoho's date-only fields. */
+function todayIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export async function GET(request: NextRequest) {
   try {
     const sessionId = request.cookies.get("admin-session")?.value;
@@ -27,12 +46,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Session expired" }, { status: 401 });
     }
 
-    const journeys = await getAllDistributorJourneys();
-    const zohoEmails = await getDistributorEmailsById();
+    const [records, journeys] = await Promise.all([
+      getAllDistributorRecords(),
+      getAllDistributorJourneys(),
+    ]);
 
-    // Portal distributor rows, so the view can show which CRM distributors
-    // have no login. clientcode IS NULL is the distributor discriminator —
-    // see lib/distributorIdentity.ts for why that is exact.
+    // Portal distributor rows. clientcode IS NULL is the discriminator — see
+    // lib/distributorIdentity.ts for why that is exact.
     const portalResult = await query(
       `SELECT clientname, lower(email) AS email
          FROM pms_clients_master
@@ -43,48 +63,106 @@ export async function GET(request: NextRequest) {
       if (row.email) portalByEmail.set(String(row.email), String(row.clientname));
     }
 
-    const distributors = [];
-    const totals: Record<string, number> = {};
-    for (const stage of STAGE_ORDER) totals[stage] = 0;
-    let zohoOnlyCount = 0;
+    // Portal client counts per distributor name, so a partner whose CRM link
+    // is broken still shows the book we know they have.
+    const countResult = await query(
+      `SELECT intermediaryname, COUNT(*)::int AS n
+         FROM pms_clients_master
+        WHERE clientcode IS NOT NULL
+        GROUP BY intermediaryname`,
+    );
+    const clientCountByName = new Map<string, number>();
+    for (const row of countResult.rows ?? []) {
+      clientCountByName.set(String(row.intermediaryname), Number(row.n));
+    }
 
-    for (const journey of journeys.values()) {
-      // Coverage check only: does this CRM distributor have a portal login?
-      // Matched on email (exact, both Zoho address fields) rather than name,
-      // because CRM display names are truncated relative to the portal's.
-      // NEVER used for access control — this endpoint is already gated above.
+    const today = todayIso();
+    const matchedPortalEmails = new Set<string>();
+
+    const distributors = records.map((r) => {
+      const journey = journeys.get(r.zohoId) ?? null;
+
+      // Exact email match against the portal, checking both Zoho address
+      // fields. Never a name match: this data holds rahulshetty42@ and
+      // rahulshetty432@ as separate distributors, so a near miss would
+      // attribute one partner's book to another.
       let portalName: string | null = null;
       let portalEmail: string | null = null;
-      for (const addr of zohoEmails.get(journey.zohoId) ?? []) {
-        const match = portalByEmail.get(addr);
-        if (match) {
-          portalName = match;
-          portalEmail = addr;
+      for (const addr of [r.email, r.secondaryEmail]) {
+        const key = String(addr ?? "").trim().toLowerCase();
+        if (!key) continue;
+        const hit = portalByEmail.get(key);
+        if (hit) {
+          portalName = hit;
+          portalEmail = key;
+          matchedPortalEmails.add(key);
           break;
         }
       }
 
-      const hasPortalLogin = portalName !== null;
-      if (!hasPortalLogin) zohoOnlyCount += 1;
+      const referredCount = journey?.clients.length ?? 0;
+      const portalClientCount = portalName
+        ? (clientCountByName.get(portalName) ?? 0)
+        : 0;
 
-      for (const [stage, n] of Object.entries(journey.stageCounts)) {
-        totals[stage] = (totals[stage] ?? 0) + n;
-      }
+      // Follow-up is overdue when the CRM's own next-contact date has passed.
+      const followUpOverdue = Boolean(r.nextContactDate && r.nextContactDate < today);
 
-      distributors.push({
-        zohoId: journey.zohoId,
-        zohoName: journey.zohoName,
+      // A partner who can sign in but whose CRM record carries neither of
+      // their addresses would see an empty journey page. That is the
+      // Factorlab/Futurewise/MyAlternates case.
+      const loginUnlinked = !portalName && referredCount > 0;
+
+      return {
+        ...r,
         portalName,
-        email: portalEmail,
-        clientCount: journey.clients.length,
-        stageCounts: journey.stageCounts,
-        hasPortalLogin,
-      });
+        portalEmail,
+        hasPortalLogin: portalName !== null,
+        referredCount,
+        portalClientCount,
+        stageCounts: journey?.stageCounts ?? null,
+        followUpOverdue,
+        loginUnlinked,
+      };
+    });
+
+    // Portal logins whose address appears on no CRM record at all. These are
+    // the distributors who see "we couldn't link this login" on their page.
+    const unlinkedLogins = [...portalByEmail.entries()]
+      .filter(([email]) => !matchedPortalEmails.has(email))
+      .map(([email, clientname]) => ({
+        email,
+        clientname,
+        clientCount: clientCountByName.get(clientname) ?? 0,
+      }))
+      .sort((a, b) => b.clientCount - a.clientCount);
+
+    // Totals across every referred investor, for the funnel row.
+    const investorTotals: Record<string, number> = {};
+    for (const stage of STAGE_ORDER) investorTotals[stage] = 0;
+    for (const journey of journeys.values()) {
+      for (const [stage, n] of Object.entries(journey.stageCounts)) {
+        investorTotals[stage] = (investorTotals[stage] ?? 0) + n;
+      }
     }
 
-    distributors.sort((a, b) => b.clientCount - a.clientCount);
+    const summary = {
+      totalDistributors: distributors.length,
+      withPortalLogin: distributors.filter((d) => d.hasPortalLogin).length,
+      withReferrals: distributors.filter((d) => d.referredCount > 0).length,
+      overdueFollowUps: distributors.filter((d) => d.followUpOverdue).length,
+      missingSecondaryEmail: distributors.filter((d) => !d.secondaryEmail).length,
+      unlinkedLoginCount: unlinkedLogins.length,
+      totalReferredInvestors: distributors.reduce((s, d) => s + d.referredCount, 0),
+    };
 
-    return NextResponse.json({ distributors, totals, zohoOnlyCount });
+    return NextResponse.json({
+      summary,
+      distributors,
+      unlinkedLogins,
+      investorTotals,
+      stageOrder: STAGE_ORDER,
+    });
   } catch (error) {
     console.error("[distributor/internal-overview] error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
