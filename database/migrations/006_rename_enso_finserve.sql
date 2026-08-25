@@ -63,6 +63,21 @@ UPDATE pms_clients_master
    SET intermediaryname = 'Enso Finserve'
  WHERE intermediaryname = 'ENSO FINSERV LLP';
 
+-- The display columns, which are what the admin UI actually renders.
+--
+-- These were missed on the first pass: clientname/intermediaryname are the
+-- JOIN keys, but ownername and firstname are separate columns holding their
+-- own spelling — "EnzoFinserv", with the z. Renaming only the join keys left
+-- the admin list still showing "Mr EnzoFinserv".
+--
+-- The convention across the other distributor rows is that firstname repeats
+-- the full clientname (13 of 17 do exactly that), so both are set to match.
+UPDATE pms_clients_master
+   SET ownername = 'Enso Finserve',
+       firstname = 'Enso Finserve'
+ WHERE clientcode IS NULL
+   AND (ownername = 'EnzoFinserv' OR firstname = 'EnzoFinserv');
+
 COMMIT;
 
 -- Verification (run after committing):
@@ -70,3 +85,9 @@ COMMIT;
 --     FROM pms_clients_master
 --    WHERE clientname = 'Enso Finserve' OR intermediaryname = 'Enso Finserve';
 -- Expect 5 rows: 1 with clientcode IS NULL, 4 clients.
+--
+--   SELECT count(*) FROM pms_clients_master
+--    WHERE clientname ILIKE '%enzo%' OR ownername ILIKE '%enzo%'
+--       OR firstname ILIKE '%enzo%' OR lastname ILIKE '%enzo%'
+--       OR intermediaryname ILIKE '%enzo%';
+-- Expect 0. A non-zero count means another column holds the old spelling.
