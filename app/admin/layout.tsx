@@ -20,10 +20,14 @@ export const metadata = {
  * its own client component rather than forcing this whole layout client-side.
  */
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  // Grid rather than flex-row: the rail and the content occupy explicit
+  // columns, so nothing downstream can collapse them back into a stack.
+  // Below lg the rail becomes a single auto-height row — it must never take
+  // the full viewport height there, or it pushes the page off screen.
   return (
-    <div className="flex min-h-screen w-full flex-col bg-background lg:flex-row">
+    <div className="grid min-h-screen w-full grid-cols-1 grid-rows-[auto_1fr] bg-background lg:grid-cols-[232px_minmax(0,1fr)] lg:grid-rows-1">
       {/* Rail */}
-      <aside className="flex shrink-0 flex-col gap-0.5 bg-sidebar px-3.5 py-4 lg:sticky lg:top-0 lg:h-screen lg:w-[232px] lg:overflow-y-auto lg:py-5">
+      <aside className="flex h-auto flex-col gap-0.5 bg-sidebar px-3.5 py-3 lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto lg:py-5">
         <div className="flex items-baseline gap-1.5 px-2 pb-4 lg:pb-5">
           <span className="text-xs text-sidebar-foreground/60">my</span>
           <span className="font-serif text-[21px] text-sidebar-foreground">Qode</span>
