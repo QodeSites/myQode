@@ -41,6 +41,34 @@ type Usage = {
   versions: { version: string; users: number }[];
 };
 
+type SourceRow = {
+  source: string;
+  totalInvestors: number;
+  installed: number;
+  installedIos: number;
+  installedAndroid: number;
+  web: number;
+  usingNow: number;
+  nothing: number;
+};
+
+type PlatformActivity = {
+  summary: {
+    investors: {
+      total: number;
+      installed: number;
+      installedIos: number;
+      installedAndroid: number;
+      web: number;
+      app: number;
+      never: number;
+      usingNow: number;
+    };
+  };
+  sourceInsights: SourceRow[];
+  usageTrend: { date: string; app: number; web: number; both: number; total: number }[];
+};
+
 type Insights = {
   onboardingGap: {
     activatedCount: number;
@@ -73,11 +101,14 @@ function Panel({
   title,
   subtitle,
   failed,
+  loading,
   children,
 }: {
   title: string;
   subtitle?: string;
   failed?: boolean;
+  /** True while this panel's own endpoint is still in flight. */
+  loading?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -91,6 +122,12 @@ function Panel({
           <p className="py-6 text-center text-sm text-muted-foreground">
             This section couldn&apos;t load. Refresh to try again.
           </p>
+        ) : loading ? (
+          <div className="flex flex-col gap-2.5">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-6 w-full rounded-md" />
+            ))}
+          </div>
         ) : (
           children
         )}
@@ -178,6 +215,8 @@ export default function AdminAnalyticsPage() {
   const [insightsFailed, setInsightsFailed] = React.useState(false);
   const [usage, setUsage] = React.useState<Usage | null>(null);
   const [usageFailed, setUsageFailed] = React.useState(false);
+  const [platform, setPlatform] = React.useState<PlatformActivity | null>(null);
+  const [platformFailed, setPlatformFailed] = React.useState(false);
   const [status, setStatus] = React.useState<
     "loading" | "ready" | "unauthorized" | "forbidden"
   >("loading");
@@ -186,10 +225,11 @@ export default function AdminAnalyticsPage() {
     let cancelled = false;
 
     (async () => {
-      const [c, i, u] = await Promise.allSettled([
+      const [c, i, u, pa] = await Promise.allSettled([
         fetch("/api/admin/console", { cache: "no-store" }),
         fetch("/api/admin/investor-insights", { cache: "no-store" }),
         fetch("/api/admin/usage?days=30", { cache: "no-store" }),
+        fetch("/api/admin/client-platform-activity", { cache: "no-store" }),
       ]);
       if (cancelled) return;
 
@@ -223,6 +263,12 @@ export default function AdminAnalyticsPage() {
         setUsageFailed(true);
       }
 
+      if (pa.status === "fulfilled" && pa.value.ok) {
+        setPlatform((await pa.value.json()) as PlatformActivity);
+      } else {
+        setPlatformFailed(true);
+      }
+
       setStatus("ready");
     })();
 
@@ -232,18 +278,40 @@ export default function AdminAnalyticsPage() {
   }, []);
 
   if (status === "loading") {
+    // Shaped like the finished page — same row structure and heights — so
+    // nothing shifts as the three endpoints land.
     return (
       <div className="flex flex-col gap-4">
-        <Skeleton className="h-9 w-72" />
+        <div className="flex flex-col gap-1.5">
+          <Skeleton className="h-8 w-40" />
+          <Skeleton className="h-4 w-80" />
+        </div>
+
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <Skeleton key={i} className="h-[104px] rounded-xl" />
           ))}
         </div>
+
+        <div className="grid gap-4 lg:grid-cols-[5fr_7fr]">
+          <Skeleton className="h-[300px] rounded-xl" />
+          <Skeleton className="h-[300px] rounded-xl" />
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Skeleton className="h-64 rounded-xl" />
+          <Skeleton className="h-64 rounded-xl" />
+        </div>
+
+        <Skeleton className="h-56 rounded-xl" />
+
         <div className="grid gap-4 lg:grid-cols-[5fr_7fr]">
           <Skeleton className="h-72 rounded-xl" />
           <Skeleton className="h-72 rounded-xl" />
         </div>
+
+        <Skeleton className="h-48 rounded-xl" />
+        <Skeleton className="h-64 rounded-xl" />
       </div>
     );
   }
@@ -337,6 +405,7 @@ export default function AdminAnalyticsPage() {
             title="The activation gap"
             subtitle="How long after activation an investor first signs in"
             failed={insightsFailed}
+            loading={!insights && !insightsFailed}
           >
             {gap ? (
               <>
@@ -393,6 +462,7 @@ export default function AdminAnalyticsPage() {
             title="Onboarding funnel"
             subtitle="Distinct investors, distributors excluded"
             failed={consoleFailed}
+            loading={!consoleData && !consoleFailed}
           >
             {funnel ? (
               <>
@@ -447,6 +517,7 @@ export default function AdminAnalyticsPage() {
             title="Engagement by AUM band"
             subtitle="Do larger investors actually use the portal?"
             failed={insightsFailed}
+            loading={!insights && !insightsFailed}
           >
             {aum.length ? (
               <>
@@ -488,6 +559,7 @@ export default function AdminAnalyticsPage() {
             title="Relationship managers"
             subtitle="Engagement rate across each book"
             failed={insightsFailed}
+            loading={!insights && !insightsFailed}
           >
             {rms.length ? (
               <div className="overflow-x-auto">
@@ -542,6 +614,7 @@ export default function AdminAnalyticsPage() {
         title="Activation cohorts"
         subtitle="Is each month's intake engaging better than the last?"
         failed={insightsFailed}
+        loading={!insights && !insightsFailed}
       >
         {cohorts.length ? (
           <>
@@ -584,6 +657,303 @@ export default function AdminAnalyticsPage() {
         )}
       </Panel>
 
+      {/* The big picture — app adoption among funded investors */}
+      <Panel
+        title="The big picture"
+        subtitle="Funded investors from Zoho CRM — how many installed the app, and how many actually use it"
+        failed={platformFailed}
+        loading={!platform && !platformFailed}
+      >
+        {platform ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              {
+                label: "Funded investors",
+                value: platform.summary.investors.total,
+                detail: "funded accounts in Zoho CRM",
+                tone: "plain" as const,
+              },
+              {
+                label: "Installed the app",
+                value: platform.summary.investors.installed,
+                detail: `${platform.summary.investors.installedIos} iPhone · ${platform.summary.investors.installedAndroid} Android`,
+                tone: "app" as const,
+              },
+              {
+                label: "Using the app",
+                value: platform.summary.investors.app,
+                detail: "opened the app recently",
+                tone: "good" as const,
+              },
+              {
+                label: "Used web",
+                value: platform.summary.investors.web,
+                detail: "signed in on the browser",
+                tone: "good" as const,
+              },
+              {
+                label: "Active anywhere",
+                value: platform.summary.investors.usingNow,
+                detail: "app or web, recently",
+                tone: "app" as const,
+              },
+              {
+                label: "Never signed in",
+                value: platform.summary.investors.never,
+                detail: "funded but never used myQode",
+                tone: "warn" as const,
+              },
+            ].map((t) => (
+              <div
+                key={t.label}
+                className="rounded-lg border border-border/20 bg-background px-4 py-3"
+              >
+                <p className="text-[10px] font-black uppercase tracking-[0.11em] text-muted-foreground">
+                  {t.label}
+                </p>
+                <p
+                  className="mt-1.5 font-sans text-[26px] font-bold leading-none tabular-nums"
+                  style={{
+                    color:
+                      t.tone === "app"
+                        ? QGF
+                        : t.tone === "good"
+                          ? QAW
+                          : t.tone === "warn"
+                            ? "var(--destructive)"
+                            : undefined,
+                  }}
+                >
+                  {t.value}
+                </p>
+                <p className="mt-1.5 text-[11px] text-muted-foreground">{t.detail}</p>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </Panel>
+
+      {/* Where investors come from */}
+      <Panel
+        title="Where investors come from"
+        subtitle="For each acquisition source: how many funded, installed the app, use it now, and have done nothing yet"
+        failed={platformFailed}
+        loading={!platform && !platformFailed}
+      >
+        {platform?.sourceInsights?.length ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] border-collapse text-[12.5px]">
+              <thead>
+                <tr className="border-b border-border/20 text-left">
+                  {[
+                    "How they found us",
+                    "Funded",
+                    "Installed",
+                    "iPhone",
+                    "Android",
+                    "On web",
+                    "Using now",
+                    "Nothing yet",
+                  ].map((h, i) => (
+                    <th
+                      key={h}
+                      className={`py-2 pr-4 text-[9.5px] font-black uppercase tracking-[0.1em] text-muted-foreground last:pr-0 ${
+                        i > 0 ? "text-right" : ""
+                      }`}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {platform.sourceInsights
+                  .slice()
+                  .sort((a, b) => b.totalInvestors - a.totalInvestors)
+                  .map((r) => (
+                    <tr key={r.source} className="border-b border-border/10 last:border-0">
+                      <td className="py-2 pr-4 text-foreground">{r.source}</td>
+                      <td className="py-2 pr-4 text-right tabular-nums text-foreground">
+                        {r.totalInvestors}
+                      </td>
+                      <td
+                        className="py-2 pr-4 text-right font-bold tabular-nums"
+                        style={{ color: QGF }}
+                      >
+                        {r.installed}
+                      </td>
+                      <td className="py-2 pr-4 text-right tabular-nums text-muted-foreground">
+                        {r.installedIos}
+                      </td>
+                      <td className="py-2 pr-4 text-right tabular-nums text-muted-foreground">
+                        {r.installedAndroid}
+                      </td>
+                      <td className="py-2 pr-4 text-right tabular-nums text-muted-foreground">
+                        {r.web}
+                      </td>
+                      <td
+                        className="py-2 pr-4 text-right font-bold tabular-nums"
+                        style={{ color: QAW }}
+                      >
+                        {r.usingNow}
+                      </td>
+                      <td
+                        className={`py-2 text-right font-bold tabular-nums ${
+                          r.nothing > 0 ? "text-destructive" : "text-muted-foreground"
+                        }`}
+                      >
+                        {r.nothing}
+                      </td>
+                    </tr>
+                  ))}
+              </tbody>
+              <tfoot>
+                <tr className="border-t border-border/20">
+                  <td className="py-2 pr-4 font-bold text-foreground">Total</td>
+                  {(() => {
+                    const sum = (k: keyof SourceRow) =>
+                      platform.sourceInsights.reduce(
+                        (a, r) => a + Number(r[k] ?? 0),
+                        0,
+                      );
+                    return (
+                      <>
+                        <td className="py-2 pr-4 text-right font-bold tabular-nums text-foreground">
+                          {sum("totalInvestors")}
+                        </td>
+                        <td
+                          className="py-2 pr-4 text-right font-bold tabular-nums"
+                          style={{ color: QGF }}
+                        >
+                          {sum("installed")}
+                        </td>
+                        <td className="py-2 pr-4 text-right tabular-nums text-muted-foreground">
+                          {sum("installedIos")}
+                        </td>
+                        <td className="py-2 pr-4 text-right tabular-nums text-muted-foreground">
+                          {sum("installedAndroid")}
+                        </td>
+                        <td className="py-2 pr-4 text-right tabular-nums text-muted-foreground">
+                          {sum("web")}
+                        </td>
+                        <td
+                          className="py-2 pr-4 text-right font-bold tabular-nums"
+                          style={{ color: QAW }}
+                        >
+                          {sum("usingNow")}
+                        </td>
+                        <td className="py-2 text-right font-bold tabular-nums text-destructive">
+                          {sum("nothing")}
+                        </td>
+                      </>
+                    );
+                  })()}
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        ) : (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            No acquisition-source data available.
+          </p>
+        )}
+      </Panel>
+
+      {/* Usage trend — app vs web over time */}
+      <Panel
+        title="Usage trend — app, web and both"
+        subtitle="Weekly active investors on each platform, against total investors on the books"
+        failed={platformFailed}
+        loading={!platform && !platformFailed}
+      >
+        {platform?.usageTrend?.length ? (
+          (() => {
+            const pts = platform.usageTrend.slice(-26);
+            const max = Math.max(
+              ...pts.map((q) => Math.max(q.total, q.web, q.app, q.both)),
+              1,
+            );
+            const W = 900;
+            const H = 190;
+            const xAt = (i: number) => (pts.length > 1 ? (i * W) / (pts.length - 1) : 0);
+            const yAt = (v: number) => H - (v / max) * (H - 16) - 8;
+            const line = (key: "total" | "web" | "app" | "both") =>
+              pts
+                .map((q, i) => `${Math.round(xAt(i))},${Math.round(yAt(q[key]))}`)
+                .join(" ");
+            const series = [
+              {
+                key: "total" as const,
+                color: NEUTRAL,
+                label: "Total investors",
+                dash: "5 4",
+              },
+              { key: "web" as const, color: QGF, label: "Web", dash: undefined },
+              { key: "app" as const, color: QAW, label: "App", dash: undefined },
+              { key: "both" as const, color: QTF, label: "Both", dash: undefined },
+            ];
+            const last = pts[pts.length - 1];
+            return (
+              <>
+                <svg
+                  viewBox={`0 0 ${W} ${H}`}
+                  preserveAspectRatio="none"
+                  className="block h-[190px] w-full"
+                  role="img"
+                  aria-label={`Weekly active investors. Latest: ${last.web} web, ${last.app} app, ${last.both} both, of ${last.total} total.`}
+                >
+                  {[0.25, 0.5, 0.75].map((f) => (
+                    <line
+                      key={f}
+                      x1="0"
+                      y1={H * f}
+                      x2={W}
+                      y2={H * f}
+                      stroke="currentColor"
+                      strokeWidth="1"
+                      className="text-border/20"
+                    />
+                  ))}
+                  {series.map((se) => (
+                    <polyline
+                      key={se.key}
+                      points={line(se.key)}
+                      fill="none"
+                      stroke={se.color}
+                      strokeWidth="2.2"
+                      strokeDasharray={se.dash}
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  ))}
+                </svg>
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap gap-3.5 text-[11px] text-muted-foreground">
+                    {series.map((se) => (
+                      <span key={se.key} className="flex items-center gap-1.5">
+                        <span
+                          className="h-0.5 w-4 rounded-full"
+                          style={{ background: se.color }}
+                        />
+                        {se.label}
+                      </span>
+                    ))}
+                  </div>
+                  <span className="text-[10.5px] tabular-nums text-muted-foreground">
+                    {pts[0].date} → {last.date}
+                  </span>
+                </div>
+              </>
+            );
+          })()
+        ) : (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            No usage trend recorded yet.
+          </p>
+        )}
+      </Panel>
+
       {/* Portal usage — how investors actually move through myQode */}
       <div className="grid gap-4 lg:grid-cols-[5fr_7fr]">
         <div className="min-w-0">
@@ -591,6 +961,7 @@ export default function AdminAnalyticsPage() {
             title="Portal usage"
             subtitle={usage ? `Last ${usage.days} days` : "Last 30 days"}
             failed={usageFailed}
+            loading={!usage && !usageFailed}
           >
             {usage ? (
               <>
@@ -666,6 +1037,7 @@ export default function AdminAnalyticsPage() {
             title="Most used screens"
             subtitle="Page views across the portal"
             failed={usageFailed}
+            loading={!usage && !usageFailed}
           >
             {usage?.screens?.length ? (
               <div className="flex flex-col gap-2.5">
@@ -708,6 +1080,7 @@ export default function AdminAnalyticsPage() {
         title="Daily active users"
         subtitle={usage ? `Distinct users per day, last ${usage.days} days` : undefined}
         failed={usageFailed}
+        loading={!usage && !usageFailed}
       >
         {usage?.daily?.length ? (
           <>
@@ -753,6 +1126,7 @@ export default function AdminAnalyticsPage() {
         title="Annual review due"
         subtitle="Review not done, and dormant for 30 days or more"
         failed={insightsFailed}
+        loading={!insights && !insightsFailed}
       >
         {insights?.reviewDueWorklist?.length ? (
           <div className="overflow-x-auto">
