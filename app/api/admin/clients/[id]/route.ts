@@ -6,6 +6,7 @@ import {
   getClientAudit,
 } from "@/lib/adminClientQueries";
 import { updateClient } from "@/lib/adminClientMutations";
+import { getInvestorProfile } from "@/lib/zohoInvestorProfile";
 
 export async function GET(
   request: NextRequest,
@@ -30,7 +31,17 @@ export async function GET(
       client.clientid ? getClientAudit(client.clientid) : Promise.resolve([]),
     ]);
 
-    return NextResponse.json({ client, family, audit });
+    // CRM profile, matched on the client's email. Zoho being unreachable must
+    // not break the page — the portal's own record is the substance here and
+    // the CRM view is enrichment.
+    let zoho = null;
+    try {
+      zoho = await getInvestorProfile(client.email);
+    } catch (err) {
+      console.error("[admin/clients/:id] Zoho profile lookup failed:", err);
+    }
+
+    return NextResponse.json({ client, family, audit, zoho });
   } catch (error) {
     console.error("[admin/clients/:id] GET error:", error);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });

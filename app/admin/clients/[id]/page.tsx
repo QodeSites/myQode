@@ -40,10 +40,41 @@ type AuditEntry = {
   notes: string | null;
 };
 
+type InvestorProfile = {
+  zohoId: string;
+  name: string | null;
+  mobile: string | null;
+  stage: string | null;
+  investorSource: string | null;
+  activationDate: string | null;
+  accountLiveDate: string | null;
+  firstTopUpDate: string | null;
+  investedAmount: number | null;
+  currentValue: number | null;
+  expectedAum: number | null;
+  strategies: string[];
+  feesStructure: string[];
+  occupation: string | null;
+  city: string | null;
+  country: string | null;
+  riskAppetite: string | null;
+  relationshipManager: string | null;
+  lastConversation: string | null;
+  lastContactedOn: string | null;
+  nextContactDate: string | null;
+  annualReviewStatus: string | null;
+  annualReviewDate: string | null;
+  hadWalkthrough: boolean;
+  walkthroughDate: string | null;
+  referredBy: string | null;
+};
+
 type DetailResponse = {
   client: ClientDetail;
   family: ClientRow[];
   audit: AuditEntry[];
+  /** Null when the investor has no CRM record, or Zoho was unreachable. */
+  zoho: InvestorProfile | null;
 };
 
 /** The fields this page may edit. Mirrors EDITABLE_FIELDS server-side, which
@@ -77,6 +108,14 @@ function formatDateTime(iso: string | null): string {
     hour: "2-digit",
     minute: "2-digit",
   })}`;
+}
+
+/** Indian grouping, crore/lakh shorthand above a lakh. */
+function money(n: number | null): string {
+  if (n == null) return "—";
+  if (n >= 10000000) return `₹${(n / 10000000).toFixed(2)} Cr`;
+  if (n >= 100000) return `₹${(n / 100000).toFixed(1)} L`;
+  return `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 }
 
 function ReadOnlyField({ label, value }: { label: string; value: string | null }) {
@@ -368,6 +407,188 @@ export default function AdminClientDetailPage() {
           {saving ? "Saving…" : "Save changes"}
         </button>
       </section>
+
+      {/* CRM profile */}
+      {data.zoho ? (
+        <section className="rounded-xl border border-border/20 bg-card shadow-sm px-5 py-5">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-lg font-semibold text-foreground">
+              CRM profile
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              From Zoho · read-only here
+            </p>
+          </div>
+
+          {/* Money first — it is what most questions are really about. */}
+          <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div className="rounded-md border border-border/20 bg-background px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.11em] text-muted-foreground">
+                Invested
+              </p>
+              <p className="mt-1 font-sans text-xl font-bold tabular-nums text-foreground">
+                {money(data.zoho.investedAmount)}
+              </p>
+            </div>
+            <div className="rounded-md border border-border/20 bg-background px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.11em] text-muted-foreground">
+                Current value
+              </p>
+              <p className="mt-1 font-sans text-xl font-bold tabular-nums text-foreground">
+                {money(data.zoho.currentValue)}
+              </p>
+            </div>
+            <div className="rounded-md border border-border/20 bg-background px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.11em] text-muted-foreground">
+                Gain
+              </p>
+              {(() => {
+                const inv = data.zoho.investedAmount;
+                const cur = data.zoho.currentValue;
+                if (inv == null || cur == null || inv === 0) {
+                  return (
+                    <p className="mt-1 font-sans text-xl font-bold tabular-nums text-muted-foreground">
+                      —
+                    </p>
+                  );
+                }
+                const delta = cur - inv;
+                const up = delta >= 0;
+                return (
+                  <p
+                    className={`mt-1 font-sans text-xl font-bold tabular-nums ${
+                      up ? "text-[#008455]" : "text-destructive"
+                    }`}
+                  >
+                    {up ? "+" : "−"}
+                    {money(Math.abs(delta)).replace("₹", "₹")}
+                    <span className="ml-1.5 text-[11px] font-normal">
+                      {up ? "+" : "−"}
+                      {Math.abs(Math.round((delta / inv) * 100))}%
+                    </span>
+                  </p>
+                );
+              })()}
+            </div>
+            <div className="rounded-md border border-border/20 bg-background px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.11em] text-muted-foreground">
+                Stage
+              </p>
+              <p
+                className={`mt-1 text-sm font-bold ${
+                  data.zoho.stage?.startsWith("Dropped")
+                    ? "text-destructive"
+                    : "text-foreground"
+                }`}
+              >
+                {data.zoho.stage ?? "—"}
+              </p>
+            </div>
+          </div>
+
+          <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 border-t border-border/20 pt-4 sm:grid-cols-2 lg:grid-cols-4">
+            <ReadOnlyField
+              label="Strategies"
+              value={data.zoho.strategies.join(", ") || null}
+            />
+            <ReadOnlyField
+              label="Fee structure"
+              value={data.zoho.feesStructure.join(", ") || null}
+            />
+            <ReadOnlyField
+              label="Relationship manager"
+              value={data.zoho.relationshipManager}
+            />
+            <ReadOnlyField label="Source" value={data.zoho.investorSource} />
+            <ReadOnlyField label="Occupation" value={data.zoho.occupation} />
+            <ReadOnlyField
+              label="Location"
+              value={
+                [data.zoho.city, data.zoho.country].filter(Boolean).join(", ") || null
+              }
+            />
+            <ReadOnlyField label="Mobile" value={data.zoho.mobile} />
+            <ReadOnlyField label="Risk appetite" value={data.zoho.riskAppetite} />
+            <ReadOnlyField
+              label="Activated"
+              value={formatDate(data.zoho.activationDate)}
+            />
+            <ReadOnlyField
+              label="Account live"
+              value={formatDate(data.zoho.accountLiveDate)}
+            />
+            <ReadOnlyField
+              label="First top-up"
+              value={formatDate(data.zoho.firstTopUpDate)}
+            />
+            <ReadOnlyField
+              label="Referred by"
+              value={data.zoho.referredBy}
+            />
+          </dl>
+
+          {/* Relationship state — the part someone picking up this client needs. */}
+          <div className="mt-4 grid grid-cols-1 gap-3 border-t border-border/20 pt-4 lg:grid-cols-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.11em] text-muted-foreground">
+                Annual review
+              </p>
+              <p
+                className={`mt-0.5 text-sm ${
+                  data.zoho.annualReviewStatus === "Not Done"
+                    ? "font-bold text-destructive"
+                    : "text-foreground"
+                }`}
+              >
+                {data.zoho.annualReviewStatus ?? "—"}
+                {data.zoho.annualReviewDate
+                  ? ` · due ${formatDate(data.zoho.annualReviewDate)}`
+                  : ""}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.11em] text-muted-foreground">
+                Portal walkthrough
+              </p>
+              <p className="mt-0.5 text-sm text-foreground">
+                {data.zoho.hadWalkthrough
+                  ? `Done${data.zoho.walkthroughDate ? ` · ${formatDate(data.zoho.walkthroughDate)}` : ""}`
+                  : "Not done"}
+              </p>
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.11em] text-muted-foreground">
+                Next contact
+              </p>
+              <p className="mt-0.5 text-sm text-foreground">
+                {formatDate(data.zoho.nextContactDate)}
+                {data.zoho.lastContactedOn
+                  ? ` · last ${formatDate(data.zoho.lastContactedOn)}`
+                  : ""}
+              </p>
+            </div>
+          </div>
+
+          {data.zoho.lastConversation ? (
+            <div className="mt-4 rounded-md border border-border/20 bg-background px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.11em] text-muted-foreground">
+                Last conversation
+              </p>
+              <p className="mt-1 text-sm leading-relaxed text-foreground">
+                {data.zoho.lastConversation}
+              </p>
+            </div>
+          ) : null}
+        </section>
+      ) : (
+        <section className="rounded-xl border border-border/20 bg-card shadow-sm px-5 py-5">
+          <h2 className="text-lg font-semibold text-foreground">CRM profile</h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            No Zoho record matches this client&apos;s email address. Their portal
+            details above are unaffected.
+          </p>
+        </section>
+      )}
 
       {/* Family */}
       <section className="rounded-xl border border-border/20 bg-card shadow-sm px-5 py-5">
