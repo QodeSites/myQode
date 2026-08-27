@@ -1,8 +1,6 @@
 // app/admin/queries/page.tsx
 "use client";
 
-import { AdminAuthProvider } from '@/components/admin-auth-provider';
-import { AdminLayout } from '@/components/admin-layout';
 import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -533,19 +531,24 @@ function QueryResolverContent() {
     return <Badge className={colors[type as keyof typeof colors] || 'bg-muted-foreground/10 text-muted-foreground'}>{type}</Badge>;
   };
 
+  // Matches the tiles on /admin/console and /admin/analytics: uppercase
+  // label, then the figure in Lato. The icon sits beside the label rather
+  // than competing with the number.
   const StatCard = ({ icon: Icon, title, value, subtitle, color = "text-muted-foreground" }: any) => (
-    <Card>
-      <CardContent className="p-4">
-        <div className="flex items-center space-x-2">
-          <Icon className={`h-5 w-5 ${color}`} />
-          <div>
-            <p className="text-2xl font-bold">{value}</p>
-            <p className="text-sm text-muted-foreground">{title}</p>
-            {subtitle && <p className="text-xs text-muted-foreground">{subtitle}</p>}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <div className="rounded-xl border border-border/20 bg-card px-4 py-3.5">
+      <div className="flex items-center gap-1.5">
+        {Icon ? <Icon className={`size-3.5 ${color}`} /> : null}
+        <p className="text-[10px] font-black uppercase tracking-[0.11em] text-muted-foreground">
+          {title}
+        </p>
+      </div>
+      <p className="mt-1.5 font-sans text-[27px] font-bold leading-none tabular-nums text-foreground">
+        {value}
+      </p>
+      {subtitle ? (
+        <p className="mt-1.5 text-[11px] text-muted-foreground">{subtitle}</p>
+      ) : null}
+    </div>
   );
 
   const queryTypes = useMemo(() => {
@@ -557,7 +560,7 @@ function QueryResolverContent() {
     return (
       <div className="space-y-6">
         <Skeleton className="h-12 w-64" />
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           {Array(5).fill(0).map((_, i) => <Skeleton key={i} className="h-24" />)}
         </div>
         <Skeleton className="h-96" />
@@ -566,13 +569,13 @@ function QueryResolverContent() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-4">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold">Queries Management</h2>
-          <p className="text-muted-foreground mt-2">
-            Manage and resolve client queries
+          <h1 className="text-2xl">Queries</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Client questions raised from the portal, and how they were resolved.
           </p>
         </div>
         <div className="flex space-x-2">
@@ -1208,10 +1211,6 @@ function QueryResolverContent() {
 
 export default function QueryResolverPage() {
   return (
-    <AdminAuthProvider>
-      <AdminLayout title="Queries Management">
-        <QueryResolverContent />
-      </AdminLayout>
-    </AdminAuthProvider>
+    <QueryResolverContent />
   );
 }
