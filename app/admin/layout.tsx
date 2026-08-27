@@ -1,6 +1,7 @@
 import type React from "react";
 import Link from "next/link";
 import { AdminNav } from "./_components/admin-nav";
+import { AdminUser } from "./_components/admin-user";
 
 export const metadata = {
   title: "myQode Back Office",
@@ -38,11 +39,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
         <AdminNav />
 
-        <div className="mt-auto hidden border-t border-sidebar-foreground/15 px-2 pb-0.5 pt-3.5 text-[11px] text-sidebar-foreground/50 lg:block">
-          Qode Advisors LLP
-          <br />
-          Back office
-        </div>
+        <AdminUser />
       </aside>
 
       {/* Main */}

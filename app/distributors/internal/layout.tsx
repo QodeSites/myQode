@@ -1,6 +1,7 @@
 import type React from "react";
 import Link from "next/link";
 import { AdminNav } from "@/app/admin/_components/admin-nav";
+import { AdminUser } from "@/app/admin/_components/admin-user";
 
 /**
  * Internal distributor overview — deliberately OUTSIDE app/(protected).
@@ -44,11 +45,7 @@ export default function InternalDistributorLayout({
 
         <AdminNav />
 
-        <div className="mt-auto hidden border-t border-sidebar-foreground/15 px-2 pb-0.5 pt-3.5 text-[11px] text-sidebar-foreground/50 lg:block">
-          Qode Advisors LLP
-          <br />
-          Back office
-        </div>
+        <AdminUser />
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">

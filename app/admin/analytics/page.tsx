@@ -32,6 +32,15 @@ type Console = {
   families: { multiAccount: number; missingHead: number; conflicting: number };
 };
 
+type Usage = {
+  days: number;
+  summary: { users: number; sessions: number; events: number; since: string | null; sessionsPerUser: number };
+  platforms: { platform: string; users: number; events: number }[];
+  screens: { screen: string; views: number; users: number }[];
+  daily: { day: string; users: number }[];
+  versions: { version: string; users: number }[];
+};
+
 type Insights = {
   onboardingGap: {
     activatedCount: number;
@@ -167,6 +176,8 @@ export default function AdminAnalyticsPage() {
   const [insights, setInsights] = React.useState<Insights | null>(null);
   const [consoleFailed, setConsoleFailed] = React.useState(false);
   const [insightsFailed, setInsightsFailed] = React.useState(false);
+  const [usage, setUsage] = React.useState<Usage | null>(null);
+  const [usageFailed, setUsageFailed] = React.useState(false);
   const [status, setStatus] = React.useState<
     "loading" | "ready" | "unauthorized" | "forbidden"
   >("loading");
@@ -175,9 +186,10 @@ export default function AdminAnalyticsPage() {
     let cancelled = false;
 
     (async () => {
-      const [c, i] = await Promise.allSettled([
+      const [c, i, u] = await Promise.allSettled([
         fetch("/api/admin/console", { cache: "no-store" }),
         fetch("/api/admin/investor-insights", { cache: "no-store" }),
+        fetch("/api/admin/usage?days=30", { cache: "no-store" }),
       ]);
       if (cancelled) return;
 
@@ -203,6 +215,12 @@ export default function AdminAnalyticsPage() {
         setInsights((await i.value.json()) as Insights);
       } else {
         setInsightsFailed(true);
+      }
+
+      if (u.status === "fulfilled" && u.value.ok) {
+        setUsage((await u.value.json()) as Usage);
+      } else {
+        setUsageFailed(true);
       }
 
       setStatus("ready");
@@ -562,6 +580,170 @@ export default function AdminAnalyticsPage() {
         ) : (
           <p className="py-6 text-center text-sm text-muted-foreground">
             No activation cohorts recorded yet.
+          </p>
+        )}
+      </Panel>
+
+      {/* Portal usage — how investors actually move through myQode */}
+      <div className="grid gap-4 lg:grid-cols-[5fr_7fr]">
+        <div className="min-w-0">
+          <Panel
+            title="Portal usage"
+            subtitle={usage ? `Last ${usage.days} days` : "Last 30 days"}
+            failed={usageFailed}
+          >
+            {usage ? (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.11em] text-muted-foreground">
+                      Active users
+                    </p>
+                    <p className="mt-1 font-sans text-[27px] font-bold leading-none tabular-nums text-foreground">
+                      {usage.summary.users}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.11em] text-muted-foreground">
+                      Sessions
+                    </p>
+                    <p className="mt-1 font-sans text-[27px] font-bold leading-none tabular-nums text-foreground">
+                      {usage.summary.sessions}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-col gap-2 border-t border-border/20 pt-3 text-[12.5px]">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Sessions per user</span>
+                    <span className="tabular-nums text-foreground">
+                      {usage.summary.sessionsPerUser}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Page views</span>
+                    <span className="tabular-nums text-foreground">
+                      {usage.summary.events.toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                </div>
+
+                {usage.platforms.length ? (
+                  <div className="mt-4 border-t border-border/20 pt-3">
+                    <p className="text-[10px] font-black uppercase tracking-[0.11em] text-muted-foreground">
+                      Platform
+                    </p>
+                    <div className="mt-2 flex flex-col gap-1.5">
+                      {usage.platforms.map((pl) => (
+                        <div
+                          key={pl.platform}
+                          className="flex justify-between text-[12.5px]"
+                        >
+                          <span className="capitalize text-muted-foreground">
+                            {pl.platform}
+                          </span>
+                          <span className="tabular-nums text-foreground">
+                            {pl.users} users
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    {usage.platforms.length === 1 &&
+                    usage.platforms[0].platform === "web" ? (
+                      <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                        Only web sessions are being recorded — the mobile app is not
+                        yet reporting to this table.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </>
+            ) : null}
+          </Panel>
+        </div>
+
+        <div className="min-w-0">
+          <Panel
+            title="Most used screens"
+            subtitle="Page views across the portal"
+            failed={usageFailed}
+          >
+            {usage?.screens?.length ? (
+              <div className="flex flex-col gap-2.5">
+                {usage.screens.slice(0, 8).map((sc) => {
+                  const max = usage.screens[0].views || 1;
+                  return (
+                    <div key={sc.screen} className="min-w-0">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="truncate text-[11.5px] text-foreground">
+                          {sc.screen}
+                        </span>
+                        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                          {sc.views.toLocaleString("en-IN")} · {sc.users} users
+                        </span>
+                      </div>
+                      <div className="mt-1 h-2.5 overflow-hidden rounded-full bg-muted-foreground/[0.07]">
+                        <div
+                          className="h-full rounded-full"
+                          style={{
+                            width: `${Math.max(pct(sc.views, max), 2)}%`,
+                            background: QGF,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                No page views recorded in this period.
+              </p>
+            )}
+          </Panel>
+        </div>
+      </div>
+
+      {/* Daily active users */}
+      <Panel
+        title="Daily active users"
+        subtitle={usage ? `Distinct users per day, last ${usage.days} days` : undefined}
+        failed={usageFailed}
+      >
+        {usage?.daily?.length ? (
+          <>
+            <div className="flex items-end gap-1 overflow-x-auto pb-1">
+              {usage.daily.map((d) => {
+                const max = Math.max(...usage.daily.map((x) => x.users)) || 1;
+                return (
+                  <div
+                    key={d.day}
+                    className="flex min-w-[26px] flex-1 flex-col items-center gap-1"
+                    title={`${d.day}: ${d.users} users`}
+                  >
+                    <div className="flex h-[90px] w-full items-end overflow-hidden rounded-t-[3px] bg-muted-foreground/[0.07]">
+                      <div
+                        className="w-full rounded-t-[3px]"
+                        style={{
+                          height: `${Math.max(pct(d.users, max), 3)}%`,
+                          background: QAW,
+                        }}
+                      />
+                    </div>
+                    <span className="whitespace-nowrap text-[9px] tabular-nums text-muted-foreground">
+                      {d.day}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="mt-3 border-t border-border/20 pt-3 text-[11px] text-muted-foreground">
+              Peak {Math.max(...usage.daily.map((d) => d.users))} users in a day across
+              this period.
+            </p>
+          </>
+        ) : (
+          <p className="py-6 text-center text-sm text-muted-foreground">
+            No daily activity recorded in this period.
           </p>
         )}
       </Panel>
