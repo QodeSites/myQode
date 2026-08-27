@@ -108,7 +108,7 @@ function StatTile({
         {label}
       </p>
       <p
-        className={`mt-1 font-serif text-2xl tabular-nums ${
+        className={`mt-1 font-sans text-2xl font-bold tabular-nums ${
           tone === "warn" && value > 0 ? "text-destructive" : "text-foreground"
         }`}
       >

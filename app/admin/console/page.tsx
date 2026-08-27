@@ -85,7 +85,7 @@ function Kpi({
         {label}
       </p>
       <p
-        className={`mt-1.5 font-serif text-[27px] leading-none tabular-nums ${
+        className={`mt-1.5 font-sans text-[27px] font-bold leading-none tabular-nums ${
           attention ? "text-destructive" : "text-foreground"
         }`}
       >
@@ -182,7 +182,7 @@ function TriageCard({
 
   const inner = (
     <div className={`flex gap-3 rounded-lg border-l-[3px] px-3 py-2.5 ${styles.border} ${styles.bg}`}>
-      <span className={`min-w-[34px] shrink-0 font-serif text-xl leading-none tabular-nums ${styles.num}`}>
+      <span className={`min-w-[34px] shrink-0 font-sans text-xl font-black leading-none tabular-nums ${styles.num}`}>
         {count}
       </span>
       <div className="min-w-0">

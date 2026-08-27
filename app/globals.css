@@ -42,7 +42,10 @@
 
   /* Sidebar helpers */
   --sidebar: #02422b;
-  --sidebar-foreground: #002017;
+  /* Cream, not #002017. The sidebar ground is deep green, so the near-black
+     foreground gave ~1.3:1 contrast — text was effectively unreadable. This
+     is the existing --background cream, already part of the palette. */
+  --sidebar-foreground: #efecd3;
   --sidebar-primary: #f7f4e4;
   --sidebar-primary-foreground: #dabd38;
   --sidebar-accent: #e7e2c0;
@@ -264,5 +267,40 @@ summary:focus-visible,
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* ---------------------------
+   Internal client statements
+   Print rules so a generated statement paginates as a clean A4 document.
+----------------------------*/
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm 12mm;
+  }
+
+  /* Repeat table headers on every printed page. */
+  .statement-sheet thead {
+    display: table-header-group;
+  }
+
+  .statement-sheet tfoot {
+    display: table-footer-group;
+  }
+
+  /* Never split a row across a page break. */
+  .statement-sheet tr {
+    break-inside: avoid;
+  }
+
+  .statement-sheet section {
+    break-inside: avoid-page;
+  }
+
+  /* Force the brand colours to print rather than being dropped. */
+  .statement-sheet {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }

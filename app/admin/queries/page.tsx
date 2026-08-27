@@ -494,9 +494,9 @@ function QueryResolverContent() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'resolved':
-        return <Badge className="bg-green-100 text-green-800"><CheckCircle className="h-3 w-3 mr-1" />Resolved</Badge>;
+        return <Badge className="bg-primary/10 text-primary dark:text-primary-foreground"><CheckCircle className="h-3 w-3 mr-1" />Resolved</Badge>;
       case 'pending':
-        return <Badge className="bg-yellow-100 text-yellow-800"><Clock className="h-3 w-3 mr-1" />Pending</Badge>;
+        return <Badge className="bg-primary/10 text-primary dark:text-primary-foreground"><Clock className="h-3 w-3 mr-1" />Pending</Badge>;
       default:
         return <Badge variant="outline">{status}</Badge>;
     }
@@ -504,36 +504,36 @@ function QueryResolverContent() {
 
   const getPriorityBadge = (priority: string) => {
     const colors = {
-      'high': 'bg-red-100 text-red-800',
-      'medium': 'bg-orange-100 text-orange-800',
-      'low': 'bg-blue-100 text-blue-800',
+      'high': 'bg-destructive/10 text-destructive',
+      'medium': 'bg-destructive/10 text-destructive',
+      'low': 'bg-muted-foreground/10 text-muted-foreground',
     };
-    return <Badge className={colors[priority as keyof typeof colors] || 'bg-gray-100 text-gray-800'}>{priority}</Badge>;
+    return <Badge className={colors[priority as keyof typeof colors] || 'bg-muted-foreground/10 text-muted-foreground'}>{priority}</Badge>;
   };
 
   const getQueryTypeBadge = (type: string) => {
     const colors = {
-      'strategy': 'bg-blue-100 text-blue-800',
-      'discussion': 'bg-purple-100 text-purple-800',
-      'switch': 'bg-orange-100 text-orange-800',
-      'withdrawal': 'bg-red-100 text-red-800',
-      'feedback': 'bg-green-100 text-green-800',
+      'strategy': 'bg-muted-foreground/10 text-muted-foreground',
+      'discussion': 'bg-muted-foreground/10 text-muted-foreground',
+      'switch': 'bg-destructive/10 text-destructive',
+      'withdrawal': 'bg-destructive/10 text-destructive',
+      'feedback': 'bg-primary/10 text-primary dark:text-primary-foreground',
       'testimonial': 'bg-lime-100 text-lime-800',
-      'referral': 'bg-pink-100 text-pink-800',
-      'investor_referral': 'bg-pink-100 text-pink-800',
+      'referral': 'bg-muted-foreground/10 text-muted-foreground',
+      'investor_referral': 'bg-muted-foreground/10 text-muted-foreground',
       'raised_request': 'bg-teal-100 text-teal-800',
-      'payment_confirmation': 'bg-yellow-100 text-yellow-800',
+      'payment_confirmation': 'bg-primary/10 text-primary dark:text-primary-foreground',
       'new_strategy_payment': 'bg-violet-100 text-violet-800',
       'payment_success': 'bg-emerald-100 text-emerald-800',
-      'new_strategy_payment_success': 'bg-indigo-100 text-indigo-800',
+      'new_strategy_payment_success': 'bg-muted-foreground/10 text-muted-foreground',
       'sip_success': 'bg-cyan-100 text-cyan-800',
       'admin_response': 'bg-slate-100 text-slate-800',
-      'admin_notification': 'bg-gray-100 text-gray-800',
+      'admin_notification': 'bg-muted-foreground/10 text-muted-foreground',
     };
-    return <Badge className={colors[type as keyof typeof colors] || 'bg-gray-100 text-gray-800'}>{type}</Badge>;
+    return <Badge className={colors[type as keyof typeof colors] || 'bg-muted-foreground/10 text-muted-foreground'}>{type}</Badge>;
   };
 
-  const StatCard = ({ icon: Icon, title, value, subtitle, color = "text-blue-500" }: any) => (
+  const StatCard = ({ icon: Icon, title, value, subtitle, color = "text-muted-foreground" }: any) => (
     <Card>
       <CardContent className="p-4">
         <div className="flex items-center space-x-2">
@@ -594,35 +594,35 @@ function QueryResolverContent() {
             icon={MessageSquare}
             title="Total Queries"
             value={statistics.totalQueries}
-            color="text-blue-500"
+            color="text-muted-foreground"
           />
           <StatCard
             icon={Clock}
             title="Pending"
             value={statistics.pendingQueries}
             subtitle={`${statistics.highPriorityQueries} high priority`}
-            color="text-orange-500"
+            color="text-destructive"
           />
           <StatCard
             icon={CheckCircle}
             title="Resolved"
             value={statistics.resolvedQueries}
             subtitle={`Avg: ${statistics.avgResolutionTime}`}
-            color="text-green-500"
+            color="text-primary dark:text-primary-foreground"
           />
           <StatCard
             icon={TrendingUp}
             title="Today"
             value={statistics.todayQueries}
             subtitle={`${statistics.thisWeekQueries} this week`}
-            color="text-purple-500"
+            color="text-muted-foreground"
           />
           <StatCard
             icon={AlertCircle}
             title="High Priority"
             value={statistics.highPriorityQueries}
             subtitle="Needs attention"
-            color="text-red-500"
+            color="text-destructive"
           />
         </div>
       )}
@@ -803,7 +803,7 @@ function QueryResolverContent() {
                               setQueryToDelete(queryItem);
                               setShowDeleteDialog(true);
                             }}
-                            className="text-red-600 focus:text-red-600"
+                            className="text-destructive focus:text-destructive"
                           >
                             <AlertTriangle className="h-4 w-4 mr-2" />
                             Delete Query
@@ -833,7 +833,7 @@ function QueryResolverContent() {
           <DialogHeader>
             <DialogTitle className="flex items-center justify-between">
               <div className="flex items-center space-x-2">
-                <MessageSquare className="h-5 w-5 text-blue-500" />
+                <MessageSquare className="h-5 w-5 text-muted-foreground" />
                 <span>Query Details</span>
               </div>
               {selectedQuery && getStatusBadge(selectedQuery.status)}
@@ -941,9 +941,9 @@ function QueryResolverContent() {
                             <p className="text-sm text-muted-foreground whitespace-pre-wrap">{note.content}</p>
                             {note.old_value && note.new_value && (
                               <div className="mt-2 text-xs">
-                                <span className="text-red-600">{note.old_value}</span>
+                                <span className="text-destructive">{note.old_value}</span>
                                 <span className="mx-2">→</span>
-                                <span className="text-green-600">{note.new_value}</span>
+                                <span className="text-primary dark:text-primary-foreground">{note.new_value}</span>
                               </div>
                             )}
                           </CardContent>
@@ -970,7 +970,7 @@ function QueryResolverContent() {
                 </Button>
                 <Button 
                   onClick={() => setShowResolveDialog(true)}
-                  className="bg-green-600 hover:bg-green-700"
+                  className="bg-primary text-primary-foreground hover:bg-primary/90"
                 >
                   <CheckCircle className="h-4 w-4 mr-2" />
                   Resolve Query
@@ -989,7 +989,7 @@ function QueryResolverContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
-              <AlertTriangle className="h-5 w-5 text-red-500" />
+              <AlertTriangle className="h-5 w-5 text-destructive" />
               <span>Delete Query</span>
             </DialogTitle>
             <DialogDescription>
@@ -998,9 +998,9 @@ function QueryResolverContent() {
           </DialogHeader>
 
           <div className="space-y-4">
-            <Alert className="border-red-200 bg-red-50">
-              <AlertTriangle className="h-4 w-4 text-red-600" />
-              <AlertDescription className="text-red-800">
+            <Alert className="border-red-200 bg-destructive/5">
+              <AlertTriangle className="h-4 w-4 text-destructive" />
+              <AlertDescription className="text-destructive">
                 <strong>Warning:</strong> You are about to delete:
               </AlertDescription>
             </Alert>
@@ -1041,7 +1041,7 @@ function QueryResolverContent() {
               id="confirm-delete-btn"
               onClick={handleDeleteQuery}
               disabled={processing}
-              className="bg-red-600 hover:bg-red-700"
+              className="bg-destructive text-white hover:bg-destructive/90"
             >
               {processing ? 'Deleting...' : 'Delete Permanently'}
             </Button>
@@ -1054,7 +1054,7 @@ function QueryResolverContent() {
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
-              <ArrowRight className="h-5 w-5 text-blue-500" />
+              <ArrowRight className="h-5 w-5 text-muted-foreground" />
               <span>Reply to Query</span>
             </DialogTitle>
             <DialogDescription>
@@ -1136,7 +1136,7 @@ function QueryResolverContent() {
             <Button
               onClick={handleSendReply}
               disabled={processing || !emailData.to || !emailData.subject || !emailData.message}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {processing ? 'Sending...' : 'Send Reply'}
               <Send className="h-4 w-4 ml-2" />
@@ -1150,7 +1150,7 @@ function QueryResolverContent() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center space-x-2">
-              <CheckCircle className="h-5 w-5 text-green-500" />
+              <CheckCircle className="h-5 w-5 text-primary dark:text-primary-foreground" />
               <span>Resolve Query</span>
             </DialogTitle>
             <DialogDescription>
@@ -1195,7 +1195,7 @@ function QueryResolverContent() {
             <Button
               onClick={handleResolveQuery}
               disabled={processing || !resolveNote.trim()}
-              className="bg-green-600 hover:bg-green-700"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
             >
               {processing ? 'Resolving...' : 'Resolve Query'}
             </Button>

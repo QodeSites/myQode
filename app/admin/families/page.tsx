@@ -139,7 +139,7 @@ export default function AdminFamiliesPage() {
           <p className="text-[11px] font-bold uppercase leading-tight tracking-wider text-muted-foreground">
             All families
           </p>
-          <p className="mt-1 font-serif text-2xl tabular-nums text-foreground">
+          <p className="mt-1 font-sans text-2xl font-bold tabular-nums text-foreground">
             {data.total}
           </p>
         </button>
@@ -156,7 +156,7 @@ export default function AdminFamiliesPage() {
             Missing a head
           </p>
           <p
-            className={`mt-1 font-serif text-2xl tabular-nums ${
+            className={`mt-1 font-sans text-2xl font-bold tabular-nums ${
               data.missingHead > 0 ? "text-destructive" : "text-foreground"
             }`}
           >
