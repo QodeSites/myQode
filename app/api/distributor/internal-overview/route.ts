@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSession } from "@/lib/session-store";
+import { requireRole, isRoleUser } from "@/lib/adminAuth";
 import { query } from "@/lib/db";
 import {
   getAllDistributorJourneys,
@@ -35,17 +35,12 @@ function todayIso(): string {
 }
 
 export async function GET(request: NextRequest) {
+  // Distributor-role and super-admin staff only. Validates the session and
+  // the role before any query runs.
+  const admin = await requireRole(request, "distributor");
+  if (!isRoleUser(admin)) return admin;
+
   try {
-    const sessionId = request.cookies.get("admin-session")?.value;
-    if (!sessionId) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-    }
-
-    const session = await getSession(sessionId);
-    if (!session) {
-      return NextResponse.json({ error: "Session expired" }, { status: 401 });
-    }
-
     const [records, journeys] = await Promise.all([
       getAllDistributorRecords(),
       getAllDistributorJourneys(),

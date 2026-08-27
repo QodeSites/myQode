@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin, isAdminUser } from "@/lib/adminAuth";
+import { requireRole, isRoleUser } from "@/lib/adminAuth";
 import {
   getClientDetail,
   getFamilyMembers,
@@ -11,8 +11,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const admin = await requireAdmin(request);
-  if (!isAdminUser(admin)) return admin;
+  const admin = await requireRole(request, "clients");
+  if (!isRoleUser(admin)) return admin;
 
   try {
     const id = Number((await params).id);
@@ -41,8 +41,8 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const admin = await requireAdmin(request);
-  if (!isAdminUser(admin)) return admin;
+  const admin = await requireRole(request, "clients");
+  if (!isRoleUser(admin)) return admin;
 
   try {
     const id = Number((await params).id);

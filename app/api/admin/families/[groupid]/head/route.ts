@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin, isAdminUser } from "@/lib/adminAuth";
+import { requireRole, isRoleUser } from "@/lib/adminAuth";
 import { setHeadOfFamily } from "@/lib/adminClientMutations";
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ groupid: string }> },
 ) {
-  const admin = await requireAdmin(request);
-  if (!isAdminUser(admin)) return admin;
+  const admin = await requireRole(request, "families");
+  if (!isRoleUser(admin)) return admin;
 
   try {
     const { groupid } = await params;

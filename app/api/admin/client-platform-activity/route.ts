@@ -12,13 +12,13 @@
 import { NextResponse, NextRequest } from 'next/server'
 import { query } from '@/lib/db'
 import { getInvestorSourceMap, getRawInvestorRecords } from '@/lib/zoho'
-import { requireAdmin, isAdminUser } from "@/lib/adminAuth";
+import { requireRole, isRoleUser } from "@/lib/adminAuth";
 
 export async function GET(request: NextRequest) {
   // Admin-only. middleware.ts checks the cookie exists but defers
   // validation, so a forged cookie passes it — this validates the session.
-  const __admin = await requireAdmin(request);
-  if (!isAdminUser(__admin)) return __admin;
+  const __admin = await requireRole(request, "analytics");
+  if (!isRoleUser(__admin)) return __admin;
 
   try {
     // Zoho CRM's Investor_Source per email — best-effort. A Zoho hiccup

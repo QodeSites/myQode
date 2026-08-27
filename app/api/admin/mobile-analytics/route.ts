@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db1'
-import { requireAdmin, isAdminUser } from "@/lib/adminAuth";
+import { requireRole, isRoleUser } from "@/lib/adminAuth";
 
 export async function GET(request: NextRequest) {
   // Admin-only. middleware.ts checks the cookie exists but defers
   // validation, so a forged cookie passes it — this validates the session.
-  const __admin = await requireAdmin(request);
-  if (!isAdminUser(__admin)) return __admin;
+  const __admin = await requireRole(request, "analytics");
+  if (!isRoleUser(__admin)) return __admin;
 
   const { searchParams } = new URL(request.url)
   const days = Math.min(Math.max(parseInt(searchParams.get('days') ?? '30'), 1), 365)

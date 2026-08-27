@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin, isAdminUser } from "@/lib/adminAuth";
+import { requireRole, isRoleUser } from "@/lib/adminAuth";
 import { query } from "@/lib/db";
 
 /**
@@ -19,8 +19,8 @@ import { query } from "@/lib/db";
 type WeekPoint = { week: string; count: number };
 
 export async function GET(request: NextRequest) {
-  const admin = await requireAdmin(request);
-  if (!isAdminUser(admin)) return admin;
+  const admin = await requireRole(request, "console");
+  if (!isRoleUser(admin)) return admin;
 
   try {
     const [
