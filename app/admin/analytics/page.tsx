@@ -69,6 +69,9 @@ type PlatformActivity = {
   usageTrend: { date: string; app: number; web: number; both: number; total: number }[];
 };
 
+/** Series drawn on the usage-trend chart. */
+type SeriesKey = "total" | "web" | "app" | "both";
+
 type Insights = {
   onboardingGap: {
     activatedCount: number;
@@ -102,6 +105,7 @@ function Panel({
   subtitle,
   failed,
   loading,
+  action,
   children,
 }: {
   title: string;
@@ -109,13 +113,20 @@ function Panel({
   failed?: boolean;
   /** True while this panel's own endpoint is still in flight. */
   loading?: boolean;
+  /** Optional control rendered at the right of the header. */
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <section className="flex flex-col rounded-xl border border-border/20 bg-card">
-      <div className="border-b border-border/20 px-4 py-3">
-        <h2 className="text-[14.5px] font-semibold text-foreground">{title}</h2>
-        {subtitle ? <p className="text-[11px] text-muted-foreground">{subtitle}</p> : null}
+      <div className="flex items-center gap-3 border-b border-border/20 px-4 py-3">
+        <div className="min-w-0">
+          <h2 className="text-[14.5px] font-semibold text-foreground">{title}</h2>
+          {subtitle ? (
+            <p className="text-[11px] text-muted-foreground">{subtitle}</p>
+          ) : null}
+        </div>
+        {action ? <div className="ml-auto shrink-0">{action}</div> : null}
       </div>
       <div className="px-4 py-4">
         {failed ? (
@@ -217,6 +228,8 @@ export default function AdminAnalyticsPage() {
   const [usageFailed, setUsageFailed] = React.useState(false);
   const [platform, setPlatform] = React.useState<PlatformActivity | null>(null);
   const [platformFailed, setPlatformFailed] = React.useState(false);
+  // Weeks of history shown in the usage trend. 999 means "all time".
+  const [trendWeeks, setTrendWeeks] = React.useState(26);
   const [status, setStatus] = React.useState<
     "loading" | "ready" | "unauthorized" | "forbidden"
   >("loading");
@@ -865,85 +878,173 @@ export default function AdminAnalyticsPage() {
         subtitle="Weekly active investors on each platform, against total investors on the books"
         failed={platformFailed}
         loading={!platform && !platformFailed}
+        action={
+          <select
+            value={trendWeeks}
+            onChange={(e) => setTrendWeeks(Number(e.target.value))}
+            aria-label="Trend range"
+            className="min-h-[30px] rounded-md border border-border/20 bg-background px-2 text-[11.5px] text-muted-foreground focus-visible:outline-2 focus-visible:outline-primary"
+          >
+            <option value={13}>Last 3 months</option>
+            <option value={26}>Last 6 months</option>
+            <option value={52}>Last 12 months</option>
+            <option value={999}>All time</option>
+          </select>
+        }
       >
         {platform?.usageTrend?.length ? (
           (() => {
-            const pts = platform.usageTrend.slice(-26);
-            const max = Math.max(
+            const pts = platform.usageTrend.slice(-trendWeeks);
+            const rawMax = Math.max(
               ...pts.map((q) => Math.max(q.total, q.web, q.app, q.both)),
               1,
             );
+            // Round the ceiling up to a clean step so the axis labels are
+            // readable numbers rather than 237, 178, 119.
+            const step = rawMax > 400 ? 100 : rawMax > 200 ? 50 : rawMax > 80 ? 25 : 10;
+            const max = Math.ceil(rawMax / step) * step;
+            const ticks: number[] = [];
+            for (let v = 0; v <= max; v += step) ticks.push(v);
+
+            // Room on the left for value labels, and beneath for dates.
+            const PAD_L = 34;
+            const PAD_B = 18;
             const W = 900;
-            const H = 190;
-            const xAt = (i: number) => (pts.length > 1 ? (i * W) / (pts.length - 1) : 0);
-            const yAt = (v: number) => H - (v / max) * (H - 16) - 8;
-            const line = (key: "total" | "web" | "app" | "both") =>
-              pts
-                .map((q, i) => `${Math.round(xAt(i))},${Math.round(yAt(q[key]))}`)
-                .join(" ");
-            const series = [
-              {
-                key: "total" as const,
-                color: NEUTRAL,
-                label: "Total investors",
-                dash: "5 4",
-              },
-              { key: "web" as const, color: QGF, label: "Web", dash: undefined },
-              { key: "app" as const, color: QAW, label: "App", dash: undefined },
-              { key: "both" as const, color: QTF, label: "Both", dash: undefined },
+            const H = 210;
+            const plotW = W - PAD_L;
+            const plotH = H - PAD_B;
+
+            const xAt = (i: number) =>
+              PAD_L + (pts.length > 1 ? (i * plotW) / (pts.length - 1) : 0);
+            const yAt = (v: number) => plotH - (v / max) * (plotH - 10);
+            const line = (key: SeriesKey) =>
+              pts.map((q, i) => `${Math.round(xAt(i))},${Math.round(yAt(q[key]))}`).join(' ');
+
+            const series: { key: SeriesKey; color: string; label: string; dash?: string }[] = [
+              { key: "total", color: NEUTRAL, label: "Total investors", dash: "5 4" },
+              { key: "web", color: QGF, label: "Web" },
+              { key: "app", color: QAW, label: "App" },
+              { key: "both", color: QTF, label: "Both" },
             ];
+
             const last = pts[pts.length - 1];
+            // Roughly six date labels, whatever the range.
+            const labelEvery = Math.max(1, Math.ceil(pts.length / 6));
+            const shortDate = (iso: string) => {
+              const d = new Date(iso);
+              return Number.isNaN(d.getTime())
+                ? iso
+                : d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+            };
+
             return (
               <>
+                {/* Where each series finished — the number you actually want. */}
+                <div className="mb-3 flex flex-wrap gap-x-6 gap-y-2">
+                  {series.map((se) => (
+                    <div key={se.key}>
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className="h-0.5 w-3.5 rounded-full"
+                          style={{ background: se.color }}
+                        />
+                        <span className="text-[10px] font-black uppercase tracking-[0.09em] text-muted-foreground">
+                          {se.label}
+                        </span>
+                      </div>
+                      <p
+                        className="mt-0.5 font-sans text-[19px] font-bold leading-none tabular-nums"
+                        style={{ color: se.key === 'total' ? undefined : se.color }}
+                      >
+                        {last[se.key]}
+                        {se.key !== 'total' ? (
+                          <span className="ml-1 text-[11px] font-normal text-muted-foreground">
+                            {pct(last[se.key], last.total || 1)}%
+                          </span>
+                        ) : null}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
                 <svg
                   viewBox={`0 0 ${W} ${H}`}
-                  preserveAspectRatio="none"
-                  className="block h-[190px] w-full"
+                  className="block h-[210px] w-full"
                   role="img"
                   aria-label={`Weekly active investors. Latest: ${last.web} web, ${last.app} app, ${last.both} both, of ${last.total} total.`}
                 >
-                  {[0.25, 0.5, 0.75].map((f) => (
-                    <line
-                      key={f}
-                      x1="0"
-                      y1={H * f}
-                      x2={W}
-                      y2={H * f}
-                      stroke="currentColor"
-                      strokeWidth="1"
-                      className="text-border/20"
-                    />
+                  {/* Horizontal gridlines with value labels. */}
+                  {ticks.map((v) => (
+                    <g key={v}>
+                      <line
+                        x1={PAD_L}
+                        y1={yAt(v)}
+                        x2={W}
+                        y2={yAt(v)}
+                        stroke="currentColor"
+                        strokeWidth="1"
+                        className="text-border/20"
+                      />
+                      <text
+                        x={PAD_L - 6}
+                        y={yAt(v) + 3.5}
+                        textAnchor="end"
+                        className="fill-muted-foreground text-[9px] tabular-nums"
+                      >
+                        {v}
+                      </text>
+                    </g>
                   ))}
+
+                  {/* Date labels along the foot. */}
+                  {pts.map((q, i) =>
+                    i % labelEvery === 0 || i === pts.length - 1 ? (
+                      <text
+                        key={q.date}
+                        x={xAt(i)}
+                        y={H - 4}
+                        textAnchor={i === pts.length - 1 ? 'end' : i === 0 ? 'start' : 'middle'}
+                        className="fill-muted-foreground text-[9px] tabular-nums"
+                      >
+                        {shortDate(q.date)}
+                      </text>
+                    ) : null,
+                  )}
+
                   {series.map((se) => (
                     <polyline
                       key={se.key}
                       points={line(se.key)}
                       fill="none"
                       stroke={se.color}
-                      strokeWidth="2.2"
+                      strokeWidth="2"
                       strokeDasharray={se.dash}
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      vectorEffect="non-scaling-stroke"
                     />
                   ))}
-                </svg>
-                <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap gap-3.5 text-[11px] text-muted-foreground">
-                    {series.map((se) => (
-                      <span key={se.key} className="flex items-center gap-1.5">
-                        <span
-                          className="h-0.5 w-4 rounded-full"
-                          style={{ background: se.color }}
-                        />
-                        {se.label}
-                      </span>
+
+                  {/* Emphasise where each line ends. */}
+                  {series
+                    .filter((se) => se.key !== 'total')
+                    .map((se) => (
+                      <circle
+                        key={se.key}
+                        cx={xAt(pts.length - 1)}
+                        cy={yAt(last[se.key])}
+                        r="3.5"
+                        fill={se.color}
+                      />
                     ))}
-                  </div>
-                  <span className="text-[10.5px] tabular-nums text-muted-foreground">
-                    {pts[0].date} → {last.date}
-                  </span>
-                </div>
+                </svg>
+
+                <p className="mt-2 border-t border-border/20 pt-2.5 text-[11px] text-muted-foreground">
+                  {pct(last.app, last.total || 1)}% of investors on the books used the app
+                  this week, against {pct(last.web, last.total || 1)}% on web.{' '}
+                  {last.both > 0
+                    ? `${last.both} used both.`
+                    : 'None used both platforms.'}
+                </p>
               </>
             );
           })()
