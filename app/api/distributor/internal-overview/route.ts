@@ -96,6 +96,14 @@ export async function GET(request: NextRequest) {
       }
 
       const referredCount = journey?.clients.length ?? 0;
+
+      // Book value across their referred investors. Nulls are skipped rather
+      // than counted as zero, so a partner whose CRM amounts are unfilled
+      // shows no total instead of a misleading 0.
+      const clients = journey?.clients ?? [];
+      const invested = clients.reduce((sum, c) => sum + (c.investedAmount ?? 0), 0);
+      const currentValue = clients.reduce((sum, c) => sum + (c.currentValue ?? 0), 0);
+      const withAmounts = clients.filter((c) => c.investedAmount != null).length;
       const portalClientCount = portalName
         ? (clientCountByName.get(portalName) ?? 0)
         : 0;
@@ -115,6 +123,14 @@ export async function GET(request: NextRequest) {
         hasPortalLogin: portalName !== null,
         referredCount,
         portalClientCount,
+        investedAmount: withAmounts ? invested : null,
+        currentValue: withAmounts ? currentValue : null,
+        clientsWithAmounts: withAmounts,
+        // The investors themselves, so the expanded row can list them without
+        // a second request. Sorted by book value so the largest lead.
+        clients: [...clients].sort(
+          (a, b) => (b.currentValue ?? 0) - (a.currentValue ?? 0),
+        ),
         stageCounts: journey?.stageCounts ?? null,
         followUpOverdue,
         loginUnlinked,
@@ -149,6 +165,8 @@ export async function GET(request: NextRequest) {
       missingSecondaryEmail: distributors.filter((d) => !d.secondaryEmail).length,
       unlinkedLoginCount: unlinkedLogins.length,
       totalReferredInvestors: distributors.reduce((s, d) => s + d.referredCount, 0),
+      totalInvested: distributors.reduce((s, d) => s + (d.investedAmount ?? 0), 0),
+      totalCurrentValue: distributors.reduce((s, d) => s + (d.currentValue ?? 0), 0),
     };
 
     return NextResponse.json({

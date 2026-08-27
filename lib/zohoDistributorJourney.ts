@@ -50,6 +50,25 @@ export type JourneyClient = {
   /** Zoho's Date_Of_1st_Investment, labelled "Account live date" in the CRM. */
   accountLiveDate: string | null;
   firstTopUpDate: string | null;
+
+  // ── Money and mandate ──────────────────────────────────────────────────
+  /** Invested_Amount — a Zoho formula field, so read-only. */
+  investedAmount: number | null;
+  currentValue: number | null;
+  /** Strategies held, e.g. ["Qode Growth Fund", "Qode Tactical Fund"]. */
+  strategies: string[];
+
+  // ── Relationship ───────────────────────────────────────────────────────
+  relationshipManager: string | null;
+  mobile: string | null;
+  city: string | null;
+  occupation: string | null;
+  /** Free text from the CRM — the last thing anyone recorded saying to them. */
+  lastConversation: string | null;
+  nextContactDate: string | null;
+  annualReviewStatus: string | null;
+  /** Whether they have been walked through the portal. */
+  hadWalkthrough: boolean;
 };
 
 export type DistributorJourney = {
@@ -98,6 +117,11 @@ function tallyStages(clients: JourneyClient[]): Record<string, number> {
 }
 
 function mapClient(r: any): JourneyClient {
+  const rm = [r["Owner.first_name"], r["Owner.last_name"]]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
   return {
     name: r.Name ?? null,
     email: r.Email ?? null,
@@ -106,8 +130,43 @@ function mapClient(r: any): JourneyClient {
     activationDate: r.Activation_Date ?? null,
     accountLiveDate: r.Date_Of_1st_Investment ?? null,
     firstTopUpDate: r.First_Top_Up_Date ?? null,
+
+    investedAmount: r.Invested_Amount != null ? Number(r.Invested_Amount) : null,
+    currentValue:
+      r.Current_Portfolio_Value != null ? Number(r.Current_Portfolio_Value) : null,
+    // Zoho returns a multiselect as an array, but a single value can arrive
+    // as a bare string — normalise so callers never have to check.
+    strategies: Array.isArray(r.Strategy_Invested)
+      ? r.Strategy_Invested.filter(Boolean).map(String)
+      : r.Strategy_Invested
+        ? [String(r.Strategy_Invested)]
+        : [],
+
+    relationshipManager: rm || null,
+    mobile: r.Mobile_No ?? null,
+    city: r.City ?? null,
+    occupation: r.Occupation ?? null,
+    lastConversation: r.Last_Conversation ?? null,
+    nextContactDate: r.Next_Contact_Date ?? null,
+    annualReviewStatus: r.Annual_Review_Status ?? null,
+    hadWalkthrough: r.myQode_Walkthrough === true,
   };
 }
+
+/**
+ * Columns selected for every investor read. Kept in one place so the
+ * per-distributor and all-distributor queries cannot drift apart — they
+ * feed the same JourneyClient shape.
+ *
+ * Owner must be selected as dotted sub-fields: COQL returns an empty object
+ * for a bare `Owner`, unlike the REST API.
+ */
+const INVESTOR_COLUMNS = `Name, Email, Investor_Stage, Stage_Entry_Date,
+       Activation_Date, Date_Of_1st_Investment, First_Top_Up_Date,
+       Invested_Amount, Current_Portfolio_Value, Strategy_Invested,
+       Owner.first_name, Owner.last_name, Mobile_No, City, Occupation,
+       Last_Conversation, Next_Contact_Date, Annual_Review_Status,
+       myQode_Walkthrough`;
 
 /**
  * Finds a distributor's Zoho record by exact match on Email or Secondary_Email.
@@ -154,8 +213,7 @@ export async function getJourneyForDistributor(
 
   for (let page = 0; page < 40; page++) {
     const rows = await coql(
-      `select Name, Email, Investor_Stage, Stage_Entry_Date,
-              Activation_Date, Date_Of_1st_Investment, First_Top_Up_Date
+      `select ${INVESTOR_COLUMNS}
          from Investors
         where Primary_distributo = ${record.id}
         limit ${offset}, 200`,
@@ -206,8 +264,7 @@ export async function getAllDistributorJourneys(): Promise<Map<string, Distribut
   let offset = 0;
   for (let page = 0; page < 40; page++) {
     const rows = await coql(
-      `select Name, Email, Investor_Stage, Stage_Entry_Date, Activation_Date,
-              Date_Of_1st_Investment, First_Top_Up_Date, Primary_distributo
+      `select ${INVESTOR_COLUMNS}, Primary_distributo
          from Investors
         where Primary_distributo is not null
         limit ${offset}, 200`,

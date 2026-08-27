@@ -31,8 +31,31 @@ type DistributorRow = {
   referredCount: number;
   portalClientCount: number;
   stageCounts: Record<string, number> | null;
+  investedAmount: number | null;
+  currentValue: number | null;
+  clientsWithAmounts: number;
+  clients: JourneyClient[];
   followUpOverdue: boolean;
   loginUnlinked: boolean;
+};
+
+type JourneyClient = {
+  name: string | null;
+  email: string | null;
+  stage: string | null;
+  activationDate: string | null;
+  accountLiveDate: string | null;
+  investedAmount: number | null;
+  currentValue: number | null;
+  strategies: string[];
+  relationshipManager: string | null;
+  mobile: string | null;
+  city: string | null;
+  occupation: string | null;
+  lastConversation: string | null;
+  nextContactDate: string | null;
+  annualReviewStatus: string | null;
+  hadWalkthrough: boolean;
 };
 
 type UnlinkedLogin = { email: string; clientname: string; clientCount: number };
@@ -46,6 +69,8 @@ type Overview = {
     missingSecondaryEmail: number;
     unlinkedLoginCount: number;
     totalReferredInvestors: number;
+    totalInvested: number;
+    totalCurrentValue: number;
   };
   distributors: DistributorRow[];
   unlinkedLogins: UnlinkedLogin[];
@@ -83,6 +108,15 @@ function formatDate(iso: string | null): string {
     month: "short",
     year: "numeric",
   });
+}
+
+/** Indian grouping. Crore/lakh shorthand above a lakh, since book values run
+ *  to eight figures and full digits are unreadable in a table cell. */
+function money(n: number | null): string {
+  if (n == null) return "—";
+  if (n >= 10000000) return `₹${(n / 10000000).toFixed(2)} Cr`;
+  if (n >= 100000) return `₹${(n / 100000).toFixed(1)} L`;
+  return `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 }
 
 function isLost(stage: string | null): boolean {
@@ -363,6 +397,17 @@ export default function InternalDistributorOverviewPage() {
           active={filter === "noSecondary"}
         />
         <StatTile label="Investors referred" value={s.totalReferredInvestors} />
+        <div className="rounded-md border border-border/20 bg-background px-4 py-3">
+          <p className="text-[11px] font-bold uppercase leading-tight tracking-wider text-muted-foreground">
+            Book value
+          </p>
+          <p className="mt-1 font-sans text-2xl font-bold tabular-nums text-foreground">
+            {money(s.totalCurrentValue || null)}
+          </p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {money(s.totalInvested || null)} invested
+          </p>
+        </div>
       </div>
 
       <section className="rounded-xl border border-border/20 bg-card shadow-sm px-5 py-5">
@@ -523,7 +568,7 @@ export default function InternalDistributorOverviewPage() {
 
                       {open ? (
                         <tr className="border-b border-border/10 bg-background/40">
-                          <td colSpan={6} className="px-4 py-4">
+                          <td colSpan={7} className="px-4 py-4">
                             <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
                               <div>
                                 <dt className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -570,24 +615,126 @@ export default function InternalDistributorOverviewPage() {
                                   {formatDate(d.lastContactDate)}
                                 </dd>
                               </div>
+                              <div>
+                                <dt className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                                  Invested
+                                </dt>
+                                <dd className="mt-0.5 text-sm tabular-nums text-foreground">
+                                  {money(d.investedAmount)}
+                                  {d.clientsWithAmounts > 0 &&
+                                  d.clientsWithAmounts < d.referredCount ? (
+                                    <span className="ml-1.5 text-[11px] text-muted-foreground">
+                                      ({d.clientsWithAmounts} of {d.referredCount} priced)
+                                    </span>
+                                  ) : null}
+                                </dd>
+                              </div>
+
                               {d.stageCounts ? (
-                                <div className="sm:col-span-2 lg:col-span-3">
+                                <div className="sm:col-span-2 lg:col-span-4">
                                   <dt className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                                    Their investors
+                                    Stage spread
                                   </dt>
                                   <dd className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-sm text-foreground">
                                     {data.stageOrder
                                       .filter((st) => (d.stageCounts?.[st] ?? 0) > 0)
                                       .map((st) => (
                                         <span key={st}>
-                                          <span className="tabular-nums font-bold">
+                                          <span className="font-bold tabular-nums">
                                             {d.stageCounts?.[st]}
                                           </span>{" "}
-                                          <span className="text-muted-foreground">
-                                            {st}
-                                          </span>
+                                          <span className="text-muted-foreground">{st}</span>
                                         </span>
                                       ))}
+                                  </dd>
+                                </div>
+                              ) : null}
+
+                              {d.clients?.length ? (
+                                <div className="sm:col-span-2 lg:col-span-4">
+                                  <dt className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                                    Their investors ({d.clients.length})
+                                  </dt>
+                                  <dd className="overflow-x-auto">
+                                    <table className="w-full min-w-[820px] border-collapse text-[12px]">
+                                      <thead>
+                                        <tr className="border-b border-border/20 text-left">
+                                          {[
+                                            "Investor",
+                                            "Stage",
+                                            "Strategies",
+                                            "Invested",
+                                            "Value",
+                                            "RM",
+                                            "Review",
+                                          ].map((h, hi) => (
+                                            <th
+                                              key={h}
+                                              className={`py-1.5 pr-3 text-[9.5px] font-black uppercase tracking-[0.1em] text-muted-foreground last:pr-0 ${
+                                                hi === 3 || hi === 4 ? "text-right" : ""
+                                              }`}
+                                            >
+                                              {h}
+                                            </th>
+                                          ))}
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {d.clients.map((c, ci) => (
+                                          <tr
+                                            key={`${c.email ?? "x"}-${ci}`}
+                                            className="border-b border-border/10 last:border-0"
+                                          >
+                                            <td className="py-1.5 pr-3">
+                                              <span className="text-foreground">
+                                                {c.name ?? "—"}
+                                              </span>
+                                              {c.city ? (
+                                                <span className="ml-1.5 text-[10.5px] text-muted-foreground">
+                                                  {c.city}
+                                                </span>
+                                              ) : null}
+                                            </td>
+                                            <td
+                                              className={`py-1.5 pr-3 ${
+                                                c.stage?.startsWith("Dropped")
+                                                  ? "text-destructive"
+                                                  : "text-muted-foreground"
+                                              }`}
+                                            >
+                                              {c.stage ?? "—"}
+                                            </td>
+                                            <td className="py-1.5 pr-3 text-muted-foreground">
+                                              {c.strategies.length
+                                                ? c.strategies
+                                                    .map((st) =>
+                                                      st.replace("Qode ", "").replace(" Fund", ""),
+                                                    )
+                                                    .join(", ")
+                                                : "—"}
+                                            </td>
+                                            <td className="py-1.5 pr-3 text-right tabular-nums text-muted-foreground">
+                                              {money(c.investedAmount)}
+                                            </td>
+                                            <td className="py-1.5 pr-3 text-right tabular-nums text-foreground">
+                                              {money(c.currentValue)}
+                                            </td>
+                                            <td className="py-1.5 pr-3 text-muted-foreground">
+                                              {c.relationshipManager ?? "—"}
+                                            </td>
+                                            <td
+                                              className={`py-1.5 ${
+                                                c.annualReviewStatus === "Not Done"
+                                                  ? "text-destructive"
+                                                  : "text-muted-foreground"
+                                              }`}
+                                            >
+                                              {c.annualReviewStatus ?? "—"}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
                                   </dd>
                                 </div>
                               ) : null}
