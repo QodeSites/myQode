@@ -137,11 +137,16 @@ function EngagementBar({
   const engaged = total - never;
   const width = pct(total, max);
   return (
-    <div className="grid grid-cols-[72px_1fr_86px] items-center gap-2.5 text-[12px]">
-      <span className="truncate text-[10px] font-black uppercase tracking-[0.09em] text-muted-foreground">
-        {label}
-      </span>
-      <div className="flex h-3 overflow-hidden rounded-full bg-muted-foreground/[0.07]">
+    <div className="min-w-0 text-[12px]">
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="truncate text-[10px] font-black uppercase tracking-[0.09em] text-muted-foreground">
+          {label}
+        </span>
+        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+          {engaged}/{total}
+        </span>
+      </div>
+      <div className="mt-1 flex h-3 overflow-hidden rounded-full bg-muted-foreground/[0.07]">
         <div
           className="h-full"
           style={{ width: `${(width * pct(engaged, total || 1)) / 100}%`, background: QAW }}
@@ -153,9 +158,6 @@ function EngagementBar({
           title={`${never} never logged in`}
         />
       </div>
-      <span className="text-right tabular-nums text-muted-foreground">
-        {engaged}/{total}
-      </span>
     </div>
   );
 }
@@ -220,9 +222,9 @@ export default function AdminAnalyticsPage() {
             <Skeleton key={i} className="h-[104px] rounded-xl" />
           ))}
         </div>
-        <div className="grid gap-4 lg:grid-cols-12">
-          <Skeleton className="h-72 rounded-xl lg:col-span-7" />
-          <Skeleton className="h-72 rounded-xl lg:col-span-5" />
+        <div className="grid gap-4 lg:grid-cols-[5fr_7fr]">
+          <Skeleton className="h-72 rounded-xl" />
+          <Skeleton className="h-72 rounded-xl" />
         </div>
       </div>
     );
@@ -311,8 +313,8 @@ export default function AdminAnalyticsPage() {
       </div>
 
       {/* Activation gap + funnel */}
-      <div className="grid gap-4 lg:grid-cols-12">
-        <div className="lg:col-span-5">
+      <div className="grid gap-4 lg:grid-cols-[5fr_7fr]">
+        <div className="min-w-0">
           <Panel
             title="The activation gap"
             subtitle="How long after activation an investor first signs in"
@@ -368,7 +370,7 @@ export default function AdminAnalyticsPage() {
           </Panel>
         </div>
 
-        <div className="lg:col-span-7">
+        <div className="min-w-0">
           <Panel
             title="Onboarding funnel"
             subtitle="Distinct investors, distributors excluded"
@@ -386,27 +388,24 @@ export default function AdminAnalyticsPage() {
                   ].map((row) => {
                     const share = pct(row.value, funnel.created);
                     return (
-                      <div
-                        key={row.label}
-                        className="grid grid-cols-[110px_1fr_52px] items-center gap-3"
-                      >
-                        <span className="text-[10px] font-black uppercase tracking-[0.11em] text-muted-foreground">
-                          {row.label}
-                        </span>
-                        <div className="h-6 overflow-hidden rounded-[5px] bg-muted-foreground/[0.07]">
+                      <div key={row.label} className="min-w-0">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="truncate text-[10px] font-black uppercase tracking-[0.11em] text-muted-foreground">
+                            {row.label}
+                          </span>
+                          <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
+                            {row.value} · {share}%
+                          </span>
+                        </div>
+                        <div className="mt-1 h-5 overflow-hidden rounded-[5px] bg-muted-foreground/[0.07]">
                           <div
-                            className="flex h-full items-center justify-end rounded-[5px] pr-2 text-[10.5px] font-black text-white"
+                            className="h-full rounded-[5px]"
                             style={{
-                              width: `${Math.max(share, 6)}%`,
+                              width: `${Math.max(share, 2)}%`,
                               background: row.color,
                             }}
-                          >
-                            {row.value}
-                          </div>
+                          />
                         </div>
-                        <span className="text-right text-[11.5px] tabular-nums text-muted-foreground">
-                          {share}%
-                        </span>
                       </div>
                     );
                   })}
@@ -424,8 +423,8 @@ export default function AdminAnalyticsPage() {
       </div>
 
       {/* Engagement by AUM + RM leaderboard */}
-      <div className="grid gap-4 lg:grid-cols-12">
-        <div className="lg:col-span-6">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="min-w-0">
           <Panel
             title="Engagement by AUM band"
             subtitle="Do larger investors actually use the portal?"
@@ -466,7 +465,7 @@ export default function AdminAnalyticsPage() {
           </Panel>
         </div>
 
-        <div className="lg:col-span-6">
+        <div className="min-w-0">
           <Panel
             title="Relationship managers"
             subtitle="Engagement rate across each book"
@@ -474,7 +473,7 @@ export default function AdminAnalyticsPage() {
           >
             {rms.length ? (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[360px] border-collapse text-[12.5px]">
+                <table className="w-full border-collapse text-[12.5px]">
                   <thead>
                     <tr className="border-b border-border/20 text-left">
                       {["Manager", "Clients", "Dormant", "Engaged"].map((h, i) => (
@@ -535,8 +534,7 @@ export default function AdminAnalyticsPage() {
                     {c.engagementRate}%
                   </span>
                   <div
-                    className="flex w-full flex-col justify-end overflow-hidden rounded-t-[4px] bg-muted-foreground/[0.07]"
-                    style={{ height: 110 }}
+                    className="flex h-[110px] w-full items-end overflow-hidden rounded-t-[4px] bg-muted-foreground/[0.07]"
                   >
                     <div
                       className="w-full rounded-t-[4px]"
