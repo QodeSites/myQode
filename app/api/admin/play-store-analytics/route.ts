@@ -24,6 +24,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import jwt from 'jsonwebtoken'
+import { requireAdmin, isAdminUser } from "@/lib/adminAuth";
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const SCOPE = 'https://www.googleapis.com/auth/devstorage.read_only'
@@ -196,6 +197,11 @@ function pickColumn(row: Record<string, string>, candidates: string[]): number {
 }
 
 export async function GET(request: NextRequest) {
+  // Admin-only. middleware.ts checks the cookie exists but defers
+  // validation, so a forged cookie passes it — this validates the session.
+  const __admin = await requireAdmin(request);
+  if (!isAdminUser(__admin)) return __admin;
+
   const packageName = process.env.GOOGLE_PLAY_PACKAGE_NAME
   const bucket = process.env.GOOGLE_PLAY_REPORT_BUCKET
   if (!packageName) return NextResponse.json({ error: 'GOOGLE_PLAY_PACKAGE_NAME not set' }, { status: 503 })

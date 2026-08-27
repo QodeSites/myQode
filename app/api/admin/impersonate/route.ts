@@ -1,8 +1,14 @@
 // app/api/admin/impersonate/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { requireAdmin, isAdminUser } from "@/lib/adminAuth";
 
 export async function GET(request: NextRequest) {
+  // Admin-only. middleware.ts checks the cookie exists but defers
+  // validation, so a forged cookie passes it — this validates the session.
+  const __admin = await requireAdmin(request);
+  if (!isAdminUser(__admin)) return __admin;
+
   try {
     const { searchParams } = new URL(request.url);
     const token = searchParams.get('token');

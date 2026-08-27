@@ -1,8 +1,14 @@
 // app/api/admin/onboarding-status/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { requireAdmin, isAdminUser } from "@/lib/adminAuth";
 
 export async function GET(request: NextRequest) {
+  // Admin-only. middleware.ts checks the cookie exists but defers
+  // validation, so a forged cookie passes it — this validates the session.
+  const __admin = await requireAdmin(request);
+  if (!isAdminUser(__admin)) return __admin;
+
   try {
     // Get all clients from pipeline data with their onboarding status
     const result = await query(

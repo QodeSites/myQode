@@ -1,9 +1,15 @@
 // One row per distinct onboarded client (password set, i.e. not the default
 // 'Qode@123') — used by the App Analytics tab's contact list.
-import { NextResponse } from 'next/server'
+import { NextResponse, NextRequest } from 'next/server'
 import { query } from '@/lib/db'
+import { requireAdmin, isAdminUser } from "@/lib/adminAuth";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // Admin-only. middleware.ts checks the cookie exists but defers
+  // validation, so a forged cookie passes it — this validates the session.
+  const __admin = await requireAdmin(request);
+  if (!isAdminUser(__admin)) return __admin;
+
   try {
     const result = await query(
       `SELECT DISTINCT ON (email)

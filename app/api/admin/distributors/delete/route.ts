@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { requireAdmin, isAdminUser } from "@/lib/adminAuth";
 
 export async function POST(request: NextRequest) {
+  // Admin-only. middleware.ts checks the cookie exists but defers
+  // validation, so a forged cookie passes it — this validates the session.
+  const __admin = await requireAdmin(request);
+  if (!isAdminUser(__admin)) return __admin;
+
   try {
     const data = await request.json();
     

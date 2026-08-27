@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import jwt from 'jsonwebtoken'
 import zlib from 'zlib'
 import { promisify } from 'util'
+import { requireAdmin, isAdminUser } from "@/lib/adminAuth";
 
 const gunzip = promisify(zlib.gunzip)
 const ASC_BASE = 'https://api.appstoreconnect.apple.com/v1'
@@ -76,6 +77,11 @@ function pastDates(days: number): string[] {
 }
 
 export async function GET(request: NextRequest) {
+  // Admin-only. middleware.ts checks the cookie exists but defers
+  // validation, so a forged cookie passes it — this validates the session.
+  const __admin = await requireAdmin(request);
+  if (!isAdminUser(__admin)) return __admin;
+
   const missingVars = ['APP_STORE_KEY_ID', 'APP_STORE_ISSUER_ID', 'APP_STORE_PRIVATE_KEY'].filter(
     k => !process.env[k]
   )

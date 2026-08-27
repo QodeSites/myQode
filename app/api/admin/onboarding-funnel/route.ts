@@ -5,10 +5,16 @@
 //
 // All real data from pms_clients_master (created_at, password_set_at,
 // first_web_login_at, first_app_login_at). No modeling.
-import { NextResponse } from 'next/server'
+import { NextResponse, NextRequest } from 'next/server'
 import { query } from '@/lib/db'
+import { requireAdmin, isAdminUser } from "@/lib/adminAuth";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // Admin-only. middleware.ts checks the cookie exists but defers
+  // validation, so a forged cookie passes it — this validates the session.
+  const __admin = await requireAdmin(request);
+  if (!isAdminUser(__admin)) return __admin;
+
   try {
     const result = await query(
       `SELECT

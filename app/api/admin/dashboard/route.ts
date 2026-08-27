@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import pool from '@/lib/db1';
+import { requireAdmin, isAdminUser } from "@/lib/adminAuth";
 
 interface DistributorData {
   id: string;
@@ -100,6 +101,11 @@ interface DashboardStatistics {
 }
 
 export async function GET(request: NextRequest) {
+  // Admin-only. middleware.ts checks the cookie exists but defers
+  // validation, so a forged cookie passes it — this validates the session.
+  const __admin = await requireAdmin(request);
+  if (!isAdminUser(__admin)) return __admin;
+
   const client = await pool.connect();
 
   try {
@@ -323,6 +329,11 @@ export async function GET(request: NextRequest) {
 
 // Admin impersonation endpoint
 export async function POST(request: NextRequest) {
+  // Admin-only. middleware.ts checks the cookie exists but defers
+  // validation, so a forged cookie passes it — this validates the session.
+  const __admin = await requireAdmin(request);
+  if (!isAdminUser(__admin)) return __admin;
+
   try {
     const { action, clientCode, distributorEmail } = await request.json();
 

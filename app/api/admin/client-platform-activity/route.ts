@@ -9,11 +9,17 @@
 //   - both         both > 0
 //   - unclassified logged in before platform-split tracking existed
 //                  (login_count > 0 but web/app counters are still 0)
-import { NextResponse } from 'next/server'
+import { NextResponse, NextRequest } from 'next/server'
 import { query } from '@/lib/db'
 import { getInvestorSourceMap, getRawInvestorRecords } from '@/lib/zoho'
+import { requireAdmin, isAdminUser } from "@/lib/adminAuth";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // Admin-only. middleware.ts checks the cookie exists but defers
+  // validation, so a forged cookie passes it — this validates the session.
+  const __admin = await requireAdmin(request);
+  if (!isAdminUser(__admin)) return __admin;
+
   try {
     // Zoho CRM's Investor_Source per email — best-effort. A Zoho hiccup
     // shouldn't take down the whole dashboard, so this degrades to "unknown"
