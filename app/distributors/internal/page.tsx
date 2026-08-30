@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, ArrowUpDown, Search, X } from "lucide-react";
+import { AlertTriangle, ArrowUpDown, ExternalLink, Search, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
@@ -182,6 +182,43 @@ export default function InternalDistributorOverviewPage() {
   const [q, setQ] = React.useState("");
   const [sort, setSort] = React.useState<SortKey>("referred");
   const [expanded, setExpanded] = React.useState<string | null>(null);
+  const [impersonating, setImpersonating] = React.useState<string | null>(null);
+  const [message, setMessage] = React.useState<string | null>(null);
+
+  /**
+   * Opens the partner portal as this distributor, in a new tab.
+   *
+   * Reuses the existing /api/admin/dashboard impersonation action rather than
+   * a new endpoint — the same flow the legacy dashboard uses, so there is one
+   * impersonation path rather than two that could drift.
+   *
+   * Keyed on the PORTAL email, not the CRM one: the portal login is what the
+   * session is issued against, and for most partners those differ.
+   */
+  async function viewAsPartner(portalEmail: string) {
+    setImpersonating(portalEmail);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/admin/dashboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "impersonate-distributor",
+          distributorEmail: portalEmail,
+        }),
+      });
+      const body = await res.json();
+      if (!body?.success || !body?.redirectUrl) {
+        setMessage(body?.error ?? "Couldn't open the portal as this partner.");
+        return;
+      }
+      window.open(body.redirectUrl, "_blank", "noopener");
+    } catch {
+      setMessage("Couldn't reach the server. Please try again.");
+    } finally {
+      setImpersonating(null);
+    }
+  }
 
   React.useEffect(() => {
     let cancelled = false;
@@ -360,6 +397,12 @@ export default function InternalDistributorOverviewPage() {
             </div>
           </div>
         </section>
+      ) : null}
+
+      {message ? (
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-foreground">
+          {message}
+        </div>
       ) : null}
 
       {/* Summary tiles double as filters — the numbers are the entry point. */}
@@ -598,6 +641,23 @@ export default function InternalDistributorOverviewPage() {
                                     ? ` · ${d.portalClientCount} accounts`
                                     : ""}
                                 </dd>
+                                {d.portalEmail ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      // The row itself toggles expansion.
+                                      e.stopPropagation();
+                                      void viewAsPartner(d.portalEmail!);
+                                    }}
+                                    disabled={impersonating === d.portalEmail}
+                                    className="mt-2 inline-flex min-h-[32px] items-center gap-1.5 rounded-md border border-border/20 px-2.5 text-[11.5px] font-bold text-primary hover:border-primary/50 disabled:opacity-50 dark:text-primary-foreground"
+                                  >
+                                    <ExternalLink className="size-3" />
+                                    {impersonating === d.portalEmail
+                                      ? "Opening…"
+                                      : "View as partner"}
+                                  </button>
+                                ) : null}
                               </div>
                               <div>
                                 <dt className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">

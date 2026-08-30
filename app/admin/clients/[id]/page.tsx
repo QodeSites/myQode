@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Lock } from "lucide-react";
+import { ArrowLeft, ExternalLink, Lock } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 type ClientRow = {
@@ -139,6 +139,7 @@ export default function AdminClientDetailPage() {
   );
   const [form, setForm] = React.useState<Record<string, string>>({});
   const [saving, setSaving] = React.useState(false);
+  const [impersonating, setImpersonating] = React.useState(false);
   const [message, setMessage] = React.useState<{ tone: "ok" | "bad"; text: string } | null>(
     null,
   );
@@ -229,6 +230,42 @@ export default function AdminClientDetailPage() {
     }
   }
 
+  /**
+   * Opens the investor portal as this client, in a new tab.
+   *
+   * Reuses the existing /api/admin/dashboard impersonation action rather than
+   * a new endpoint — same flow the legacy dashboard uses, so there is one
+   * impersonation path rather than two that could drift.
+   */
+  async function viewAsClient() {
+    if (!data?.client.clientcode) return;
+    setImpersonating(true);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/admin/dashboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "impersonate",
+          clientCode: data.client.clientcode,
+        }),
+      });
+      const body = await res.json();
+      if (!body?.success || !body?.redirectUrl) {
+        setMessage({
+          tone: "bad",
+          text: body?.error ?? "Couldn't open the portal as this client.",
+        });
+        return;
+      }
+      window.open(body.redirectUrl, "_blank", "noopener");
+    } catch {
+      setMessage({ tone: "bad", text: "Couldn't reach the server. Please try again." });
+    } finally {
+      setImpersonating(false);
+    }
+  }
+
   async function makeHead(clientId: number) {
     if (!data?.client.groupid) return;
     setMessage(null);
@@ -305,7 +342,20 @@ export default function AdminClientDetailPage() {
         >
           <ArrowLeft className="size-4" /> All clients
         </Link>
-        <h1 className="mt-2 text-2xl">{c.clientname ?? "Client"}</h1>
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          <h1 className="text-2xl">{c.clientname ?? "Client"}</h1>
+          {c.clientcode ? (
+            <button
+              type="button"
+              onClick={viewAsClient}
+              disabled={impersonating}
+              className="inline-flex min-h-[36px] items-center gap-2 rounded-md border border-border/20 px-3 text-[12.5px] font-bold text-primary hover:border-primary/50 disabled:opacity-50 dark:text-primary-foreground"
+            >
+              <ExternalLink className="size-3.5" />
+              {impersonating ? "Opening…" : "View as this client"}
+            </button>
+          ) : null}
+        </div>
         <p className="mt-1 text-sm text-muted-foreground">
           {c.clientcode ?? "—"}
           {c.headOfFamily ? (
