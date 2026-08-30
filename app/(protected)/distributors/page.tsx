@@ -193,6 +193,9 @@ export default function DistributorsPage() {
   );
   const [q, setQ] = React.useState("");
   const [group, setGroup] = React.useState<string>("");
+  // How many investor rows are rendered. Kept small by default — the list is
+  // for scanning the top of the book, not reading end to end.
+  const [shown, setShown] = React.useState(10);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -245,6 +248,10 @@ export default function DistributorsPage() {
       // Largest holdings first — what a partner scans for.
       .sort((a, b) => (b.currentValue ?? 0) - (a.currentValue ?? 0));
   }, [clients, q, group]);
+
+  React.useEffect(() => {
+    setShown(10);
+  }, [q, group]);
 
   if (status === "loading") {
     return (
@@ -409,7 +416,7 @@ export default function DistributorsPage() {
           description={`${recent.length} ${recent.length === 1 ? "investor" : "investors"} went live in the last 30 days.`}
         >
           <ul className="flex flex-col gap-2">
-            {recent.slice(0, 5).map((c, i) => (
+            {recent.slice(0, 3).map((c, i) => (
               <li
                 key={`${c.email ?? "x"}-recent-${i}`}
                 className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/20 bg-background px-4 py-2.5"
@@ -579,8 +586,8 @@ export default function DistributorsPage() {
                 {/* One row per investor, same shape at every width — no table
                     to scroll sideways on a phone. Value leads on the right
                     because that is what gets scanned. */}
-                <ul className="mt-2 flex flex-col gap-2">
-                  {visible.map((c, i) => {
+                <ul className="mt-2 flex flex-col gap-1.5">
+                  {visible.slice(0, shown).map((c, i) => {
                     const inactive = c.stage ? INACTIVE.has(c.stage) : false;
                     const delta =
                       c.currentValue != null && c.investedAmount != null
@@ -591,9 +598,9 @@ export default function DistributorsPage() {
                     return (
                       <li
                         key={`${c.email ?? "x"}-${i}`}
-                        className="rounded-md border border-border/20 bg-background px-4 py-3"
+                        className="rounded-md border border-border/20 bg-background px-4 py-2.5"
                       >
-                        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+                        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1.5">
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
                               <span className="text-sm font-bold text-foreground">
@@ -648,14 +655,28 @@ export default function DistributorsPage() {
                     );
                   })}
                 </ul>
+
+                {visible.length > shown ? (
+                  <button
+                    type="button"
+                    onClick={() => setShown((n) => n + 25)}
+                    className="mt-3 min-h-[44px] w-full rounded-md border border-border/20 bg-background text-sm font-bold text-primary hover:border-primary/50 dark:text-primary-foreground"
+                  >
+                    Show {Math.min(25, visible.length - shown)} more
+                    <span className="ml-1.5 font-normal text-muted-foreground">
+                      ({visible.length - shown} remaining)
+                    </span>
+                  </button>
+                ) : null}
               </>
             )}
           </>
         )}
       </Section>
 
-      {/* ── Setup: referral links ─────────────────────────────────────────── */}
-      <Section
+      {/* ── Setup: referral links and help, paired ────────────────────────── */}
+      <div className="grid gap-5 lg:grid-cols-[3fr_2fr]">
+        <Section
         title="Refer a new investor"
         description="Share your link. Anyone who onboards through it is recorded against your name."
       >
@@ -681,24 +702,24 @@ export default function DistributorsPage() {
             </p>
           </div>
         )}
-      </Section>
+        </Section>
 
-      {/* ── Help ──────────────────────────────────────────────────────────── */}
-      <a
-        href="mailto:partnerships@qodeinvest.com"
-        className="flex items-center gap-3 rounded-xl border border-border/20 bg-card px-5 py-4 shadow-sm hover:border-primary/50"
-      >
-        <Mail className="size-4 shrink-0 text-muted-foreground" />
-        <div className="min-w-0">
-          <p className="text-sm font-bold text-foreground">
-            Questions about your investors or payouts?
-          </p>
-          <p className="text-[11.5px] text-muted-foreground">
-            Email partnerships@qodeinvest.com — we usually reply the same day.
-          </p>
-        </div>
-        <ChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground" />
-      </a>
+        <a
+          href="mailto:partnerships@qodeinvest.com"
+          className="flex items-start gap-3 rounded-xl border border-border/20 bg-card px-5 py-5 shadow-sm hover:border-primary/50"
+        >
+          <Mail className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-foreground">
+              Questions about your investors or payouts?
+            </p>
+            <p className="mt-1 text-[11.5px] leading-relaxed text-muted-foreground">
+              Email partnerships@qodeinvest.com — we usually reply the same day.
+            </p>
+          </div>
+          <ChevronRight className="ml-auto mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        </a>
+      </div>
     </div>
   );
 }
