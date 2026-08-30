@@ -11,30 +11,28 @@ const ONBOARDING_BASE = "https://onboarding.qodeinvest.com";
 /**
  * Builds the partner referral links.
  *
- * NO SALUTATION. Earlier links carried an "Mr " prefix — applied even to
- * companies and LLPs ("Mr FUTUREWISE TECHNOLOGIES PVT LTD"). Zoho's
- * Distributor module has no salutation field at all: it stores the firm in
- * `Name` and the contact person in First_Name/Last_Name. The prefix was only
- * ever added by this function, so it is gone.
+ * The onboarding app serves each partner a short slug path:
+ *     onboarding.qodeinvest.com/{slug}       for an individual
+ *     onboarding.qodeinvest.com/ni/{slug}    for a company, LLP, HUF or trust
  *
- * Verified against the live onboarding app on 2026-08-21: the un-prefixed
- * name is accepted and echoed back on the rendered page, so attribution is
- * unaffected by the removal.
+ * The slug is stored (pms_clients_master.referral_slug, migration 008), never
+ * computed. It is not a transformation of the name — "First Quartile Private
+ * Limited" is `firstquartile`, "FUTUREWISE TECHNOLOGIES PVT LTD" is
+ * `futurewisetechno` — and two distributors share one email while having
+ * different slugs, so any derivation rule would send one partner's referrals
+ * to the other.
  *
- * The name comes from pms_clients_master.clientname, not Zoho's `Name`:
- * Zoho's is a shortened display label ("One Battalion Ventures", "Funds
- * India") while the portal holds the full legal name the links use.
- *
- * NOTE: the onboarding app does not validate this parameter — a fabricated
- * firm name is echoed back just as readily as a real one. Attribution is
- * therefore a plain unsigned string, and anyone can edit it. Out of scope
- * here, but it is the reason a signed referral code is worth doing.
+ * Returns null when no slug is recorded. The page then says so rather than
+ * offering a link that would attribute nothing.
  */
-function buildReferralLinks(clientname: string) {
-  const param = encodeURIComponent(clientname);
+function buildReferralLinks(
+  slug: string | null,
+): { individual: string; nonIndividual: string } | null {
+  if (!slug) return null;
+  const s = encodeURIComponent(slug);
   return {
-    individual: `${ONBOARDING_BASE}/apply?distributor=${param}`,
-    nonIndividual: `${ONBOARDING_BASE}/entity?distributor=${param}`,
+    individual: `${ONBOARDING_BASE}/${s}`,
+    nonIndividual: `${ONBOARDING_BASE}/ni/${s}`,
   };
 }
 
@@ -99,7 +97,7 @@ export async function GET() {
 
     return NextResponse.json({
       distributor: { name: distributor.clientname, email: distributor.email },
-      referralLinks: buildReferralLinks(distributor.clientname),
+      referralLinks: buildReferralLinks(distributor.referralSlug),
       journey: journey
         ? { clients: journey.clients, stageCounts: journey.stageCounts }
         : null,

@@ -23,6 +23,15 @@ export type DistributorIdentity = {
    * Name is the truncated "One Battalion Ventures".
    */
   clientname: string;
+  /**
+   * Onboarding link slug — /{slug} and /ni/{slug}.
+   *
+   * Null when nobody has recorded one. Not derivable from the name or email:
+   * two distributors share chhedarajmanish@gmail.com with different slugs, so
+   * any computed rule would mis-attribute one partner's referrals to the
+   * other. See migration 008.
+   */
+  referralSlug: string | null;
 };
 
 /**
@@ -37,7 +46,7 @@ export async function resolveDistributorByEmail(
   if (!key) return null;
 
   const result = await query(
-    `SELECT clientname, email
+    `SELECT clientname, email, referral_slug
        FROM pms_clients_master
       WHERE lower(email) = $1
         AND clientcode IS NULL
@@ -48,7 +57,11 @@ export async function resolveDistributorByEmail(
   const row = result.rows?.[0];
   if (!row?.clientname) return null;
 
-  return { email: key, clientname: String(row.clientname) };
+  return {
+    email: key,
+    clientname: String(row.clientname),
+    referralSlug: row.referral_slug ?? null,
+  };
 }
 
 /** How many client accounts sit under this distributor. */

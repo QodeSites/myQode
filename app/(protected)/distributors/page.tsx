@@ -51,7 +51,8 @@ type JourneyClient = {
 
 type JourneyResponse = {
   distributor: { name: string; email: string };
-  referralLinks: { individual: string; nonIndividual: string };
+  /** Null when no onboarding slug is recorded for this partner. */
+  referralLinks: { individual: string; nonIndividual: string } | null;
   journey: { clients: JourneyClient[]; stageCounts: Record<string, number> } | null;
   totals: {
     investors: number;
@@ -342,10 +343,28 @@ export default function DistributorsPage() {
         title="Please use these links to refer to your investors"
         description="Anyone who onboards through your link is recorded against your name. Use the Individual link for a person, and the Non-Individual link for a company, LLP, HUF or trust."
       >
-        <div className="flex flex-col gap-3">
-          <CopyLinkRow label="Individual" url={data.referralLinks.individual} />
-          <CopyLinkRow label="Non-Individual" url={data.referralLinks.nonIndividual} />
-        </div>
+        {data.referralLinks ? (
+          <div className="flex flex-col gap-3">
+            <CopyLinkRow label="Individual" url={data.referralLinks.individual} />
+            <CopyLinkRow
+              label="Non-Individual"
+              url={data.referralLinks.nonIndividual}
+            />
+          </div>
+        ) : (
+          <div className="rounded-md border border-border/20 bg-background px-4 py-6 text-center">
+            <p className="text-sm text-muted-foreground">
+              Your referral links haven&apos;t been set up yet. Email{" "}
+              <a
+                className="font-bold text-primary underline underline-offset-4 dark:text-primary-foreground"
+                href="mailto:partnerships@qodeinvest.com"
+              >
+                partnerships@qodeinvest.com
+              </a>{" "}
+              and we&apos;ll create them for you.
+            </p>
+          </div>
+        )}
       </Section>
 
       {/* Journey */}
