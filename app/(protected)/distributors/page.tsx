@@ -1,36 +1,80 @@
 "use client";
 
 import * as React from "react";
-import { Check, Copy, Mail, Search, X } from "lucide-react";
+import { Check, ChevronRight, Copy, Mail, Search, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 /**
- * Partner dashboard — everything a distributor needs about their own book.
+ * Partner dashboard.
+ *
+ * Structured around the three questions a partner opens this to answer, in
+ * order: how is my book doing, what changed since I last looked, and who are
+ * my investors. Referral links and contact sit below that — they are setup,
+ * not daily use.
  *
  * Scoped entirely server-side: /api/distributor/journey resolves the partner
  * from the httpOnly session and can only ever return their own investors.
  */
 
-/** Funnel order first, inactive last. Mirrors STAGE_ORDER in
- *  lib/zohoDistributorJourney.ts, kept as a literal so the client bundle does
- *  not pull in the server-only Zoho module. */
-const STAGE_ORDER = [
-  "Onboarding",
-  "First Fund Initiated",
-  "Account Live",
-  "Regular Investor",
-  "Dormant Investor",
-  "Dropped before account opening",
-  "Dropped after account opening",
-] as const;
-
-const DROP_STAGES = new Set<string>([
-  "Dormant Investor",
-  "Dropped before account opening",
-  "Dropped after account opening",
-]);
-
 const QAW = "#008455";
+
+/**
+ * CRM stages translated into what they mean for a partner.
+ *
+ * The raw values are internal vocabulary — a distributor should not have to
+ * work out the difference between "Account Live" and "Regular Investor", or
+ * what "First Fund Initiated" implies. Each group carries a one-line
+ * explanation so the number never needs decoding.
+ */
+const STAGE_GROUPS = [
+  {
+    key: "investing",
+    label: "Investing",
+    detail: "Money is in the market",
+    stages: ["Account Live", "Regular Investor"],
+    tone: "good" as const,
+  },
+  {
+    key: "funding",
+    label: "Funding",
+    detail: "First investment on its way",
+    stages: ["First Fund Initiated"],
+    tone: "normal" as const,
+  },
+  {
+    key: "onboarding",
+    label: "Onboarding",
+    detail: "Still completing paperwork",
+    stages: ["Onboarding"],
+    tone: "normal" as const,
+  },
+  {
+    key: "inactive",
+    label: "Not proceeding",
+    detail: "Dropped out or dormant",
+    stages: [
+      "Dormant Investor",
+      "Dropped before account opening",
+      "Dropped after account opening",
+    ],
+    tone: "warn" as const,
+  },
+];
+
+/** Short label shown on each investor row, in the partner's language. */
+const STAGE_LABEL: Record<string, string> = {
+  "Account Live": "Investing",
+  "Regular Investor": "Investing",
+  "First Fund Initiated": "Funding",
+  Onboarding: "Onboarding",
+  "Dormant Investor": "Dormant",
+  "Dropped before account opening": "Dropped",
+  "Dropped after account opening": "Dropped",
+};
+
+const INACTIVE = new Set(
+  STAGE_GROUPS.find((g) => g.key === "inactive")!.stages,
+);
 
 type JourneyClient = {
   name: string | null;
@@ -65,7 +109,6 @@ type JourneyResponse = {
   portalClientCount: number;
 };
 
-/** Renders an ISO date as "07 Jul 2026". Null-safe. */
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -77,12 +120,14 @@ function formatDate(iso: string | null): string {
   });
 }
 
-/** Indian grouping, crore/lakh shorthand above a lakh. */
+/** Indian grouping, crore/lakh shorthand above a lakh. Sign-aware. */
 function money(n: number | null): string {
   if (n == null) return "—";
-  if (n >= 10000000) return `₹${(n / 10000000).toFixed(2)} Cr`;
-  if (n >= 100000) return `₹${(n / 100000).toFixed(1)} L`;
-  return `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "−" : "";
+  if (abs >= 10000000) return `${sign}₹${(abs / 10000000).toFixed(2)} Cr`;
+  if (abs >= 100000) return `${sign}₹${(abs / 100000).toFixed(1)} L`;
+  return `${sign}₹${abs.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 }
 
 function CopyLinkRow({ label, url }: { label: string; url: string }) {
@@ -94,9 +139,8 @@ function CopyLinkRow({ label, url }: { label: string; url: string }) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Clipboard can be blocked (insecure origin, denied permission). The
-      // full URL is on screen and selectable, so a failed copy is an
-      // inconvenience rather than a dead end.
+      // Clipboard can be blocked (insecure origin, denied permission). The URL
+      // is on screen and selectable, so this is an inconvenience, not a dead end.
       setCopied(false);
     }
   }, [url]);
@@ -122,59 +166,21 @@ function CopyLinkRow({ label, url }: { label: string; url: string }) {
   );
 }
 
-function Tile({
-  label,
-  value,
-  detail,
-  tone,
-}: {
-  label: string;
-  value: string;
-  detail?: string;
-  tone?: "good" | "warn";
-}) {
-  return (
-    <div className="rounded-xl border border-border/20 bg-card px-4 py-3.5">
-      <p className="text-[10px] font-black uppercase tracking-[0.11em] text-muted-foreground">
-        {label}
-      </p>
-      <p
-        className="mt-1.5 font-sans text-[26px] font-bold leading-none tabular-nums"
-        style={{
-          color: tone === "good" ? QAW : tone === "warn" ? "var(--destructive)" : undefined,
-        }}
-      >
-        {value}
-      </p>
-      {detail ? (
-        <p className="mt-1.5 text-[11px] text-muted-foreground">{detail}</p>
-      ) : null}
-    </div>
-  );
-}
-
 function Section({
   title,
   description,
-  action,
   children,
 }: {
   title: string;
   description?: string;
-  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <section className="rounded-xl border border-border/20 bg-card shadow-sm px-5 py-5">
-      <div className="flex flex-wrap items-start gap-3">
-        <div className="min-w-0">
-          <h2 className="text-lg font-semibold text-foreground">{title}</h2>
-          {description ? (
-            <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-          ) : null}
-        </div>
-        {action ? <div className="ml-auto shrink-0">{action}</div> : null}
-      </div>
+      <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+      {description ? (
+        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+      ) : null}
       <div className="mt-4">{children}</div>
     </section>
   );
@@ -186,16 +192,14 @@ export default function DistributorsPage() {
     "loading",
   );
   const [q, setQ] = React.useState("");
-  const [stageFilter, setStageFilter] = React.useState<string>("");
+  const [group, setGroup] = React.useState<string>("");
 
   React.useEffect(() => {
     let cancelled = false;
-
     (async () => {
       try {
         const res = await fetch("/api/distributor/journey", { cache: "no-store" });
         if (cancelled) return;
-
         if (res.status === 401 || res.status === 403) {
           setStatus("forbidden");
           return;
@@ -204,14 +208,12 @@ export default function DistributorsPage() {
           setStatus("error");
           return;
         }
-
         setData((await res.json()) as JourneyResponse);
         setStatus("ready");
       } catch {
         if (!cancelled) setStatus("error");
       }
     })();
-
     return () => {
       cancelled = true;
     };
@@ -219,16 +221,30 @@ export default function DistributorsPage() {
 
   const clients = data?.journey?.clients ?? [];
 
+  const groupCounts = React.useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const g of STAGE_GROUPS) {
+      counts[g.key] = clients.filter(
+        (c) => c.stage && g.stages.includes(c.stage),
+      ).length;
+    }
+    return counts;
+  }, [clients]);
+
   const visible = React.useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return clients.filter((c) => {
-      if (stageFilter && c.stage !== stageFilter) return false;
-      if (!needle) return true;
-      return [c.name, c.email, c.city, c.stage, ...c.strategies]
-        .filter(Boolean)
-        .some((v) => String(v).toLowerCase().includes(needle));
-    });
-  }, [clients, q, stageFilter]);
+    const g = STAGE_GROUPS.find((x) => x.key === group);
+    return clients
+      .filter((c) => {
+        if (g && !(c.stage && g.stages.includes(c.stage))) return false;
+        if (!needle) return true;
+        return [c.name, c.email, c.city, ...c.strategies]
+          .filter(Boolean)
+          .some((v) => String(v).toLowerCase().includes(needle));
+      })
+      // Largest holdings first — what a partner scans for.
+      .sort((a, b) => (b.currentValue ?? 0) - (a.currentValue ?? 0));
+  }, [clients, q, group]);
 
   if (status === "loading") {
     return (
@@ -237,13 +253,9 @@ export default function DistributorsPage() {
           <Skeleton className="h-8 w-56" />
           <Skeleton className="h-4 w-72" />
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-[96px] rounded-xl" />
-          ))}
-        </div>
-        <Skeleton className="h-44 w-full rounded-xl" />
-        <Skeleton className="h-80 w-full rounded-xl" />
+        <Skeleton className="h-40 w-full rounded-xl" />
+        <Skeleton className="h-32 w-full rounded-xl" />
+        <Skeleton className="h-96 w-full rounded-xl" />
       </div>
     );
   }
@@ -251,7 +263,7 @@ export default function DistributorsPage() {
   if (status === "forbidden") {
     return (
       <div className="flex w-full flex-col gap-5 pb-10">
-        <h1 className="text-2xl">Partner dashboard</h1>
+        <h1 className="text-2xl">Dashboard</h1>
         <div className="rounded-xl border border-border/20 bg-card shadow-sm px-6 py-10 text-center">
           <p className="text-sm text-muted-foreground">
             This page is for Qode distribution partners. If you think you should have
@@ -272,10 +284,10 @@ export default function DistributorsPage() {
   if (status === "error" || !data) {
     return (
       <div className="flex w-full flex-col gap-5 pb-10">
-        <h1 className="text-2xl">Partner dashboard</h1>
+        <h1 className="text-2xl">Dashboard</h1>
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-5 py-4">
           <p className="text-sm text-foreground">
-            We couldn&apos;t load your dashboard. Please refresh the page, or contact{" "}
+            We couldn&apos;t load your dashboard. Please refresh, or contact{" "}
             <a
               className="font-bold underline underline-offset-4"
               href="mailto:partnerships@qodeinvest.com"
@@ -289,104 +301,155 @@ export default function DistributorsPage() {
     );
   }
 
-  const stageCounts = data.journey?.stageCounts ?? {};
-  const live = (stageCounts["Account Live"] ?? 0) + (stageCounts["Regular Investor"] ?? 0);
-  const inProgress =
-    (stageCounts["Onboarding"] ?? 0) + (stageCounts["First Fund Initiated"] ?? 0);
-  const needsAttention = clients.filter(
-    (c) => c.annualReviewStatus === "Not Done",
-  ).length;
+  const { totals } = data;
+  const invested = totals.invested;
+  const value = totals.currentValue;
+  const gain = invested != null && value != null ? value - invested : null;
+  const gainPct = gain != null && invested ? (gain / invested) * 100 : null;
+  const partialPricing = totals.pricedCount > 0 && totals.pricedCount < totals.investors;
+  const live = data.crmLinked && data.zohoAvailable;
+
+  // Accounts that went live in the last 30 days — the "something happened
+  // since I last looked" signal, which is what brings someone back daily.
+  const recent = clients
+    .filter((c) => {
+      if (!c.accountLiveDate) return false;
+      const d = new Date(c.accountLiveDate).getTime();
+      return !Number.isNaN(d) && Date.now() - d < 30 * 24 * 60 * 60 * 1000;
+    })
+    .sort((a, b) => String(b.accountLiveDate).localeCompare(String(a.accountLiveDate)));
+
+  const inProgress = (groupCounts.onboarding ?? 0) + (groupCounts.funding ?? 0);
 
   return (
     <div className="flex w-full flex-col gap-5 pb-10">
       <header>
-        <h1 className="text-2xl">Partner dashboard</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {data.distributor.name}
-        </p>
+        <h1 className="text-2xl">Dashboard</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{data.distributor.name}</p>
       </header>
 
-      {/* Headline figures */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Tile
-          label="Investors referred"
-          value={String(data.totals.investors)}
-          detail={`${data.portalClientCount} accounts with us`}
-        />
-        <Tile
-          label="Book value"
-          value={money(data.totals.currentValue)}
-          detail={
-            data.totals.pricedCount && data.totals.pricedCount < data.totals.investors
-              ? `${data.totals.pricedCount} of ${data.totals.investors} valued`
-              : data.totals.invested != null
-                ? `${money(data.totals.invested)} invested`
-                : undefined
-          }
-          tone="good"
-        />
-        <Tile
-          label="Live investors"
-          value={String(live)}
-          detail={`${inProgress} still onboarding`}
-        />
-        <Tile
-          label="Reviews due"
-          value={String(needsAttention)}
-          detail="annual review not done"
-          tone={needsAttention > 0 ? "warn" : undefined}
-        />
-      </div>
+      {/* ── 1. How is my book doing? ──────────────────────────────────────── */}
+      {live && totals.investors > 0 ? (
+        <section className="rounded-xl border border-border/20 bg-card shadow-sm px-5 py-5">
+          <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                Your book today
+              </p>
+              <p className="mt-1.5 font-sans text-[38px] font-bold leading-none tabular-nums text-foreground">
+                {money(value)}
+              </p>
+              {gain != null && gainPct != null ? (
+                <p className="mt-2 text-sm">
+                  <span
+                    className="font-bold tabular-nums"
+                    style={{ color: gain >= 0 ? QAW : "var(--destructive)" }}
+                  >
+                    {gain >= 0 ? "▲" : "▼"} {money(Math.abs(gain))} (
+                    {gain >= 0 ? "+" : "−"}
+                    {Math.abs(gainPct).toFixed(1)}%)
+                  </span>{" "}
+                  <span className="text-muted-foreground">
+                    against {money(invested)} invested
+                  </span>
+                </p>
+              ) : null}
+            </div>
 
-      {/* Referral links */}
-      <Section
-        title="Please use these links to refer to your investors"
-        description="Anyone who onboards through your link is recorded against your name. Use the Individual link for a person, and the Non-Individual link for a company, LLP, HUF or trust."
-      >
-        {data.referralLinks ? (
-          <div className="flex flex-col gap-3">
-            <CopyLinkRow label="Individual" url={data.referralLinks.individual} />
-            <CopyLinkRow
-              label="Non-Individual"
-              url={data.referralLinks.nonIndividual}
-            />
+            <div className="flex gap-6">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Investors
+                </p>
+                <p className="mt-1 font-sans text-2xl font-bold tabular-nums text-foreground">
+                  {totals.investors}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Investing
+                </p>
+                <p
+                  className="mt-1 font-sans text-2xl font-bold tabular-nums"
+                  style={{ color: QAW }}
+                >
+                  {groupCounts.investing ?? 0}
+                </p>
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                  In progress
+                </p>
+                <p className="mt-1 font-sans text-2xl font-bold tabular-nums text-foreground">
+                  {inProgress}
+                </p>
+              </div>
+            </div>
           </div>
-        ) : (
-          <div className="rounded-md border border-border/20 bg-background px-4 py-6 text-center">
-            <p className="text-sm text-muted-foreground">
-              Your referral links haven&apos;t been set up yet. Email{" "}
-              <a
-                className="font-bold text-primary underline underline-offset-4 dark:text-primary-foreground"
-                href="mailto:partnerships@qodeinvest.com"
-              >
-                partnerships@qodeinvest.com
-              </a>{" "}
-              and we&apos;ll create them for you.
+
+          {/* Two numbers that otherwise look contradictory, explained where
+              they appear rather than left for the reader to reconcile. */}
+          {partialPricing || data.portalClientCount !== totals.investors ? (
+            <p className="mt-4 border-t border-border/20 pt-3 text-[11.5px] leading-relaxed text-muted-foreground">
+              {partialPricing
+                ? `Values cover the ${totals.pricedCount} of ${totals.investors} investors whose holdings are priced in our records. `
+                : ""}
+              {data.portalClientCount !== totals.investors
+                ? `You have ${data.portalClientCount} accounts across ${totals.investors} investors — one investor can hold several strategy accounts.`
+                : ""}
             </p>
-          </div>
-        )}
-      </Section>
+          ) : null}
+        </section>
+      ) : null}
 
-      {/* Journey */}
-      <Section
-        title="Your investors"
-        description={
-          data.zohoAvailable && data.crmLinked
-            ? "Where each investor you referred currently stands."
-            : undefined
-        }
-      >
+      {/* ── 2. What changed since I last looked? ──────────────────────────── */}
+      {live && recent.length > 0 ? (
+        <Section
+          title="Recently started investing"
+          description={`${recent.length} ${recent.length === 1 ? "investor" : "investors"} went live in the last 30 days.`}
+        >
+          <ul className="flex flex-col gap-2">
+            {recent.slice(0, 5).map((c, i) => (
+              <li
+                key={`${c.email ?? "x"}-recent-${i}`}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/20 bg-background px-4 py-2.5"
+              >
+                <div className="min-w-0">
+                  <span className="text-sm text-foreground">{c.name ?? "—"}</span>
+                  {c.strategies.length ? (
+                    <span className="ml-2 text-[11px] text-muted-foreground">
+                      {c.strategies
+                        .map((s) => s.replace("Qode ", "").replace(" Fund", ""))
+                        .join(", ")}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm tabular-nums text-foreground">
+                    {money(c.currentValue)}
+                  </span>
+                  <span className="text-[11px] tabular-nums text-muted-foreground">
+                    {formatDate(c.accountLiveDate)}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Section>
+      ) : null}
+
+      {/* ── 3. Who are my investors? ──────────────────────────────────────── */}
+      <Section title="Your investors">
         {!data.zohoAvailable ? (
           <div className="rounded-md border border-border/20 bg-background px-4 py-6 text-center">
             <p className="text-sm text-muted-foreground">
-              We couldn&apos;t load investor data from our CRM just now. Your referral
-              links above are unaffected — please try again shortly.
+              We couldn&apos;t load investor data just now. Please try again shortly.
             </p>
           </div>
         ) : !data.crmLinked ? (
           <div className="rounded-md border border-border/20 bg-background px-4 py-6 text-center">
             <p className="text-sm text-muted-foreground">
-              We couldn&apos;t link this login to your CRM record, so your investors
+              We couldn&apos;t link this login to your records, so your investors
               can&apos;t be shown yet.
               {data.portalClientCount > 0 ? (
                 <>
@@ -411,53 +474,78 @@ export default function DistributorsPage() {
         ) : clients.length === 0 ? (
           <div className="rounded-md border border-border/20 bg-background px-4 py-6 text-center">
             <p className="text-sm text-muted-foreground">
-              No investors have been referred through your links yet. Share a link above
-              to get started.
+              No investors have been referred through your links yet. Share a link
+              below to get started.
             </p>
           </div>
         ) : (
           <>
-            {/* Stage filters — the counts double as the control. */}
-            <div className="flex flex-wrap gap-2">
+            {/* Plain-language groups. Each card explains its own number, so a
+                partner never has to interpret CRM wording. */}
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
               <button
                 type="button"
-                onClick={() => setStageFilter("")}
-                aria-pressed={stageFilter === ""}
-                className={`min-h-[36px] rounded-full border px-3 text-xs font-bold transition-colors ${
-                  stageFilter === ""
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border/20 bg-background text-muted-foreground hover:border-primary/50"
+                onClick={() => setGroup("")}
+                aria-pressed={group === ""}
+                className={`rounded-md border px-3 py-2.5 text-left transition-colors hover:border-primary/50 ${
+                  group === ""
+                    ? "border-primary bg-primary/5"
+                    : "border-border/20 bg-background"
                 }`}
               >
-                All {clients.length}
+                <p className="font-sans text-xl font-bold tabular-nums text-foreground">
+                  {clients.length}
+                </p>
+                <p className="mt-0.5 text-[11px] font-bold text-foreground">
+                  All investors
+                </p>
+                <p className="mt-0.5 text-[10.5px] leading-tight text-muted-foreground">
+                  Everyone you referred
+                </p>
               </button>
-              {STAGE_ORDER.filter((st) => (stageCounts[st] ?? 0) > 0).map((st) => (
+
+              {STAGE_GROUPS.filter((g) => (groupCounts[g.key] ?? 0) > 0).map((g) => (
                 <button
-                  key={st}
+                  key={g.key}
                   type="button"
-                  onClick={() => setStageFilter(stageFilter === st ? "" : st)}
-                  aria-pressed={stageFilter === st}
-                  className={`min-h-[36px] rounded-full border px-3 text-xs font-bold transition-colors ${
-                    stageFilter === st
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : DROP_STAGES.has(st)
-                        ? "border-destructive/30 bg-background text-destructive hover:border-destructive"
-                        : "border-border/20 bg-background text-muted-foreground hover:border-primary/50"
+                  onClick={() => setGroup(group === g.key ? "" : g.key)}
+                  aria-pressed={group === g.key}
+                  className={`rounded-md border px-3 py-2.5 text-left transition-colors hover:border-primary/50 ${
+                    group === g.key
+                      ? "border-primary bg-primary/5"
+                      : "border-border/20 bg-background"
                   }`}
                 >
-                  {st} {stageCounts[st]}
+                  <p
+                    className="font-sans text-xl font-bold tabular-nums"
+                    style={{
+                      color:
+                        g.tone === "good"
+                          ? QAW
+                          : g.tone === "warn"
+                            ? "var(--destructive)"
+                            : undefined,
+                    }}
+                  >
+                    {groupCounts[g.key]}
+                  </p>
+                  <p className="mt-0.5 text-[11px] font-bold text-foreground">
+                    {g.label}
+                  </p>
+                  <p className="mt-0.5 text-[10.5px] leading-tight text-muted-foreground">
+                    {g.detail}
+                  </p>
                 </button>
               ))}
             </div>
 
-            {/* Search */}
             <div className="relative mt-3">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
               <input
                 type="search"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Search name, email, city or strategy"
+                placeholder="Search by name, city or strategy"
                 aria-label="Search your investors"
                 className="min-h-[44px] w-full rounded-md border border-border/20 bg-background py-2 pl-9 pr-9 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-primary"
               />
@@ -476,127 +564,89 @@ export default function DistributorsPage() {
             {visible.length === 0 ? (
               <div className="mt-4 rounded-md border border-border/20 bg-background px-4 py-8 text-center">
                 <p className="text-sm text-muted-foreground">
-                  No investors match this view. Try a different search or clear the
-                  stage filter.
+                  No investors match this view. Try a different search, or choose
+                  &ldquo;All investors&rdquo; above.
                 </p>
               </div>
             ) : (
               <>
                 <p className="mt-3 text-xs text-muted-foreground">
-                  Showing {visible.length} of {clients.length}
+                  {visible.length === clients.length
+                    ? `${clients.length} investors, largest holdings first`
+                    : `Showing ${visible.length} of ${clients.length}`}
                 </p>
 
-                {/* Desktop table */}
-                <div className="mt-2 hidden overflow-x-auto sm:block">
-                  <table className="w-full min-w-[860px] border-collapse text-sm">
-                    <thead>
-                      <tr className="border-b border-border/20 text-left">
-                        {[
-                          "Investor",
-                          "Stage",
-                          "Strategies",
-                          "Invested",
-                          "Value",
-                          "Account live",
-                        ].map((h, i) => (
-                          <th
-                            key={h}
-                            className={`py-2 pr-4 text-[11px] font-bold uppercase tracking-wider text-muted-foreground last:pr-0 ${
-                              i === 3 || i === 4 ? "text-right" : ""
-                            }`}
-                          >
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {visible.map((c, i) => (
-                        <tr
-                          key={`${c.email ?? "no-email"}-${i}`}
-                          className="border-b border-border/10 last:border-0"
-                        >
-                          <td className="py-2.5 pr-4">
-                            <span className="text-foreground">{c.name ?? "—"}</span>
-                            {c.city ? (
-                              <span className="ml-2 text-[11px] text-muted-foreground">
-                                {c.city}
-                              </span>
-                            ) : null}
-                          </td>
-                          <td
-                            className={`py-2.5 pr-4 ${
-                              c.stage && DROP_STAGES.has(c.stage)
-                                ? "text-destructive"
-                                : "text-muted-foreground"
-                            }`}
-                          >
-                            {c.stage ?? "—"}
-                          </td>
-                          <td className="py-2.5 pr-4 text-muted-foreground">
-                            {c.strategies.length
-                              ? c.strategies
-                                  .map((st) =>
-                                    st.replace("Qode ", "").replace(" Fund", ""),
-                                  )
-                                  .join(", ")
-                              : "—"}
-                          </td>
-                          <td className="py-2.5 pr-4 text-right tabular-nums text-muted-foreground">
-                            {money(c.investedAmount)}
-                          </td>
-                          <td className="py-2.5 pr-4 text-right tabular-nums text-foreground">
-                            {money(c.currentValue)}
-                          </td>
-                          <td className="py-2.5 tabular-nums text-muted-foreground">
-                            {formatDate(c.accountLiveDate)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                {/* One row per investor, same shape at every width — no table
+                    to scroll sideways on a phone. Value leads on the right
+                    because that is what gets scanned. */}
+                <ul className="mt-2 flex flex-col gap-2">
+                  {visible.map((c, i) => {
+                    const inactive = c.stage ? INACTIVE.has(c.stage) : false;
+                    const delta =
+                      c.currentValue != null && c.investedAmount != null
+                        ? c.currentValue - c.investedAmount
+                        : null;
+                    const up = delta != null && delta >= 0;
 
-                {/* Mobile: stacked cards, per the design system — a six-column
-                    table is unreadable on a phone even with a scroll wrapper. */}
-                <ul className="mt-2 flex flex-col gap-2 sm:hidden">
-                  {visible.map((c, i) => (
-                    <li
-                      key={`${c.email ?? "no-email"}-m-${i}`}
-                      className="rounded-md border border-border/20 bg-background px-4 py-3"
-                    >
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="text-sm font-bold text-foreground">
-                          {c.name ?? "—"}
-                        </span>
-                        <span className="shrink-0 text-sm tabular-nums text-foreground">
-                          {money(c.currentValue)}
-                        </span>
-                      </div>
-                      <p
-                        className={`mt-1 text-xs ${
-                          c.stage && DROP_STAGES.has(c.stage)
-                            ? "text-destructive"
-                            : "text-muted-foreground"
-                        }`}
+                    return (
+                      <li
+                        key={`${c.email ?? "x"}-${i}`}
+                        className="rounded-md border border-border/20 bg-background px-4 py-3"
                       >
-                        {c.stage ?? "—"}
-                        {c.city ? ` · ${c.city}` : ""}
-                      </p>
-                      {c.strategies.length ? (
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          {c.strategies.map((st) => (
-                            <span
-                              key={st}
-                              className="rounded-full border border-border/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground"
-                            >
-                              {st.replace("Qode ", "").replace(" Fund", "")}
-                            </span>
-                          ))}
+                        <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-bold text-foreground">
+                                {c.name ?? "—"}
+                              </span>
+                              <span
+                                className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                                  inactive
+                                    ? "bg-destructive/10 text-destructive"
+                                    : "bg-muted-foreground/10 text-muted-foreground"
+                                }`}
+                              >
+                                {c.stage ? (STAGE_LABEL[c.stage] ?? c.stage) : "—"}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-[11.5px] text-muted-foreground">
+                              {[
+                                c.city,
+                                c.strategies
+                                  .map((s) =>
+                                    s.replace("Qode ", "").replace(" Fund", ""),
+                                  )
+                                  .join(", ") || null,
+                                c.accountLiveDate
+                                  ? `Live ${formatDate(c.accountLiveDate)}`
+                                  : null,
+                              ]
+                                .filter(Boolean)
+                                .join(" · ") || "No details recorded yet"}
+                            </p>
+                          </div>
+
+                          <div className="text-right">
+                            <p className="font-sans text-base font-bold tabular-nums text-foreground">
+                              {money(c.currentValue)}
+                            </p>
+                            {delta != null ? (
+                              <p
+                                className="text-[11px] tabular-nums"
+                                style={{ color: up ? QAW : "var(--destructive)" }}
+                              >
+                                {up ? "▲" : "▼"} {money(Math.abs(delta))}
+                              </p>
+                            ) : (
+                              <p className="text-[11px] text-muted-foreground">
+                                Not yet valued
+                              </p>
+                            )}
+                          </div>
                         </div>
-                      ) : null}
-                    </li>
-                  ))}
+                      </li>
+                    );
+                  })}
                 </ul>
               </>
             )}
@@ -604,29 +654,51 @@ export default function DistributorsPage() {
         )}
       </Section>
 
-      {/* Payout */}
-      <Section title="Payout status">
-        <div className="rounded-md border border-border/20 bg-background px-4 py-6 text-center">
-          <p className="text-sm text-muted-foreground">
-            Payout status will appear here once it is published from our operations
-            system.
-          </p>
-        </div>
+      {/* ── Setup: referral links ─────────────────────────────────────────── */}
+      <Section
+        title="Refer a new investor"
+        description="Share your link. Anyone who onboards through it is recorded against your name."
+      >
+        {data.referralLinks ? (
+          <div className="flex flex-col gap-3">
+            <CopyLinkRow label="Individual" url={data.referralLinks.individual} />
+            <CopyLinkRow
+              label="Company, LLP, HUF or trust"
+              url={data.referralLinks.nonIndividual}
+            />
+          </div>
+        ) : (
+          <div className="rounded-md border border-border/20 bg-background px-4 py-6 text-center">
+            <p className="text-sm text-muted-foreground">
+              Your referral links haven&apos;t been set up yet. Email{" "}
+              <a
+                className="font-bold text-primary underline underline-offset-4 dark:text-primary-foreground"
+                href="mailto:partnerships@qodeinvest.com"
+              >
+                partnerships@qodeinvest.com
+              </a>{" "}
+              and we&apos;ll create them for you.
+            </p>
+          </div>
+        )}
       </Section>
 
-      {/* Contact */}
-      <Section
-        title="Need help?"
-        description="For questions about your investors, referral links or payouts, email us and the partnerships team will get back to you."
+      {/* ── Help ──────────────────────────────────────────────────────────── */}
+      <a
+        href="mailto:partnerships@qodeinvest.com"
+        className="flex items-center gap-3 rounded-xl border border-border/20 bg-card px-5 py-4 shadow-sm hover:border-primary/50"
       >
-        <a
-          href="mailto:partnerships@qodeinvest.com"
-          className="inline-flex min-h-[44px] items-center gap-2 rounded-md border border-border/20 bg-card px-4 text-sm font-bold text-primary hover:bg-primary hover:text-primary-foreground dark:text-primary-foreground"
-        >
-          <Mail className="size-4" />
-          partnerships@qodeinvest.com
-        </a>
-      </Section>
+        <Mail className="size-4 shrink-0 text-muted-foreground" />
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-foreground">
+            Questions about your investors or payouts?
+          </p>
+          <p className="text-[11.5px] text-muted-foreground">
+            Email partnerships@qodeinvest.com — we usually reply the same day.
+          </p>
+        </div>
+        <ChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground" />
+      </a>
     </div>
   );
 }
