@@ -112,18 +112,23 @@ export default function AdminLoginPage() {
             </Alert>
           )}
 
-          {/* Environment Check Info */}
-          <Alert>
-            <Info className="h-4 w-4" />
-            <AlertDescription>
-              <div className="text-xs space-y-1">
-                <p><strong>Debug Info:</strong></p>
-                <p>• Environment: {process.env.NODE_ENV}</p>
-                <p>• Base URL: {typeof window !== 'undefined' ? window.location.origin : 'Loading...'}</p>
-                <p>• Redirect: {redirectTo}</p>
-              </div>
-            </AlertDescription>
-          </Alert>
+          {/* Environment details, development only.
+              This was rendering in production too, putting NODE_ENV and the
+              base URL on a public sign-in page. Useful locally, not something
+              to publish. */}
+          {process.env.NODE_ENV !== 'production' && (
+            <Alert>
+              <Info className="h-4 w-4" />
+              <AlertDescription>
+                <div className="text-xs space-y-1">
+                  <p><strong>Debug Info:</strong></p>
+                  <p>• Environment: {process.env.NODE_ENV}</p>
+                  <p>• Base URL: {typeof window !== 'undefined' ? window.location.origin : 'Loading...'}</p>
+                  <p>• Redirect: {redirectTo}</p>
+                </div>
+              </AlertDescription>
+            </Alert>
+          )}
 
           <Button 
             onClick={handleMicrosoftLogin}

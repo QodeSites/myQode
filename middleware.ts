@@ -46,6 +46,11 @@ export async function middleware(request: NextRequest) {
   ) {
     if (
       request.nextUrl.pathname === '/admin/login' ||
+      // The OAuth landing page. It runs before the session cookie is
+      // guaranteed to be readable here, so gating it can bounce a user who is
+      // mid-sign-in back to the login screen instead of letting the callback
+      // finish. The page itself does nothing privileged.
+      request.nextUrl.pathname === '/admin/auth-complete' ||
       request.nextUrl.pathname.startsWith('/api/auth/')
     ) {
       return NextResponse.next();
