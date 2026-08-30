@@ -89,12 +89,26 @@ export async function GET() {
       zohoAvailable = false;
     }
 
+    // Book totals across their referred investors. Nulls are skipped rather
+    // than counted as zero, so a partner whose CRM amounts are unfilled sees
+    // no total instead of a misleading zero.
+    const clients = journey?.clients ?? [];
+    const priced = clients.filter((c) => c.investedAmount != null).length;
+    const invested = clients.reduce((sum, c) => sum + (c.investedAmount ?? 0), 0);
+    const currentValue = clients.reduce((sum, c) => sum + (c.currentValue ?? 0), 0);
+
     return NextResponse.json({
       distributor: { name: distributor.clientname, email: distributor.email },
       referralLinks: buildReferralLinks(distributor.clientname),
       journey: journey
         ? { clients: journey.clients, stageCounts: journey.stageCounts }
         : null,
+      totals: {
+        investors: clients.length,
+        invested: priced ? invested : null,
+        currentValue: priced ? currentValue : null,
+        pricedCount: priced,
+      },
       zohoAvailable,
       crmLinked,
       portalClientCount,
