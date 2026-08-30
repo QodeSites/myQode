@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { Calculator, Lightbulb, Share2, Users } from "lucide-react"
+import { Calculator, LayoutDashboard, Lightbulb, Users } from "lucide-react"
 
 function NavLink({
   href,
@@ -44,22 +44,22 @@ export default function DistributorQodeSidebar({ open = false, onClose }: QodeSi
   const SidebarContent = (
     <nav className="h-full flex flex-col gap-1">
       <NavLink
-        href="/distributor/fees-distribution"
-        icon={<Calculator className="h-4 w-4" />}
+        href="/distributors"
+        icon={<LayoutDashboard className="h-4 w-4" />}
       >
-        Distributor Fee Calculator
+        Dashboard
       </NavLink>
       <NavLink
         href="/distributor/clients"
         icon={<Users className="h-4 w-4" />}
       >
-        Clients Overview
+        My Clients
       </NavLink>
       <NavLink
-        href="/distributors"
-        icon={<Share2 className="h-4 w-4" />}
+        href="/distributor/fees-distribution"
+        icon={<Calculator className="h-4 w-4" />}
       >
-        Partner Dashboard
+        Fees &amp; Payouts
       </NavLink>
       <NavLink
         href="/engagement/insights-and-events"
@@ -73,11 +73,11 @@ export default function DistributorQodeSidebar({ open = false, onClose }: QodeSi
   const SidebarContentMobile = ({ onClose }: { onClose?: () => void }) => (
     <nav className="h-full flex flex-col gap-1 mt-5">
       <NavLink
-        href="/distributor/fees-distribution"
-        icon={<Calculator className="h-4 w-4" />}
+        href="/distributors"
+        icon={<LayoutDashboard className="h-4 w-4" />}
         onClick={onClose}
       >
-        Calculator
+        Dashboard
       </NavLink>
       <NavLink
         href="/distributor/clients"
@@ -87,11 +87,11 @@ export default function DistributorQodeSidebar({ open = false, onClose }: QodeSi
         Clients
       </NavLink>
       <NavLink
-        href="/distributors"
-        icon={<Share2 className="h-4 w-4" />}
+        href="/distributor/fees-distribution"
+        icon={<Calculator className="h-4 w-4" />}
         onClick={onClose}
       >
-        Dashboard
+        Fees
       </NavLink>
       <NavLink
         href="/engagement/insights-and-events"
