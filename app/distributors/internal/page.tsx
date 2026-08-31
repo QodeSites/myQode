@@ -71,6 +71,8 @@ type Overview = {
     totalReferredInvestors: number;
     totalInvested: number;
     totalCurrentValue: number;
+    lostCount: number;
+    lostWithInvestors: number;
   };
   distributors: DistributorRow[];
   unlinkedLogins: UnlinkedLogin[];
@@ -80,7 +82,6 @@ type Overview = {
 
 type FilterKey =
   | "all"
-  | "active"
   | "referring"
   | "portal"
   | "overdue"
@@ -88,8 +89,7 @@ type FilterKey =
   | "lost";
 
 const FILTERS: { key: FilterKey; label: string; hint: string }[] = [
-  { key: "all", label: "All", hint: "Every distributor in the CRM" },
-  { key: "active", label: "Active", hint: "Not marked lost" },
+  { key: "all", label: "All", hint: "Every partner still being worked" },
   { key: "referring", label: "Referring", hint: "Has referred at least one investor" },
   { key: "portal", label: "Portal login", hint: "Can sign in to myQode" },
   { key: "overdue", label: "Follow-up overdue", hint: "Next contact date has passed" },
@@ -255,7 +255,10 @@ export default function InternalDistributorOverviewPage() {
 
     const filtered = data.distributors.filter((d) => {
       switch (filter) {
-        case "active":
+        // "All" means every partner still being worked. Lost relationships
+        // are reachable only through the Lost filter — 75 of 141 records are
+        // closed, and mixing them in made the list mostly dead weight.
+        case "all":
           if (isLost(d.stage)) return false;
           break;
         case "referring":
@@ -354,8 +357,20 @@ export default function InternalDistributorOverviewPage() {
       <header>
         <h1 className="text-2xl">Distributor Management</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {s.totalDistributors} partners in the CRM · {s.withPortalLogin} can sign in ·{" "}
+          {s.totalDistributors} active partners · {s.withPortalLogin} can sign in ·{" "}
           {s.totalReferredInvestors} investors referred
+          {s.lostCount > 0 ? (
+            <>
+              {" · "}
+              <button
+                type="button"
+                onClick={() => setFilter("lost")}
+                className="underline underline-offset-4 hover:text-foreground"
+              >
+                {s.lostCount} lost
+              </button>
+            </>
+          ) : null}
         </p>
       </header>
 
@@ -408,7 +423,7 @@ export default function InternalDistributorOverviewPage() {
       {/* Summary tiles double as filters — the numbers are the entry point. */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <StatTile
-          label="All partners"
+          label="Active partners"
           value={s.totalDistributors}
           onClick={() => setFilter("all")}
           active={filter === "all"}
@@ -440,6 +455,15 @@ export default function InternalDistributorOverviewPage() {
           active={filter === "noSecondary"}
         />
         <StatTile label="Investors referred" value={s.totalReferredInvestors} />
+        {s.lostWithInvestors > 0 ? (
+          <StatTile
+            label="Lost, still holding"
+            value={s.lostWithInvestors}
+            tone="warn"
+            onClick={() => setFilter("lost")}
+            active={filter === "lost"}
+          />
+        ) : null}
         <div className="rounded-md border border-border/20 bg-background px-4 py-3">
           <p className="text-[11px] font-bold uppercase leading-tight tracking-wider text-muted-foreground">
             Book value

@@ -157,16 +157,37 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // "Lost Distributor - No Follow up" is a closed relationship, not a
+    // partner. 75 of 141 records carry it, so counting them made every
+    // headline figure mostly dead weight — "141 partners" described a list
+    // the team had already stopped working.
+    //
+    // They are excluded from the summary and from the default list, NOT
+    // dropped: the "Lost" filter still reaches them. That matters because a
+    // lost partner can still hold live investors — Finwin Ventures has 3 —
+    // and hiding those outright would quietly remove real book value from
+    // the internal view.
+    const isLostStage = (stage: string | null) =>
+      Boolean(stage && stage.toLowerCase().startsWith("lost"));
+
+    const active = distributors.filter((d) => !isLostStage(d.stage));
+
     const summary = {
-      totalDistributors: distributors.length,
-      withPortalLogin: distributors.filter((d) => d.hasPortalLogin).length,
-      withReferrals: distributors.filter((d) => d.referredCount > 0).length,
-      overdueFollowUps: distributors.filter((d) => d.followUpOverdue).length,
-      missingSecondaryEmail: distributors.filter((d) => !d.secondaryEmail).length,
+      totalDistributors: active.length,
+      withPortalLogin: active.filter((d) => d.hasPortalLogin).length,
+      withReferrals: active.filter((d) => d.referredCount > 0).length,
+      overdueFollowUps: active.filter((d) => d.followUpOverdue).length,
+      missingSecondaryEmail: active.filter((d) => !d.secondaryEmail).length,
       unlinkedLoginCount: unlinkedLogins.length,
-      totalReferredInvestors: distributors.reduce((s, d) => s + d.referredCount, 0),
-      totalInvested: distributors.reduce((s, d) => s + (d.investedAmount ?? 0), 0),
-      totalCurrentValue: distributors.reduce((s, d) => s + (d.currentValue ?? 0), 0),
+      totalReferredInvestors: active.reduce((s, d) => s + d.referredCount, 0),
+      totalInvested: active.reduce((s, d) => s + (d.investedAmount ?? 0), 0),
+      totalCurrentValue: active.reduce((s, d) => s + (d.currentValue ?? 0), 0),
+      /** Closed relationships, still reachable through the Lost filter. */
+      lostCount: distributors.length - active.length,
+      /** Lost partners who nonetheless still have referred investors. */
+      lostWithInvestors: distributors.filter(
+        (d) => isLostStage(d.stage) && d.referredCount > 0,
+      ).length,
     };
 
     return NextResponse.json({
