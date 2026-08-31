@@ -21,11 +21,16 @@ export const ZOHO_MODULE_TABS: Record<string, string> = {
 
 let cachedToken: { token: string; expiresAt: number } | null = null
 
-async function getAccessToken(): Promise<string> {
-  if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) {
-    return cachedToken.token
-  }
+// In-flight refresh, shared across concurrent callers.
+//
+// Seven modules use this token, and a page can fetch several at once. Without
+// this, each concurrent miss fired its own refresh — multiplying calls against
+// the very rate limit that makes refreshes fail. Zoho caps refresh-token
+// requests and answers "You have made too many requests continuously" once the
+// cap is hit, which then breaks every Zoho-backed panel at once.
+let inFlight: Promise<string> | null = null
 
+async function refreshToken(): Promise<string> {
   const res = await fetch(`https://accounts.zoho.${DATA_CENTER}/oauth/v2/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -37,13 +42,40 @@ async function getAccessToken(): Promise<string> {
     }),
   })
 
-  if (!res.ok) {
-    throw new Error(`Zoho token refresh failed: ${res.status} ${await res.text()}`)
+  const body = (await res.json().catch(() => null)) as
+    | { access_token?: string; expires_in?: number; error?: string; error_description?: string }
+    | null
+
+  // Zoho answers rate limits and auth failures with HTTP 200 and an `error`
+  // field, so res.ok alone is not enough. Checking only res.ok cached
+  // `undefined` as the token, and every later call failed with INVALID_TOKEN
+  // — an error that points at the token rather than the rate limit that
+  // actually caused it.
+  if (!res.ok || !body?.access_token) {
+    const reason =
+      body?.error_description ?? body?.error ?? `HTTP ${res.status}`
+    throw new Error(`Zoho token refresh failed: ${reason}`)
   }
 
-  const data = (await res.json()) as { access_token: string; expires_in: number }
-  cachedToken = { token: data.access_token, expiresAt: Date.now() + data.expires_in * 1000 }
+  cachedToken = {
+    token: body.access_token,
+    expiresAt: Date.now() + (body.expires_in ?? 3600) * 1000,
+  }
   return cachedToken.token
+}
+
+async function getAccessToken(): Promise<string> {
+  if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) {
+    return cachedToken.token
+  }
+
+  // Coalesce concurrent misses onto one refresh.
+  if (!inFlight) {
+    inFlight = refreshToken().finally(() => {
+      inFlight = null
+    })
+  }
+  return inFlight
 }
 
 function crmApiDomain(): string {

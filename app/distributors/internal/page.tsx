@@ -78,6 +78,9 @@ type Overview = {
   unlinkedLogins: UnlinkedLogin[];
   investorTotals: Record<string, number>;
   stageOrder: string[];
+  /** False when Zoho could not be reached; portal data still renders. */
+  crmAvailable?: boolean;
+  crmError?: string | null;
 };
 
 type FilterKey =
@@ -417,6 +420,21 @@ export default function InternalDistributorOverviewPage() {
       {message ? (
         <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-foreground">
           {message}
+        </div>
+      ) : null}
+
+      {/* States the actual reason rather than a generic failure — a rate limit
+          clears on its own, an outage does not, and the team should know
+          which they are looking at. */}
+      {data.crmAvailable === false ? (
+        <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3">
+          <p className="text-sm text-foreground">
+            {data.crmError ?? "We couldn't reach the CRM just now."}
+          </p>
+          <p className="mt-1 text-[11.5px] text-muted-foreground">
+            Partner records and investor figures are unavailable until it
+            recovers. Nothing has been lost — refresh to try again.
+          </p>
         </div>
       ) : null}
 

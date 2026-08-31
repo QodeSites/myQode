@@ -41,10 +41,28 @@ export async function GET(request: NextRequest) {
   if (!isRoleUser(admin)) return admin;
 
   try {
-    const [records, journeys] = await Promise.all([
-      getAllDistributorRecords(),
-      getAllDistributorJourneys(),
-    ]);
+    // Zoho is the source for partner records and their referred investors.
+    // When it is unreachable — an outage, or its refresh-token rate limit —
+    // the portal half of this page is still worth showing, so the failure is
+    // reported rather than thrown. A 500 here blanked the whole screen and
+    // told the team nothing about why.
+    let records: Awaited<ReturnType<typeof getAllDistributorRecords>> = [];
+    let journeys: Awaited<ReturnType<typeof getAllDistributorJourneys>> = new Map();
+    let crmAvailable = true;
+    let crmError: string | null = null;
+
+    try {
+      [records, journeys] = await Promise.all([
+        getAllDistributorRecords(),
+        getAllDistributorJourneys(),
+      ]);
+    } catch (err: any) {
+      console.error("[distributor/internal-overview] Zoho unavailable:", err);
+      crmAvailable = false;
+      crmError = String(err?.message ?? "").includes("too many requests")
+        ? "Our CRM is rate-limiting requests right now. This usually clears within a few minutes."
+        : "We couldn't reach the CRM just now.";
+    }
 
     // Portal distributor rows. clientcode IS NULL is the discriminator — see
     // lib/distributorIdentity.ts for why that is exact.
@@ -196,6 +214,8 @@ export async function GET(request: NextRequest) {
       unlinkedLogins,
       investorTotals,
       stageOrder: STAGE_ORDER,
+      crmAvailable,
+      crmError,
     });
   } catch (error) {
     console.error("[distributor/internal-overview] error:", error);
