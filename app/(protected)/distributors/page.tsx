@@ -8,7 +8,6 @@ import {
   STATUS_ORDER,
   STRATEGY_COLOR,
   NEUTRAL_COLOR,
-  shortStrategy,
   statusFor,
   type StatusInfo,
 } from "@/lib/distributorVocabulary";
@@ -348,20 +347,25 @@ export default function DistributorOverviewPage() {
                 })}
               </div>
 
-              <ul className="mt-4 flex flex-col gap-2.5">
+              {/* Each row filters the investor list. The label carries its own
+                  meaning — an explanatory clause beside it would be padding. */}
+              <ul className="mt-4 flex flex-col gap-1">
                 {visibleStatuses.map((s) => (
-                  <li key={s.key} className="flex items-baseline gap-2.5">
-                    <span
-                      className="mt-1 size-2.5 shrink-0 rounded-sm"
-                      style={{ background: toneColor(s.tone) }}
-                    />
-                    <span className="font-sans text-sm font-bold tabular-nums text-foreground">
-                      {statusCounts.get(s.key)}
-                    </span>
-                    <span className="text-sm text-foreground">{s.label}</span>
-                    <span className="text-[11.5px] text-muted-foreground">
-                      — {s.detail}
-                    </span>
+                  <li key={s.key}>
+                    <Link
+                      href={`/distributors/investors?status=${s.key}`}
+                      className="-mx-2 flex items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-background"
+                    >
+                      <span
+                        className="size-2.5 shrink-0 rounded-sm"
+                        style={{ background: toneColor(s.tone) }}
+                      />
+                      <span className="font-sans text-sm font-bold tabular-nums text-foreground">
+                        {statusCounts.get(s.key)}
+                      </span>
+                      <span className="text-sm text-foreground">{s.label}</span>
+                      <ChevronRight className="ml-auto size-3.5 shrink-0 text-muted-foreground" />
+                    </Link>
                   </li>
                 ))}
               </ul>
@@ -376,11 +380,13 @@ export default function DistributorOverviewPage() {
             >
               <div className="flex flex-col gap-3">
                 {strategyCounts.map(([name, n]) => (
-                  <div key={name} className="min-w-0">
+                  <Link
+                    key={name}
+                    href={`/distributors/investors?strategy=${encodeURIComponent(name)}`}
+                    className="-mx-2 block min-w-0 rounded-md px-2 py-1 hover:bg-background"
+                  >
                     <div className="flex items-baseline justify-between gap-2">
-                      <span className="text-[12.5px] text-foreground">
-                        {shortStrategy(name)}
-                      </span>
+                      <span className="text-[12.5px] text-foreground">{name}</span>
                       <span className="text-[11.5px] tabular-nums text-muted-foreground">
                         {n} {n === 1 ? "investor" : "investors"}
                       </span>
@@ -394,7 +400,7 @@ export default function DistributorOverviewPage() {
                         }}
                       />
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             </Card>
@@ -408,15 +414,20 @@ export default function DistributorOverviewPage() {
             >
               <ul className="flex flex-col gap-2">
                 {recent.slice(0, 3).map((c, i) => (
-                  <li
-                    key={`${c.email ?? "x"}-${i}`}
-                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/20 bg-background px-4 py-2.5"
-                  >
+                  <li key={`${c.email ?? "x"}-${i}`}>
+                    <Link
+                      href={
+                        c.email
+                          ? `/distributors/investors/${encodeURIComponent(c.email)}`
+                          : "/distributors/investors"
+                      }
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/20 bg-background px-4 py-2.5 hover:border-primary/50"
+                    >
                     <div className="min-w-0">
                       <span className="text-sm text-foreground">{c.name ?? "—"}</span>
                       {c.strategies.length ? (
                         <span className="ml-2 text-[11px] text-muted-foreground">
-                          {c.strategies.map(shortStrategy).join(", ")}
+                          {c.strategies.join(", ")}
                         </span>
                       ) : null}
                     </div>
@@ -428,6 +439,7 @@ export default function DistributorOverviewPage() {
                         {formatDate(c.accountLiveDate)}
                       </span>
                     </div>
+                    </Link>
                   </li>
                 ))}
               </ul>

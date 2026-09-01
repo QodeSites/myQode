@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { ArrowLeft, Download, ExternalLink, Search, X } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -67,8 +68,16 @@ export default function DistributorInvestorsPage() {
   const [status, setStatus] = React.useState<"loading" | "ready" | "forbidden" | "error">(
     "loading",
   );
+  // Arriving from the overview pre-selects a filter, so a partner who clicked
+  // "33 Invested" lands on those 33 rather than the whole book.
+  const searchParams = useSearchParams();
   const [q, setQ] = React.useState("");
-  const [statusKey, setStatusKey] = React.useState<string>("");
+  const [statusKey, setStatusKey] = React.useState<string>(
+    () => searchParams.get("status") ?? "",
+  );
+  const [strategy, setStrategy] = React.useState<string>(
+    () => searchParams.get("strategy") ?? "",
+  );
   const [shown, setShown] = React.useState(10);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [message, setMessage] = React.useState<string | null>(null);
@@ -114,18 +123,19 @@ export default function DistributorInvestorsPage() {
     return clients
       .filter((c) => {
         if (statusKey && statusFor(c.stage).key !== statusKey) return false;
+        if (strategy && !c.strategies.includes(strategy)) return false;
         if (!needle) return true;
         return [c.name, c.email, c.city, ...c.strategies]
           .filter(Boolean)
           .some((v) => String(v).toLowerCase().includes(needle));
       })
       .sort((a, b) => (b.currentValue ?? 0) - (a.currentValue ?? 0));
-  }, [clients, q, statusKey]);
+  }, [clients, q, statusKey, strategy]);
 
   // A narrowed list must never open part-way down.
   React.useEffect(() => {
     setShown(10);
-  }, [q, statusKey]);
+  }, [q, statusKey, strategy]);
 
   /**
    * Downloads the investor's SOA.
@@ -409,7 +419,7 @@ export default function DistributorInvestorsPage() {
                           <p className="mt-1 text-[11.5px] text-muted-foreground">
                             {[
                               c.city,
-                              c.strategies.map(shortStrategy).join(", ") || null,
+                              c.strategies.join(", ") || null,
                               c.accountLiveDate
                                 ? `${
                                     c.currentValue != null ? "Invested" : "Opened"
