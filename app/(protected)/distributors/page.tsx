@@ -186,6 +186,78 @@ export default function DistributorOverviewPage() {
     }));
   }, [clients]);
 
+  // Money brought in per month, by the date each investor was activated.
+  // This is the strongest signal a partner has about their own momentum, and
+  // nothing on the page showed it before.
+  const monthlyInflow = React.useMemo(() => {
+    const by = new Map<string, { amount: number; investors: number }>();
+    for (const c of clients) {
+      if (!c.activationDate || !c.investedAmount) continue;
+      const key = String(c.activationDate).slice(0, 7);
+      const row = by.get(key) ?? { amount: 0, investors: 0 };
+      row.amount += c.investedAmount;
+      row.investors += 1;
+      by.set(key, row);
+    }
+    // Fill the gaps: a month where nobody invested is a real zero, and
+    // skipping it would draw a flat line between two distant points.
+    const keys = [...by.keys()].sort();
+    if (!keys.length) return [];
+    const out: { month: string; label: string; amount: number; investors: number }[] = [];
+    const [sy, sm] = keys[0].split("-").map(Number);
+    const [ey, em] = keys[keys.length - 1].split("-").map(Number);
+    for (let y = sy, m = sm; y < ey || (y === ey && m <= em); m === 12 ? (m = 1, y++) : m++) {
+      const key = `${y}-${String(m).padStart(2, "0")}`;
+      const row = by.get(key);
+      out.push({
+        month: key,
+        label: new Date(y, m - 1, 1).toLocaleDateString("en-IN", { month: "short" }),
+        amount: row?.amount ?? 0,
+        investors: row?.investors ?? 0,
+      });
+    }
+    return out;
+  }, [clients]);
+
+  // Rupees per strategy, not just headcount. An investor holding three
+  // strategies has their money split evenly across them: the per-strategy
+  // amount is not in the payload, so this is an apportionment, and the card
+  // says so rather than implying an exactness we do not have.
+  const strategyMoney = React.useMemo(() => {
+    const by = new Map<string, { value: number; investors: number }>();
+    for (const c of clients) {
+      if (!c.currentValue || !c.strategies.length) continue;
+      const share = c.currentValue / c.strategies.length;
+      for (const t of c.strategies) {
+        const row = by.get(t) ?? { value: 0, investors: 0 };
+        row.value += share;
+        row.investors += 1;
+        by.set(t, row);
+      }
+    }
+    return [...by.entries()]
+      .map(([name, v]) => ({ name, ...v }))
+      .sort((a, b) => b.value - a.value);
+  }, [clients]);
+
+  // How much of the book rests on its largest few investors. A partner whose
+  // top handful carry most of the money is exposed in a way a total hides.
+  const concentration = React.useMemo(() => {
+    const vals = clients
+      .map((c) => c.currentValue ?? 0)
+      .filter((v) => v > 0)
+      .sort((a, b) => b - a);
+    if (vals.length < 5) return null;
+    const total = vals.reduce((a, b) => a + b, 0);
+    if (!total) return null;
+    return {
+      topFivePct: (vals.slice(0, 5).reduce((a, b) => a + b, 0) / total) * 100,
+      largest: vals[0],
+      median: vals[Math.floor(vals.length / 2)],
+      count: vals.length,
+    };
+  }, [clients]);
+
   if (status === "loading") {
     return (
       <div className="flex w-full flex-col gap-5 pb-10">
@@ -270,78 +342,6 @@ export default function DistributorOverviewPage() {
       return !Number.isNaN(d) && Date.now() - d < 30 * 24 * 60 * 60 * 1000;
     })
     .sort((a, b) => String(b.accountLiveDate).localeCompare(String(a.accountLiveDate)));
-
-  // Money brought in per month, by the date each investor was activated.
-  // This is the strongest signal a partner has about their own momentum, and
-  // nothing on the page showed it before.
-  const monthlyInflow = React.useMemo(() => {
-    const by = new Map<string, { amount: number; investors: number }>();
-    for (const c of clients) {
-      if (!c.activationDate || !c.investedAmount) continue;
-      const key = String(c.activationDate).slice(0, 7);
-      const row = by.get(key) ?? { amount: 0, investors: 0 };
-      row.amount += c.investedAmount;
-      row.investors += 1;
-      by.set(key, row);
-    }
-    // Fill the gaps: a month where nobody invested is a real zero, and
-    // skipping it would draw a flat line between two distant points.
-    const keys = [...by.keys()].sort();
-    if (!keys.length) return [];
-    const out: { month: string; label: string; amount: number; investors: number }[] = [];
-    const [sy, sm] = keys[0].split("-").map(Number);
-    const [ey, em] = keys[keys.length - 1].split("-").map(Number);
-    for (let y = sy, m = sm; y < ey || (y === ey && m <= em); m === 12 ? (m = 1, y++) : m++) {
-      const key = `${y}-${String(m).padStart(2, "0")}`;
-      const row = by.get(key);
-      out.push({
-        month: key,
-        label: new Date(y, m - 1, 1).toLocaleDateString("en-IN", { month: "short" }),
-        amount: row?.amount ?? 0,
-        investors: row?.investors ?? 0,
-      });
-    }
-    return out;
-  }, [clients]);
-
-  // Rupees per strategy, not just headcount. An investor holding three
-  // strategies has their money split evenly across them: the per-strategy
-  // amount is not in the payload, so this is an apportionment, and the card
-  // says so rather than implying an exactness we do not have.
-  const strategyMoney = React.useMemo(() => {
-    const by = new Map<string, { value: number; investors: number }>();
-    for (const c of clients) {
-      if (!c.currentValue || !c.strategies.length) continue;
-      const share = c.currentValue / c.strategies.length;
-      for (const t of c.strategies) {
-        const row = by.get(t) ?? { value: 0, investors: 0 };
-        row.value += share;
-        row.investors += 1;
-        by.set(t, row);
-      }
-    }
-    return [...by.entries()]
-      .map(([name, v]) => ({ name, ...v }))
-      .sort((a, b) => b.value - a.value);
-  }, [clients]);
-
-  // How much of the book rests on its largest few investors. A partner whose
-  // top handful carry most of the money is exposed in a way a total hides.
-  const concentration = React.useMemo(() => {
-    const vals = clients
-      .map((c) => c.currentValue ?? 0)
-      .filter((v) => v > 0)
-      .sort((a, b) => b - a);
-    if (vals.length < 5) return null;
-    const total = vals.reduce((a, b) => a + b, 0);
-    if (!total) return null;
-    return {
-      topFivePct: (vals.slice(0, 5).reduce((a, b) => a + b, 0) / total) * 100,
-      largest: vals[0],
-      median: vals[Math.floor(vals.length / 2)],
-      count: vals.length,
-    };
-  }, [clients]);
 
   const strategyMax = strategyCounts.length ? strategyCounts[0][1] : 1;
   const visibleStatuses = STATUS_ORDER.filter((s) => (statusCounts.get(s.key) ?? 0) > 0);
