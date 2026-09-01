@@ -260,6 +260,18 @@ export default function InvestorDetailPage() {
     }
   }
 
+  // Position on the four-stage arc. Stages outside the list (dropped,
+  // dormant) have no place on a progress track — there is no partial journey
+  // to draw for an account that stopped — so the card is omitted entirely
+  // and the status chip above already says what happened.
+  const accountJourney = React.useMemo(() => {
+    if (!investor) return null;
+    const i = ACCOUNT_STAGES.indexOf(
+      investor.stage as (typeof ACCOUNT_STAGES)[number],
+    );
+    return i === -1 ? null : { index: i };
+  }, [investor]);
+
   if (status === "loading") {
     return (
       <div className="flex w-full flex-col gap-4 pb-10">
@@ -333,16 +345,6 @@ export default function InvestorDetailPage() {
 
   const s = statusFor(investor.stage, investor.onboardingStage);
 
-  // Position on the four-stage arc. Stages outside the list (dropped,
-  // dormant) have no place on a progress track — there is no partial journey
-  // to draw for an account that stopped — so the card is omitted entirely
-  // and the status chip above already says what happened.
-  const accountJourney = React.useMemo(() => {
-    const i = ACCOUNT_STAGES.indexOf(
-      investor.stage as (typeof ACCOUNT_STAGES)[number],
-    );
-    return i === -1 ? null : { index: i };
-  }, [investor.stage]);
   const delta =
     investor.currentValue != null && investor.investedAmount != null
       ? investor.currentValue - investor.investedAmount

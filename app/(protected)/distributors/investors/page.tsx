@@ -156,6 +156,22 @@ export default function DistributorInvestorsPage() {
       .sort((a, b) => (b.currentValue ?? 0) - (a.currentValue ?? 0));
   }, [clients, q, statusKey, strategy, dateBasis, fromDate, toDate]);
 
+  // Zoho holds more than one record for the same person in some cases —
+  // four identical rows for one investor on the live book. That inflates the
+  // headcount, so it is reported rather than quietly deduplicated: the count
+  // is a number a partner may reconcile against other reports, and the
+  // duplication is a CRM problem worth someone fixing at source.
+  const duplicateRows = React.useMemo(() => {
+    const seen = new Set<string>();
+    let extra = 0;
+    for (const c of clients) {
+      const key = `${(c.email ?? "").toLowerCase()}|${(c.name ?? "").toLowerCase()}`;
+      if (seen.has(key)) extra++;
+      else seen.add(key);
+    }
+    return extra;
+  }, [clients]);
+
   // How many the date filter excluded purely for lacking a date — reported
   // to the partner rather than silently dropped.
   const undatedCount = React.useMemo(() => {
@@ -488,6 +504,11 @@ export default function DistributorInvestorsPage() {
                 {visible.length === clients.length
                   ? `${clients.length} investors, largest holdings first`
                   : `Showing ${visible.length} of ${clients.length}`}
+                {duplicateRows > 0
+                  ? ` · includes ${duplicateRows} duplicate ${
+                      duplicateRows === 1 ? "record" : "records"
+                    } from the CRM`
+                  : ""}
               </p>
 
               <ul className="mt-2 flex flex-col gap-1.5">
@@ -498,7 +519,13 @@ export default function DistributorInvestorsPage() {
                       ? c.currentValue - c.investedAmount
                       : null;
                   const up = delta != null && delta >= 0;
-                  const key = c.email ?? `row-${i}`;
+                  // Email is NOT unique: Zoho holds four identical records
+                  // for one investor (ranojoyster@gmail.com, verified
+                  // 2026-09-01), and clientCode is null for 30 of 59 so it
+                  // cannot disambiguate either. Index makes the key stable
+                  // for React; the duplicates themselves are a CRM data
+                  // problem, flagged to the partner below rather than hidden.
+                  const key = `${c.email ?? "row"}-${i}`;
 
                   return (
                     <li
