@@ -274,7 +274,7 @@ export default function InvestorDetailPage() {
     );
   }
 
-  const s = statusFor(investor.stage);
+  const s = statusFor(investor.stage, investor.onboardingStage);
   const delta =
     investor.currentValue != null && investor.investedAmount != null
       ? investor.currentValue - investor.investedAmount
@@ -307,7 +307,7 @@ export default function InvestorDetailPage() {
           </span>
         </div>
         <p className="mt-1 text-sm text-muted-foreground">
-          {s.key === "paperwork" && investor.onboardingStage
+          {s.key === "onboarding" && investor.onboardingStage
             ? investor.onboardingStage
             : s.detail}
         </p>

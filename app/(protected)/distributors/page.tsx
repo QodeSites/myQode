@@ -10,7 +10,7 @@ import {
   NEUTRAL_COLOR,
   statusFor,
   onboardingRank,
-  isStalledStage,
+  ONBOARDING_SEQUENCE,
   type StatusInfo,
 } from "@/lib/distributorVocabulary";
 
@@ -133,7 +133,7 @@ export default function DistributorOverviewPage() {
   const statusCounts = React.useMemo(() => {
     const counts = new Map<string, number>();
     for (const c of clients) {
-      const key = statusFor(c.stage).key;
+      const key = statusFor(c.stage, c.onboardingStage).key;
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     return counts;
@@ -153,13 +153,25 @@ export default function DistributorOverviewPage() {
   const onboardingSteps = React.useMemo(() => {
     const counts = new Map<string, number>();
     for (const c of clients) {
-      if (statusFor(c.stage).key !== "paperwork") continue;
+      if (statusFor(c.stage, c.onboardingStage).key !== "onboarding") continue;
       if (!c.onboardingStage) continue;
       counts.set(c.onboardingStage, (counts.get(c.onboardingStage) ?? 0) + 1);
     }
-    return [...counts.entries()].sort(
-      (a, b) => onboardingRank(a[0]) - onboardingRank(b[0]),
-    );
+    if (!counts.size) return [];
+
+    // Show the whole path, not only the steps someone happens to be sitting
+    // on. An empty step between two occupied ones is information: it says the
+    // stage was passed, and a journey with gaps in it reads as a journey.
+    //
+    // Trimmed to the span actually in use — rendering all eleven when the
+    // furthest anyone has reached is step five would pad the card with
+    // stages nobody is near.
+    const occupied = [...counts.keys()].map(onboardingRank);
+    const last = Math.max(...occupied);
+    return ONBOARDING_SEQUENCE.slice(0, last + 1).map((step) => ({
+      step,
+      count: counts.get(step) ?? 0,
+    }));
   }, [clients]);
 
   if (status === "loading") {
@@ -227,7 +239,7 @@ export default function DistributorOverviewPage() {
 
   const investedCount = statusCounts.get("invested") ?? 0;
   const notYet =
-    (statusCounts.get("opened") ?? 0) + (statusCounts.get("paperwork") ?? 0);
+    (statusCounts.get("opened") ?? 0) + (statusCounts.get("onboarding") ?? 0);
 
   // "Recently started investing" must mean exactly that. accountLiveDate is
   // set when the account opens, which for an opened-but-unfunded investor is
@@ -390,44 +402,67 @@ export default function DistributorOverviewPage() {
             </Card>
           ) : null}
 
-          {/* Onboarding breakdown — the detail behind "Paperwork in progress" */}
+          {/* Onboarding journey — the path an account takes to open */}
           {onboardingSteps.length ? (
             <Card
-              title="Where the paperwork has reached"
-              description="Investors still opening an account, by the step they are on."
+              title="The onboarding journey"
+              description="Where your investors have reached on the way to opening an account."
             >
-              <ul className="flex flex-col gap-1">
-                {onboardingSteps.map(([step, n]) => {
-                  const stalled = isStalledStage(step);
+              <ol className="flex flex-col">
+                {onboardingSteps.map(({ step, count }, i) => {
+                  const isLast = i === onboardingSteps.length - 1;
+                  const here = count > 0;
                   return (
-                    <li key={step}>
-                      <Link
-                        href="/distributors/investors?status=paperwork"
-                        className="-mx-2 flex items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-background"
-                      >
+                    <li key={step} className="flex gap-3">
+                      {/* Marker and the line joining it to the next step. */}
+                      <div className="flex flex-col items-center">
                         <span
-                          className="font-sans text-sm font-bold tabular-nums"
-                          style={{
-                            color: stalled ? "var(--destructive)" : undefined,
-                          }}
-                        >
-                          {n}
-                        </span>
-                        <span
-                          className={`text-sm ${
-                            stalled ? "text-destructive" : "text-foreground"
+                          aria-hidden="true"
+                          className={`flex size-6 shrink-0 items-center justify-center rounded-full border text-[10px] font-black tabular-nums ${
+                            here
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-border/30 bg-background text-muted-foreground"
                           }`}
                         >
-                          {step}
+                          {here ? count : ""}
                         </span>
-                        <ChevronRight className="ml-auto size-3.5 shrink-0 text-muted-foreground" />
-                      </Link>
+                        {!isLast ? (
+                          <span
+                            aria-hidden="true"
+                            className="w-px flex-1 bg-border/30"
+                            style={{ minHeight: 18 }}
+                          />
+                        ) : null}
+                      </div>
+
+                      {/* Step name. Occupied steps are links; empty ones are
+                          not — there is nobody there to look at. */}
+                      <div className="min-w-0 pb-3">
+                        {here ? (
+                          <Link
+                            href="/distributors/investors?status=onboarding"
+                            className="text-sm text-foreground underline-offset-4 hover:underline"
+                          >
+                            {step}
+                          </Link>
+                        ) : (
+                          <span className="text-sm text-muted-foreground/70">
+                            {step}
+                          </span>
+                        )}
+                        {here ? (
+                          <p className="text-[11px] text-muted-foreground">
+                            {count} {count === 1 ? "investor" : "investors"} here
+                          </p>
+                        ) : null}
+                      </div>
                     </li>
                   );
                 })}
-              </ul>
+              </ol>
             </Card>
           ) : null}
+
 
           {/* Strategy split */}
           {strategyCounts.length ? (

@@ -113,7 +113,7 @@ export default function DistributorInvestorsPage() {
   const statusCounts = React.useMemo(() => {
     const counts = new Map<string, number>();
     for (const c of clients) {
-      const key = statusFor(c.stage).key;
+      const key = statusFor(c.stage, c.onboardingStage).key;
       counts.set(key, (counts.get(key) ?? 0) + 1);
     }
     return counts;
@@ -123,7 +123,7 @@ export default function DistributorInvestorsPage() {
     const needle = q.trim().toLowerCase();
     return clients
       .filter((c) => {
-        if (statusKey && statusFor(c.stage).key !== statusKey) return false;
+        if (statusKey && statusFor(c.stage, c.onboardingStage).key !== statusKey) return false;
         if (strategy && !c.strategies.includes(strategy)) return false;
         if (!needle) return true;
         return [c.name, c.email, c.city, ...c.strategies]
@@ -379,7 +379,7 @@ export default function DistributorInvestorsPage() {
 
               <ul className="mt-2 flex flex-col gap-1.5">
                 {visible.slice(0, shown).map((c, i) => {
-                  const s = statusFor(c.stage);
+                  const s = statusFor(c.stage, c.onboardingStage);
                   const delta =
                     c.currentValue != null && c.investedAmount != null
                       ? c.currentValue - c.investedAmount
@@ -419,7 +419,7 @@ export default function DistributorInvestorsPage() {
                           </div>
                           {/* Only while onboarding: once invested, how they
                               got there is no longer the useful fact. */}
-                          {s.key === "paperwork" && c.onboardingStage ? (
+                          {s.key === "onboarding" && c.onboardingStage ? (
                             <p className="mt-1 text-[11.5px] text-foreground">
                               {c.onboardingStage}
                             </p>

@@ -13,7 +13,7 @@
 export type StatusKey =
   | "invested"
   | "opened"
-  | "paperwork"
+  | "onboarding"
   | "inactive"
   | "declined"
   | "closed";
@@ -39,10 +39,10 @@ const OPENED: StatusInfo = {
   detail: "Ready to receive funds — nothing invested yet",
   tone: "normal",
 };
-const PAPERWORK: StatusInfo = {
-  key: "paperwork",
-  label: "Paperwork in progress",
-  detail: "Account opening not yet complete",
+const ONBOARDING: StatusInfo = {
+  key: "onboarding",
+  label: "Onboarding",
+  detail: "Account opening in progress",
   tone: "normal",
 };
 const INACTIVE: StatusInfo = {
@@ -68,7 +68,7 @@ const CLOSED: StatusInfo = {
 export const STATUS_ORDER: readonly StatusInfo[] = [
   INVESTED,
   OPENED,
-  PAPERWORK,
+  ONBOARDING,
   INACTIVE,
   DECLINED,
   CLOSED,
@@ -77,12 +77,24 @@ export const STATUS_ORDER: readonly StatusInfo[] = [
 /**
  * Maps a Zoho stage to partner-facing language.
  *
- * An unrecognised stage falls through to "Paperwork in progress" rather than
+ * An unrecognised stage falls through to "Onboarding" rather than
  * showing the raw value: a new CRM stage should never leak internal wording
  * into a partner's screen. It is the least alarming honest default — it says
  * "in progress", which is true of anything not yet invested.
  */
-export function statusFor(stage: string | null): StatusInfo {
+export function statusFor(
+  stage: string | null,
+  onboardingStage?: string | null,
+): StatusInfo {
+  // The two Zoho modules can disagree: 3 investors read "Dropped Before
+  // Account Opening" in Investor_Onboarding while Investors still says
+  // "Onboarding". The sub-stage is the more specific record of what actually
+  // happened, so it wins — otherwise a partner sees someone in Onboarding who
+  // has in fact walked away.
+  if (onboardingStage && isStalledStage(onboardingStage)) {
+    return /lost/i.test(onboardingStage) ? CLOSED : DECLINED;
+  }
+
   switch (stage) {
     // "First Fund Initiated" is the stage where money is actually invested.
     // Verified against a live book on 2026-09-01: all 33 investors at this
@@ -98,7 +110,7 @@ export function statusFor(stage: string | null): StatusInfo {
     case "Account Live":
       return OPENED;
     case "Onboarding":
-      return PAPERWORK;
+      return ONBOARDING;
     case "Dormant Investor":
       return INACTIVE;
     case "Dropped before account opening":
@@ -106,7 +118,7 @@ export function statusFor(stage: string | null): StatusInfo {
     case "Dropped after account opening":
       return CLOSED;
     default:
-      return PAPERWORK;
+      return ONBOARDING;
   }
 }
 
