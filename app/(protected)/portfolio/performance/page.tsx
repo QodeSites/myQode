@@ -31,7 +31,6 @@ import {
 } from "recharts";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { InvestorJourneyCard } from "@/components/investor-journey";
 // import ExpiryDayBanner from "@/components/expiry-day-banner";
 
 // Import Lato font
@@ -2588,11 +2587,6 @@ const createConsolidatedData = useCallback(
               </Card>
             )}
           </div>
-
-          {/* Onboarding progress, from Zoho CRM. Renders nothing unless the
-              investor has a CRM record in a stage meant for their eyes, so it
-              is invisible for established investors with no journey to show. */}
-          <InvestorJourneyCard />
 
           {/* Metrics Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

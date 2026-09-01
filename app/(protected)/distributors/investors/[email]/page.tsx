@@ -32,6 +32,54 @@ import {
 
 const QAW = "#008455";
 
+/**
+ * The four broad stages an account passes through, in the order they
+ * actually happen.
+ *
+ * NOTE the order differs from INVESTOR_VISIBLE_STAGES in
+ * lib/zohoInvestorJourney.ts, which lists First Fund Initiated before
+ * Account Live. That order is wrong on this track: "Account Live" is an
+ * opened account holding nothing, and "First Fund Initiated" is where money
+ * actually arrives — the same reversal already documented in statusFor().
+ *
+ * The live book proves it. One investor sits at First Fund Initiated with
+ * Activation_Date 2026-08-03 and Date_Of_1st_Investment 2026-07-06: the
+ * account opened a month BEFORE the money came. Kept in CRM order, the card
+ * would draw "Account opened" as a step not yet reached while showing a date
+ * older than the current step.
+ *
+ * Kept as a literal so this client page does not pull in the server-only
+ * Zoho module.
+ */
+const ACCOUNT_STAGES = [
+  "Onboarding",
+  "Account Live",
+  "First Fund Initiated",
+  "Regular Investor",
+] as const;
+
+/**
+ * Partner-facing labels. The CRM names read backwards to anyone outside the
+ * firm — "First Fund Initiated" is where money is actually invested, while
+ * "Account Live" is an open account holding nothing — so the labels say what
+ * happened rather than repeating internal shorthand. Same reasoning, and the
+ * same verified mapping, as statusFor() in lib/distributorVocabulary.
+ */
+const ACCOUNT_STAGE_LABEL: Record<string, string> = {
+  Onboarding: "Onboarding",
+  "Account Live": "Account opened",
+  "First Fund Initiated": "Invested",
+  "Regular Investor": "Regular investor",
+};
+
+/** Which date on the record evidences each stage, where one exists. */
+const ACCOUNT_STAGE_DATE: Record<string, string | null> = {
+  Onboarding: null,
+  "Account Live": "accountLiveDate",
+  "First Fund Initiated": "activationDate",
+  "Regular Investor": "firstTopUpDate",
+};
+
 type JourneyClient = {
   name: string | null;
   email: string | null;
@@ -284,6 +332,17 @@ export default function InvestorDetailPage() {
   }
 
   const s = statusFor(investor.stage, investor.onboardingStage);
+
+  // Position on the four-stage arc. Stages outside the list (dropped,
+  // dormant) have no place on a progress track — there is no partial journey
+  // to draw for an account that stopped — so the card is omitted entirely
+  // and the status chip above already says what happened.
+  const accountJourney = React.useMemo(() => {
+    const i = ACCOUNT_STAGES.indexOf(
+      investor.stage as (typeof ACCOUNT_STAGES)[number],
+    );
+    return i === -1 ? null : { index: i };
+  }, [investor.stage]);
   const delta =
     investor.currentValue != null && investor.investedAmount != null
       ? investor.currentValue - investor.investedAmount
@@ -403,6 +462,85 @@ export default function InvestorDetailPage() {
           </div>
         ) : null}
       </section>
+
+      {/* The account journey — the four broad stages an investor passes
+          through. This card used to sit on the investor's own performance
+          page; it belongs here, where a partner tracks their clients.
+
+          It sits above the onboarding card deliberately: this is the whole
+          arc, and the onboarding card below zooms into the current stage. */}
+      {accountJourney ? (
+        <Card
+          title="Account journey"
+          description="The stages an account passes through."
+        >
+          <div className="-mx-1 overflow-x-auto px-1 pb-1">
+            <ol className="flex min-w-max items-start">
+              {ACCOUNT_STAGES.map((stage, i) => {
+                const done = i < accountJourney.index;
+                const here = i === accountJourney.index;
+                const isLast = i === ACCOUNT_STAGES.length - 1;
+                return (
+                  <li
+                    key={stage}
+                    className="flex w-[150px] shrink-0 flex-col items-center"
+                  >
+                    <div className="flex w-full items-center">
+                      <span
+                        aria-hidden="true"
+                        className={`h-px flex-1 ${
+                          done || here ? "bg-primary/40" : "bg-border/30"
+                        }`}
+                        style={{ visibility: i === 0 ? "hidden" : undefined }}
+                      />
+                      <span
+                        aria-hidden="true"
+                        className={`flex size-7 shrink-0 items-center justify-center rounded-full border text-[11px] font-black ${
+                          here
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : done
+                              ? "border-primary bg-primary/15 text-primary dark:text-primary-foreground"
+                              : "border-border/30 bg-background text-muted-foreground"
+                        }`}
+                      >
+                        {done ? "✓" : here ? "●" : i + 1}
+                      </span>
+                      <span
+                        aria-hidden="true"
+                        className={`h-px flex-1 ${done ? "bg-primary/40" : "bg-border/30"}`}
+                        style={{ visibility: isLast ? "hidden" : undefined }}
+                      />
+                    </div>
+
+                    <div className="mt-2 px-1 text-center">
+                      <p
+                        className={`text-[12px] leading-snug ${
+                          here
+                            ? "font-bold text-foreground"
+                            : done
+                              ? "text-foreground"
+                              : "text-muted-foreground/70"
+                        }`}
+                      >
+                        {ACCOUNT_STAGE_LABEL[stage]}
+                      </p>
+                      {ACCOUNT_STAGE_DATE[stage] ? (
+                        <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">
+                          {formatDate(
+                            investor[ACCOUNT_STAGE_DATE[stage] as keyof typeof investor] as
+                              | string
+                              | null,
+                          ) || (here ? "In progress" : "")}
+                        </p>
+                      ) : null}
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        </Card>
+      ) : null}
 
       {/* Where this investor has reached.
           Shown only while onboarding: once invested, the path they took to
