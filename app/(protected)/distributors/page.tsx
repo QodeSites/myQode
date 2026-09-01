@@ -147,6 +147,21 @@ export default function DistributorOverviewPage() {
     return [...counts.entries()].sort((a, b) => b[1] - a[1]);
   }, [clients]);
 
+  // Breakdown of the "Paperwork in progress" group, in the order an account
+  // actually progresses — a partner wants to see who is nearly done and who
+  // has barely started, which sorting by count would hide.
+  const onboardingSteps = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const c of clients) {
+      if (statusFor(c.stage).key !== "paperwork") continue;
+      if (!c.onboardingStage) continue;
+      counts.set(c.onboardingStage, (counts.get(c.onboardingStage) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort(
+      (a, b) => onboardingRank(a[0]) - onboardingRank(b[0]),
+    );
+  }, [clients]);
+
   if (status === "loading") {
     return (
       <div className="flex w-full flex-col gap-5 pb-10">
@@ -224,21 +239,6 @@ export default function DistributorOverviewPage() {
       return !Number.isNaN(d) && Date.now() - d < 30 * 24 * 60 * 60 * 1000;
     })
     .sort((a, b) => String(b.accountLiveDate).localeCompare(String(a.accountLiveDate)));
-
-  // Breakdown of the "Paperwork in progress" group, in the order an account
-  // actually progresses — a partner wants to see who is nearly done and who
-  // has barely started, which sorting by count would hide.
-  const onboardingSteps = React.useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const c of clients) {
-      if (statusFor(c.stage).key !== "paperwork") continue;
-      if (!c.onboardingStage) continue;
-      counts.set(c.onboardingStage, (counts.get(c.onboardingStage) ?? 0) + 1);
-    }
-    return [...counts.entries()].sort(
-      (a, b) => onboardingRank(a[0]) - onboardingRank(b[0]),
-    );
-  }, [clients]);
 
   const strategyMax = strategyCounts.length ? strategyCounts[0][1] : 1;
   const visibleStatuses = STATUS_ORDER.filter((s) => (statusCounts.get(s.key) ?? 0) > 0);
