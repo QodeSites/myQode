@@ -112,7 +112,7 @@ export default function DistributorDocumentsPage() {
   return (
     <div className="flex w-full flex-col gap-5 pb-10">
       <header>
-        <h1 className="text-2xl">Fund literature</h1>
+        <h1 className="text-2xl">Decks</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Download and share with prospective investors.
         </p>

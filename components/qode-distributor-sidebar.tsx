@@ -59,7 +59,7 @@ export default function DistributorQodeSidebar({ open = false, onClose }: QodeSi
         Refer an investor
       </NavLink>
       <NavLink href="/distributors/documents" icon={<FileText className="h-4 w-4" />}>
-        Fund literature
+        Decks
       </NavLink>
       <NavLink
         href="/engagement/insights-and-events"
@@ -88,7 +88,7 @@ export default function DistributorQodeSidebar({ open = false, onClose }: QodeSi
         Refer
       </NavLink>
       <NavLink href="/distributors/documents" icon={<FileText className="h-4 w-4" />} onClick={onClose}>
-        Literature
+        Decks
       </NavLink>
       <NavLink href="/engagement/insights-and-events" icon={<Lightbulb className="h-4 w-4" />} onClick={onClose}>
         Insights
