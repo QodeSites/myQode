@@ -124,3 +124,45 @@ export const NEUTRAL_COLOR = "#9CA3AF";
 export function shortStrategy(name: string): string {
   return name.replace(/^Qode\s+/, "").replace(/\s+Fund$/, "");
 }
+
+/**
+ * The onboarding sub-stages, in the order an account actually progresses.
+ *
+ * Values come from Investor_Onboarding.Onboarding_Stage. Listing them in
+ * sequence lets a summary show how far along a group is, rather than sorting
+ * by count and putting a nearly-finished client above one that just started.
+ *
+ * The three terminal values ("Account Live", "First Fund Initiated",
+ * "Funded less than 50L") are excluded: an investor who has reached them is no
+ * longer in paperwork, so they never appear in this section.
+ */
+export const ONBOARDING_SEQUENCE: readonly string[] = [
+  "Investor added",
+  "Onboarding Email Sent",
+  "Documents Received",
+  "Forms Filled",
+  "Consent Received",
+  "Form Sent to Investor for Signature",
+  "Forms Received from Investor",
+  "Esign Received",
+  "Forms Sent to Nuvama",
+  "CML Pending",
+  "Observations",
+];
+
+/**
+ * Position in the sequence, for ordering. Unknown values sort last rather
+ * than first, so a new CRM value never claims to be the earliest step.
+ */
+export function onboardingRank(stage: string): number {
+  const i = ONBOARDING_SEQUENCE.indexOf(stage);
+  return i === -1 ? ONBOARDING_SEQUENCE.length : i;
+}
+
+/**
+ * True for sub-stages that mean the client stopped, not progressed.
+ * These read in destructive colour so a partner sees them as needing action.
+ */
+export function isStalledStage(stage: string): boolean {
+  return /dropped|lost/i.test(stage);
+}

@@ -9,6 +9,8 @@ import {
   STRATEGY_COLOR,
   NEUTRAL_COLOR,
   statusFor,
+  onboardingRank,
+  isStalledStage,
   type StatusInfo,
 } from "@/lib/distributorVocabulary";
 
@@ -31,6 +33,7 @@ type JourneyClient = {
   currentValue: number | null;
   strategies: string[];
   city: string | null;
+  onboardingStage?: string | null;
 };
 
 type JourneyResponse = {
@@ -222,6 +225,21 @@ export default function DistributorOverviewPage() {
     })
     .sort((a, b) => String(b.accountLiveDate).localeCompare(String(a.accountLiveDate)));
 
+  // Breakdown of the "Paperwork in progress" group, in the order an account
+  // actually progresses — a partner wants to see who is nearly done and who
+  // has barely started, which sorting by count would hide.
+  const onboardingSteps = React.useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const c of clients) {
+      if (statusFor(c.stage).key !== "paperwork") continue;
+      if (!c.onboardingStage) continue;
+      counts.set(c.onboardingStage, (counts.get(c.onboardingStage) ?? 0) + 1);
+    }
+    return [...counts.entries()].sort(
+      (a, b) => onboardingRank(a[0]) - onboardingRank(b[0]),
+    );
+  }, [clients]);
+
   const strategyMax = strategyCounts.length ? strategyCounts[0][1] : 1;
   const visibleStatuses = STATUS_ORDER.filter((s) => (statusCounts.get(s.key) ?? 0) > 0);
 
@@ -368,6 +386,45 @@ export default function DistributorOverviewPage() {
                     </Link>
                   </li>
                 ))}
+              </ul>
+            </Card>
+          ) : null}
+
+          {/* Onboarding breakdown — the detail behind "Paperwork in progress" */}
+          {onboardingSteps.length ? (
+            <Card
+              title="Where the paperwork has reached"
+              description="Investors still opening an account, by the step they are on."
+            >
+              <ul className="flex flex-col gap-1">
+                {onboardingSteps.map(([step, n]) => {
+                  const stalled = isStalledStage(step);
+                  return (
+                    <li key={step}>
+                      <Link
+                        href="/distributors/investors?status=paperwork"
+                        className="-mx-2 flex items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-background"
+                      >
+                        <span
+                          className="font-sans text-sm font-bold tabular-nums"
+                          style={{
+                            color: stalled ? "var(--destructive)" : undefined,
+                          }}
+                        >
+                          {n}
+                        </span>
+                        <span
+                          className={`text-sm ${
+                            stalled ? "text-destructive" : "text-foreground"
+                          }`}
+                        >
+                          {step}
+                        </span>
+                        <ChevronRight className="ml-auto size-3.5 shrink-0 text-muted-foreground" />
+                      </Link>
+                    </li>
+                  );
+                })}
               </ul>
             </Card>
           ) : null}
