@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { Calculator, LayoutDashboard, Lightbulb, LifeBuoy, Share2, Users } from "lucide-react"
+import { Calculator, FileText, LayoutDashboard, Lightbulb, LifeBuoy, Share2, Users } from "lucide-react"
 
 function NavLink({
   href,
@@ -58,6 +58,9 @@ export default function DistributorQodeSidebar({ open = false, onClose }: QodeSi
       <NavLink href="/distributors/referrals" icon={<Share2 className="h-4 w-4" />}>
         Refer an investor
       </NavLink>
+      <NavLink href="/distributors/documents" icon={<FileText className="h-4 w-4" />}>
+        Fund literature
+      </NavLink>
       <NavLink
         href="/engagement/insights-and-events"
         icon={<Lightbulb className="h-4 w-4" />}
@@ -83,6 +86,9 @@ export default function DistributorQodeSidebar({ open = false, onClose }: QodeSi
       </NavLink>
       <NavLink href="/distributors/referrals" icon={<Share2 className="h-4 w-4" />} onClick={onClose}>
         Refer
+      </NavLink>
+      <NavLink href="/distributors/documents" icon={<FileText className="h-4 w-4" />} onClick={onClose}>
+        Literature
       </NavLink>
       <NavLink href="/engagement/insights-and-events" icon={<Lightbulb className="h-4 w-4" />} onClick={onClose}>
         Insights
