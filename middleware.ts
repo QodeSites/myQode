@@ -76,6 +76,23 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // While an admin or distributor is viewing someone else's account, the
+  // transactional pages are off limits: nobody may move a client's money from
+  // inside an impersonated session.
+  //
+  // This lives in middleware because it is the only layer that sees both the
+  // cookie and the path — a server component cannot read the current pathname.
+  // Hiding the sidebar links is presentation; this is the control.
+  const impersonating = request.cookies.get('qode-admin-impersonation')?.value;
+  if (impersonating) {
+    const blocked = ['/payment', '/experience/account-services'];
+    if (blocked.some((p) => request.nextUrl.pathname.startsWith(p))) {
+      const url = new URL('/portfolio/performance', request.url);
+      url.searchParams.set('blocked', 'impersonation');
+      return NextResponse.redirect(url);
+    }
+  }
+
   return NextResponse.next();
 }
 
@@ -88,5 +105,8 @@ export const config = {
     '/api/:path*',
     '/distributors/internal',
     '/distributors/internal/:path*',
+    // Reached so the impersonation block above can refuse them.
+    '/payment/:path*',
+    '/experience/account-services/:path*',
   ],
 };

@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { Calculator, LayoutDashboard, Lightbulb, Users } from "lucide-react"
+import { Calculator, LayoutDashboard, Lightbulb, Share2, Users } from "lucide-react"
 
 function NavLink({
   href,
@@ -43,61 +43,45 @@ type QodeSidebarProps = {
 export default function DistributorQodeSidebar({ open = false, onClose }: QodeSidebarProps) {
   const SidebarContent = (
     <nav className="h-full flex flex-col gap-1">
-      <NavLink
-        href="/distributors"
-        icon={<LayoutDashboard className="h-4 w-4" />}
-      >
-        Dashboard
+      <NavLink href="/distributors" icon={<LayoutDashboard className="h-4 w-4" />}>
+        Overview
       </NavLink>
-      <NavLink
-        href="/distributor/clients"
-        icon={<Users className="h-4 w-4" />}
-      >
-        My Clients
+      <NavLink href="/distributors/investors" icon={<Users className="h-4 w-4" />}>
+        Your investors
       </NavLink>
       <NavLink
         href="/distributor/fees-distribution"
         icon={<Calculator className="h-4 w-4" />}
       >
-        Fees &amp; Payouts
+        Fees &amp; payouts
+      </NavLink>
+      <NavLink href="/distributors/referrals" icon={<Share2 className="h-4 w-4" />}>
+        Refer an investor
       </NavLink>
       <NavLink
         href="/engagement/insights-and-events"
         icon={<Lightbulb className="h-4 w-4" />}
       >
-        Insights &amp; Events
+        Insights &amp; events
       </NavLink>
     </nav>
   )
 
   const SidebarContentMobile = ({ onClose }: { onClose?: () => void }) => (
     <nav className="h-full flex flex-col gap-1 mt-5">
-      <NavLink
-        href="/distributors"
-        icon={<LayoutDashboard className="h-4 w-4" />}
-        onClick={onClose}
-      >
-        Dashboard
+      <NavLink href="/distributors" icon={<LayoutDashboard className="h-4 w-4" />} onClick={onClose}>
+        Overview
       </NavLink>
-      <NavLink
-        href="/distributor/clients"
-        icon={<Users className="h-4 w-4" />}
-        onClick={onClose}
-      >
-        Clients
+      <NavLink href="/distributors/investors" icon={<Users className="h-4 w-4" />} onClick={onClose}>
+        Investors
       </NavLink>
-      <NavLink
-        href="/distributor/fees-distribution"
-        icon={<Calculator className="h-4 w-4" />}
-        onClick={onClose}
-      >
+      <NavLink href="/distributor/fees-distribution" icon={<Calculator className="h-4 w-4" />} onClick={onClose}>
         Fees
       </NavLink>
-      <NavLink
-        href="/engagement/insights-and-events"
-        icon={<Lightbulb className="h-4 w-4" />}
-        onClick={onClose}
-      >
+      <NavLink href="/distributors/referrals" icon={<Share2 className="h-4 w-4" />} onClick={onClose}>
+        Refer
+      </NavLink>
+      <NavLink href="/engagement/insights-and-events" icon={<Lightbulb className="h-4 w-4" />} onClick={onClose}>
         Insights
       </NavLink>
     </nav>

@@ -69,6 +69,11 @@ export type JourneyClient = {
   annualReviewStatus: string | null;
   /** Whether they have been walked through the portal. */
   hadWalkthrough: boolean;
+  /**
+   * Portal account code, joined from pms_clients_master by the journey route.
+   * Null when the investor has no portal account. Not sourced from Zoho.
+   */
+  clientCode?: string | null;
 };
 
 export type DistributorJourney = {

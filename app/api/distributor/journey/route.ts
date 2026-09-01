@@ -5,6 +5,7 @@ import {
   getDistributorClientCount,
 } from "@/lib/distributorIdentity";
 import { getJourneyForDistributor } from "@/lib/zohoDistributorJourney";
+import { query } from "@/lib/db";
 
 const ONBOARDING_BASE = "https://onboarding.qodeinvest.com";
 
@@ -85,6 +86,42 @@ export async function GET() {
     } catch (err) {
       console.error("[distributor/journey] Zoho lookup failed:", err);
       zohoAvailable = false;
+    }
+
+    // Attach each investor's portal client code, so the partner can open that
+    // account. The code lives in pms_clients_master, not Zoho, so it is joined
+    // here by email rather than carried through the CRM read.
+    //
+    // Scoped to THIS distributor's own book: intermediaryname must match their
+    // clientname, so a Zoho email that belongs to another partner's client
+    // cannot pick up a code it should not have.
+    const codeByEmail = new Map<string, string>();
+    try {
+      const codes = await query(
+        `SELECT lower(email) AS email, clientcode
+           FROM pms_clients_master
+          WHERE intermediaryname = $1
+            AND clientcode IS NOT NULL
+            AND email IS NOT NULL`,
+        [distributor.clientname],
+      );
+      for (const row of codes.rows ?? []) {
+        // One investor can hold several strategy accounts; the first is enough
+        // to open their portal view.
+        if (row.email && !codeByEmail.has(String(row.email))) {
+          codeByEmail.set(String(row.email), String(row.clientcode));
+        }
+      }
+    } catch (err) {
+      console.error("[distributor/journey] client code lookup failed:", err);
+    }
+
+    if (journey) {
+      journey.clients = journey.clients.map((c) => ({
+        ...c,
+        clientCode:
+          codeByEmail.get(String(c.email ?? "").trim().toLowerCase()) ?? null,
+      })) as typeof journey.clients;
     }
 
     // Book totals across their referred investors. Nulls are skipped rather
