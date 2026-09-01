@@ -8,6 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   STRATEGY_COLOR,
   NEUTRAL_COLOR,
+  ONBOARDING_SEQUENCE,
+  onboardingRank,
   shortStrategy,
   statusFor,
 } from "@/lib/distributorVocabulary";
@@ -394,6 +396,96 @@ export default function InvestorDetailPage() {
           </div>
         ) : null}
       </section>
+
+      {/* Where this investor has reached.
+          Shown only while onboarding: once invested, the path they took to
+          get there is history, and the money is what matters. */}
+      {s.key === "onboarding" && investor.onboardingStage ? (
+        <Card
+          title="Onboarding progress"
+          description="Steps completed, and what happens next."
+        >
+          {(() => {
+            const current = onboardingRank(investor.onboardingStage);
+            // A stage we don't know sorts past the end of the sequence, which
+            // would draw every step complete and no current marker — telling a
+            // partner their client finished onboarding when we simply don't
+            // recognise the CRM value. Show the stage plainly instead.
+            if (current >= ONBOARDING_SEQUENCE.length) {
+              return (
+                <p className="text-sm text-foreground">
+                  {investor.onboardingStage}
+                </p>
+              );
+            }
+            // Everything up to and including the step after theirs — the next
+            // step is the useful one to see; the rest of the path is not yet
+            // their concern.
+            const shown = ONBOARDING_SEQUENCE.slice(
+              0,
+              Math.min(current + 2, ONBOARDING_SEQUENCE.length),
+            );
+            return (
+              <ol className="flex flex-col">
+                {shown.map((step, i) => {
+                  const done = i < current;
+                  const here = i === current;
+                  const isLast = i === shown.length - 1;
+                  return (
+                    <li key={step} className="flex gap-3">
+                      <div className="flex flex-col items-center">
+                        <span
+                          aria-hidden="true"
+                          className={`flex size-6 shrink-0 items-center justify-center rounded-full border text-[11px] font-black ${
+                            here
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : done
+                                ? "border-primary bg-primary/15 text-primary dark:text-primary-foreground"
+                                : "border-border/30 bg-background text-muted-foreground"
+                          }`}
+                        >
+                          {done ? "✓" : here ? "●" : ""}
+                        </span>
+                        {!isLast ? (
+                          <span
+                            aria-hidden="true"
+                            className={`w-px flex-1 ${done ? "bg-primary/40" : "bg-border/30"}`}
+                            style={{ minHeight: 18 }}
+                          />
+                        ) : null}
+                      </div>
+                      <div className="min-w-0 pb-3">
+                        <p
+                          className={`text-sm ${
+                            here
+                              ? "font-bold text-foreground"
+                              : done
+                                ? "text-foreground"
+                                : "text-muted-foreground/70"
+                          }`}
+                        >
+                          {step}
+                        </p>
+                        {here ? (
+                          <p className="text-[11px] text-muted-foreground">
+                            Currently here
+                            {investor.stageEntryDate
+                              ? ` since ${formatDate(investor.stageEntryDate)}`
+                              : ""}
+                          </p>
+                        ) : null}
+                        {!done && !here ? (
+                          <p className="text-[11px] text-muted-foreground">Next step</p>
+                        ) : null}
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            );
+          })()}
+        </Card>
+      ) : null}
 
       {/* Their account */}
       <Card title="Account">
