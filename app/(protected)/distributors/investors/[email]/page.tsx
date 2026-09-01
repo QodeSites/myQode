@@ -1,0 +1,433 @@
+"use client";
+
+import * as React from "react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { ArrowLeft, Download, ExternalLink } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  STRATEGY_COLOR,
+  NEUTRAL_COLOR,
+  shortStrategy,
+  statusFor,
+} from "@/lib/distributorVocabulary";
+
+/**
+ * One investor, in full, for the partner who referred them.
+ *
+ * Reads the partner's own journey payload and picks the matching investor,
+ * rather than adding an endpoint: that payload is already scoped server-side
+ * to this distributor's book, so a partner cannot reach an investor who is not
+ * theirs simply by editing the URL.
+ *
+ * WHAT IS DELIBERATELY NOT SHOWN
+ * `lastConversation` is a free-text internal note — real values include
+ * "Called him, said will call back in 30 mins, didn't call back". That is the
+ * Qode team's record of a client, written for an internal audience, and a
+ * distributor is an external party. Same reasoning as
+ * lib/zohoInvestorDetails.ts, which keeps its slice deliberately narrow.
+ */
+
+const QAW = "#008455";
+
+type JourneyClient = {
+  name: string | null;
+  email: string | null;
+  clientCode?: string | null;
+  stage: string | null;
+  stageEntryDate: string | null;
+  activationDate: string | null;
+  accountLiveDate: string | null;
+  firstTopUpDate: string | null;
+  investedAmount: number | null;
+  currentValue: number | null;
+  strategies: string[];
+  relationshipManager: string | null;
+  mobile: string | null;
+  city: string | null;
+  occupation: string | null;
+  nextContactDate: string | null;
+  annualReviewStatus: string | null;
+  hadWalkthrough: boolean;
+};
+
+type JourneyResponse = {
+  distributor: { name: string; email: string };
+  journey: { clients: JourneyClient[] } | null;
+  zohoAvailable: boolean;
+  crmLinked: boolean;
+};
+
+function money(n: number | null): string {
+  if (n == null) return "—";
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "−" : "";
+  if (abs >= 10000000) return `${sign}₹${(abs / 10000000).toFixed(2)} Cr`;
+  if (abs >= 100000) return `${sign}₹${(abs / 100000).toFixed(1)} L`;
+  return `${sign}₹${abs.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
+}
+
+function formatDate(iso: string | null): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function Field({ label, value }: { label: string; value: string | null }) {
+  return (
+    <div>
+      <dt className="text-[10px] font-black uppercase tracking-[0.11em] text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="mt-0.5 break-words text-sm text-foreground">{value ?? "—"}</dd>
+    </div>
+  );
+}
+
+function Card({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-xl border border-border/20 bg-card shadow-sm px-5 py-5">
+      <h2 className="text-base font-semibold text-foreground">{title}</h2>
+      {description ? (
+        <p className="mt-1 text-[12px] text-muted-foreground">{description}</p>
+      ) : null}
+      <div className="mt-4">{children}</div>
+    </section>
+  );
+}
+
+export default function InvestorDetailPage() {
+  const params = useParams<{ email: string }>();
+  const email = params?.email ? decodeURIComponent(params.email) : "";
+
+  const [data, setData] = React.useState<JourneyResponse | null>(null);
+  const [status, setStatus] = React.useState<
+    "loading" | "ready" | "forbidden" | "notfound" | "error"
+  >("loading");
+  const [busy, setBusy] = React.useState(false);
+  const [message, setMessage] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/distributor/journey", { cache: "no-store" });
+        if (cancelled) return;
+        if (res.status === 401 || res.status === 403) {
+          setStatus("forbidden");
+          return;
+        }
+        if (!res.ok) {
+          setStatus("error");
+          return;
+        }
+        const body = (await res.json()) as JourneyResponse;
+        setData(body);
+        const found = (body.journey?.clients ?? []).some(
+          (c) => String(c.email ?? "").toLowerCase() === email.toLowerCase(),
+        );
+        setStatus(found ? "ready" : "notfound");
+      } catch {
+        if (!cancelled) setStatus("error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [email]);
+
+  const investor = React.useMemo(
+    () =>
+      (data?.journey?.clients ?? []).find(
+        (c) => String(c.email ?? "").toLowerCase() === email.toLowerCase(),
+      ) ?? null,
+    [data, email],
+  );
+
+  async function downloadSoa() {
+    if (!investor?.email) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const res = await fetch(
+        `/api/distributor/investor-soa?email=${encodeURIComponent(investor.email)}`,
+        { cache: "no-store" },
+      );
+      if (!res.ok) {
+        setMessage("No SOA has been issued for this investor yet.");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `SOA - ${(investor.name ?? "investor").replace(/[^\w\s-]/g, "")}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      setMessage("We couldn't fetch the SOA. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openAccount() {
+    if (!investor?.clientCode) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/admin/dashboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "impersonate", clientCode: investor.clientCode }),
+      });
+      const body = await res.json();
+      if (!body?.success || !body?.redirectUrl) {
+        setMessage("We couldn't open this account just now. Please try again.");
+        return;
+      }
+      window.open(body.redirectUrl, "_blank", "noopener");
+    } catch {
+      setMessage("We couldn't reach the server. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (status === "loading") {
+    return (
+      <div className="flex w-full flex-col gap-4 pb-10">
+        <Skeleton className="h-8 w-56" />
+        <Skeleton className="h-32 w-full rounded-xl" />
+        <Skeleton className="h-48 w-full rounded-xl" />
+      </div>
+    );
+  }
+
+  if (status === "forbidden") {
+    return (
+      <div className="flex w-full flex-col gap-4 pb-10">
+        <h1 className="text-2xl">Investor</h1>
+        <div className="rounded-xl border border-border/20 bg-card shadow-sm px-6 py-10 text-center">
+          <p className="text-sm text-muted-foreground">
+            This page is for Qode distribution partners. If you think you should have
+            access, email{" "}
+            <a
+              className="font-bold text-primary underline underline-offset-4 dark:text-primary-foreground"
+              href="mailto:partnerships@qodeinvest.com"
+            >
+              partnerships@qodeinvest.com
+            </a>
+            .
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // "Not one of yours" and "does not exist" give the same answer, so a partner
+  // cannot discover which investors exist by trying addresses.
+  if (status === "notfound" || (status === "ready" && !investor)) {
+    return (
+      <div className="flex w-full flex-col gap-4 pb-10">
+        <Link
+          href="/distributors/investors"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="size-4" /> Your investors
+        </Link>
+        <div className="rounded-xl border border-border/20 bg-card shadow-sm px-6 py-10 text-center">
+          <p className="text-sm text-muted-foreground">
+            We couldn&apos;t find that investor in your book.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === "error" || !investor) {
+    return (
+      <div className="flex w-full flex-col gap-4 pb-10">
+        <h1 className="text-2xl">Investor</h1>
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-5 py-4">
+          <p className="text-sm text-foreground">
+            We couldn&apos;t load this investor. Please refresh to try again.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const s = statusFor(investor.stage);
+  const delta =
+    investor.currentValue != null && investor.investedAmount != null
+      ? investor.currentValue - investor.investedAmount
+      : null;
+  const deltaPct =
+    delta != null && investor.investedAmount
+      ? (delta / investor.investedAmount) * 100
+      : null;
+  const up = delta != null && delta >= 0;
+
+  return (
+    <div className="flex w-full flex-col gap-4 pb-10">
+      <div>
+        <Link
+          href="/distributors/investors"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="size-4" /> Your investors
+        </Link>
+        <div className="mt-2 flex flex-wrap items-center gap-2.5">
+          <h1 className="text-2xl">{investor.name ?? "Investor"}</h1>
+          <span
+            className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+              s.tone === "warn"
+                ? "bg-destructive/10 text-destructive"
+                : "bg-muted-foreground/10 text-muted-foreground"
+            }`}
+          >
+            {s.label}
+          </span>
+        </div>
+        <p className="mt-1 text-sm text-muted-foreground">{s.detail}</p>
+      </div>
+
+      {message ? (
+        <div className="rounded-md border border-border/20 bg-card px-4 py-3 text-sm text-foreground">
+          {message}
+        </div>
+      ) : null}
+
+      {/* Actions first — they are why a partner opened this page. */}
+      <div className="flex flex-wrap gap-2">
+        {investor.email ? (
+          <button
+            type="button"
+            onClick={downloadSoa}
+            disabled={busy}
+            className="inline-flex min-h-[40px] items-center gap-2 rounded-md border border-border/20 bg-card px-4 text-sm font-bold text-primary hover:border-primary/50 disabled:opacity-50 dark:text-primary-foreground"
+          >
+            <Download className="size-4" />
+            {busy ? "Working…" : "Download SOA"}
+          </button>
+        ) : null}
+        {investor.clientCode ? (
+          <button
+            type="button"
+            onClick={openAccount}
+            disabled={busy}
+            className="inline-flex min-h-[40px] items-center gap-2 rounded-md border border-border/20 bg-card px-4 text-sm font-bold text-primary hover:border-primary/50 disabled:opacity-50 dark:text-primary-foreground"
+          >
+            <ExternalLink className="size-4" />
+            {busy ? "Working…" : "View their portfolio"}
+          </button>
+        ) : null}
+      </div>
+
+      {/* Money */}
+      <section className="rounded-xl border border-border/20 bg-card shadow-sm px-5 py-5">
+        <p className="text-[10px] font-black uppercase tracking-[0.11em] text-muted-foreground">
+          Current value
+        </p>
+        <p className="mt-1.5 font-sans text-[32px] font-bold leading-none tabular-nums text-foreground">
+          {money(investor.currentValue)}
+        </p>
+        {delta != null && deltaPct != null ? (
+          <p className="mt-2 text-sm">
+            <span
+              className="font-bold tabular-nums"
+              style={{ color: up ? QAW : "var(--destructive)" }}
+            >
+              {up ? "▲" : "▼"} {money(Math.abs(delta))} ({up ? "+" : "−"}
+              {Math.abs(deltaPct).toFixed(1)}%)
+            </span>{" "}
+            <span className="text-muted-foreground">
+              against {money(investor.investedAmount)} invested
+            </span>
+          </p>
+        ) : (
+          <p className="mt-2 text-sm text-muted-foreground">
+            Holdings are not yet priced in our records.
+          </p>
+        )}
+
+        {investor.strategies.length ? (
+          <div className="mt-4 border-t border-border/20 pt-3">
+            <p className="text-[10px] font-black uppercase tracking-[0.11em] text-muted-foreground">
+              Strategies
+            </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {investor.strategies.map((name) => (
+                <span
+                  key={name}
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border/20 px-2.5 py-1 text-[11.5px] text-foreground"
+                >
+                  <span
+                    className="size-2 rounded-sm"
+                    style={{ background: STRATEGY_COLOR[name] ?? NEUTRAL_COLOR }}
+                  />
+                  {shortStrategy(name)}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </section>
+
+      {/* Their account */}
+      <Card title="Account">
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Field label="Account code" value={investor.clientCode ?? null} />
+          <Field label="Activation date" value={formatDate(investor.activationDate)} />
+          <Field
+            label="First investment"
+            value={formatDate(investor.accountLiveDate)}
+          />
+          <Field label="Last top-up" value={formatDate(investor.firstTopUpDate)} />
+          <Field
+            label="Annual review"
+            value={investor.annualReviewStatus ?? null}
+          />
+          <Field
+            label="Portal walkthrough"
+            value={investor.hadWalkthrough ? "Done" : "Not done"}
+          />
+        </dl>
+      </Card>
+
+      {/* Who they are */}
+      <Card title="Contact">
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+          <Field label="Email" value={investor.email} />
+          <Field label="Mobile" value={investor.mobile} />
+          <Field label="City" value={investor.city} />
+          <Field label="Occupation" value={investor.occupation} />
+          <Field
+            label="Relationship manager"
+            value={investor.relationshipManager}
+          />
+          <Field
+            label="Next contact"
+            value={formatDate(investor.nextContactDate)}
+          />
+        </dl>
+      </Card>
+    </div>
+  );
+}

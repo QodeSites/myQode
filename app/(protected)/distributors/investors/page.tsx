@@ -128,7 +128,7 @@ export default function DistributorInvestorsPage() {
   }, [q, statusKey]);
 
   /**
-   * Downloads the investor's statement.
+   * Downloads the investor's SOA.
    *
    * The list does not know who has one — the journey endpoint reads Zoho by
    * COQL and SOA_Reports is a fileupload field, unavailable that way. Probing
@@ -146,7 +146,7 @@ export default function DistributorInvestorsPage() {
       );
       if (!res.ok) {
         setMessage(
-          `No statement is available for ${name ?? "this investor"} yet. We'll add it once it's issued.`,
+          `No SOA has been issued for ${name ?? "this investor"} yet.`,
         );
         return;
       }
@@ -154,13 +154,13 @@ export default function DistributorInvestorsPage() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${(name ?? "statement").replace(/[^\w\s-]/g, "")}.pdf`;
+      a.download = `SOA - ${(name ?? "investor").replace(/[^\w\s-]/g, "")}.pdf`;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
     } catch {
-      setMessage("We couldn't fetch that statement. Please try again.");
+      setMessage("We couldn't fetch the SOA. Please try again.");
     } finally {
       setBusy(null);
     }
@@ -384,9 +384,18 @@ export default function DistributorInvestorsPage() {
                       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1.5">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-sm font-bold text-foreground">
-                              {c.name ?? "—"}
-                            </span>
+                            {c.email ? (
+                              <Link
+                                href={`/distributors/investors/${encodeURIComponent(c.email)}`}
+                                className="text-sm font-bold text-foreground underline-offset-4 hover:underline"
+                              >
+                                {c.name ?? "—"}
+                              </Link>
+                            ) : (
+                              <span className="text-sm font-bold text-foreground">
+                                {c.name ?? "—"}
+                              </span>
+                            )}
                             <span
                               className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
                                 s.tone === "warn"
@@ -431,6 +440,13 @@ export default function DistributorInvestorsPage() {
 
                       <div className="mt-2 flex flex-wrap gap-2">
                         {c.email ? (
+                          <>
+                          <Link
+                            href={`/distributors/investors/${encodeURIComponent(c.email)}`}
+                            className="inline-flex min-h-[32px] items-center gap-1.5 rounded-md border border-border/20 px-2.5 text-[11.5px] font-bold text-primary hover:border-primary/50 dark:text-primary-foreground"
+                          >
+                            View details
+                          </Link>
                           <button
                             type="button"
                             onClick={() => downloadStatement(c.email, c.name)}
@@ -438,8 +454,9 @@ export default function DistributorInvestorsPage() {
                             className="inline-flex min-h-[32px] items-center gap-1.5 rounded-md border border-border/20 px-2.5 text-[11.5px] font-bold text-primary hover:border-primary/50 disabled:opacity-50 dark:text-primary-foreground"
                           >
                             <Download className="size-3" />
-                            {busy === c.email ? "Fetching…" : "Statement"}
+                            {busy === c.email ? "Fetching…" : "SOA"}
                           </button>
+                          </>
                         ) : null}
                         {c.clientCode ? (
                           <button
