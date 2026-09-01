@@ -5,6 +5,17 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  Area,
+  AreaChart,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
   STATUS_ORDER,
   STRATEGY_COLOR,
   NEUTRAL_COLOR,
@@ -29,6 +40,7 @@ type JourneyClient = {
   email: string | null;
   stage: string | null;
   accountLiveDate: string | null;
+  activationDate: string | null;
   investedAmount: number | null;
   currentValue: number | null;
   strategies: string[];
@@ -259,6 +271,78 @@ export default function DistributorOverviewPage() {
     })
     .sort((a, b) => String(b.accountLiveDate).localeCompare(String(a.accountLiveDate)));
 
+  // Money brought in per month, by the date each investor was activated.
+  // This is the strongest signal a partner has about their own momentum, and
+  // nothing on the page showed it before.
+  const monthlyInflow = React.useMemo(() => {
+    const by = new Map<string, { amount: number; investors: number }>();
+    for (const c of clients) {
+      if (!c.activationDate || !c.investedAmount) continue;
+      const key = String(c.activationDate).slice(0, 7);
+      const row = by.get(key) ?? { amount: 0, investors: 0 };
+      row.amount += c.investedAmount;
+      row.investors += 1;
+      by.set(key, row);
+    }
+    // Fill the gaps: a month where nobody invested is a real zero, and
+    // skipping it would draw a flat line between two distant points.
+    const keys = [...by.keys()].sort();
+    if (!keys.length) return [];
+    const out: { month: string; label: string; amount: number; investors: number }[] = [];
+    const [sy, sm] = keys[0].split("-").map(Number);
+    const [ey, em] = keys[keys.length - 1].split("-").map(Number);
+    for (let y = sy, m = sm; y < ey || (y === ey && m <= em); m === 12 ? (m = 1, y++) : m++) {
+      const key = `${y}-${String(m).padStart(2, "0")}`;
+      const row = by.get(key);
+      out.push({
+        month: key,
+        label: new Date(y, m - 1, 1).toLocaleDateString("en-IN", { month: "short" }),
+        amount: row?.amount ?? 0,
+        investors: row?.investors ?? 0,
+      });
+    }
+    return out;
+  }, [clients]);
+
+  // Rupees per strategy, not just headcount. An investor holding three
+  // strategies has their money split evenly across them: the per-strategy
+  // amount is not in the payload, so this is an apportionment, and the card
+  // says so rather than implying an exactness we do not have.
+  const strategyMoney = React.useMemo(() => {
+    const by = new Map<string, { value: number; investors: number }>();
+    for (const c of clients) {
+      if (!c.currentValue || !c.strategies.length) continue;
+      const share = c.currentValue / c.strategies.length;
+      for (const t of c.strategies) {
+        const row = by.get(t) ?? { value: 0, investors: 0 };
+        row.value += share;
+        row.investors += 1;
+        by.set(t, row);
+      }
+    }
+    return [...by.entries()]
+      .map(([name, v]) => ({ name, ...v }))
+      .sort((a, b) => b.value - a.value);
+  }, [clients]);
+
+  // How much of the book rests on its largest few investors. A partner whose
+  // top handful carry most of the money is exposed in a way a total hides.
+  const concentration = React.useMemo(() => {
+    const vals = clients
+      .map((c) => c.currentValue ?? 0)
+      .filter((v) => v > 0)
+      .sort((a, b) => b - a);
+    if (vals.length < 5) return null;
+    const total = vals.reduce((a, b) => a + b, 0);
+    if (!total) return null;
+    return {
+      topFivePct: (vals.slice(0, 5).reduce((a, b) => a + b, 0) / total) * 100,
+      largest: vals[0],
+      median: vals[Math.floor(vals.length / 2)],
+      count: vals.length,
+    };
+  }, [clients]);
+
   const strategyMax = strategyCounts.length ? strategyCounts[0][1] : 1;
   const visibleStatuses = STATUS_ORDER.filter((s) => (statusCounts.get(s.key) ?? 0) > 0);
 
@@ -361,6 +445,189 @@ export default function DistributorOverviewPage() {
               </p>
             ) : null}
           </section>
+
+          {/* Money brought in, month by month. Two series in one reading:
+              the area is rupees, the tooltip says how many investors that
+              month accounted for. */}
+          {monthlyInflow.length >= 2 ? (
+            <Card
+              title="Money you have brought in"
+              description="By the month each investor started investing."
+            >
+              <div className="h-[220px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={monthlyInflow}
+                    margin={{ top: 8, right: 8, bottom: 0, left: 8 }}
+                  >
+                    <defs>
+                      <linearGradient id="inflow" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={QAW} stopOpacity={0.35} />
+                        <stop offset="100%" stopColor={QAW} stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis
+                      dataKey="label"
+                      tickLine={false}
+                      axisLine={false}
+                      tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      width={52}
+                      tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                      tickFormatter={(v: number) =>
+                        v >= 10000000
+                          ? `${(v / 10000000).toFixed(1)}Cr`
+                          : `${Math.round(v / 100000)}L`
+                      }
+                    />
+                    <Tooltip
+                      cursor={{ stroke: QAW, strokeOpacity: 0.3 }}
+                      contentStyle={{
+                        borderRadius: 8,
+                        border: "1px solid var(--border)",
+                        background: "var(--card)",
+                        fontSize: 12,
+                      }}
+                      formatter={(v: number, _n: unknown, item: { payload?: { investors?: number } }) => [
+                        `${money(v)} from ${item?.payload?.investors ?? 0} ${
+                          item?.payload?.investors === 1 ? "investor" : "investors"
+                        }`,
+                        "Brought in",
+                      ]}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="amount"
+                      stroke={QAW}
+                      strokeWidth={2}
+                      fill="url(#inflow)"
+                      dot={{ r: 3, fill: QAW }}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          ) : null}
+
+          {/* Where the money sits, and how exposed the book is. Side by side:
+              both answer the same question about the shape of the book. */}
+          <div className="grid gap-5 md:grid-cols-2">
+            {strategyMoney.length ? (
+              <Card
+                title="Where the money sits"
+                description="Split evenly for investors holding more than one strategy."
+              >
+                <div className="flex items-center gap-4">
+                  <div className="h-[150px] w-[150px] shrink-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={strategyMoney}
+                          dataKey="value"
+                          nameKey="name"
+                          innerRadius={44}
+                          outerRadius={70}
+                          paddingAngle={2}
+                          stroke="none"
+                        >
+                          {strategyMoney.map((d) => (
+                            <Cell
+                              key={d.name}
+                              fill={STRATEGY_COLOR[d.name] ?? NEUTRAL_COLOR}
+                            />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{
+                            borderRadius: 8,
+                            border: "1px solid var(--border)",
+                            background: "var(--card)",
+                            fontSize: 12,
+                          }}
+                          formatter={(v: number) => money(v)}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <ul className="min-w-0 flex-1 space-y-2">
+                    {strategyMoney.map((d) => (
+                      <li key={d.name} className="flex items-start gap-2">
+                        <span
+                          aria-hidden="true"
+                          className="mt-1 size-2.5 shrink-0 rounded-full"
+                          style={{
+                            background: STRATEGY_COLOR[d.name] ?? NEUTRAL_COLOR,
+                          }}
+                        />
+                        <span className="min-w-0">
+                          <Link
+                            href={`/distributors/investors?strategy=${encodeURIComponent(d.name)}`}
+                            className="block truncate text-[13px] text-foreground underline-offset-4 hover:underline"
+                          >
+                            {d.name}
+                          </Link>
+                          <span className="text-[12px] tabular-nums text-muted-foreground">
+                            {money(d.value)} · {d.investors}{" "}
+                            {d.investors === 1 ? "investor" : "investors"}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </Card>
+            ) : null}
+
+            {concentration ? (
+              <Card
+                title="How concentrated your book is"
+                description="A book resting on a few large investors carries a risk a total hides."
+              >
+                <p className="font-sans text-[32px] font-bold leading-none tabular-nums text-foreground">
+                  {concentration.topFivePct.toFixed(0)}%
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  of your book sits with the largest 5 of {concentration.count}{" "}
+                  investing clients.
+                </p>
+                {/* A bar reads faster than the number alone. */}
+                <div
+                  className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted"
+                  role="img"
+                  aria-label={`Top five investors hold ${concentration.topFivePct.toFixed(0)} percent of the book`}
+                >
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${Math.min(concentration.topFivePct, 100)}%`,
+                      background: QAW,
+                    }}
+                  />
+                </div>
+                <dl className="mt-4 grid grid-cols-2 gap-4 border-t border-border/20 pt-3">
+                  <div>
+                    <dt className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Largest
+                    </dt>
+                    <dd className="mt-0.5 font-sans text-lg font-bold tabular-nums text-foreground">
+                      {money(concentration.largest)}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                      Typical
+                    </dt>
+                    <dd className="mt-0.5 font-sans text-lg font-bold tabular-nums text-foreground">
+                      {money(concentration.median)}
+                    </dd>
+                  </div>
+                </dl>
+              </Card>
+            ) : null}
+          </div>
 
           {/* Where your investors are */}
           {visibleStatuses.length ? (
