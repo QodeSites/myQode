@@ -116,6 +116,13 @@ export default function DistributorReferralsPage() {
             >
               partnerships@qodeinvest.com
             </a>
+             or call{" "}
+            <a
+              className="font-bold text-primary underline underline-offset-4 dark:text-primary-foreground"
+              href="tel:+919326535470"
+            >
+              +91 9326535470
+            </a>
             .
           </p>
         </div>

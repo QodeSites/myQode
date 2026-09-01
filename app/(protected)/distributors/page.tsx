@@ -202,6 +202,13 @@ export default function DistributorOverviewPage() {
             >
               partnerships@qodeinvest.com
             </a>
+             or call{" "}
+            <a
+              className="font-bold text-primary underline underline-offset-4 dark:text-primary-foreground"
+              href="tel:+919326535470"
+            >
+              +91 9326535470
+            </a>
             .
           </p>
         </div>
@@ -408,58 +415,71 @@ export default function DistributorOverviewPage() {
               title="The onboarding journey"
               description="Where your investors have reached on the way to opening an account."
             >
-              <ol className="flex flex-col">
-                {onboardingSteps.map(({ step, count }, i) => {
-                  const isLast = i === onboardingSteps.length - 1;
-                  const here = count > 0;
-                  return (
-                    <li key={step} className="flex gap-3">
-                      {/* Marker and the line joining it to the next step. */}
-                      <div className="flex flex-col items-center">
-                        <span
-                          aria-hidden="true"
-                          className={`flex size-6 shrink-0 items-center justify-center rounded-full border text-[10px] font-black tabular-nums ${
-                            here
-                              ? "border-primary bg-primary text-primary-foreground"
-                              : "border-border/30 bg-background text-muted-foreground"
-                          }`}
-                        >
-                          {here ? count : ""}
-                        </span>
-                        {!isLast ? (
+              {/* Horizontal: the path reads left to right, the way a
+                  journey is drawn. Long step names and up to eleven steps
+                  cannot fit across a phone, so this scrolls inside its own
+                  container — never the page. */}
+              <div className="-mx-1 overflow-x-auto px-1 pb-1">
+                <ol className="flex min-w-max items-start">
+                  {onboardingSteps.map(({ step, count }, i) => {
+                    const isLast = i === onboardingSteps.length - 1;
+                    const here = count > 0;
+                    return (
+                      <li
+                        key={step}
+                        className="flex w-[132px] shrink-0 flex-col items-center"
+                      >
+                        {/* Marker, with the connecting line running through
+                            it at the same height on both sides. */}
+                        <div className="flex w-full items-center">
                           <span
                             aria-hidden="true"
-                            className="w-px flex-1 bg-border/30"
-                            style={{ minHeight: 18 }}
+                            className="h-px flex-1 bg-border/30"
+                            style={{ visibility: i === 0 ? "hidden" : undefined }}
                           />
-                        ) : null}
-                      </div>
-
-                      {/* Step name. Occupied steps are links; empty ones are
-                          not — there is nobody there to look at. */}
-                      <div className="min-w-0 pb-3">
-                        {here ? (
-                          <Link
-                            href="/distributors/investors?status=onboarding"
-                            className="text-sm text-foreground underline-offset-4 hover:underline"
+                          <span
+                            aria-hidden="true"
+                            className={`flex size-7 shrink-0 items-center justify-center rounded-full border text-[10px] font-black tabular-nums ${
+                              here
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : "border-border/30 bg-background text-muted-foreground"
+                            }`}
                           >
-                            {step}
-                          </Link>
-                        ) : (
-                          <span className="text-sm text-muted-foreground/70">
-                            {step}
+                            {here ? count : ""}
                           </span>
-                        )}
-                        {here ? (
-                          <p className="text-[11px] text-muted-foreground">
-                            {count} {count === 1 ? "investor" : "investors"} here
-                          </p>
-                        ) : null}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
+                          <span
+                            aria-hidden="true"
+                            className="h-px flex-1 bg-border/30"
+                            style={{ visibility: isLast ? "hidden" : undefined }}
+                          />
+                        </div>
+
+                        {/* Step name. Occupied steps are links; empty ones
+                            are not — there is nobody there to look at. */}
+                        <div className="mt-2 px-1 text-center">
+                          {here ? (
+                            <Link
+                              href="/distributors/investors?status=onboarding"
+                              className="text-[12px] leading-snug text-foreground underline-offset-4 hover:underline"
+                            >
+                              {step}
+                            </Link>
+                          ) : (
+                            <span className="text-[12px] leading-snug text-muted-foreground/70">
+                              {step}
+                            </span>
+                          )}
+                          {here ? (
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                              {count} {count === 1 ? "investor" : "investors"}
+                            </p>
+                          ) : null}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
             </Card>
           ) : null}
 

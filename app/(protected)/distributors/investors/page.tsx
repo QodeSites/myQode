@@ -29,6 +29,7 @@ type JourneyClient = {
   stage: string | null;
   onboardingStage?: string | null;
   accountLiveDate: string | null;
+  activationDate: string | null;
   investedAmount: number | null;
   currentValue: number | null;
   strategies: string[];
@@ -79,6 +80,17 @@ export default function DistributorInvestorsPage() {
   const [strategy, setStrategy] = React.useState<string>(
     () => searchParams.get("strategy") ?? "",
   );
+  // Date filter. Two bases, because "when they came" and "when the account
+  // opened" are different questions with different fields behind them.
+  //
+  // Stage_Entry_Date is deliberately NOT offered: on the live book all 21
+  // populated values are the same day (2026-06-25), which is a CRM bulk-edit
+  // artifact rather than a real arrival date. First_Top_Up_Date is empty for
+  // every investor. Offering either would give a partner a filter that
+  // quietly lies.
+  const [dateBasis, setDateBasis] = React.useState<"" | "opened" | "invested">("");
+  const [fromDate, setFromDate] = React.useState("");
+  const [toDate, setToDate] = React.useState("");
   const [shown, setShown] = React.useState(10);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [message, setMessage] = React.useState<string | null>(null);
@@ -125,18 +137,41 @@ export default function DistributorInvestorsPage() {
       .filter((c) => {
         if (statusKey && statusFor(c.stage, c.onboardingStage).key !== statusKey) return false;
         if (strategy && !c.strategies.includes(strategy)) return false;
+        if (dateBasis && (fromDate || toDate)) {
+          const raw =
+            dateBasis === "opened" ? c.accountLiveDate : c.activationDate;
+          // No date on record means we cannot say it falls in the range. The
+          // count line below says how many were set aside, so a partner is
+          // never silently shown a short list.
+          if (!raw) return false;
+          const day = String(raw).slice(0, 10);
+          if (fromDate && day < fromDate) return false;
+          if (toDate && day > toDate) return false;
+        }
         if (!needle) return true;
         return [c.name, c.email, c.city, ...c.strategies]
           .filter(Boolean)
           .some((v) => String(v).toLowerCase().includes(needle));
       })
       .sort((a, b) => (b.currentValue ?? 0) - (a.currentValue ?? 0));
-  }, [clients, q, statusKey, strategy]);
+  }, [clients, q, statusKey, strategy, dateBasis, fromDate, toDate]);
+
+  // How many the date filter excluded purely for lacking a date — reported
+  // to the partner rather than silently dropped.
+  const undatedCount = React.useMemo(() => {
+    if (!dateBasis || (!fromDate && !toDate)) return 0;
+    return clients.filter((c) => {
+      if (statusKey && statusFor(c.stage, c.onboardingStage).key !== statusKey)
+        return false;
+      if (strategy && !c.strategies.includes(strategy)) return false;
+      return !(dateBasis === "opened" ? c.accountLiveDate : c.activationDate);
+    }).length;
+  }, [clients, statusKey, strategy, dateBasis, fromDate, toDate]);
 
   // A narrowed list must never open part-way down.
   React.useEffect(() => {
     setShown(10);
-  }, [q, statusKey, strategy]);
+  }, [q, statusKey, strategy, dateBasis, fromDate, toDate]);
 
   /**
    * Downloads the investor's SOA.
@@ -225,6 +260,13 @@ export default function DistributorInvestorsPage() {
               href="mailto:partnerships@qodeinvest.com"
             >
               partnerships@qodeinvest.com
+            </a>
+             or call{" "}
+            <a
+              className="font-bold text-primary underline underline-offset-4 dark:text-primary-foreground"
+              href="tel:+919326535470"
+            >
+              +91 9326535470
             </a>
             .
           </p>
@@ -361,6 +403,77 @@ export default function DistributorInvestorsPage() {
               </button>
             ) : null}
           </div>
+
+          {/* Date filter. Hidden behind a basis choice: with no basis picked
+              there is nothing to range over, and two empty date boxes on
+              first load would just be clutter. */}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <label className="sr-only" htmlFor="date-basis">
+              Filter by date
+            </label>
+            <select
+              id="date-basis"
+              value={dateBasis}
+              onChange={(e) => {
+                const v = e.target.value as "" | "opened" | "invested";
+                setDateBasis(v);
+                if (!v) {
+                  setFromDate("");
+                  setToDate("");
+                }
+              }}
+              className="min-h-[44px] rounded-md border border-border/20 bg-background px-3 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-primary"
+            >
+              <option value="">Any date</option>
+              <option value="opened">Account opened between</option>
+              <option value="invested">First invested between</option>
+            </select>
+
+            {dateBasis ? (
+              <>
+                <input
+                  type="date"
+                  value={fromDate}
+                  max={toDate || undefined}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  aria-label="From date"
+                  className="min-h-[44px] rounded-md border border-border/20 bg-background px-3 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-primary"
+                />
+                <span className="text-sm text-muted-foreground">to</span>
+                <input
+                  type="date"
+                  value={toDate}
+                  min={fromDate || undefined}
+                  onChange={(e) => setToDate(e.target.value)}
+                  aria-label="To date"
+                  className="min-h-[44px] rounded-md border border-border/20 bg-background px-3 text-sm text-foreground focus-visible:outline-2 focus-visible:outline-primary"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDateBasis("");
+                    setFromDate("");
+                    setToDate("");
+                  }}
+                  className="min-h-[44px] rounded-md px-3 text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+                >
+                  Clear dates
+                </button>
+              </>
+            ) : null}
+          </div>
+
+          {/* Say plainly how many were set aside for having no date on
+              record, so a shortened list is never mistaken for the whole
+              picture. */}
+          {undatedCount > 0 ? (
+            <p className="mt-2 text-[12px] text-muted-foreground">
+              {undatedCount}{" "}
+              {undatedCount === 1 ? "investor has" : "investors have"} no{" "}
+              {dateBasis === "opened" ? "account opened" : "first invested"}{" "}
+              date on record and {undatedCount === 1 ? "is" : "are"} not shown.
+            </p>
+          ) : null}
 
           {visible.length === 0 ? (
             <div className="mt-4 rounded-md border border-border/20 bg-background px-4 py-8 text-center">

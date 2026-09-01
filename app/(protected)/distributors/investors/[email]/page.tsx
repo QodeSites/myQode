@@ -236,6 +236,13 @@ export default function InvestorDetailPage() {
             >
               partnerships@qodeinvest.com
             </a>
+             or call{" "}
+            <a
+              className="font-bold text-primary underline underline-offset-4 dark:text-primary-foreground"
+              href="tel:+919326535470"
+            >
+              +91 9326535470
+            </a>
             .
           </p>
         </div>
@@ -426,62 +433,79 @@ export default function InvestorDetailPage() {
               Math.min(current + 2, ONBOARDING_SEQUENCE.length),
             );
             return (
-              <ol className="flex flex-col">
-                {shown.map((step, i) => {
-                  const done = i < current;
-                  const here = i === current;
-                  const isLast = i === shown.length - 1;
-                  return (
-                    <li key={step} className="flex gap-3">
-                      <div className="flex flex-col items-center">
-                        <span
-                          aria-hidden="true"
-                          className={`flex size-6 shrink-0 items-center justify-center rounded-full border text-[11px] font-black ${
-                            here
-                              ? "border-primary bg-primary text-primary-foreground"
-                              : done
-                                ? "border-primary bg-primary/15 text-primary dark:text-primary-foreground"
-                                : "border-border/30 bg-background text-muted-foreground"
-                          }`}
-                        >
-                          {done ? "✓" : here ? "●" : ""}
-                        </span>
-                        {!isLast ? (
+              /* Horizontal: the path reads left to right. Scrolls inside
+                 its own container so the page never scrolls sideways. The
+                 track behind a completed step is solid, so the distance
+                 travelled is visible at a glance. */
+              <div className="-mx-1 overflow-x-auto px-1 pb-1">
+                <ol className="flex min-w-max items-start">
+                  {shown.map((step, i) => {
+                    const done = i < current;
+                    const here = i === current;
+                    const isLast = i === shown.length - 1;
+                    return (
+                      <li
+                        key={step}
+                        className="flex w-[132px] shrink-0 flex-col items-center"
+                      >
+                        <div className="flex w-full items-center">
                           <span
                             aria-hidden="true"
-                            className={`w-px flex-1 ${done ? "bg-primary/40" : "bg-border/30"}`}
-                            style={{ minHeight: 18 }}
+                            className={`h-px flex-1 ${
+                              done || here ? "bg-primary/40" : "bg-border/30"
+                            }`}
+                            style={{ visibility: i === 0 ? "hidden" : undefined }}
                           />
-                        ) : null}
-                      </div>
-                      <div className="min-w-0 pb-3">
-                        <p
-                          className={`text-sm ${
-                            here
-                              ? "font-bold text-foreground"
-                              : done
-                                ? "text-foreground"
-                                : "text-muted-foreground/70"
-                          }`}
-                        >
-                          {step}
-                        </p>
-                        {here ? (
-                          <p className="text-[11px] text-muted-foreground">
-                            Currently here
-                            {investor.stageEntryDate
-                              ? ` since ${formatDate(investor.stageEntryDate)}`
-                              : ""}
+                          <span
+                            aria-hidden="true"
+                            className={`flex size-7 shrink-0 items-center justify-center rounded-full border text-[11px] font-black ${
+                              here
+                                ? "border-primary bg-primary text-primary-foreground"
+                                : done
+                                  ? "border-primary bg-primary/15 text-primary dark:text-primary-foreground"
+                                  : "border-border/30 bg-background text-muted-foreground"
+                            }`}
+                          >
+                            {done ? "✓" : here ? "●" : ""}
+                          </span>
+                          <span
+                            aria-hidden="true"
+                            className={`h-px flex-1 ${done ? "bg-primary/40" : "bg-border/30"}`}
+                            style={{ visibility: isLast ? "hidden" : undefined }}
+                          />
+                        </div>
+
+                        <div className="mt-2 px-1 text-center">
+                          <p
+                            className={`text-[12px] leading-snug ${
+                              here
+                                ? "font-bold text-foreground"
+                                : done
+                                  ? "text-foreground"
+                                  : "text-muted-foreground/70"
+                            }`}
+                          >
+                            {step}
                           </p>
-                        ) : null}
-                        {!done && !here ? (
-                          <p className="text-[11px] text-muted-foreground">Next step</p>
-                        ) : null}
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
+                          {here ? (
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                              Currently here
+                              {investor.stageEntryDate
+                                ? ` since ${formatDate(investor.stageEntryDate)}`
+                                : ""}
+                            </p>
+                          ) : null}
+                          {!done && !here ? (
+                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                              Next step
+                            </p>
+                          ) : null}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
             );
           })()}
         </Card>
