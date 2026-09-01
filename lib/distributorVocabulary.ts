@@ -12,7 +12,7 @@
 
 export type StatusKey =
   | "invested"
-  | "funded"
+  | "opened"
   | "paperwork"
   | "inactive"
   | "declined"
@@ -30,13 +30,13 @@ export type StatusInfo = {
 const INVESTED: StatusInfo = {
   key: "invested",
   label: "Invested",
-  detail: "Money is in the market",
+  detail: "Money is in the market and earning",
   tone: "good",
 };
-const FUNDED: StatusInfo = {
-  key: "funded",
-  label: "Account funded",
-  detail: "Paid in, units being allotted",
+const OPENED: StatusInfo = {
+  key: "opened",
+  label: "Account opened",
+  detail: "Ready to receive funds — nothing invested yet",
   tone: "normal",
 };
 const PAPERWORK: StatusInfo = {
@@ -67,7 +67,7 @@ const CLOSED: StatusInfo = {
 /** Display order: furthest along first, inactive last. */
 export const STATUS_ORDER: readonly StatusInfo[] = [
   INVESTED,
-  FUNDED,
+  OPENED,
   PAPERWORK,
   INACTIVE,
   DECLINED,
@@ -84,11 +84,19 @@ export const STATUS_ORDER: readonly StatusInfo[] = [
  */
 export function statusFor(stage: string | null): StatusInfo {
   switch (stage) {
-    case "Account Live":
+    // "First Fund Initiated" is the stage where money is actually invested.
+    // Verified against a live book on 2026-09-01: all 33 investors at this
+    // stage carry an invested amount, a current value and their strategies,
+    // while all 9 at "Account Live" carry none of the three.
+    //
+    // The names read the other way round, which is why this mapping is
+    // written out rather than inferred — an earlier version had them swapped
+    // and showed "Invested" over investors holding nothing.
+    case "First Fund Initiated":
     case "Regular Investor":
       return INVESTED;
-    case "First Fund Initiated":
-      return FUNDED;
+    case "Account Live":
+      return OPENED;
     case "Onboarding":
       return PAPERWORK;
     case "Dormant Investor":

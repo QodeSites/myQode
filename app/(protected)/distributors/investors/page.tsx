@@ -411,7 +411,9 @@ export default function DistributorInvestorsPage() {
                               c.city,
                               c.strategies.map(shortStrategy).join(", ") || null,
                               c.accountLiveDate
-                                ? `Invested ${formatDate(c.accountLiveDate)}`
+                                ? `${
+                                    c.currentValue != null ? "Invested" : "Opened"
+                                  } ${formatDate(c.accountLiveDate)}`
                                 : null,
                             ]
                               .filter(Boolean)
@@ -432,7 +434,7 @@ export default function DistributorInvestorsPage() {
                             </p>
                           ) : (
                             <p className="text-[11px] text-muted-foreground">
-                              Not yet valued
+                              No holdings yet
                             </p>
                           )}
                         </div>

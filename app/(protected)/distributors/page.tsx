@@ -210,11 +210,14 @@ export default function DistributorOverviewPage() {
 
   const investedCount = statusCounts.get("invested") ?? 0;
   const notYet =
-    (statusCounts.get("funded") ?? 0) + (statusCounts.get("paperwork") ?? 0);
+    (statusCounts.get("opened") ?? 0) + (statusCounts.get("paperwork") ?? 0);
 
+  // "Recently started investing" must mean exactly that. accountLiveDate is
+  // set when the account opens, which for an opened-but-unfunded investor is
+  // not an investment date — requiring a value keeps the heading truthful.
   const recent = clients
     .filter((c) => {
-      if (!c.accountLiveDate) return false;
+      if (!c.accountLiveDate || c.currentValue == null) return false;
       const d = new Date(c.accountLiveDate).getTime();
       return !Number.isNaN(d) && Date.now() - d < 30 * 24 * 60 * 60 * 1000;
     })
