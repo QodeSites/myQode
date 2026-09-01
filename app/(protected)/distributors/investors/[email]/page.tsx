@@ -35,6 +35,7 @@ type JourneyClient = {
   email: string | null;
   clientCode?: string | null;
   stage: string | null;
+  onboardingStage?: string | null;
   stageEntryDate: string | null;
   activationDate: string | null;
   accountLiveDate: string | null;
@@ -305,7 +306,11 @@ export default function InvestorDetailPage() {
             {s.label}
           </span>
         </div>
-        <p className="mt-1 text-sm text-muted-foreground">{s.detail}</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {s.key === "paperwork" && investor.onboardingStage
+            ? investor.onboardingStage
+            : s.detail}
+        </p>
       </div>
 
       {message ? (
@@ -400,6 +405,9 @@ export default function InvestorDetailPage() {
             value={formatDate(investor.accountLiveDate)}
           />
           <Field label="Last top-up" value={formatDate(investor.firstTopUpDate)} />
+          {investor.onboardingStage ? (
+            <Field label="Onboarding stage" value={investor.onboardingStage} />
+          ) : null}
           <Field
             label="Annual review"
             value={investor.annualReviewStatus ?? null}

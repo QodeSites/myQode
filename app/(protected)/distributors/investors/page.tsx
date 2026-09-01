@@ -27,6 +27,7 @@ type JourneyClient = {
   email: string | null;
   clientCode?: string | null;
   stage: string | null;
+  onboardingStage?: string | null;
   accountLiveDate: string | null;
   investedAmount: number | null;
   currentValue: number | null;
@@ -416,6 +417,13 @@ export default function DistributorInvestorsPage() {
                               {s.label}
                             </span>
                           </div>
+                          {/* Only while onboarding: once invested, how they
+                              got there is no longer the useful fact. */}
+                          {s.key === "paperwork" && c.onboardingStage ? (
+                            <p className="mt-1 text-[11.5px] text-foreground">
+                              {c.onboardingStage}
+                            </p>
+                          ) : null}
                           <p className="mt-1 text-[11.5px] text-muted-foreground">
                             {[
                               c.city,

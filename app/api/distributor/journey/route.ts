@@ -4,7 +4,10 @@ import {
   resolveDistributorByEmail,
   getDistributorClientCount,
 } from "@/lib/distributorIdentity";
-import { getJourneyForDistributor } from "@/lib/zohoDistributorJourney";
+import {
+  getJourneyForDistributor,
+  getOnboardingStages,
+} from "@/lib/zohoDistributorJourney";
 import { query } from "@/lib/db";
 
 const ONBOARDING_BASE = "https://onboarding.qodeinvest.com";
@@ -88,6 +91,16 @@ export async function GET() {
       zohoAvailable = false;
     }
 
+    // Onboarding sub-stage, so a partner can see how far through the process
+    // an investor actually is rather than just "in onboarding". Failure here
+    // is not fatal — the rest of the page is unaffected.
+    let onboardingStages = new Map<string, string>();
+    try {
+      onboardingStages = await getOnboardingStages();
+    } catch (err) {
+      console.error("[distributor/journey] onboarding stage lookup failed:", err);
+    }
+
     // Attach each investor's portal client code, so the partner can open that
     // account. The code lives in pms_clients_master, not Zoho, so it is joined
     // here by email rather than carried through the CRM read.
@@ -121,6 +134,8 @@ export async function GET() {
         ...c,
         clientCode:
           codeByEmail.get(String(c.email ?? "").trim().toLowerCase()) ?? null,
+        onboardingStage:
+          onboardingStages.get(String(c.email ?? "").trim().toLowerCase()) ?? null,
       })) as typeof journey.clients;
     }
 

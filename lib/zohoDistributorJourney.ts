@@ -74,6 +74,12 @@ export type JourneyClient = {
    * Null when the investor has no portal account. Not sourced from Zoho.
    */
   clientCode?: string | null;
+  /**
+   * Where they are inside onboarding, e.g. "Documents Received", "Esign
+   * Received". From the separate Investor_Onboarding module, joined by email.
+   * Null when that module has no record for them.
+   */
+  onboardingStage?: string | null;
 };
 
 export type DistributorJourney = {
@@ -384,6 +390,51 @@ export async function getAllDistributorRecords(): Promise<DistributorRecord[]> {
         sharePct: r.Base_Distributor_Share ?? null,
         revenueSharingModel: r.Revenue_Sharing_Model ?? null,
       });
+    }
+
+    if (rows.length < 200) break;
+    offset += 200;
+  }
+
+  return out;
+}
+
+/**
+ * Onboarding sub-stage per investor email, from the Investor_Onboarding
+ * module.
+ *
+ * WHY A SEPARATE MODULE
+ * Investors.Investor_Stage only says "Onboarding" — it does not say how far
+ * through. The detail lives in Investor_Onboarding.Onboarding_Stage, a
+ * 16-value picklist running from "Investor added" through "Documents
+ * Received", "Esign Received" and "CML Pending" to "Account Live".
+ *
+ * Verified 2026-09-01: 304 records carry an email, and all 50 investors
+ * sitting at Investor_Stage = "Onboarding" have a sub-stage — full coverage
+ * for the people this is meant to help.
+ *
+ * Joined on email because the two modules have no lookup between them.
+ */
+export async function getOnboardingStages(): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  let offset = 0;
+
+  for (let page = 0; page < 40; page++) {
+    const rows = await coql(
+      `select Email, Onboarding_Stage
+         from Investor_Onboarding
+        where Email is not null
+        limit ${offset}, 200`,
+    );
+    if (!rows.length) break;
+
+    for (const r of rows) {
+      const key = String(r.Email ?? "").trim().toLowerCase();
+      // First write wins: duplicate onboarding records for one address would
+      // otherwise make the reported stage flip between refreshes.
+      if (key && r.Onboarding_Stage && !out.has(key)) {
+        out.set(key, String(r.Onboarding_Stage));
+      }
     }
 
     if (rows.length < 200) break;
