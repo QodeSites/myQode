@@ -84,17 +84,27 @@ export async function GET(request: NextRequest) {
       maxAge: 60 * 60 * 24
     });
 
-    // FIX: Get the correct host from request headers for ngrok support
-    const host = request.headers.get('host') || 'localhost:3000';
-    const protocol = request.headers.get('x-forwarded-proto') || 'http';
-    const baseUrl = `${protocol}://${host}`;
-
     // Redirect distributors to their own page, all others to portfolio
     const redirectPath = tokenData.clientType === 'DISTRIBUTORS'
       ? '/distributor/fees-distribution'
       : '/portfolio/performance';
 
-    return NextResponse.redirect(`${baseUrl}${redirectPath}`);
+    // A RELATIVE Location, deliberately.
+    //
+    // This used to rebuild an absolute URL from the Host header. Behind a dev
+    // tunnel that lands the admin back on localhost: the tunnel forwards to
+    // 127.0.0.1, so `host` is the local address rather than the tunnel's, and
+    // the browser is sent somewhere it cannot reach. The same would happen
+    // behind any proxy that rewrites Host.
+    //
+    // A relative Location is resolved by the browser against the origin it
+    // actually used, so it is correct on localhost, on a tunnel and in
+    // production without any of them having to be configured. NextResponse
+    // .redirect() requires an absolute URL, hence the plain Response.
+    return new NextResponse(null, {
+      status: 302,
+      headers: { Location: redirectPath },
+    });
 
   } catch (error) {
     console.error('Impersonation error:', error);
