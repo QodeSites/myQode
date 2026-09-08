@@ -35,7 +35,6 @@ import {
 
 const QAW = "#008455";
 
-
 /**
  * When an investor was funded.
  *
@@ -47,10 +46,10 @@ const QAW = "#008455";
  */
 function fundedDate(c: JourneyClient): string | null {
   if (c.activationDate) return c.activationDate;
-  return c.onboardingStage === "Funded less than 50L" ? c.accountLiveDate : null;
+  return c.onboardingStage === "Funded less than 50L"
+    ? c.accountLiveDate
+    : null;
 }
-
-
 
 type JourneyClient = {
   name: string | null;
@@ -67,7 +66,10 @@ type JourneyClient = {
 
 type JourneyResponse = {
   distributor: { name: string; email: string };
-  journey: { clients: JourneyClient[]; stageCounts: Record<string, number> } | null;
+  journey: {
+    clients: JourneyClient[];
+    stageCounts: Record<string, number>;
+  } | null;
   totals: {
     investors: number;
     invested: number | null;
@@ -119,7 +121,9 @@ function Card({
     <section className="rounded-xl border border-border/20 bg-card shadow-sm px-5 py-5">
       <h2 className="text-base font-semibold text-foreground">{title}</h2>
       {description ? (
-        <p className="mt-1 text-[12.5px] text-muted-foreground">{description}</p>
+        <p className="mt-1 text-[12.5px] text-muted-foreground">
+          {description}
+        </p>
       ) : null}
       <div className="mt-4">{children}</div>
     </section>
@@ -128,15 +132,17 @@ function Card({
 
 export default function DistributorOverviewPage() {
   const [data, setData] = React.useState<JourneyResponse | null>(null);
-  const [status, setStatus] = React.useState<"loading" | "ready" | "forbidden" | "error">(
-    "loading",
-  );
+  const [status, setStatus] = React.useState<
+    "loading" | "ready" | "forbidden" | "error"
+  >("loading");
 
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/distributor/journey", { cache: "no-store" });
+        const res = await fetch("/api/distributor/journey", {
+          cache: "no-store",
+        });
         if (cancelled) return;
         if (res.status === 401 || res.status === 403) {
           setStatus("forbidden");
@@ -227,10 +233,19 @@ export default function DistributorOverviewPage() {
     // skipping it would draw a flat line between two distant points.
     const keys = [...by.keys()].sort();
     if (!keys.length) return [];
-    const out: { month: string; label: string; amount: number; investors: number }[] = [];
+    const out: {
+      month: string;
+      label: string;
+      amount: number;
+      investors: number;
+    }[] = [];
     const [sy, sm] = keys[0].split("-").map(Number);
     const [ey, em] = keys[keys.length - 1].split("-").map(Number);
-    for (let y = sy, m = sm; y < ey || (y === ey && m <= em); m === 12 ? (m = 1, y++) : m++) {
+    for (
+      let y = sy, m = sm;
+      y < ey || (y === ey && m <= em);
+      m === 12 ? ((m = 1), y++) : m++
+    ) {
       const key = `${y}-${String(m).padStart(2, "0")}`;
       const row = by.get(key);
       out.push({
@@ -268,24 +283,6 @@ export default function DistributorOverviewPage() {
       .sort((a, b) => b.value - a.value);
   }, [clients]);
 
-  // How much of the book rests on its largest few investors. A partner whose
-  // top handful carry most of the money is exposed in a way a total hides.
-  const concentration = React.useMemo(() => {
-    const vals = clients
-      .map((c) => c.currentValue ?? 0)
-      .filter((v) => v > 0)
-      .sort((a, b) => b - a);
-    if (vals.length < 5) return null;
-    const total = vals.reduce((a, b) => a + b, 0);
-    if (!total) return null;
-    return {
-      topFivePct: (vals.slice(0, 5).reduce((a, b) => a + b, 0) / total) * 100,
-      largest: vals[0],
-      median: vals[Math.floor(vals.length / 2)],
-      count: vals.length,
-    };
-  }, [clients]);
-
   if (status === "loading") {
     return (
       <div className="flex w-full flex-col gap-5 pb-10">
@@ -306,15 +303,15 @@ export default function DistributorOverviewPage() {
         <h1 className="text-2xl">Overview</h1>
         <div className="rounded-xl border border-border/20 bg-card shadow-sm px-6 py-10 text-center">
           <p className="text-sm text-muted-foreground">
-            This page is for Qode distribution partners. If you think you should have
-            access, email{" "}
+            This page is for Qode distribution partners. If you think you should
+            have access, email{" "}
             <a
               className="font-bold text-primary underline underline-offset-4 dark:text-primary-foreground"
               href="mailto:partnerships@qodeinvest.com"
             >
               partnerships@qodeinvest.com
             </a>
-             or call{" "}
+            or call{" "}
             <a
               className="font-bold text-primary underline underline-offset-4 dark:text-primary-foreground"
               href="tel:+919326535470"
@@ -353,14 +350,16 @@ export default function DistributorOverviewPage() {
   const value = totals.currentValue;
   const gain = invested != null && value != null ? value - invested : null;
   const gainPct = gain != null && invested ? (gain / invested) * 100 : null;
-  const partial = totals.pricedCount > 0 && totals.pricedCount < totals.investors;
+  const partial =
+    totals.pricedCount > 0 && totals.pricedCount < totals.investors;
   const live = data.crmLinked && data.zohoAvailable;
 
   // Both funded statuses. "Funded less than 50L" is a smaller ticket, not a
   // different outcome — counting only "invested" here would push those five
   // investors into "Not yet funded", which is the opposite of true.
   const investedCount =
-    (statusCounts.get("invested") ?? 0) + (statusCounts.get("smallfunded") ?? 0);
+    (statusCounts.get("invested") ?? 0) +
+    (statusCounts.get("smallfunded") ?? 0);
   const notYet =
     (statusCounts.get("opened") ?? 0) + (statusCounts.get("onboarding") ?? 0);
 
@@ -373,15 +372,21 @@ export default function DistributorOverviewPage() {
       const d = new Date(c.accountLiveDate).getTime();
       return !Number.isNaN(d) && Date.now() - d < 30 * 24 * 60 * 60 * 1000;
     })
-    .sort((a, b) => String(b.accountLiveDate).localeCompare(String(a.accountLiveDate)));
+    .sort((a, b) =>
+      String(b.accountLiveDate).localeCompare(String(a.accountLiveDate)),
+    );
 
-  const visibleStatuses = STATUS_ORDER.filter((s) => (statusCounts.get(s.key) ?? 0) > 0);
+  const visibleStatuses = STATUS_ORDER.filter(
+    (s) => (statusCounts.get(s.key) ?? 0) > 0,
+  );
 
   return (
     <div className="flex w-full flex-col gap-5 pb-10">
       <header>
         <h1 className="text-2xl">Overview</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{data.distributor.name}</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {data.distributor.name}
+        </p>
       </header>
 
       {!live ? (
@@ -494,7 +499,11 @@ export default function DistributorOverviewPage() {
                     <defs>
                       <linearGradient id="inflow" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="0%" stopColor={QAW} stopOpacity={0.35} />
-                        <stop offset="100%" stopColor={QAW} stopOpacity={0.02} />
+                        <stop
+                          offset="100%"
+                          stopColor={QAW}
+                          stopOpacity={0.02}
+                        />
                       </linearGradient>
                     </defs>
                     <XAxis
@@ -522,9 +531,15 @@ export default function DistributorOverviewPage() {
                         background: "var(--card)",
                         fontSize: 12,
                       }}
-                      formatter={(v: number, _n: unknown, item: { payload?: { investors?: number } }) => [
+                      formatter={(
+                        v: number,
+                        _n: unknown,
+                        item: { payload?: { investors?: number } },
+                      ) => [
                         `${money(v)} from ${item?.payload?.investors ?? 0} ${
-                          item?.payload?.investors === 1 ? "investor" : "investors"
+                          item?.payload?.investors === 1
+                            ? "investor"
+                            : "investors"
                         }`,
                         "Brought in",
                       ]}
@@ -543,128 +558,77 @@ export default function DistributorOverviewPage() {
             </Card>
           ) : null}
 
-          {/* Where the money sits, and how exposed the book is. Side by side:
-              both answer the same question about the shape of the book. */}
-          <div className="grid gap-5 md:grid-cols-2">
-            {strategyMoney.length ? (
-              <Card
-                title="Which strategies they hold"
-                description="Investor numbers are exact. Value is split evenly for anyone holding more than one strategy, so treat it as indicative."
-              >
-                <div className="flex items-center gap-4">
-                  <div className="h-[150px] w-[150px] shrink-0">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={strategyMoney}
-                          dataKey="value"
-                          nameKey="name"
-                          innerRadius={44}
-                          outerRadius={70}
-                          paddingAngle={2}
-                          stroke="none"
+          {strategyMoney.length ? (
+            <Card
+              title="Which strategies they hold"
+              description="Investor numbers are exact. Value is split evenly for anyone holding more than one strategy, so treat it as indicative."
+            >
+              <div className="flex items-center gap-4">
+                <div className="h-[150px] w-[150px] shrink-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={strategyMoney}
+                        dataKey="value"
+                        nameKey="name"
+                        innerRadius={44}
+                        outerRadius={70}
+                        paddingAngle={2}
+                        stroke="none"
+                      >
+                        {strategyMoney.map((d) => (
+                          <Cell
+                            key={d.name}
+                            fill={STRATEGY_COLOR[d.name] ?? NEUTRAL_COLOR}
+                          />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{
+                          borderRadius: 8,
+                          border: "1px solid var(--border)",
+                          background: "var(--card)",
+                          fontSize: 12,
+                        }}
+                        formatter={(v: number) => money(v)}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <ul className="min-w-0 flex-1 space-y-2">
+                  {strategyMoney.map((d) => (
+                    <li key={d.name} className="flex items-start gap-2">
+                      <span
+                        aria-hidden="true"
+                        className="mt-1 size-2.5 shrink-0 rounded-full"
+                        style={{
+                          background: STRATEGY_COLOR[d.name] ?? NEUTRAL_COLOR,
+                        }}
+                      />
+                      <span className="min-w-0">
+                        <Link
+                          href={`/distributors/investors?strategy=${encodeURIComponent(d.name)}`}
+                          className="block truncate text-[13px] text-foreground underline-offset-4 hover:underline"
                         >
-                          {strategyMoney.map((d) => (
-                            <Cell
-                              key={d.name}
-                              fill={STRATEGY_COLOR[d.name] ?? NEUTRAL_COLOR}
-                            />
-                          ))}
-                        </Pie>
-                        <Tooltip
-                          contentStyle={{
-                            borderRadius: 8,
-                            border: "1px solid var(--border)",
-                            background: "var(--card)",
-                            fontSize: 12,
-                          }}
-                          formatter={(v: number) => money(v)}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                  <ul className="min-w-0 flex-1 space-y-2">
-                    {strategyMoney.map((d) => (
-                      <li key={d.name} className="flex items-start gap-2">
-                        <span
-                          aria-hidden="true"
-                          className="mt-1 size-2.5 shrink-0 rounded-full"
-                          style={{
-                            background: STRATEGY_COLOR[d.name] ?? NEUTRAL_COLOR,
-                          }}
-                        />
-                        <span className="min-w-0">
-                          <Link
-                            href={`/distributors/investors?strategy=${encodeURIComponent(d.name)}`}
-                            className="block truncate text-[13px] text-foreground underline-offset-4 hover:underline"
-                          >
-                            {d.name}
-                          </Link>
-                          <span className="text-[12px] tabular-nums text-muted-foreground">
-                            {/* Holders is every investor on the strategy;
+                          {d.name}
+                        </Link>
+                        <span className="text-[12px] tabular-nums text-muted-foreground">
+                          {/* Holders is every investor on the strategy;
                                 d.investors counts only those with a value, so
                                 it would read low beside the list page. */}
-                            {holders.get(d.name) ?? d.investors}{" "}
-                            {(holders.get(d.name) ?? d.investors) === 1
-                              ? "investor"
-                              : "investors"}{" "}
-                            · {money(d.value)}
-                          </span>
+                          {holders.get(d.name) ?? d.investors}{" "}
+                          {(holders.get(d.name) ?? d.investors) === 1
+                            ? "investor"
+                            : "investors"}{" "}
+                          · {money(d.value)}
                         </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </Card>
-            ) : null}
-
-            {concentration ? (
-              <Card
-                title="How concentrated your book is"
-                description="A book resting on a few large investors carries a risk a total hides."
-              >
-                <p className="font-sans text-[32px] font-bold leading-none tabular-nums text-foreground">
-                  {concentration.topFivePct.toFixed(0)}%
-                </p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  of your book sits with the largest 5 of {concentration.count}{" "}
-                  funded clients.
-                </p>
-                {/* A bar reads faster than the number alone. */}
-                <div
-                  className="mt-3 h-2 w-full overflow-hidden rounded-full bg-muted"
-                  role="img"
-                  aria-label={`Top five investors hold ${concentration.topFivePct.toFixed(0)} percent of the book`}
-                >
-                  <div
-                    className="h-full rounded-full"
-                    style={{
-                      width: `${Math.min(concentration.topFivePct, 100)}%`,
-                      background: QAW,
-                    }}
-                  />
-                </div>
-                <dl className="mt-4 grid grid-cols-2 gap-4 border-t border-border/20 pt-3">
-                  <div>
-                    <dt className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                      Largest
-                    </dt>
-                    <dd className="mt-0.5 font-sans text-lg font-bold tabular-nums text-foreground">
-                      {money(concentration.largest)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                      Typical
-                    </dt>
-                    <dd className="mt-0.5 font-sans text-lg font-bold tabular-nums text-foreground">
-                      {money(concentration.median)}
-                    </dd>
-                  </div>
-                </dl>
-              </Card>
-            ) : null}
-          </div>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </Card>
+          ) : null}
 
           {/* Where your investors are */}
           {visibleStatuses.length ? (
@@ -739,7 +703,9 @@ export default function DistributorOverviewPage() {
                           <span
                             aria-hidden="true"
                             className="h-px flex-1 bg-border/30"
-                            style={{ visibility: i === 0 ? "hidden" : undefined }}
+                            style={{
+                              visibility: i === 0 ? "hidden" : undefined,
+                            }}
                           />
                           <span
                             aria-hidden="true"
@@ -754,7 +720,9 @@ export default function DistributorOverviewPage() {
                           <span
                             aria-hidden="true"
                             className="h-px flex-1 bg-border/30"
-                            style={{ visibility: isLast ? "hidden" : undefined }}
+                            style={{
+                              visibility: isLast ? "hidden" : undefined,
+                            }}
                           />
                         </div>
 
@@ -792,7 +760,6 @@ export default function DistributorOverviewPage() {
             </Card>
           ) : null}
 
-
           {/* Recently invested */}
           {recent.length ? (
             <Card
@@ -810,22 +777,24 @@ export default function DistributorOverviewPage() {
                       }
                       className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-border/20 bg-background px-4 py-2.5 hover:border-primary/50"
                     >
-                    <div className="min-w-0">
-                      <span className="text-sm text-foreground">{c.name ?? "—"}</span>
-                      {c.strategies.length ? (
-                        <span className="ml-2 text-[11px] text-muted-foreground">
-                          {c.strategies.join(", ")}
+                      <div className="min-w-0">
+                        <span className="text-sm text-foreground">
+                          {c.name ?? "—"}
                         </span>
-                      ) : null}
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-sm tabular-nums text-foreground">
-                        {money(c.currentValue)}
-                      </span>
-                      <span className="text-[11px] tabular-nums text-muted-foreground">
-                        {formatDate(c.accountLiveDate)}
-                      </span>
-                    </div>
+                        {c.strategies.length ? (
+                          <span className="ml-2 text-[11px] text-muted-foreground">
+                            {c.strategies.join(", ")}
+                          </span>
+                        ) : null}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm tabular-nums text-foreground">
+                          {money(c.currentValue)}
+                        </span>
+                        <span className="text-[11px] tabular-nums text-muted-foreground">
+                          {formatDate(c.accountLiveDate)}
+                        </span>
+                      </div>
                     </Link>
                   </li>
                 ))}
@@ -842,7 +811,9 @@ export default function DistributorOverviewPage() {
           className="flex items-center gap-3 rounded-xl border border-border/20 bg-card px-5 py-4 shadow-sm hover:border-primary/50"
         >
           <div className="min-w-0">
-            <p className="text-sm font-bold text-foreground">See all your investors</p>
+            <p className="text-sm font-bold text-foreground">
+              See all your investors
+            </p>
             <p className="text-[11.5px] text-muted-foreground">
               Search, filter and download statements
             </p>
