@@ -535,6 +535,13 @@ export default function DistributorInvestorsPage() {
                       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1.5">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
+                            {/* Position in the list as filtered and sorted, so
+                                a partner can say "number 7" on a call. It
+                                renumbers when the filter changes, which is why
+                                it is not treated as an identifier. */}
+                            <span className="shrink-0 text-[11px] font-bold tabular-nums text-muted-foreground">
+                              {i + 1}.
+                            </span>
                             {c.email ? (
                               <Link
                                 href={`/distributors/investors/${encodeURIComponent(c.email)}`}
