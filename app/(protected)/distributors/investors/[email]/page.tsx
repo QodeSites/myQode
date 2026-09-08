@@ -59,17 +59,15 @@ const ACCOUNT_STAGES = [
 ] as const;
 
 /**
- * Partner-facing labels. The CRM names read backwards to anyone outside the
- * firm — "First Fund Initiated" is where money is actually invested, while
- * "Account Live" is an open account holding nothing — so the labels say what
- * happened rather than repeating internal shorthand. Same reasoning, and the
- * same verified mapping, as statusFor() in lib/distributorVocabulary.
+ * What each Zoho stage means, shown under its name. The names themselves are
+ * used verbatim — see lib/distributorVocabulary — but two of them read
+ * backwards to anyone outside the firm, so the meaning travels with them.
  */
-const ACCOUNT_STAGE_LABEL: Record<string, string> = {
-  Onboarding: "Onboarding",
-  "Account Live": "Account opened",
-  "First Fund Initiated": "Funded",
-  "Regular Investor": "Regular investor",
+const ACCOUNT_STAGE_MEANING: Record<string, string> = {
+  Onboarding: "Opening the account",
+  "Account Live": "Open, nothing invested",
+  "First Fund Initiated": "Money invested",
+  "Regular Investor": "Invested and active",
 };
 
 /** Which date on the record evidences each stage, where one exists. */
@@ -524,7 +522,10 @@ export default function InvestorDetailPage() {
                               : "text-muted-foreground/70"
                         }`}
                       >
-                        {ACCOUNT_STAGE_LABEL[stage]}
+                        {stage}
+                      </p>
+                      <p className="mt-0.5 text-[10.5px] leading-snug text-muted-foreground/80">
+                        {ACCOUNT_STAGE_MEANING[stage]}
                       </p>
                       {ACCOUNT_STAGE_DATE[stage] ? (
                         <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">

@@ -517,7 +517,7 @@ export default function DistributorOverviewPage() {
                 </div>
                 <div>
                   <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                    Funded
+                    First Fund Initiated
                   </p>
                   <p
                     className="mt-1 font-sans text-2xl font-bold tabular-nums"

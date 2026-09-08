@@ -442,7 +442,7 @@ export default function DistributorInvestorsPage() {
             >
               <option value="">Any date</option>
               <option value="opened">Account opened between</option>
-              <option value="invested">First funded between</option>
+              <option value="invested">First Fund Initiated between</option>
             </select>
 
             {dateBasis ? (
@@ -486,7 +486,7 @@ export default function DistributorInvestorsPage() {
             <p className="mt-2 text-[12px] text-muted-foreground">
               {undatedCount}{" "}
               {undatedCount === 1 ? "investor has" : "investors have"} no{" "}
-              {dateBasis === "opened" ? "account opened" : "first funded"}{" "}
+              {dateBasis === "opened" ? "Account Live" : "First Fund Initiated"}{" "}
               date on record and {undatedCount === 1 ? "is" : "are"} not shown.
             </p>
           ) : null}
@@ -570,7 +570,7 @@ export default function DistributorInvestorsPage() {
                               c.strategies.join(", ") || null,
                               c.accountLiveDate
                                 ? `${
-                                    c.currentValue != null ? "Funded" : "Opened"
+                                    c.currentValue != null ? "Funded" : "Account opened"
                                   } ${formatDate(c.accountLiveDate)}`
                                 : null,
                             ]
