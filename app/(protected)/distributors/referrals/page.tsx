@@ -105,7 +105,7 @@ export default function DistributorReferralsPage() {
   if (status === "forbidden") {
     return (
       <div className="flex w-full flex-col gap-5 pb-10">
-        <h1 className="text-2xl">Refer an investor</h1>
+        <h1 className="text-2xl">Onboarding Link</h1>
         <div className="rounded-xl border border-border/20 bg-card shadow-sm px-6 py-10 text-center">
           <p className="text-sm text-muted-foreground">
             This page is for Qode distribution partners. If you think you should have
@@ -133,7 +133,7 @@ export default function DistributorReferralsPage() {
   if (status === "error" || !data) {
     return (
       <div className="flex w-full flex-col gap-5 pb-10">
-        <h1 className="text-2xl">Refer an investor</h1>
+        <h1 className="text-2xl">Onboarding Link</h1>
         <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-5 py-4">
           <p className="text-sm text-foreground">
             We couldn&apos;t load your links. Please refresh to try again.
@@ -152,7 +152,7 @@ export default function DistributorReferralsPage() {
         >
           <ArrowLeft className="size-4" /> Overview
         </Link>
-        <h1 className="mt-2 text-2xl">Refer an investor</h1>
+        <h1 className="mt-2 text-2xl">Onboarding Link</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Send someone the right link and their account is recorded against your
           name automatically.

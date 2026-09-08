@@ -1163,9 +1163,9 @@ export default function DistributorOverviewPage() {
           className="flex items-center gap-3 rounded-xl border border-border/20 bg-card px-5 py-4 shadow-sm hover:border-primary/50"
         >
           <div className="min-w-0">
-            <p className="text-sm font-bold text-foreground">Refer an investor</p>
+            <p className="text-sm font-bold text-foreground">Onboarding Link</p>
             <p className="text-[11.5px] text-muted-foreground">
-              Your onboarding links
+              Share with a prospective investor
             </p>
           </div>
           <ChevronRight className="ml-auto size-4 shrink-0 text-muted-foreground" />

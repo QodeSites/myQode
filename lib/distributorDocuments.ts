@@ -11,12 +11,10 @@ export type DistributorDocument = {
   slug: string;
   /** What a partner sees. */
   title: string;
-  /** One line describing what it is for. */
-  description: string;
   /**
    * The month the document itself states on its cover — NOT the file date.
-   * The corporate overview reads August 2026; all three factsheets read July
-   * 2026. Showing one date for all four would misdate three of them.
+   * The corporate overview reads August 2026; all three strategy decks read
+   * July 2026. Showing one date for all four would misdate three of them.
    */
   asOf: string;
   /** Strategy documents carry their strategy name, for colour and grouping. */
@@ -29,15 +27,12 @@ export const DISTRIBUTOR_DOCUMENTS: readonly DistributorDocument[] = [
   {
     slug: "corporate-overview",
     title: "Corporate overview",
-    description:
-      "Who Qode is, the investment philosophy, fee and custodian structure.",
     asOf: "August 2026",
     downloadName: "Qode Corporate Overview.pdf",
   },
   {
     slug: "qode-all-weather",
     title: "Qode All Weather",
-    description: "Strategy factsheet — framework, performance and risk metrics.",
     asOf: "July 2026",
     strategy: "Qode All Weather",
     downloadName: "Qode All Weather.pdf",
@@ -45,7 +40,6 @@ export const DISTRIBUTOR_DOCUMENTS: readonly DistributorDocument[] = [
   {
     slug: "qode-growth-fund",
     title: "Qode Growth Fund",
-    description: "Strategy factsheet — framework, performance and risk metrics.",
     asOf: "July 2026",
     strategy: "Qode Growth Fund",
     downloadName: "Qode Growth Fund.pdf",
@@ -53,7 +47,6 @@ export const DISTRIBUTOR_DOCUMENTS: readonly DistributorDocument[] = [
   {
     slug: "qode-tactical-fund",
     title: "Qode Tactical Fund",
-    description: "Strategy factsheet — framework, performance and risk metrics.",
     asOf: "July 2026",
     strategy: "Qode Tactical Fund",
     downloadName: "Qode Tactical Fund.pdf",

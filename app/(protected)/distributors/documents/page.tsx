@@ -76,9 +76,6 @@ function DocumentRow({ doc }: { doc: DistributorDocument }) {
         <span className="block text-sm font-semibold text-foreground">
           {doc.title}
         </span>
-        <span className="block text-[12px] text-muted-foreground">
-          {doc.description}
-        </span>
         {error ? (
           <span role="alert" className="mt-0.5 block text-[12px] text-destructive">
             {error}
@@ -132,11 +129,8 @@ export default function DistributorDocumentsPage() {
       {strategyDocs.length ? (
         <section className="rounded-xl border border-border/20 bg-card shadow-sm px-5 py-5">
           <h2 className="text-base font-semibold text-foreground">
-            Strategy factsheets
+            Strategy decks
           </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            One per strategy, with performance and risk metrics.
-          </p>
           <ul className="mt-3 flex flex-col gap-2">
             {strategyDocs.map((d) => (
               <DocumentRow key={d.slug} doc={d} />

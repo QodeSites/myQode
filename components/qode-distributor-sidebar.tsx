@@ -56,7 +56,7 @@ export default function DistributorQodeSidebar({ open = false, onClose }: QodeSi
         Fees &amp; payouts
       </NavLink>
       <NavLink href="/distributors/referrals" icon={<Share2 className="h-4 w-4" />}>
-        Refer an investor
+        Onboarding Link
       </NavLink>
       <NavLink href="/distributors/documents" icon={<FileText className="h-4 w-4" />}>
         Decks
@@ -91,7 +91,7 @@ export default function DistributorQodeSidebar({ open = false, onClose }: QodeSi
         Fees
       </NavLink>
       <NavLink href="/distributors/referrals" icon={<Share2 className="h-4 w-4" />} onClick={onClose}>
-        Refer
+        Onboarding
       </NavLink>
       <NavLink href="/distributors/documents" icon={<FileText className="h-4 w-4" />} onClick={onClose}>
         Decks
