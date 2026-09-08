@@ -130,7 +130,7 @@ function formatDate(iso: string | null): string {
 function Field({ label, value }: { label: string; value: string | null }) {
   return (
     <div>
-      <dt className="text-[10px] font-black uppercase tracking-[0.11em] text-muted-foreground">
+      <dt className="text-[11.5px] font-black uppercase tracking-[0.11em] text-muted-foreground">
         {label}
       </dt>
       <dd className="mt-0.5 break-words text-sm text-foreground">{value ?? "—"}</dd>
@@ -365,7 +365,7 @@ export default function InvestorDetailPage() {
         <div className="mt-2 flex flex-wrap items-center gap-2.5">
           <h1 className="text-2xl">{investor.name ?? "Investor"}</h1>
           <span
-            className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+            className={`rounded-full px-2.5 py-0.5 text-[11.5px] font-bold uppercase tracking-wider ${
               s.tone === "warn"
                 ? "bg-destructive/10 text-destructive"
                 : "bg-muted-foreground/10 text-muted-foreground"
@@ -415,7 +415,7 @@ export default function InvestorDetailPage() {
 
       {/* Money */}
       <section className="rounded-xl border border-border/20 bg-card shadow-sm px-5 py-5">
-        <p className="text-[10px] font-black uppercase tracking-[0.11em] text-muted-foreground">
+        <p className="text-[11.5px] font-black uppercase tracking-[0.11em] text-muted-foreground">
           Current value
         </p>
         <p className="mt-1.5 font-sans text-[32px] font-bold leading-none tabular-nums text-foreground">
@@ -442,14 +442,14 @@ export default function InvestorDetailPage() {
 
         {investor.strategies.length ? (
           <div className="mt-4 border-t border-border/20 pt-3">
-            <p className="text-[10px] font-black uppercase tracking-[0.11em] text-muted-foreground">
+            <p className="text-[11.5px] font-black uppercase tracking-[0.11em] text-muted-foreground">
               Strategies
             </p>
             <div className="mt-2 flex flex-wrap gap-2">
               {investor.strategies.map((name) => (
                 <span
                   key={name}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-border/20 px-2.5 py-1 text-[11.5px] text-foreground"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-border/20 px-2.5 py-1 text-[12px] text-foreground"
                 >
                   <span
                     className="size-2 rounded-sm"
@@ -495,7 +495,7 @@ export default function InvestorDetailPage() {
                       />
                       <span
                         aria-hidden="true"
-                        className={`flex size-7 shrink-0 items-center justify-center rounded-full border text-[11px] font-black ${
+                        className={`flex size-7 shrink-0 items-center justify-center rounded-full border text-[12px] font-black ${
                           here
                             ? "border-primary bg-primary text-primary-foreground"
                             : done
@@ -526,11 +526,11 @@ export default function InvestorDetailPage() {
                       >
                         {stage}
                       </p>
-                      <p className="mt-0.5 text-[10.5px] leading-snug text-muted-foreground/80">
+                      <p className="mt-0.5 text-[11.5px] leading-snug text-muted-foreground/80">
                         {ACCOUNT_STAGE_MEANING[stage]}
                       </p>
                       {ACCOUNT_STAGE_DATE[stage] ? (
-                        <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">
+                        <p className="mt-0.5 text-[12px] tabular-nums text-muted-foreground">
                           {formatDate(
                             investor[ACCOUNT_STAGE_DATE[stage] as keyof typeof investor] as
                               | string
@@ -601,7 +601,7 @@ export default function InvestorDetailPage() {
                           />
                           <span
                             aria-hidden="true"
-                            className={`flex size-7 shrink-0 items-center justify-center rounded-full border text-[11px] font-black ${
+                            className={`flex size-7 shrink-0 items-center justify-center rounded-full border text-[12px] font-black ${
                               here
                                 ? "border-primary bg-primary text-primary-foreground"
                                 : done
@@ -634,7 +634,7 @@ export default function InvestorDetailPage() {
                             {step}
                           </p>
                           {here ? (
-                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                            <p className="mt-0.5 text-[12px] text-muted-foreground">
                               Currently here
                               {investor.stageEntryDate
                                 ? ` since ${formatDate(investor.stageEntryDate)}`
@@ -642,7 +642,7 @@ export default function InvestorDetailPage() {
                             </p>
                           ) : null}
                           {!done && !here ? (
-                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                            <p className="mt-0.5 text-[12px] text-muted-foreground">
                               Next step
                             </p>
                           ) : null}

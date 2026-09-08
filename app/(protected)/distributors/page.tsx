@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -34,6 +35,13 @@ import {
  */
 
 const QAW = "#008455";
+
+type MonthPoint = {
+  month: string;
+  label: string;
+  amount: number;
+  investors: number;
+};
 
 /**
  * When an investor was funded.
@@ -132,6 +140,10 @@ function Card({
 
 export default function DistributorOverviewPage() {
   const [data, setData] = React.useState<JourneyResponse | null>(null);
+  const router = useRouter();
+  const [strategyAum, setStrategyAum] = React.useState<
+    { name: string; value: number; investors: number; pct: number }[] | null
+  >(null);
   const [status, setStatus] = React.useState<
     "loading" | "ready" | "forbidden" | "error"
   >("loading");
@@ -156,6 +168,34 @@ export default function DistributorOverviewPage() {
         setStatus("ready");
       } catch {
         if (!cancelled) setStatus("error");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // The exact per-strategy split, from pms_master_sheet. The journey payload
+  // only says which strategies an investor holds, not how much sits in each.
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/distributor/strategy-aum", {
+          cache: "no-store",
+        });
+        if (cancelled || !res.ok) return;
+        const body = (await res.json()) as {
+          strategies?: {
+            name: string;
+            value: number;
+            investors: number;
+            pct: number;
+          }[];
+        };
+        if (!cancelled) setStrategyAum(body.strategies ?? []);
+      } catch {
+        // The apportioned split still renders.
       }
     })();
     return () => {
@@ -266,7 +306,7 @@ export default function DistributorOverviewPage() {
   // strategies has their money split evenly across them: the per-strategy
   // amount is not in the payload, so this is an apportionment, and the card
   // says so rather than implying an exactness we do not have.
-  const strategyMoney = React.useMemo(() => {
+  const apportionedStrategyMoney = React.useMemo(() => {
     const by = new Map<string, { value: number; investors: number }>();
     for (const c of clients) {
       if (!c.currentValue || !c.strategies.length) continue;
@@ -282,6 +322,12 @@ export default function DistributorOverviewPage() {
       .map(([name, v]) => ({ name, ...v }))
       .sort((a, b) => b.value - a.value);
   }, [clients]);
+
+  /** The exact split when we have it, the apportioned one as a fallback. */
+  const strategyMoney = strategyAum?.length
+    ? strategyAum
+    : apportionedStrategyMoney;
+  const strategyIsExact = Boolean(strategyAum?.length);
 
   if (status === "loading") {
     return (
@@ -359,6 +405,7 @@ export default function DistributorOverviewPage() {
   // investors into "Not yet funded", which is the opposite of true.
   const investedCount =
     (statusCounts.get("invested") ?? 0) +
+    (statusCounts.get("regular") ?? 0) +
     (statusCounts.get("smallfunded") ?? 0);
   const notYet =
     (statusCounts.get("opened") ?? 0) + (statusCounts.get("onboarding") ?? 0);
@@ -366,14 +413,21 @@ export default function DistributorOverviewPage() {
   // "Recently started investing" must mean exactly that. accountLiveDate is
   // set when the account opens, which for an opened-but-unfunded investor is
   // not an investment date — requiring a value keeps the heading truthful.
+  // Funded in the last 30 days, by the date the money actually arrived.
+  //
+  // This used to filter on accountLiveDate (Date_Of_1st_Investment, the
+  // account OPENING date) and additionally require a current value, so it
+  // counted the wrong event and dropped anyone not yet priced. fundedDate is
+  // the same rule the investor list uses, so the two agree.
   const recent = clients
     .filter((c) => {
-      if (!c.accountLiveDate || c.currentValue == null) return false;
-      const d = new Date(c.accountLiveDate).getTime();
+      const when = fundedDate(c);
+      if (!when) return false;
+      const d = new Date(when).getTime();
       return !Number.isNaN(d) && Date.now() - d < 30 * 24 * 60 * 60 * 1000;
     })
     .sort((a, b) =>
-      String(b.accountLiveDate).localeCompare(String(a.accountLiveDate)),
+      String(fundedDate(b) ?? "").localeCompare(String(fundedDate(a) ?? "")),
     );
 
   const visibleStatuses = STATUS_ORDER.filter(
@@ -416,7 +470,7 @@ export default function DistributorOverviewPage() {
           <section className="rounded-xl border border-border/20 bg-card shadow-sm px-5 py-5">
             <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                <p className="text-[12px] font-bold uppercase tracking-wider text-muted-foreground">
                   Total value today
                 </p>
                 <p className="mt-1.5 font-sans text-[38px] font-bold leading-none tabular-nums text-foreground">
@@ -441,7 +495,7 @@ export default function DistributorOverviewPage() {
 
               <div className="flex gap-6">
                 <div>
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                  <p className="text-[12px] font-bold uppercase tracking-wider text-muted-foreground">
                     Your investors
                   </p>
                   <p className="mt-1 font-sans text-2xl font-bold tabular-nums text-foreground">
@@ -449,7 +503,7 @@ export default function DistributorOverviewPage() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                  <p className="text-[12px] font-bold uppercase tracking-wider text-muted-foreground">
                     First Fund Initiated
                   </p>
                   <p
@@ -460,7 +514,7 @@ export default function DistributorOverviewPage() {
                   </p>
                 </div>
                 <div>
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                  <p className="text-[12px] font-bold uppercase tracking-wider text-muted-foreground">
                     Not yet funded
                   </p>
                   <p className="mt-1 font-sans text-2xl font-bold tabular-nums text-foreground">
@@ -471,7 +525,7 @@ export default function DistributorOverviewPage() {
             </div>
 
             {/* {partial || data.portalClientCount !== totals.investors ? (
-              <p className="mt-4 border-t border-border/20 pt-3 text-[11.5px] leading-relaxed text-muted-foreground">
+              <p className="mt-4 border-t border-border/20 pt-3 text-[12px] leading-relaxed text-muted-foreground">
                 {partial
                   ? `Values cover the ${totals.pricedCount} of ${totals.investors} investors whose holdings are priced in our records. `
                   : ""}
@@ -495,6 +549,20 @@ export default function DistributorOverviewPage() {
                   <AreaChart
                     data={monthlyInflow}
                     margin={{ top: 8, right: 8, bottom: 0, left: 8 }}
+                    // Clicking a month opens the investor list filtered to it,
+                    // so a partner can see who a month is actually made of
+                    // rather than reading a total and having to go hunting.
+                    onClick={(e: { activePayload?: { payload?: MonthPoint }[] }) => {
+                      const point = e?.activePayload?.[0]?.payload;
+                      if (!point?.month || !point.investors) return;
+                      const [y, m] = point.month.split("-").map(Number);
+                      const from = `${point.month}-01`;
+                      const to = new Date(y, m, 0).toISOString().slice(0, 10);
+                      router.push(
+                        `/distributors/investors?basis=invested&from=${from}&to=${to}`,
+                      );
+                    }}
+                    style={{ cursor: "pointer" }}
                   >
                     <defs>
                       <linearGradient id="inflow" x1="0" y1="0" x2="0" y2="1">
@@ -561,7 +629,11 @@ export default function DistributorOverviewPage() {
           {strategyMoney.length ? (
             <Card
               title="Which strategies they hold"
-              description="Investor numbers are exact. Value is split evenly for anyone holding more than one strategy, so treat it as indicative."
+              description={
+                strategyIsExact
+                  ? "Value held in each strategy today."
+                  : "Investor numbers are exact. Value is split evenly for anyone holding more than one strategy, so treat it as indicative."
+              }
             >
               <div className="flex items-center gap-4">
                 <div className="h-[150px] w-[150px] shrink-0">
@@ -616,8 +688,14 @@ export default function DistributorOverviewPage() {
                           {/* Holders is every investor on the strategy;
                                 d.investors counts only those with a value, so
                                 it would read low beside the list page. */}
-                          {holders.get(d.name) ?? d.investors}{" "}
-                          {(holders.get(d.name) ?? d.investors) === 1
+                          {/* With the exact split the API counts holders
+                              itself; the CRM-derived map is the fallback. */}
+                          {(strategyIsExact
+                            ? d.investors
+                            : (holders.get(d.name) ?? d.investors))}{" "}
+                          {(strategyIsExact
+                            ? d.investors
+                            : (holders.get(d.name) ?? d.investors)) === 1
                             ? "investor"
                             : "investors"}{" "}
                           · {money(d.value)}
@@ -709,7 +787,7 @@ export default function DistributorOverviewPage() {
                           />
                           <span
                             aria-hidden="true"
-                            className={`flex size-7 shrink-0 items-center justify-center rounded-full border text-[10px] font-black tabular-nums ${
+                            className={`flex size-7 shrink-0 items-center justify-center rounded-full border text-[11.5px] font-black tabular-nums ${
                               here
                                 ? "border-primary bg-primary text-primary-foreground"
                                 : "border-border/30 bg-background text-muted-foreground"
@@ -747,7 +825,7 @@ export default function DistributorOverviewPage() {
                             </span>
                           )}
                           {here ? (
-                            <p className="mt-auto pt-0.5 text-[11px] text-muted-foreground">
+                            <p className="mt-auto pt-0.5 text-[12px] text-muted-foreground">
                               {count} {count === 1 ? "investor" : "investors"}
                             </p>
                           ) : null}
@@ -782,7 +860,7 @@ export default function DistributorOverviewPage() {
                           {c.name ?? "—"}
                         </span>
                         {c.strategies.length ? (
-                          <span className="ml-2 text-[11px] text-muted-foreground">
+                          <span className="ml-2 text-[12px] text-muted-foreground">
                             {c.strategies.join(", ")}
                           </span>
                         ) : null}
@@ -791,8 +869,8 @@ export default function DistributorOverviewPage() {
                         <span className="text-sm tabular-nums text-foreground">
                           {money(c.currentValue)}
                         </span>
-                        <span className="text-[11px] tabular-nums text-muted-foreground">
-                          {formatDate(c.accountLiveDate)}
+                        <span className="text-[12px] tabular-nums text-muted-foreground">
+                          {formatDate(fundedDate(c))}
                         </span>
                       </div>
                     </Link>
@@ -814,7 +892,7 @@ export default function DistributorOverviewPage() {
             <p className="text-sm font-bold text-foreground">
               See all your investors
             </p>
-            <p className="text-[11.5px] text-muted-foreground">
+            <p className="text-[12px] text-muted-foreground">
               Search, filter and download statements
             </p>
           </div>
@@ -827,7 +905,7 @@ export default function DistributorOverviewPage() {
         >
           <div className="min-w-0">
             <p className="text-sm font-bold text-foreground">Onboarding Link</p>
-            <p className="text-[11.5px] text-muted-foreground">
+            <p className="text-[12px] text-muted-foreground">
               Share with a prospective investor
             </p>
           </div>

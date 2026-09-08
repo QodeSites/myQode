@@ -46,7 +46,7 @@ function CopyLinkRow({
     <div className="flex flex-col gap-2 rounded-md border border-border/20 bg-background px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0 flex-1">
         <p className="text-sm font-bold text-foreground">{label}</p>
-        <p className="text-[11.5px] text-muted-foreground">{hint}</p>
+        <p className="text-[12px] text-muted-foreground">{hint}</p>
         <code className="mt-1.5 block break-all text-xs text-foreground">{url}</code>
       </div>
       <button
@@ -198,7 +198,7 @@ export default function DistributorReferralsPage() {
           <p className="text-sm font-bold text-foreground">
             Questions about your investors or payouts?
           </p>
-          <p className="mt-1 text-[11.5px] leading-relaxed text-muted-foreground">
+          <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">
             Email partnerships@qodeinvest.com — we usually reply the same day.
           </p>
         </div>

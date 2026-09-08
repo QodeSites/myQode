@@ -117,9 +117,18 @@ export default function DistributorInvestorsPage() {
   // artifact rather than a real arrival date. First_Top_Up_Date is empty for
   // every investor. Offering either would give a partner a filter that
   // quietly lies.
-  const [dateBasis, setDateBasis] = React.useState<"" | "opened" | "invested">("");
-  const [fromDate, setFromDate] = React.useState("");
-  const [toDate, setToDate] = React.useState("");
+  // Arriving from a bar on the overview's inflow chart, which links with a
+  // month range so a partner can see exactly who that month is made of.
+  const [dateBasis, setDateBasis] = React.useState<"" | "opened" | "invested">(
+    () => {
+      const b = searchParams.get("basis");
+      return b === "opened" || b === "invested" ? b : "";
+    },
+  );
+  const [fromDate, setFromDate] = React.useState(
+    () => searchParams.get("from") ?? "",
+  );
+  const [toDate, setToDate] = React.useState(() => searchParams.get("to") ?? "");
   const [shown, setShown] = React.useState(10);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [message, setMessage] = React.useState<string | null>(null);
@@ -586,7 +595,7 @@ export default function DistributorInvestorsPage() {
                                 a partner can say "number 7" on a call. It
                                 renumbers when the filter changes, which is why
                                 it is not treated as an identifier. */}
-                            <span className="shrink-0 text-[11px] font-bold tabular-nums text-muted-foreground">
+                            <span className="shrink-0 text-[12px] font-bold tabular-nums text-muted-foreground">
                               {i + 1}.
                             </span>
                             {c.email ? (
@@ -602,7 +611,7 @@ export default function DistributorInvestorsPage() {
                               </span>
                             )}
                             <span
-                              className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                              className={`rounded-full px-2 py-0.5 text-[11.5px] font-bold uppercase tracking-wider ${
                                 s.tone === "warn"
                                   ? "bg-destructive/10 text-destructive"
                                   : "bg-muted-foreground/10 text-muted-foreground"
@@ -614,11 +623,11 @@ export default function DistributorInvestorsPage() {
                           {/* Only while onboarding: once invested, how they
                               got there is no longer the useful fact. */}
                           {s.key === "onboarding" && c.onboardingStage ? (
-                            <p className="mt-1 text-[11.5px] text-foreground">
+                            <p className="mt-1 text-[12px] text-foreground">
                               {c.onboardingStage}
                             </p>
                           ) : null}
-                          <p className="mt-1 text-[11.5px] text-muted-foreground">
+                          <p className="mt-1 text-[12px] text-muted-foreground">
                             {[
                               c.city,
                               c.strategies.join(", ") || null,
@@ -639,13 +648,13 @@ export default function DistributorInvestorsPage() {
                           </p>
                           {delta != null ? (
                             <p
-                              className="text-[11px] tabular-nums"
+                              className="text-[12px] tabular-nums"
                               style={{ color: up ? QAW : "var(--destructive)" }}
                             >
                               {up ? "▲" : "▼"} {money(Math.abs(delta))}
                             </p>
                           ) : (
-                            <p className="text-[11px] text-muted-foreground">
+                            <p className="text-[12px] text-muted-foreground">
                               No holdings yet
                             </p>
                           )}
@@ -657,7 +666,7 @@ export default function DistributorInvestorsPage() {
                           <>
                           <Link
                             href={`/distributors/investors/${encodeURIComponent(c.email)}`}
-                            className="inline-flex min-h-[32px] items-center gap-1.5 rounded-md border border-border/20 px-2.5 text-[11.5px] font-bold text-primary hover:border-primary/50 dark:text-primary-foreground"
+                            className="inline-flex min-h-[32px] items-center gap-1.5 rounded-md border border-border/20 px-2.5 text-[12px] font-bold text-primary hover:border-primary/50 dark:text-primary-foreground"
                           >
                             View details
                           </Link>
@@ -665,7 +674,7 @@ export default function DistributorInvestorsPage() {
                             type="button"
                             onClick={() => downloadStatement(c.email, c.name)}
                             disabled={busy === c.email}
-                            className="inline-flex min-h-[32px] items-center gap-1.5 rounded-md border border-border/20 px-2.5 text-[11.5px] font-bold text-primary hover:border-primary/50 disabled:opacity-50 dark:text-primary-foreground"
+                            className="inline-flex min-h-[32px] items-center gap-1.5 rounded-md border border-border/20 px-2.5 text-[12px] font-bold text-primary hover:border-primary/50 disabled:opacity-50 dark:text-primary-foreground"
                           >
                             <Download className="size-3" />
                             {busy === c.email ? "Fetching…" : "SOA"}
@@ -677,7 +686,7 @@ export default function DistributorInvestorsPage() {
                             type="button"
                             onClick={() => openAccount(c.clientCode!, c.name)}
                             disabled={busy === c.clientCode}
-                            className="inline-flex min-h-[32px] items-center gap-1.5 rounded-md border border-border/20 px-2.5 text-[11.5px] font-bold text-primary hover:border-primary/50 disabled:opacity-50 dark:text-primary-foreground"
+                            className="inline-flex min-h-[32px] items-center gap-1.5 rounded-md border border-border/20 px-2.5 text-[12px] font-bold text-primary hover:border-primary/50 disabled:opacity-50 dark:text-primary-foreground"
                           >
                             <ExternalLink className="size-3" />
                             {busy === c.clientCode ? "Opening…" : "View account"}

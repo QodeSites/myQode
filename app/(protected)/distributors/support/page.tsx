@@ -223,7 +223,7 @@ export default function DistributorSupportPage() {
             }
             className="mt-1 w-full rounded-md border border-border/20 bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-2 focus-visible:outline-primary"
           />
-          <p className="mt-1 text-right text-[11px] text-muted-foreground">
+          <p className="mt-1 text-right text-[12px] text-muted-foreground">
             {message.length} / {MAX_MESSAGE}
           </p>
         </div>

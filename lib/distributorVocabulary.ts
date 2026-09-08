@@ -19,6 +19,7 @@
 
 export type StatusKey =
   | "invested"
+  | "regular"
   | "smallfunded"
   | "opened"
   | "onboarding"
@@ -41,6 +42,15 @@ const INVESTED: StatusInfo = {
   key: "invested",
   label: "First Fund Initiated",
   detail: "Money is in the market",
+  tone: "good",
+};
+const REGULAR: StatusInfo = {
+  key: "regular",
+  label: "Regular Investor",
+  // Krutika's definition on the 2026-09-08 review call: an investor who put in
+  // a first ticket and then invested again. It is a repeat investment, not a
+  // first one, so it does not belong under First Fund Initiated.
+  detail: "Invested again after their first",
   tone: "good",
 };
 const SMALL_FUNDED: StatusInfo = {
@@ -86,6 +96,7 @@ const CLOSED: StatusInfo = {
 /** Display order: furthest along first, stalled last. */
 export const STATUS_ORDER: readonly StatusInfo[] = [
   INVESTED,
+  REGULAR,
   SMALL_FUNDED,
   OPENED,
   ONBOARDING,
@@ -102,10 +113,7 @@ export const STATUS_ORDER: readonly StatusInfo[] = [
  * on it. Splitting it makes the chips match the Zoho sub-stage counts exactly
  * — 35 First Fund Initiated and 5 Funded less than 50L.
  */
-const FUNDED_SUBSTAGES = new Set<string>([
-  "First Fund Initiated",
-  "Regular Investor",
-]);
+const FUNDED_SUBSTAGES = new Set<string>(["First Fund Initiated"]);
 
 /**
  * Maps a record to the language above.
@@ -130,6 +138,7 @@ export function statusFor(
       return /lost/i.test(onboardingStage) ? CLOSED : DECLINED;
     }
     if (FUNDED_SUBSTAGES.has(onboardingStage)) return INVESTED;
+    if (onboardingStage === "Regular Investor") return REGULAR;
     if (onboardingStage === "Funded less than 50L") return SMALL_FUNDED;
     if (onboardingStage === "Account Live") return OPENED;
     if (onboardingStage === "Dormant Investor") return INACTIVE;
@@ -139,8 +148,9 @@ export function statusFor(
 
   switch (stage) {
     case "First Fund Initiated":
-    case "Regular Investor":
       return INVESTED;
+    case "Regular Investor":
+      return REGULAR;
     case "Account Live":
       return OPENED;
     case "Onboarding":
