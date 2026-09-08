@@ -54,6 +54,29 @@ function money(n: number | null): string {
   return `${sign}₹${abs.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`;
 }
 
+/**
+ * When an investor was funded.
+ *
+ * Activation_Date is the primary record, but all five investors whose
+ * Onboarding_Stage reads "Funded less than 50L" have it empty — they are
+ * counted as funded in the status chips while being invisible to a filter
+ * that reads Activation_Date alone. Date_Of_1st_Investment is populated for
+ * those records, so it stands in.
+ *
+ * The two are not the same field and the fallback is deliberate rather than
+ * an equivalence: for an investor with both, Activation_Date wins.
+ */
+function fundedDate(c: JourneyClient): string | null {
+  if (c.activationDate) return c.activationDate;
+  // Only for records the CRM itself calls funded. Falling back for everyone
+  // pulls in Account Live investors, who have a Date_Of_1st_Investment despite
+  // holding nothing — that widened an August range from 9 to 15 and broke the
+  // match with the CRM's own drill-down.
+  return c.onboardingStage === "Funded less than 50L"
+    ? c.accountLiveDate
+    : null;
+}
+
 function formatDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -139,7 +162,7 @@ export default function DistributorInvestorsPage() {
         if (strategy && !c.strategies.includes(strategy)) return false;
         if (dateBasis && (fromDate || toDate)) {
           const raw =
-            dateBasis === "opened" ? c.accountLiveDate : c.activationDate;
+            dateBasis === "opened" ? c.accountLiveDate : fundedDate(c);
           // No date on record means we cannot say it falls in the range. The
           // count line below says how many were set aside, so a partner is
           // never silently shown a short list.
@@ -180,7 +203,7 @@ export default function DistributorInvestorsPage() {
       if (statusKey && statusFor(c.stage, c.onboardingStage).key !== statusKey)
         return false;
       if (strategy && !c.strategies.includes(strategy)) return false;
-      return !(dateBasis === "opened" ? c.accountLiveDate : c.activationDate);
+      return !(dateBasis === "opened" ? c.accountLiveDate : fundedDate(c));
     }).length;
   }, [clients, statusKey, strategy, dateBasis, fromDate, toDate]);
 
