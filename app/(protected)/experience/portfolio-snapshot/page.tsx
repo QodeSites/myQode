@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useClient } from "@/contexts/ClientContext";
+import { usePrimaryUcc } from "@/hooks/usePrimaryUcc";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -85,6 +86,7 @@ const FamilyPortfolioSkeleton = () => (
    ========================= */
 export default function FamilyPortfolioSection() {
   const { clients, loading, isHeadOfFamily } = useClient();
+  const { isPrimaryUcc } = usePrimaryUcc();
   const [familyAccounts, setFamilyAccounts] = useState<FamAccWithPortfolio[]>([]);
   const [portfolioLoading, setPortfolioLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -483,6 +485,15 @@ export default function FamilyPortfolioSection() {
                                                   {account.head_of_family && isHeadOfFamily && (
                                                     <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700">
                                                       Head
+                                                    </Badge>
+                                                  )}
+                                                  {isPrimaryUcc(account.clientcode) && (
+                                                    <Badge
+                                                      variant="outline"
+                                                      className="text-xs bg-amber-50 text-amber-800 border-amber-300"
+                                                      title="Sign in to WealthSpectrum with this code to see all your mapped schemes together"
+                                                    >
+                                                      Primary UCC
                                                     </Badge>
                                                   )}
                                                 </div>
