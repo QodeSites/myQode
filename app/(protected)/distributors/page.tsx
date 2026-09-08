@@ -1034,7 +1034,12 @@ export default function DistributorOverviewPage() {
 
                         {/* Step name. Occupied steps are links; empty ones
                             are not — there is nobody there to look at. */}
-                        <div className="mt-2 px-1 text-center">
+                        {/* Fixed height: step names run to three lines
+                            ("Form Sent to Investor for Signature") and a
+                            taller label would otherwise push its own count
+                            below its neighbours', breaking the line the
+                            journey is meant to read along. */}
+                        <div className="mt-2 flex h-[52px] flex-col px-1 text-center">
                           {here ? (
                             <Link
                               href="/distributors/investors?status=onboarding"
@@ -1048,7 +1053,7 @@ export default function DistributorOverviewPage() {
                             </span>
                           )}
                           {here ? (
-                            <p className="mt-0.5 text-[11px] text-muted-foreground">
+                            <p className="mt-auto pt-0.5 text-[11px] text-muted-foreground">
                               {count} {count === 1 ? "investor" : "investors"}
                             </p>
                           ) : null}

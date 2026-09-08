@@ -512,7 +512,9 @@ export default function InvestorDetailPage() {
                       />
                     </div>
 
-                    <div className="mt-2 px-1 text-center">
+                    {/* Fixed height so a wrapped stage name cannot push its
+                        meaning line out of step with its neighbours. */}
+                    <div className="mt-2 flex h-[46px] flex-col px-1 text-center">
                       <p
                         className={`text-[12px] leading-snug ${
                           here
@@ -616,7 +618,10 @@ export default function InvestorDetailPage() {
                           />
                         </div>
 
-                        <div className="mt-2 px-1 text-center">
+                        {/* Fixed height: the longest step name wraps to three
+                            lines, which would otherwise drop its caption below
+                            the captions either side of it. */}
+                        <div className="mt-2 flex h-[58px] flex-col px-1 text-center">
                           <p
                             className={`text-[12px] leading-snug ${
                               here
