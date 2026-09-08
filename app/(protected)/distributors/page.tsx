@@ -356,7 +356,11 @@ export default function DistributorOverviewPage() {
   const partial = totals.pricedCount > 0 && totals.pricedCount < totals.investors;
   const live = data.crmLinked && data.zohoAvailable;
 
-  const investedCount = statusCounts.get("invested") ?? 0;
+  // Both funded statuses. "Funded less than 50L" is a smaller ticket, not a
+  // different outcome — counting only "invested" here would push those five
+  // investors into "Not yet funded", which is the opposite of true.
+  const investedCount =
+    (statusCounts.get("invested") ?? 0) + (statusCounts.get("smallfunded") ?? 0);
   const notYet =
     (statusCounts.get("opened") ?? 0) + (statusCounts.get("onboarding") ?? 0);
 

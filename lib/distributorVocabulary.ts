@@ -19,6 +19,7 @@
 
 export type StatusKey =
   | "invested"
+  | "smallfunded"
   | "opened"
   | "onboarding"
   | "inactive"
@@ -40,6 +41,15 @@ const INVESTED: StatusInfo = {
   key: "invested",
   label: "First Fund Initiated",
   detail: "Money is in the market",
+  tone: "good",
+};
+const SMALL_FUNDED: StatusInfo = {
+  key: "smallfunded",
+  // The one label that is not Zoho's value verbatim. The CRM stores
+  // "Funded less than 50L"; the team asked for it spelled out on screen. The
+  // sub-stage it matches is unchanged, so the count still reconciles.
+  label: "Funded Less than 50 lacs",
+  detail: "Money is in the market, below the usual ticket",
   tone: "good",
 };
 const OPENED: StatusInfo = {
@@ -76,6 +86,7 @@ const CLOSED: StatusInfo = {
 /** Display order: furthest along first, stalled last. */
 export const STATUS_ORDER: readonly StatusInfo[] = [
   INVESTED,
+  SMALL_FUNDED,
   OPENED,
   ONBOARDING,
   INACTIVE,
@@ -84,15 +95,15 @@ export const STATUS_ORDER: readonly StatusInfo[] = [
 ];
 
 /**
- * Sub-stage values that mean the money has arrived.
+ * Sub-stage values that mean the money has arrived at a full ticket.
  *
- * "Funded less than 50L" is funded: the amount is below the usual ticket, but
- * it is invested either way, and a partner counting funded clients should see
- * it there rather than in an opened-but-empty bucket.
+ * "Funded less than 50L" is funded too, but it gets its own status rather than
+ * folding in here: the CRM tracks it separately and the team asked to filter
+ * on it. Splitting it makes the chips match the Zoho sub-stage counts exactly
+ * — 35 First Fund Initiated and 5 Funded less than 50L.
  */
 const FUNDED_SUBSTAGES = new Set<string>([
   "First Fund Initiated",
-  "Funded less than 50L",
   "Regular Investor",
 ]);
 
@@ -119,6 +130,7 @@ export function statusFor(
       return /lost/i.test(onboardingStage) ? CLOSED : DECLINED;
     }
     if (FUNDED_SUBSTAGES.has(onboardingStage)) return INVESTED;
+    if (onboardingStage === "Funded less than 50L") return SMALL_FUNDED;
     if (onboardingStage === "Account Live") return OPENED;
     if (onboardingStage === "Dormant Investor") return INACTIVE;
     // Any other sub-stage is a step along the way to opening an account.
