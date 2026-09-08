@@ -35,13 +35,6 @@ import {
 
 const QAW = "#008455";
 
-/** Ranges offered on the inflow chart. months=null means since inception. */
-const INFLOW_RANGES: { key: string; label: string; months: number | null }[] = [
-  { key: "3m", label: "3M", months: 3 },
-  { key: "6m", label: "6M", months: 6 },
-  { key: "1y", label: "1Y", months: 12 },
-  { key: "all", label: "Since inception", months: null },
-];
 
 /**
  * When an investor was funded.
@@ -219,8 +212,6 @@ export default function DistributorOverviewPage() {
     [strategyCounts],
   );
 
-  const [inflowRange, setInflowRange] = React.useState("all");
-
   const monthlyInflow = React.useMemo(() => {
     const by = new Map<string, { amount: number; investors: number }>();
     for (const c of clients) {
@@ -253,25 +244,7 @@ export default function DistributorOverviewPage() {
       });
     }
 
-    // Trim to the selected window, counted back from the most recent month
-    // rather than from today, so an idle month at the end cannot empty it.
-    const def =
-      INFLOW_RANGES.find((r) => r.key === inflowRange) ?? INFLOW_RANGES[3];
-    return def.months == null ? out : out.slice(-def.months);
-  }, [clients, inflowRange]);
-
-  /** Whole history, for deciding which ranges are worth offering. */
-  const inflowMonths = React.useMemo(() => {
-    const months = new Set<string>();
-    for (const c of clients) {
-      const when = fundedDate(c);
-      if (when && c.investedAmount) months.add(String(when).slice(0, 7));
-    }
-    if (!months.size) return 0;
-    const keys = [...months].sort();
-    const [sy, sm] = keys[0].split("-").map(Number);
-    const [ey, em] = keys[keys.length - 1].split("-").map(Number);
-    return (ey - sy) * 12 + (em - sm) + 1;
+    return out;
   }, [clients]);
 
   // Rupees per strategy, not just headcount. An investor holding three
@@ -506,36 +479,9 @@ export default function DistributorOverviewPage() {
           {monthlyInflow.length >= 2 ? (
             <Card
               title="Money you have brought in"
-              description="By the month each investor started investing."
+              description="Every month since your first investor, by the month they started investing."
             >
-              {/* A range is offered only when the history is longer than it:
-                  with three months of data, 1Y would redraw the same chart and
-                  imply a year that is not there. Below four months nothing is
-                  selectable, so the row is hidden rather than shown as a
-                  single button that does nothing. */}
-              <div
-                className="flex flex-wrap items-center gap-2"
-                hidden={inflowMonths <= 3}
-              >
-                {INFLOW_RANGES.map((r) =>
-                  r.months == null || inflowMonths > r.months ? (
-                    <button
-                      key={r.key}
-                      type="button"
-                      onClick={() => setInflowRange(r.key)}
-                      className={`min-h-[36px] rounded-md border px-3 text-[12px] font-semibold ${
-                        inflowRange === r.key
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-border/20 bg-background text-muted-foreground hover:border-primary/50"
-                      }`}
-                    >
-                      {r.label}
-                    </button>
-                  ) : null,
-                )}
-              </div>
-
-              <div className="mt-3 h-[220px] w-full">
+              <div className="h-[220px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart
                     data={monthlyInflow}
@@ -818,7 +764,7 @@ export default function DistributorOverviewPage() {
                         <div className="mt-2 flex h-[52px] flex-col px-1 text-center">
                           {here ? (
                             <Link
-                              href="/distributors/investors?status=onboarding"
+                              href={`/distributors/investors?status=onboarding&stage=${encodeURIComponent(step)}`}
                               className="text-[12px] leading-snug text-foreground underline-offset-4 hover:underline"
                             >
                               {step}

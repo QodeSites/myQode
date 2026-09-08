@@ -103,6 +103,12 @@ export default function DistributorInvestorsPage() {
   const [strategy, setStrategy] = React.useState<string>(
     () => searchParams.get("strategy") ?? "",
   );
+  // Arriving from a step on the overview's onboarding journey. Every step used
+  // to link to ?status=onboarding, so clicking "CML Pending" showed all
+  // thirteen onboarding investors rather than the one actually at that step.
+  const [onboardingStage, setOnboardingStage] = React.useState<string>(
+    () => searchParams.get("stage") ?? "",
+  );
   // Date filter. Two bases, because "when they came" and "when the account
   // opened" are different questions with different fields behind them.
   //
@@ -160,6 +166,7 @@ export default function DistributorInvestorsPage() {
       .filter((c) => {
         if (statusKey && statusFor(c.stage, c.onboardingStage).key !== statusKey) return false;
         if (strategy && !c.strategies.includes(strategy)) return false;
+        if (onboardingStage && c.onboardingStage !== onboardingStage) return false;
         if (dateBasis && (fromDate || toDate)) {
           const raw =
             dateBasis === "opened" ? c.accountLiveDate : fundedDate(c);
@@ -177,7 +184,7 @@ export default function DistributorInvestorsPage() {
           .some((v) => String(v).toLowerCase().includes(needle));
       })
       .sort((a, b) => (b.currentValue ?? 0) - (a.currentValue ?? 0));
-  }, [clients, q, statusKey, strategy, dateBasis, fromDate, toDate]);
+  }, [clients, q, statusKey, strategy, onboardingStage, dateBasis, fromDate, toDate]);
 
   // Zoho holds more than one record for the same person in some cases —
   // four identical rows for one investor on the live book. That inflates the
@@ -210,7 +217,7 @@ export default function DistributorInvestorsPage() {
   // A narrowed list must never open part-way down.
   React.useEffect(() => {
     setShown(10);
-  }, [q, statusKey, strategy, dateBasis, fromDate, toDate]);
+  }, [q, statusKey, strategy, onboardingStage, dateBasis, fromDate, toDate]);
 
   /**
    * Downloads the investor's SOA.
@@ -523,6 +530,23 @@ export default function DistributorInvestorsPage() {
             </div>
           ) : (
             <>
+              {/* An active sub-stage filter is otherwise invisible: the list
+                  would just look short with nothing explaining why. */}
+              {onboardingStage ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <span className="inline-flex min-h-[32px] items-center gap-2 rounded-full border border-primary bg-primary/10 px-3 text-[12px] font-semibold text-foreground">
+                    {onboardingStage}
+                    <button
+                      type="button"
+                      onClick={() => setOnboardingStage("")}
+                      aria-label={`Clear the ${onboardingStage} filter`}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </span>
+                </div>
+              ) : null}
               <p className="mt-3 text-xs text-muted-foreground">
                 {visible.length === clients.length
                   ? `${clients.length} investors, largest holdings first`
