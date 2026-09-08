@@ -18,19 +18,34 @@ export const dynamic = 'force-dynamic'
 /**
  * Scopes requested.
  *
- * Read-only on purpose: this integration reads distributor and investor fee
- * data. It has no reason to be able to modify records in the CRM, and a token
- * that cannot write is a token that cannot damage anything if it leaks.
+ * Read-only by default and on purpose: this integration reads distributor and
+ * investor fee data. It has no reason to be able to modify records in the CRM,
+ * and a token that cannot write is a token that cannot damage anything if it
+ * leaks.
  *
  *  - ZohoCRM.modules.READ          record data (Distributor, Investors, the link)
  *  - ZohoCRM.settings.modules.READ module + field metadata
  *  - ZohoCRM.coql.READ             the COQL query endpoint used for the joins
  */
-const SCOPES = [
+const READ_SCOPES = [
   'ZohoCRM.modules.READ',
   'ZohoCRM.settings.modules.READ',
   'ZohoCRM.coql.READ',
-].join(',')
+]
+
+/**
+ * Write scope, requested ONLY when the caller passes `?write=1`.
+ *
+ * This exists for one-off backfills that set a field across many records (for
+ * example populating Primary_UCC). It is deliberately opt-in per authorization
+ * rather than a default, so the token the app normally runs on stays read-only:
+ * widening the default would quietly give every future token the ability to
+ * modify the CRM.
+ *
+ * After such a backfill, re-run this route WITHOUT `write=1` and replace the
+ * token in the environment, so no write-capable credential is left lying around.
+ */
+const WRITE_SCOPE = 'ZohoCRM.modules.ALL'
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url)
@@ -68,8 +83,12 @@ export async function GET(request: NextRequest) {
     )
   }
 
+  // Opt-in write scope for one-off backfills; read-only otherwise.
+  const wantsWrite = url.searchParams.get('write') === '1'
+  const scopes = wantsWrite ? [...READ_SCOPES, WRITE_SCOPE] : READ_SCOPES
+
   const authUrl = new URL(`https://accounts.zoho.${dataCenter}/oauth/v2/auth`)
-  authUrl.searchParams.set('scope', SCOPES)
+  authUrl.searchParams.set('scope', scopes.join(','))
   authUrl.searchParams.set('client_id', clientId)
   authUrl.searchParams.set('response_type', 'code')
   // Zoho drops any extra query params we add, but echoes `state` back verbatim.
@@ -87,7 +106,7 @@ export async function GET(request: NextRequest) {
   authUrl.searchParams.set('prompt', 'consent')
 
   console.log(
-    `[zoho/authorize] redirecting to Zoho consent — dc=${dataCenter} redirect_uri=${redirectUri}`,
+    `[zoho/authorize] redirecting to Zoho consent — dc=${dataCenter} redirect_uri=${redirectUri} write=${wantsWrite}`,
   )
 
   return NextResponse.redirect(authUrl.toString())
