@@ -68,7 +68,7 @@ const ACCOUNT_STAGES = [
 const ACCOUNT_STAGE_LABEL: Record<string, string> = {
   Onboarding: "Onboarding",
   "Account Live": "Account opened",
-  "First Fund Initiated": "Invested",
+  "First Fund Initiated": "Funded",
   "Regular Investor": "Regular investor",
 };
 

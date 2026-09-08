@@ -414,7 +414,7 @@ export default function DistributorOverviewPage() {
                 </div>
                 <div>
                   <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                    Invested
+                    Funded
                   </p>
                   <p
                     className="mt-1 font-sans text-2xl font-bold tabular-nums"
@@ -425,7 +425,7 @@ export default function DistributorOverviewPage() {
                 </div>
                 <div>
                   <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
-                    Not yet invested
+                    Not yet funded
                   </p>
                   <p className="mt-1 font-sans text-2xl font-bold tabular-nums text-foreground">
                     {notYet}
@@ -434,7 +434,7 @@ export default function DistributorOverviewPage() {
               </div>
             </div>
 
-            {partial || data.portalClientCount !== totals.investors ? (
+            {/* {partial || data.portalClientCount !== totals.investors ? (
               <p className="mt-4 border-t border-border/20 pt-3 text-[11.5px] leading-relaxed text-muted-foreground">
                 {partial
                   ? `Values cover the ${totals.pricedCount} of ${totals.investors} investors whose holdings are priced in our records. `
@@ -443,7 +443,7 @@ export default function DistributorOverviewPage() {
                   ? `You have ${data.portalClientCount} accounts across ${totals.investors} investors — one investor can hold several strategy accounts.`
                   : ""}
               </p>
-            ) : null}
+            ) : null} */}
           </section>
 
           {/* Money brought in, month by month. Two series in one reading:
@@ -591,7 +591,7 @@ export default function DistributorOverviewPage() {
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   of your book sits with the largest 5 of {concentration.count}{" "}
-                  investing clients.
+                  funded clients.
                 </p>
                 {/* A bar reads faster than the number alone. */}
                 <div
@@ -788,7 +788,7 @@ export default function DistributorOverviewPage() {
           {/* Recently invested */}
           {recent.length ? (
             <Card
-              title="Recently started investing"
+              title="Recently funded"
               description={`${recent.length} ${recent.length === 1 ? "investor" : "investors"} in the last 30 days.`}
             >
               <ul className="flex flex-col gap-2">

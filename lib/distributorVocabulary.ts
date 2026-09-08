@@ -28,8 +28,10 @@ export type StatusInfo = {
 };
 
 const INVESTED: StatusInfo = {
+  // The key stays "invested": it is the identifier in ?status= links and in
+  // filter state, not something a partner reads. Only the label changed.
   key: "invested",
-  label: "Invested",
+  label: "Funded",
   detail: "Money is in the market and earning",
   tone: "good",
 };
