@@ -35,6 +35,28 @@ import {
 
 const QAW = "#008455";
 
+/** Ranges offered on the book chart. days=null means the whole series. */
+const BOOK_RANGES: { key: string; label: string; days: number | null }[] = [
+  { key: "3m", label: "3M", days: 90 },
+  { key: "6m", label: "6M", days: 180 },
+  { key: "1y", label: "1Y", days: 365 },
+  { key: "all", label: "Since inception", days: null },
+];
+
+type BookPoint = {
+  date: string;
+  value: number;
+  drawdown: number;
+  accounts: number;
+};
+
+/** "12 Aug" — dense enough for a daily axis. */
+function shortDay(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+}
+
 type JourneyClient = {
   name: string | null;
   email: string | null;
@@ -185,6 +207,87 @@ export default function DistributorOverviewPage() {
       count: counts.get(step) ?? 0,
     }));
   }, [clients]);
+
+  // Book value history. Fetched separately from the journey: that payload
+  // has one snapshot per investor, and a drawdown needs a curve.
+  const [bookSeries, setBookSeries] = React.useState<BookPoint[]>([]);
+  const [bookRange, setBookRange] = React.useState("all");
+
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/distributor/book-history", {
+          cache: "no-store",
+        });
+        if (cancelled || !res.ok) return;
+        const body = (await res.json()) as { series?: BookPoint[] };
+        if (!cancelled) setBookSeries(body.series ?? []);
+      } catch {
+        // The rest of the overview stands without this card.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // True when a range reaches further back than the data begins. Used to hide
+  // ranges that would redraw an identical chart.
+  const rangeHasData = React.useCallback(
+    (days: number | null) => {
+      if (!bookSeries.length) return false;
+      if (days == null) return true;
+      const first = new Date(bookSeries[0].date);
+      const last = new Date(bookSeries[bookSeries.length - 1].date);
+      const spanDays = (last.getTime() - first.getTime()) / 86400000;
+      // Offer a window only if the data is meaningfully longer than it.
+      return spanDays > days * 1.05;
+    },
+    [bookSeries],
+  );
+
+  const bookWindow = React.useMemo(() => {
+    const empty = {
+      points: [] as BookPoint[],
+      last: 0,
+      change: 0,
+      changePct: 0,
+      maxDrawdown: 0,
+    };
+    if (!bookSeries.length) return empty;
+
+    const def = BOOK_RANGES.find((r) => r.key === bookRange) ?? BOOK_RANGES[3];
+    let points = bookSeries;
+    if (def.days != null) {
+      const end = new Date(bookSeries[bookSeries.length - 1].date);
+      const from = new Date(end);
+      from.setDate(from.getDate() - def.days);
+      points = bookSeries.filter((p) => new Date(p.date) >= from);
+    }
+    if (points.length < 2) return empty;
+
+    // Drawdown is recomputed against the peak WITHIN the window. Carrying the
+    // all-time peak into a 3M view would show a fall the period never had.
+    let peak = 0;
+    let maxDrawdown = 0;
+    const rebased = points.map((p) => {
+      if (p.value > peak) peak = p.value;
+      const dd = peak > 0 ? ((p.value - peak) / peak) * 100 : 0;
+      if (dd < maxDrawdown) maxDrawdown = dd;
+      return { ...p, drawdown: dd };
+    });
+
+    const first = rebased[0].value;
+    const last = rebased[rebased.length - 1].value;
+    return {
+      points: rebased,
+      last,
+      change: last - first,
+      changePct: first > 0 ? ((last - first) / first) * 100 : 0,
+      maxDrawdown,
+    };
+  }, [bookSeries, bookRange]);
 
   // Money brought in per month, by the date each investor was activated.
   // This is the strongest signal a partner has about their own momentum, and
@@ -445,6 +548,214 @@ export default function DistributorOverviewPage() {
               </p>
             ) : null} */}
           </section>
+
+          {/* Book value and drawdown over time.
+
+              This is the one place a partner sees their book as a curve
+              rather than a snapshot. Drawdown cannot come from the journey
+              payload — that carries one current value per investor and no
+              history — so it is read from pms_master_sheet and recomputed
+              over the summed book. */}
+          {bookSeries.length >= 2 ? (
+            <Card
+              title="Your book over time"
+              description="Total value of every account you referred, and how far it has fallen below its peak."
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                {BOOK_RANGES.map((r) => {
+                  // A range that reaches no further back than the data does
+                  // is not offered — three buttons drawing the same chart
+                  // would imply history that is not there.
+                  if (!rangeHasData(r.days)) return null;
+                  return (
+                    <button
+                      key={r.key}
+                      type="button"
+                      onClick={() => setBookRange(r.key)}
+                      className={`min-h-[36px] rounded-md border px-3 text-[12px] font-semibold ${
+                        bookRange === r.key
+                          ? "border-primary bg-primary text-primary-foreground"
+                          : "border-border/20 bg-background text-muted-foreground hover:border-primary/50"
+                      }`}
+                    >
+                      {r.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <dl className="mt-4 flex flex-wrap gap-x-8 gap-y-3">
+                <div>
+                  <dt className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Value today
+                  </dt>
+                  <dd className="mt-0.5 font-sans text-xl font-bold tabular-nums text-foreground">
+                    {money(bookWindow.last)}
+                  </dd>
+                </div>
+                {/* Deliberately NOT a percentage. The book grew from 2
+                    accounts to 82 over this history, so a percentage change in
+                    total value reads as +663% and looks like a return. It is
+                    almost entirely new money arriving. The rupee change is
+                    honest about being a size change; performance belongs to
+                    the investor-level figures above. */}
+                <div>
+                  <dt className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Growth over period
+                  </dt>
+                  <dd
+                    className="mt-0.5 font-sans text-xl font-bold tabular-nums"
+                    style={{
+                      color: bookWindow.change >= 0 ? QAW : "var(--destructive)",
+                    }}
+                  >
+                    {bookWindow.change >= 0 ? "+" : "−"}
+                    {money(Math.abs(bookWindow.change))}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                    Deepest fall
+                  </dt>
+                  <dd
+                    className="mt-0.5 font-sans text-xl font-bold tabular-nums"
+                    style={{ color: "var(--destructive)" }}
+                  >
+                    {bookWindow.maxDrawdown.toFixed(1)}%
+                  </dd>
+                </div>
+              </dl>
+
+              {/* Value */}
+              <div className="mt-4 h-[200px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={bookWindow.points}
+                    margin={{ top: 8, right: 8, bottom: 0, left: 8 }}
+                  >
+                    <defs>
+                      <linearGradient id="bookval" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={QAW} stopOpacity={0.32} />
+                        <stop offset="100%" stopColor={QAW} stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis
+                      dataKey="date"
+                      tickLine={false}
+                      axisLine={false}
+                      minTickGap={40}
+                      tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                      tickFormatter={shortDay}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      width={52}
+                      domain={["auto", "auto"]}
+                      tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                      tickFormatter={(v: number) =>
+                        v >= 10000000
+                          ? `${(v / 10000000).toFixed(1)}Cr`
+                          : `${Math.round(v / 100000)}L`
+                      }
+                    />
+                    <Tooltip
+                      cursor={{ stroke: QAW, strokeOpacity: 0.3 }}
+                      contentStyle={{
+                        borderRadius: 8,
+                        border: "1px solid var(--border)",
+                        background: "var(--card)",
+                        fontSize: 12,
+                      }}
+                      labelFormatter={(d: string) => formatDate(d)}
+                      formatter={(v: number) => [money(v), "Book value"]}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="value"
+                      stroke={QAW}
+                      strokeWidth={2}
+                      fill="url(#bookval)"
+                      dot={false}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Drawdown, on its own axis beneath. Kept as a separate chart
+                  rather than a second series: value in rupees and drawdown in
+                  percent share no scale, and overlaying them would flatten
+                  one of the two into a straight line. */}
+              <p className="mt-4 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                Below peak
+              </p>
+              <div className="mt-1 h-[110px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart
+                    data={bookWindow.points}
+                    margin={{ top: 4, right: 8, bottom: 0, left: 8 }}
+                  >
+                    <defs>
+                      <linearGradient id="bookdd" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#550E0E" stopOpacity={0.05} />
+                        <stop offset="100%" stopColor="#550E0E" stopOpacity={0.3} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis
+                      dataKey="date"
+                      tickLine={false}
+                      axisLine={false}
+                      minTickGap={40}
+                      tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                      tickFormatter={shortDay}
+                    />
+                    <YAxis
+                      tickLine={false}
+                      axisLine={false}
+                      width={52}
+                      domain={[(dataMin: number) => Math.min(dataMin * 1.15, -0.5), 0]}
+                      tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
+                      tickFormatter={(v: number) => `${v.toFixed(0)}%`}
+                    />
+                    <Tooltip
+                      cursor={{ stroke: "#550E0E", strokeOpacity: 0.3 }}
+                      contentStyle={{
+                        borderRadius: 8,
+                        border: "1px solid var(--border)",
+                        background: "var(--card)",
+                        fontSize: 12,
+                      }}
+                      labelFormatter={(d: string) => formatDate(d)}
+                      formatter={(v: number) => [`${v.toFixed(2)}%`, "Below peak"]}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="drawdown"
+                      stroke="#550E0E"
+                      strokeWidth={1.5}
+                      fill="url(#bookdd)"
+                      dot={false}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* Early history is thin — the book began with two accounts and
+                  grew to eighty-odd, so a rise here is mostly new money
+                  arriving rather than markets moving. Saying so keeps the
+                  curve from being read as performance. */}
+              {bookWindow.points[0]?.accounts != null &&
+              bookWindow.points[bookWindow.points.length - 1]?.accounts >
+                bookWindow.points[0].accounts ? (
+                <p className="mt-3 border-t border-border/20 pt-3 text-[11.5px] leading-relaxed text-muted-foreground">
+                  Accounts grew from {bookWindow.points[0].accounts} to{" "}
+                  {bookWindow.points[bookWindow.points.length - 1].accounts} over
+                  this period, so most of the rise in value is new money rather
+                  than market movement.
+                </p>
+              ) : null}
+            </Card>
+          ) : null}
 
           {/* Money brought in, month by month. Two series in one reading:
               the area is rupees, the tooltip says how many investors that
