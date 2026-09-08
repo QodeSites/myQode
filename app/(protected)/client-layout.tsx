@@ -9,6 +9,7 @@ import QodeDistributorHeader from "@/components/qode-distributor-header";
 import { useClient } from "@/contexts/ClientContext";
 import { FullscreenLoader } from "./portfolio/performance/page";
 import { WebAnalyticsProvider } from "@/components/web-analytics-provider";
+import PrimaryUccBanner from "@/components/primary-ucc-banner";
 
 type ClientLayoutProps = {
   children: ReactNode;
@@ -64,6 +65,8 @@ export default function ClientLayout({ children }: ClientLayoutProps) {
 
           {/* Page content */}
           <main id="main-content" tabIndex={-1} className="flex-1 overflow-y-auto">
+            {/* Nuvama portal login notice — shown on every investor page */}
+            <PrimaryUccBanner />
             <div className="w-full h-fit rounded-lg bg-card p-4 sm:p-6">
               <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
             </div>
