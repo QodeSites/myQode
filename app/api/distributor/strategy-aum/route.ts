@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { resolveDistributorByEmail } from "@/lib/distributorIdentity";
+import { getJourneyForDistributor } from "@/lib/zohoDistributorJourney";
 import { query } from "@/lib/db";
 
 /**
@@ -19,9 +20,16 @@ import { query } from "@/lib/db";
  * agrees to the decimal wherever the CRM is current — Nuarch 47.3/52.7, Enso
  * 35.6/64.4, First Quartile 60/40.
  *
- * Accounts are matched on intermediaryname against the partner's own
- * clientname from their httpOnly session, so nothing the client sends selects
- * an account.
+ * SCOPED BY ZOHO, NOT BY intermediaryname ALONE.
+ * pms_clients_master.intermediaryname is not reliable for attribution: it puts
+ * Sharan B Hegde (4.99 Cr across three accounts) under One Battalion, while
+ * Zoho does not list him among their investors at all. Scoping on it made the
+ * overview read 22.01 Cr against a true 17.02 Cr. Zoho is the system of record
+ * for who referred whom, so the account set is intersected with the investor
+ * emails Zoho returns for this partner.
+ *
+ * The distributor is still resolved from the httpOnly session, so nothing the
+ * client sends selects an account.
  */
 
 const STRATEGY_BY_PREFIX: Record<string, string> = {
@@ -50,6 +58,28 @@ export async function GET() {
       return NextResponse.json({ error: "Not a distributor" }, { status: 403 });
     }
 
+    // The investors Zoho attributes to this partner, matched by EMAIL.
+    //
+    // Not by name: the two systems store names differently enough that a name
+    // join silently matches nothing — Postgres has "Anand  Thangaraj" against
+    // Zoho's "Anand Thagaraj", and "Chekuri Harikiran" against "Harikiran
+    // Chekuri". Email is exact on both sides (61 of 61 in Zoho, 85 of 85 in
+    // pms_clients_master) and is the same key the SOA ownership check uses.
+    const journey = await getJourneyForDistributor(distributor.email);
+    const ownEmails = [
+      ...new Set(
+        (journey?.clients ?? [])
+          .map((c) => String(c.email ?? "").trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    ];
+    if (!ownEmails.length) {
+      return NextResponse.json(
+        { strategies: [], total: 0, valuedOn: null },
+        { headers: { "Cache-Control": "private, no-store" } },
+      );
+    }
+
     const result = await query(
       `WITH latest AS (
          SELECT DISTINCT ON (ms.account_code)
@@ -66,8 +96,9 @@ export async function GET() {
          FROM latest l
          JOIN pms_clients_master cm ON cm.clientcode = l.account_code
         WHERE cm.intermediaryname = $1
+          AND lower(btrim(cm.email)) = ANY($2)
         GROUP BY 1`,
-      [distributor.clientname],
+      [distributor.clientname, ownEmails],
     );
 
     let total = 0;

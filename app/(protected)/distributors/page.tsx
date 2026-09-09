@@ -126,7 +126,7 @@ function Card({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-border/20 bg-card shadow-sm px-5 py-5">
+    <section className="flex h-full flex-col rounded-xl border border-border/20 bg-card shadow-sm px-5 py-5">
       <h2 className="text-base font-semibold text-foreground">{title}</h2>
       {description ? (
         <p className="mt-1 text-[12.5px] text-muted-foreground">
@@ -643,7 +643,7 @@ export default function DistributorOverviewPage() {
           {/* Side by side: one says where the money sits, the other where
               the investors are — two halves of the same question, and each is
               short enough that stacking them wastes the width. */}
-          <div className="grid items-start gap-5 lg:grid-cols-2">
+          <div className="grid gap-5 lg:grid-cols-2 lg:items-stretch [&>*]:h-full">
             {strategyMoney.length ? (
               <Card
                 title="Which strategies they hold"
@@ -653,7 +653,7 @@ export default function DistributorOverviewPage() {
                     : "Investor numbers are exact. Value is split evenly for anyone holding more than one strategy, so treat it as indicative."
                 }
               >
-                <div className="flex items-center gap-4">
+                <div className="flex h-full items-center justify-center gap-5">
                   {/* Total sits in the ring's hole — the space a donut leaves
                     empty, and where the whole that the slices divide belongs. */}
                   <div className="relative h-[150px] w-[150px] shrink-0">
@@ -910,9 +910,7 @@ export default function DistributorOverviewPage() {
                               </span>
                             </>
                           ) : (
-                            <span className="text-[12px] text-muted-foreground">
-                              Not yet valued
-                            </span>
+                            <span className="text-muted-foreground">—</span>
                           )}
                         </span>
                         <span className="text-[12px] tabular-nums text-muted-foreground">
