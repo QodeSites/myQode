@@ -322,8 +322,27 @@ export default function DistributorOverviewPage() {
     ? strategyAum
     : apportionedStrategyMoney;
   const strategyIsExact = Boolean(strategyAum?.length);
-  /** Total across the strategies shown, so the percentages always sum to 100. */
-  const strategyTotal = strategyMoney.reduce((n, d) => n + d.value, 0);
+  /**
+   * The strategy split, restated against Zoho's book value.
+   *
+   * The proportions come from pms_master_sheet, which is the only source that
+   * knows how much sits in each strategy — each strategy is its own account.
+   * The TOTAL comes from Zoho, which is the system of record for what this
+   * partner's book is worth (17.72 Cr, verified against the CRM's own
+   * Distributor Wise AUM export to the paisa).
+   *
+   * Without this the card totalled 22.01 Cr against a hero of 17.72 Cr, because
+   * the bank file values accounts differently and carries some Zoho does not
+   * attribute here. Scaling keeps the shares exact while the total matches the
+   * rest of the page.
+   */
+  const rawStrategyTotal = strategyMoney.reduce((n, d) => n + d.value, 0);
+  const zohoBookValue = data?.totals?.currentValue ?? null;
+  const strategyScale =
+    strategyIsExact && rawStrategyTotal > 0 && (zohoBookValue ?? 0) > 0
+      ? (zohoBookValue as number) / rawStrategyTotal
+      : 1;
+  const strategyTotal = rawStrategyTotal * strategyScale;
 
   if (status === "loading") {
     return (
@@ -389,28 +408,22 @@ export default function DistributorOverviewPage() {
 
   const { totals } = data;
   const invested = totals.invested;
-  // Prefer the account-level total from pms_master_sheet over Zoho's summed
-  // Current_Value.
+  // Zoho's summed Current_Value is the book value.
   //
-  // The two agree investor-for-investor wherever both hold a figure, but Zoho
-  // silently omits some: on the live book it was missing one investor holding
-  // 4.99 Cr, so the hero read 17.72 Cr against the 22.01 Cr actually under this
-  // partner — and the strategy card below, which reads the bank file, showed
-  // the larger number. One page cannot state two different totals.
-  const value = strategyTotal > 0 ? strategyTotal : totals.currentValue;
-  // Gain is computed ONLY from Zoho's own pair.
+  // Verified against the CRM's own "Distributor Wise AUM" export: 61 rows for
+  // this partner totalling 17,72,23,495.32 — the figure the Zoho dashboard
+  // shows, to the paisa. The 27 rows with no value are Onboarding or Account
+  // Live investors who genuinely hold nothing.
   //
-  // `value` may come from the bank file while `invested` only ever comes from
-  // Zoho, and the two cover different investors — subtracting across them turns
-  // a missing investor's CAPITAL into apparent profit. On the live book that
-  // read +4.51 Cr (+25.8%) against a true +22.1 L (+1.3%).
-  const zohoValue = totals.currentValue;
-  const gain =
-    invested != null && zohoValue != null ? zohoValue - invested : null;
+  // pms_master_sheet gives a larger number (22.01 Cr) for two reasons, both
+  // wrong here: it carries accounts Zoho does not attribute to this partner,
+  // and it values them from the bank file rather than the CRM. The strategy
+  // card is scoped to Zoho's investors so both figures agree.
+  const value = totals.currentValue;
+  // Both sides now come from Zoho and cover the same investors, so the gain is
+  // a like-for-like subtraction.
+  const gain = invested != null && value != null ? value - invested : null;
   const gainPct = gain != null && invested ? (gain / invested) * 100 : null;
-  /** True when the headline total covers more investors than the gain does. */
-  const valueBeyondGain =
-    value != null && zohoValue != null && value - zohoValue > 1;
   const partial =
     totals.pricedCount > 0 && totals.pricedCount < totals.investors;
   const live = data.crmLinked && data.zohoAvailable;
@@ -503,9 +516,6 @@ export default function DistributorOverviewPage() {
                     </span>{" "}
                     <span className="text-muted-foreground">
                       against {money(invested)} put in
-                      {valueBeyondGain
-                        ? ` · on the ${money(zohoValue)} priced in the CRM`
-                        : ""}
                     </span>
                   </p>
                 ) : null}
@@ -722,7 +732,7 @@ export default function DistributorOverviewPage() {
                                 ? `${((d.value / strategyTotal) * 100).toFixed(1)}%`
                                 : "—"}
                             </span>{" "}
-                            · {money(d.value)}
+                            · {money(d.value * strategyScale)}
                           </span>
                         </span>
                       </li>
