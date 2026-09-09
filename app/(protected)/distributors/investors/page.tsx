@@ -88,6 +88,52 @@ function formatDate(iso: string | null): string {
   });
 }
 
+/** One filter tab: short label, count badge, underline when active. */
+function FilterTab({
+  label,
+  count,
+  active,
+  onClick,
+  title,
+  tone,
+}: {
+  label: string;
+  count: number;
+  active: boolean;
+  onClick: () => void;
+  title?: string;
+  tone?: "warn";
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-pressed={active}
+      className={`-mb-px flex min-h-[40px] items-center gap-2 whitespace-nowrap border-b-2 px-3 text-[13px] transition-colors ${
+        active
+          ? "border-primary font-bold text-foreground"
+          : tone === "warn"
+            ? "border-transparent text-destructive hover:border-destructive/40"
+            : "border-transparent text-muted-foreground hover:border-border hover:text-foreground"
+      }`}
+    >
+      {label}
+      <span
+        className={`rounded-full px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${
+          active
+            ? "bg-primary text-primary-foreground"
+            : tone === "warn"
+              ? "bg-destructive/10 text-destructive"
+              : "bg-muted-foreground/10 text-muted-foreground"
+        }`}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
+
 export default function DistributorInvestorsPage() {
   const [data, setData] = React.useState<JourneyResponse | null>(null);
   const [status, setStatus] = React.useState<"loading" | "ready" | "forbidden" | "error">(
@@ -403,38 +449,54 @@ export default function DistributorInvestorsPage() {
         </div>
       ) : (
         <section className="rounded-xl border border-border/20 bg-card shadow-sm px-5 py-5">
-          {/* Status chips — the count is the control. */}
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => setStatusKey("")}
-              aria-pressed={statusKey === ""}
-              className={`min-h-[36px] rounded-full border px-3 text-xs font-bold transition-colors ${
-                statusKey === ""
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border/20 bg-background text-muted-foreground hover:border-primary/50"
-              }`}
-            >
-              All {clients.length}
-            </button>
-            {activeStatuses.map((s: StatusInfo) => (
-              <button
-                key={s.key}
-                type="button"
-                onClick={() => setStatusKey(statusKey === s.key ? "" : s.key)}
-                aria-pressed={statusKey === s.key}
-                title={s.detail}
-                className={`min-h-[36px] rounded-full border px-3 text-xs font-bold transition-colors ${
-                  statusKey === s.key
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : s.tone === "warn"
-                      ? "border-destructive/30 bg-background text-destructive hover:border-destructive"
-                      : "border-border/20 bg-background text-muted-foreground hover:border-primary/50"
-                }`}
-              >
-                {s.label} {statusCounts.get(s.key)}
-              </button>
-            ))}
+          {/* Filter tabs. Underlined rather than pills: with seven statuses
+              the pills wrapped to two rows and the row read as a pile of
+              buttons rather than one control.
+
+              Tabs carry the short label with the full CRM value as the
+              tooltip, so the bar stays scannable and the exact Zoho name is
+              one hover away. Stalled statuses sit to the right, away from the
+              progression they are not part of. */}
+          <div className="-mx-1 overflow-x-auto px-1">
+            <div className="flex min-w-max items-center gap-1 border-b border-border/20">
+              <FilterTab
+                label="All"
+                count={clients.length}
+                active={statusKey === ""}
+                onClick={() => setStatusKey("")}
+              />
+              {activeStatuses
+                .filter((s: StatusInfo) => s.tone !== "warn")
+                .map((s: StatusInfo) => (
+                  <FilterTab
+                    key={s.key}
+                    label={s.short}
+                    title={`${s.label} — ${s.detail}`}
+                    count={statusCounts.get(s.key) ?? 0}
+                    active={statusKey === s.key}
+                    onClick={() =>
+                      setStatusKey(statusKey === s.key ? "" : s.key)
+                    }
+                  />
+                ))}
+              <span className="ml-auto flex items-center gap-1 pl-6">
+                {activeStatuses
+                  .filter((s: StatusInfo) => s.tone === "warn")
+                  .map((s: StatusInfo) => (
+                    <FilterTab
+                      key={s.key}
+                      label={s.short}
+                      title={`${s.label} — ${s.detail}`}
+                      count={statusCounts.get(s.key) ?? 0}
+                      active={statusKey === s.key}
+                      tone="warn"
+                      onClick={() =>
+                        setStatusKey(statusKey === s.key ? "" : s.key)
+                      }
+                    />
+                  ))}
+              </span>
+            </div>
           </div>
 
           <div className="relative mt-3">

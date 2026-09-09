@@ -31,6 +31,12 @@ export type StatusInfo = {
   key: StatusKey;
   /** Zoho's field value, verbatim. Never a paraphrase. */
   label: string;
+  /**
+   * Short form for filter tabs, where the full CRM name is too long to scan.
+   * The full label still appears as the tab's tooltip, so the exact Zoho value
+   * is never more than a hover away.
+   */
+  short: string;
   /** What that name actually means, shown beneath it. */
   detail: string;
   tone: "good" | "normal" | "warn";
@@ -41,12 +47,14 @@ const INVESTED: StatusInfo = {
   // filter state, never on screen — so it stays stable while labels track Zoho.
   key: "invested",
   label: "First Fund Initiated",
+  short: "First fund initiated",
   detail: "Money is in the market",
   tone: "good",
 };
 const REGULAR: StatusInfo = {
   key: "regular",
   label: "Regular Investor",
+  short: "Regular investor",
   // Krutika's definition on the 2026-09-08 review call: an investor who put in
   // a first ticket and then invested again. It is a repeat investment, not a
   // first one, so it does not belong under First Fund Initiated.
@@ -59,36 +67,42 @@ const SMALL_FUNDED: StatusInfo = {
   // "Funded less than 50L"; the team asked for it spelled out on screen. The
   // sub-stage it matches is unchanged, so the count still reconciles.
   label: "Funded Less than 50 lacs",
+  short: "Below ₹50 L",
   detail: "Money is in the market, below the usual ticket",
   tone: "good",
 };
 const OPENED: StatusInfo = {
   key: "opened",
   label: "Account Live",
+  short: "Account live",
   detail: "Account open — nothing invested yet",
   tone: "normal",
 };
 const ONBOARDING: StatusInfo = {
   key: "onboarding",
   label: "Onboarding",
+  short: "Onboarding",
   detail: "Account opening in progress",
   tone: "normal",
 };
 const INACTIVE: StatusInfo = {
   key: "inactive",
   label: "Dormant Investor",
+  short: "Dormant",
   detail: "Account open, nothing moving",
   tone: "warn",
 };
 const DECLINED: StatusInfo = {
   key: "declined",
   label: "Dropped before account opening",
+  short: "Dropped",
   detail: "Never opened an account",
   tone: "warn",
 };
 const CLOSED: StatusInfo = {
   key: "closed",
   label: "Dropped after account opening",
+  short: "Exited",
   detail: "Opened, then exited",
   tone: "warn",
 };

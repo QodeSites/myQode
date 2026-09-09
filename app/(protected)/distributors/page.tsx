@@ -389,9 +389,28 @@ export default function DistributorOverviewPage() {
 
   const { totals } = data;
   const invested = totals.invested;
-  const value = totals.currentValue;
-  const gain = invested != null && value != null ? value - invested : null;
+  // Prefer the account-level total from pms_master_sheet over Zoho's summed
+  // Current_Value.
+  //
+  // The two agree investor-for-investor wherever both hold a figure, but Zoho
+  // silently omits some: on the live book it was missing one investor holding
+  // 4.99 Cr, so the hero read 17.72 Cr against the 22.01 Cr actually under this
+  // partner — and the strategy card below, which reads the bank file, showed
+  // the larger number. One page cannot state two different totals.
+  const value = strategyTotal > 0 ? strategyTotal : totals.currentValue;
+  // Gain is computed ONLY from Zoho's own pair.
+  //
+  // `value` may come from the bank file while `invested` only ever comes from
+  // Zoho, and the two cover different investors — subtracting across them turns
+  // a missing investor's CAPITAL into apparent profit. On the live book that
+  // read +4.51 Cr (+25.8%) against a true +22.1 L (+1.3%).
+  const zohoValue = totals.currentValue;
+  const gain =
+    invested != null && zohoValue != null ? zohoValue - invested : null;
   const gainPct = gain != null && invested ? (gain / invested) * 100 : null;
+  /** True when the headline total covers more investors than the gain does. */
+  const valueBeyondGain =
+    value != null && zohoValue != null && value - zohoValue > 1;
   const partial =
     totals.pricedCount > 0 && totals.pricedCount < totals.investors;
   const live = data.crmLinked && data.zohoAvailable;
@@ -484,6 +503,9 @@ export default function DistributorOverviewPage() {
                     </span>{" "}
                     <span className="text-muted-foreground">
                       against {money(invested)} put in
+                      {valueBeyondGain
+                        ? ` · on the ${money(zohoValue)} priced in the CRM`
+                        : ""}
                     </span>
                   </p>
                 ) : null}
