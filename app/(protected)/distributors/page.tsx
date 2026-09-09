@@ -6,8 +6,8 @@ import { useRouter } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Area,
-  AreaChart,
+  Bar,
+  BarChart,
   Cell,
   Pie,
   PieChart,
@@ -570,11 +570,11 @@ export default function DistributorOverviewPage() {
           {monthlyInflow.length >= 2 ? (
             <Card
               title="Money you have brought in"
-              description="Every month since your first investor, by the month they started investing."
+              description="Since inception, by the month each investor started investing."
             >
-              <div className="h-[220px] w-full">
+              <div className="h-[240px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart
+                  <BarChart
                     data={monthlyInflow}
                     margin={{ top: 8, right: 8, bottom: 0, left: 8 }}
                     // Clicking a month opens the investor list filtered to it,
@@ -594,21 +594,12 @@ export default function DistributorOverviewPage() {
                     }}
                     style={{ cursor: "pointer" }}
                   >
-                    <defs>
-                      <linearGradient id="inflow" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor={QAW} stopOpacity={0.35} />
-                        <stop
-                          offset="100%"
-                          stopColor={QAW}
-                          stopOpacity={0.02}
-                        />
-                      </linearGradient>
-                    </defs>
                     <XAxis
                       dataKey="label"
                       tickLine={false}
                       axisLine={false}
-                      tick={{ fontSize: 12, fill: "var(--muted-foreground)" }}
+                      interval={0}
+                      tick={{ fontSize: 11, fill: "var(--muted-foreground)" }}
                     />
                     <YAxis
                       tickLine={false}
@@ -622,29 +613,36 @@ export default function DistributorOverviewPage() {
                       }
                     />
                     <Tooltip
-                      cursor={{ stroke: QAW, strokeOpacity: 0.3 }}
+                      cursor={{ fill: "var(--muted-foreground)", fillOpacity: 0.06 }}
                       contentStyle={{
                         borderRadius: 8,
                         border: "1px solid var(--border)",
                         background: "var(--card)",
                         fontSize: 12,
                       }}
-                      formatter={(v: number) => [
-                        strategyTotal > 0
-                          ? `${money(v)} · ${((v / strategyTotal) * 100).toFixed(1)}%`
-                          : money(v),
-                        "Value",
+                      // The share is of the money brought in overall, not of
+                      // the book: this chart counts contributions, and the
+                      // denominator used to be the strategy total by mistake.
+                      formatter={(
+                        v: number,
+                        _n: unknown,
+                        item: { payload?: MonthPoint },
+                      ) => [
+                        `${money(v)} from ${item?.payload?.investors ?? 0} ${
+                          item?.payload?.investors === 1
+                            ? "investor"
+                            : "investors"
+                        }`,
+                        "Brought in",
                       ]}
                     />
-                    <Area
-                      type="monotone"
+                    <Bar
                       dataKey="amount"
-                      stroke={QAW}
-                      strokeWidth={2}
-                      fill="url(#inflow)"
-                      dot={{ r: 3, fill: QAW }}
+                      fill={QAW}
+                      radius={[4, 4, 0, 0]}
+                      maxBarSize={56}
                     />
-                  </AreaChart>
+                  </BarChart>
                 </ResponsiveContainer>
               </div>
             </Card>
