@@ -252,12 +252,6 @@ export default function DistributorOverviewPage() {
   // Money brought in per month, by the date each investor was activated.
   // This is the strongest signal a partner has about their own momentum, and
   // nothing on the page showed it before.
-  /** Exact holder count per strategy, funded or not. */
-  const holders = React.useMemo(
-    () => new Map(strategyCounts),
-    [strategyCounts],
-  );
-
   const monthlyInflow = React.useMemo(() => {
     const by = new Map<string, { amount: number; investors: number }>();
     for (const c of clients) {
@@ -328,6 +322,8 @@ export default function DistributorOverviewPage() {
     ? strategyAum
     : apportionedStrategyMoney;
   const strategyIsExact = Boolean(strategyAum?.length);
+  /** Total across the strategies shown, so the percentages always sum to 100. */
+  const strategyTotal = strategyMoney.reduce((n, d) => n + d.value, 0);
 
   if (status === "loading") {
     return (
@@ -552,7 +548,9 @@ export default function DistributorOverviewPage() {
                     // Clicking a month opens the investor list filtered to it,
                     // so a partner can see who a month is actually made of
                     // rather than reading a total and having to go hunting.
-                    onClick={(e: { activePayload?: { payload?: MonthPoint }[] }) => {
+                    onClick={(e: {
+                      activePayload?: { payload?: MonthPoint }[];
+                    }) => {
                       const point = e?.activePayload?.[0]?.payload;
                       if (!point?.month || !point.investors) return;
                       const [y, m] = point.month.split("-").map(Number);
@@ -599,17 +597,11 @@ export default function DistributorOverviewPage() {
                         background: "var(--card)",
                         fontSize: 12,
                       }}
-                      formatter={(
-                        v: number,
-                        _n: unknown,
-                        item: { payload?: { investors?: number } },
-                      ) => [
-                        `${money(v)} from ${item?.payload?.investors ?? 0} ${
-                          item?.payload?.investors === 1
-                            ? "investor"
-                            : "investors"
-                        }`,
-                        "Brought in",
+                      formatter={(v: number) => [
+                        strategyTotal > 0
+                          ? `${money(v)} · ${((v / strategyTotal) * 100).toFixed(1)}%`
+                          : money(v),
+                        "Value",
                       ]}
                     />
                     <Area
@@ -626,134 +618,147 @@ export default function DistributorOverviewPage() {
             </Card>
           ) : null}
 
-          {strategyMoney.length ? (
-            <Card
-              title="Which strategies they hold"
-              description={
-                strategyIsExact
-                  ? "Value held in each strategy today."
-                  : "Investor numbers are exact. Value is split evenly for anyone holding more than one strategy, so treat it as indicative."
-              }
-            >
-              <div className="flex items-center gap-4">
-                <div className="h-[150px] w-[150px] shrink-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={strategyMoney}
-                        dataKey="value"
-                        nameKey="name"
-                        innerRadius={44}
-                        outerRadius={70}
-                        paddingAngle={2}
-                        stroke="none"
-                      >
-                        {strategyMoney.map((d) => (
-                          <Cell
-                            key={d.name}
-                            fill={STRATEGY_COLOR[d.name] ?? NEUTRAL_COLOR}
-                          />
-                        ))}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={{
-                          borderRadius: 8,
-                          border: "1px solid var(--border)",
-                          background: "var(--card)",
-                          fontSize: 12,
-                        }}
-                        formatter={(v: number) => money(v)}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <ul className="min-w-0 flex-1 space-y-2">
-                  {strategyMoney.map((d) => (
-                    <li key={d.name} className="flex items-start gap-2">
-                      <span
-                        aria-hidden="true"
-                        className="mt-1 size-2.5 shrink-0 rounded-full"
-                        style={{
-                          background: STRATEGY_COLOR[d.name] ?? NEUTRAL_COLOR,
-                        }}
-                      />
-                      <span className="min-w-0">
-                        <Link
-                          href={`/distributors/investors?strategy=${encodeURIComponent(d.name)}`}
-                          className="block truncate text-[13px] text-foreground underline-offset-4 hover:underline"
-                        >
-                          {d.name}
-                        </Link>
-                        <span className="text-[12px] tabular-nums text-muted-foreground">
-                          {/* Holders is every investor on the strategy;
-                                d.investors counts only those with a value, so
-                                it would read low beside the list page. */}
-                          {/* With the exact split the API counts holders
-                              itself; the CRM-derived map is the fallback. */}
-                          {(strategyIsExact
-                            ? d.investors
-                            : (holders.get(d.name) ?? d.investors))}{" "}
-                          {(strategyIsExact
-                            ? d.investors
-                            : (holders.get(d.name) ?? d.investors)) === 1
-                            ? "investor"
-                            : "investors"}{" "}
-                          · {money(d.value)}
-                        </span>
+          {/* Side by side: one says where the money sits, the other where
+              the investors are — two halves of the same question, and each is
+              short enough that stacking them wastes the width. */}
+          <div className="grid items-start gap-5 lg:grid-cols-2">
+            {strategyMoney.length ? (
+              <Card
+                title="Which strategies they hold"
+                description={
+                  strategyIsExact
+                    ? "Value held in each strategy today."
+                    : "Investor numbers are exact. Value is split evenly for anyone holding more than one strategy, so treat it as indicative."
+                }
+              >
+                <div className="flex items-center gap-4">
+                  {/* Total sits in the ring's hole — the space a donut leaves
+                    empty, and where the whole that the slices divide belongs. */}
+                  <div className="relative h-[150px] w-[150px] shrink-0">
+                    <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Total
                       </span>
+                      <span className="font-sans text-[15px] font-bold tabular-nums text-foreground">
+                        {money(strategyTotal)}
+                      </span>
+                    </div>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={strategyMoney}
+                          dataKey="value"
+                          nameKey="name"
+                          innerRadius={44}
+                          outerRadius={70}
+                          paddingAngle={2}
+                          stroke="none"
+                        >
+                          {strategyMoney.map((d) => (
+                            <Cell
+                              key={d.name}
+                              fill={STRATEGY_COLOR[d.name] ?? NEUTRAL_COLOR}
+                            />
+                          ))}
+                        </Pie>
+                        <Tooltip
+                          contentStyle={{
+                            borderRadius: 8,
+                            border: "1px solid var(--border)",
+                            background: "var(--card)",
+                            fontSize: 12,
+                          }}
+                          formatter={(v: number) => money(v)}
+                        />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <ul className="min-w-0 flex-1 space-y-2">
+                    {strategyMoney.map((d) => (
+                      <li key={d.name} className="flex items-start gap-2">
+                        <span
+                          aria-hidden="true"
+                          className="mt-1 size-2.5 shrink-0 rounded-full"
+                          style={{
+                            background: STRATEGY_COLOR[d.name] ?? NEUTRAL_COLOR,
+                          }}
+                        />
+                        <span className="min-w-0">
+                          <Link
+                            href={`/distributors/investors?strategy=${encodeURIComponent(d.name)}`}
+                            className="block truncate text-[13px] text-foreground underline-offset-4 hover:underline"
+                          >
+                            {d.name}
+                          </Link>
+                          {/* Allocation and value only. The investor count sat
+                              here too, but it answers a different question and
+                              the status card beside this one already carries
+                              headcounts. */}
+                          <span className="text-[12px] tabular-nums text-muted-foreground">
+                            <span className="font-bold text-foreground">
+                              {strategyTotal > 0
+                                ? `${((d.value / strategyTotal) * 100).toFixed(1)}%`
+                                : "—"}
+                            </span>{" "}
+                            · {money(d.value)}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </Card>
+            ) : null}
+
+            {/* Where your investors are */}
+            {visibleStatuses.length ? (
+              <Card
+                title="Where your investors are"
+                description="Every investor you referred, by how far along they are."
+              >
+                <div className="flex h-4 w-full overflow-hidden rounded-full bg-muted-foreground/[0.07]">
+                  {visibleStatuses.map((s) => {
+                    const n = statusCounts.get(s.key) ?? 0;
+                    return (
+                      <div
+                        key={s.key}
+                        title={`${n} ${s.label}`}
+                        style={{
+                          width: `${(n / Math.max(clients.length, 1)) * 100}%`,
+                          background: toneColor(s.tone),
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+
+                {/* Each row filters the investor list. The label carries its own
+                  meaning — an explanatory clause beside it would be padding. */}
+                <ul className="mt-4 flex flex-col gap-1">
+                  {visibleStatuses.map((s) => (
+                    <li key={s.key}>
+                      <Link
+                        href={`/distributors/investors?status=${s.key}`}
+                        className="-mx-2 flex items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-background"
+                      >
+                        <span
+                          className="size-2.5 shrink-0 rounded-sm"
+                          style={{ background: toneColor(s.tone) }}
+                        />
+                        <span className="font-sans text-sm font-bold tabular-nums text-foreground">
+                          {statusCounts.get(s.key)}
+                        </span>
+                        <span className="text-sm text-foreground">
+                          {s.label}
+                        </span>
+                        <ChevronRight className="ml-auto size-3.5 shrink-0 text-muted-foreground" />
+                      </Link>
                     </li>
                   ))}
                 </ul>
-              </div>
-            </Card>
-          ) : null}
-
-          {/* Where your investors are */}
-          {visibleStatuses.length ? (
-            <Card
-              title="Where your investors are"
-              description="Every investor you referred, by how far along they are."
-            >
-              <div className="flex h-4 w-full overflow-hidden rounded-full bg-muted-foreground/[0.07]">
-                {visibleStatuses.map((s) => {
-                  const n = statusCounts.get(s.key) ?? 0;
-                  return (
-                    <div
-                      key={s.key}
-                      title={`${n} ${s.label}`}
-                      style={{
-                        width: `${(n / Math.max(clients.length, 1)) * 100}%`,
-                        background: toneColor(s.tone),
-                      }}
-                    />
-                  );
-                })}
-              </div>
-
-              {/* Each row filters the investor list. The label carries its own
-                  meaning — an explanatory clause beside it would be padding. */}
-              <ul className="mt-4 flex flex-col gap-1">
-                {visibleStatuses.map((s) => (
-                  <li key={s.key}>
-                    <Link
-                      href={`/distributors/investors?status=${s.key}`}
-                      className="-mx-2 flex items-center gap-2.5 rounded-md px-2 py-1.5 hover:bg-background"
-                    >
-                      <span
-                        className="size-2.5 shrink-0 rounded-sm"
-                        style={{ background: toneColor(s.tone) }}
-                      />
-                      <span className="font-sans text-sm font-bold tabular-nums text-foreground">
-                        {statusCounts.get(s.key)}
-                      </span>
-                      <span className="text-sm text-foreground">{s.label}</span>
-                      <ChevronRight className="ml-auto size-3.5 shrink-0 text-muted-foreground" />
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          ) : null}
+              </Card>
+            ) : null}
+          </div>
 
           {/* Onboarding journey — the path an account takes to open */}
           {onboardingSteps.length ? (
@@ -866,8 +871,27 @@ export default function DistributorOverviewPage() {
                         ) : null}
                       </div>
                       <div className="flex items-center gap-3">
+                        {/* Show a value whenever the CRM holds one, however
+                            small. Some funded investors have no current
+                            valuation yet — Nuvama has not priced them — but do
+                            have an invested amount, and a dash where money
+                            exists reads as "nothing came in". The amount put in
+                            is marked so it is not mistaken for today's value. */}
                         <span className="text-sm tabular-nums text-foreground">
-                          {money(c.currentValue)}
+                          {c.currentValue != null ? (
+                            money(c.currentValue)
+                          ) : c.investedAmount != null ? (
+                            <>
+                              {money(c.investedAmount)}
+                              <span className="ml-1 text-[11px] font-normal text-muted-foreground">
+                                invested
+                              </span>
+                            </>
+                          ) : (
+                            <span className="text-[12px] text-muted-foreground">
+                              Not yet valued
+                            </span>
+                          )}
                         </span>
                         <span className="text-[12px] tabular-nums text-muted-foreground">
                           {formatDate(fundedDate(c))}
