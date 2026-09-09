@@ -36,6 +36,18 @@ import {
 
 const QAW = "#008455";
 
+/**
+ * Ranges for the inflow chart. `months: null` is since inception, and it is
+ * first so it is what the chart opens on — a partner wants the whole picture
+ * before narrowing it.
+ */
+const INFLOW_RANGES: { key: string; label: string; months: number | null }[] = [
+  { key: "all", label: "Since inception", months: null },
+  { key: "12m", label: "Last 12 months", months: 12 },
+  { key: "6m", label: "Last 6 months", months: 6 },
+  { key: "3m", label: "Last 3 months", months: 3 },
+];
+
 type MonthPoint = {
   month: string;
   label: string;
@@ -119,20 +131,28 @@ function toneColor(tone: StatusInfo["tone"]): string {
 function Card({
   title,
   description,
+  action,
   children,
 }: {
   title: string;
   description?: string;
+  /** Sits opposite the title — a control that scopes what the card shows. */
+  action?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
     <section className="flex h-full flex-col rounded-xl border border-border/20 bg-card shadow-sm px-5 py-5">
-      <h2 className="text-base font-semibold text-foreground">{title}</h2>
-      {description ? (
-        <p className="mt-1 text-[12.5px] text-muted-foreground">
-          {description}
-        </p>
-      ) : null}
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <div className="min-w-0">
+          <h2 className="text-base font-semibold text-foreground">{title}</h2>
+          {description ? (
+            <p className="mt-1 text-[12.5px] text-muted-foreground">
+              {description}
+            </p>
+          ) : null}
+        </div>
+        {action ? <div className="shrink-0">{action}</div> : null}
+      </div>
       <div className="mt-4">{children}</div>
     </section>
   );
@@ -252,6 +272,8 @@ export default function DistributorOverviewPage() {
   // Money brought in per month, by the date each investor was activated.
   // This is the strongest signal a partner has about their own momentum, and
   // nothing on the page showed it before.
+  const [inflowRange, setInflowRange] = React.useState("all");
+
   const monthlyInflow = React.useMemo(() => {
     const by = new Map<string, { amount: number; investors: number }>();
     for (const c of clients) {
@@ -295,6 +317,19 @@ export default function DistributorOverviewPage() {
 
     return out;
   }, [clients]);
+
+  /** How many months of history exist, for hiding ranges longer than the data. */
+  const inflowMonthCount = monthlyInflow.length;
+
+  const visibleInflow = React.useMemo(() => {
+    const def =
+      INFLOW_RANGES.find((r) => r.key === inflowRange) ?? INFLOW_RANGES[0];
+    // Counted back from the most recent month rather than from today, so a
+    // quiet current month cannot empty the chart.
+    return def.months == null
+      ? monthlyInflow
+      : monthlyInflow.slice(-def.months);
+  }, [monthlyInflow, inflowRange]);
 
   // Rupees per strategy, not just headcount. An investor holding three
   // strategies has their money split evenly across them: the per-strategy
@@ -570,12 +605,33 @@ export default function DistributorOverviewPage() {
           {monthlyInflow.length >= 2 ? (
             <Card
               title="Money you have brought in"
-              description="Since inception, by the month each investor started investing."
+              description="By the month each investor started investing."
+              action={
+                // Offered only when the history is longer than the shortest
+                // range; with three months of data every option would redraw
+                // the same chart.
+                inflowMonthCount > 3 ? (
+                  <select
+                    value={inflowRange}
+                    onChange={(e) => setInflowRange(e.target.value)}
+                    aria-label="Period"
+                    className="min-h-[36px] rounded-md border border-border/20 bg-background px-2 text-[12px] text-foreground focus-visible:outline-2 focus-visible:outline-primary"
+                  >
+                    {INFLOW_RANGES.filter(
+                      (r) => r.months == null || inflowMonthCount > r.months,
+                    ).map((r) => (
+                      <option key={r.key} value={r.key}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : null
+              }
             >
               <div className="h-[240px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
-                    data={monthlyInflow}
+                    data={visibleInflow}
                     margin={{ top: 8, right: 8, bottom: 0, left: 8 }}
                     // Clicking a month opens the investor list filtered to it,
                     // so a partner can see who a month is actually made of
