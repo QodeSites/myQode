@@ -26,7 +26,26 @@ export async function POST(request: NextRequest) {
       intermediary_fee_percentage = 50.00
     } = data;
 
-    // Exact requested query to create distributor, but parametrized and dynamic
+    // A distributor is identified by email everywhere else in this module —
+    // resolveDistributorByEmail() takes the first match with LIMIT 1 — so a
+    // second row on the same address would make which one wins arbitrary.
+    const existing = await query(
+      `SELECT clientname FROM public.pms_clients_master
+        WHERE lower(btrim(email)) = lower(btrim($1))
+          AND clientcode IS NULL
+        LIMIT 1`,
+      [email],
+    );
+    if (existing.rows?.length) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `A distributor with that email already exists (${existing.rows[0].clientname}).`,
+        },
+        { status: 409 },
+      );
+    }
+
     const text = `
       INSERT INTO public.pms_clients_master (
           clientname, clienttype, email,
@@ -50,7 +69,10 @@ export async function POST(request: NextRequest) {
       salutation,
       firstname,
       lastname,
-      'QODE ADVISORS LLP INT',
+      // The destructured value, which already defaults to QODE ADVISORS LLP
+      // INT. This was the literal, so the form's Intermediary Name field was
+      // collected and then silently discarded.
+      intermediaryname,
       intermediary_fee_percentage
     ];
 

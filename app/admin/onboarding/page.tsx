@@ -2174,23 +2174,31 @@ function AdminDashboardContent() {
             
             <div className="space-y-2">
               <label className="text-sm font-medium">Distributor Name (Company/Person) *</label>
-              <Select
+              {/* Free text with the existing names as suggestions, not a fixed
+                  list. This was a Select over intermediaryNames — names already
+                  in pms_clients_master — so a genuinely new distributor could
+                  not be added at all, despite the placeholder saying "or type".
+                  The API has never restricted the name: it inserts whatever it
+                  is given. */}
+              <Input
+                list="distributor-name-options"
+                placeholder="Type a new name, or pick an existing one"
                 value={newDistributor.clientname}
-                onValueChange={(val) => setNewDistributor({
+                onChange={e => setNewDistributor({
                   ...newDistributor,
-                  clientname: val,
-                  firstname: val
+                  clientname: e.target.value,
+                  firstname: e.target.value
                 })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select or type distributor name" />
-                </SelectTrigger>
-                <SelectContent>
-                  {intermediaryNames.map((name, idx) => (
-                    <SelectItem key={idx} value={name}>{name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              />
+              <datalist id="distributor-name-options">
+                {intermediaryNames.map((name, idx) => (
+                  <option key={idx} value={name} />
+                ))}
+              </datalist>
+              <p className="text-xs text-muted-foreground">
+                Existing names are suggested as you type. A name not on the list
+                creates a new distributor.
+              </p>
             </div>
             
             <div className="space-y-2">
