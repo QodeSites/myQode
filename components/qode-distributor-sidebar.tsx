@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
-import { Calculator, Users } from "lucide-react"
+import { Calculator, FileText, LayoutDashboard, LifeBuoy, Share2, ShieldCheck, Users } from "lucide-react"
 
 function NavLink({
   href,
@@ -43,36 +43,58 @@ type QodeSidebarProps = {
 export default function DistributorQodeSidebar({ open = false, onClose }: QodeSidebarProps) {
   const SidebarContent = (
     <nav className="h-full flex flex-col gap-1">
+      <NavLink href="/distributors" icon={<LayoutDashboard className="h-4 w-4" />}>
+        Overview
+      </NavLink>
+      <NavLink href="/distributors/investors" icon={<Users className="h-4 w-4" />}>
+        Your investors
+      </NavLink>
       <NavLink
         href="/distributor/fees-distribution"
         icon={<Calculator className="h-4 w-4" />}
       >
-        Distributor Fee Calculator
+        Fees &amp; payouts
+      </NavLink>
+      <NavLink href="/distributors/referrals" icon={<Share2 className="h-4 w-4" />}>
+        Onboarding Link
+      </NavLink>
+      <NavLink href="/distributors/documents" icon={<FileText className="h-4 w-4" />}>
+        Decks
       </NavLink>
       <NavLink
-        href="/distributor/clients"
-        icon={<Users className="h-4 w-4" />}
+        href="/trust/risk-managment-and-controls"
+        icon={<ShieldCheck className="h-4 w-4" />}
       >
-        Clients Overview
+        Risk &amp; controls
+      </NavLink>
+      <NavLink href="/distributors/support" icon={<LifeBuoy className="h-4 w-4" />}>
+        Raise a ticket
       </NavLink>
     </nav>
   )
 
   const SidebarContentMobile = ({ onClose }: { onClose?: () => void }) => (
     <nav className="h-full flex flex-col gap-1 mt-5">
-      <NavLink
-        href="/distributor/fees-distribution"
-        icon={<Calculator className="h-4 w-4" />}
-        onClick={onClose}
-      >
-        Calculator
+      <NavLink href="/distributors" icon={<LayoutDashboard className="h-4 w-4" />} onClick={onClose}>
+        Overview
       </NavLink>
-      <NavLink
-        href="/distributor/clients"
-        icon={<Users className="h-4 w-4" />}
-        onClick={onClose}
-      >
-        Clients
+      <NavLink href="/distributors/investors" icon={<Users className="h-4 w-4" />} onClick={onClose}>
+        Investors
+      </NavLink>
+      <NavLink href="/distributor/fees-distribution" icon={<Calculator className="h-4 w-4" />} onClick={onClose}>
+        Fees
+      </NavLink>
+      <NavLink href="/distributors/referrals" icon={<Share2 className="h-4 w-4" />} onClick={onClose}>
+        Onboarding
+      </NavLink>
+      <NavLink href="/distributors/documents" icon={<FileText className="h-4 w-4" />} onClick={onClose}>
+        Decks
+      </NavLink>
+      <NavLink href="/trust/risk-managment-and-controls" icon={<ShieldCheck className="h-4 w-4" />} onClick={onClose}>
+        Risk
+      </NavLink>
+      <NavLink href="/distributors/support" icon={<LifeBuoy className="h-4 w-4" />} onClick={onClose}>
+        Support
       </NavLink>
     </nav>
   )
