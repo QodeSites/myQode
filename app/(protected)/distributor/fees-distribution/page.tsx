@@ -142,6 +142,21 @@ const GST_RATE = 18;
 
 const num = (s: string | undefined) => parseFloat(String(s ?? "").replace(/,/g, "")) || 0;
 
+/**
+ * What the distributor is actually paid on a row.
+ *
+ * `yourCommission` is the discount-aware figure from the fee engine and is
+ * correct wherever it is present. The deployed calculator predates that engine
+ * and sends only `distributorShare`, so this falls back to it rather than
+ * reading zero — which is what made every figure on the page ₹0.00 while the
+ * API was returning real money.
+ *
+ * The two differ only when a rack rate and a discount are on file; where they
+ * are not, `distributorShare` IS the commission.
+ */
+const commissionOf = (row: { yourCommission?: string; distributorShare?: string }) =>
+  row.yourCommission != null ? num(row.yourCommission) : num(row.distributorShare);
+
 const inr = (n: number) =>
   n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -456,19 +471,26 @@ export default function FeesDistributionPage() {
       g.gst += num(row.totalFeesGst);
       // What the distributor is actually paid, plus GST.
       //
-      // The commission — NOT `distributorShare`, which is the share before the
-      // discount is taken off. Summing that made the card header report
-      // ₹17,370.12 where the rows added up to ₹6,440.19 + GST, because it was
-      // counting money the discount had already given away.
-      g.share += num(row.yourCommission) * (1 + GST_RATE / 100);
+      // Prefer `yourCommission` — NOT `distributorShare`, which is the share
+      // before the discount is taken off. Summing that made the card header
+      // report ₹17,370.12 where the rows added up to ₹6,440.19 + GST, because
+      // it was counting money the discount had already given away.
+      //
+      // But fall back to it when the field is absent. The deployed calculator
+      // predates the fee engine and sends only `distributorShare`, so reading
+      // `yourCommission` alone made every figure on this page ₹0.00 while the
+      // API was returning real money — ₹32,387.59 for Q4 FY2026. Without a
+      // rack rate there is no discount to subtract, so the two are equal for
+      // exactly the rows where the fallback applies.
+      g.share += commissionOf(row) * (1 + GST_RATE / 100);
       // Falls back to the billed fee when the CRM has no rack rate on file, so
       // an account with no agreement recorded reads as "no discount" rather
       // than as a 100% discount.
       g.rackFee += num(row.totalRackRateFee) || num(row.totalFees);
       g.discount += num(row.discountAmount);
-      g.grossShare += num(row.distributorGrossShare);
-      g.shareOfFee += num(row.yourShareOfFee);
-      g.commission += num(row.yourCommission);
+      g.grossShare += num(row.distributorGrossShare) || num(row.distributorShare);
+      g.shareOfFee += num(row.yourShareOfFee) || num(row.distributorShare);
+      g.commission += commissionOf(row);
       g.shareDiscount += num(row.shareDiscount);
       if (row.rateSource && row.rateSource !== "unmapped") g.unmapped = false;
     }
@@ -655,7 +677,7 @@ export default function FeesDistributionPage() {
             num(a.yourShareOfFee).toFixed(2),
             num(a.shareDiscount).toFixed(2),
             a.netFeePctOfAum != null ? a.netFeePctOfAum.toFixed(2) : "",
-            num(a.yourCommission).toFixed(2),
+            commissionOf(a).toFixed(2),
             a.rateSource ?? "",
           ].join(","),
         );
@@ -1557,7 +1579,9 @@ function ClientCard({
                         the bracketed rate is omitted, since that one genuinely
                         does not exist. */}
                     <span className="text-sm font-bold tabular-nums text-right">
-                      <span className="text-foreground">{a.yourCommission}</span>
+                      <span className="text-foreground">
+                        {a.yourCommission ?? a.distributorShare}
+                      </span>
                       {a.netFeePctOfAum != null && (
                         <span className="block text-[10px] font-normal text-muted-foreground">
                           ({a.netFeePctOfAum}%
