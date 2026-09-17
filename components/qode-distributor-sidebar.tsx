@@ -61,9 +61,9 @@ export default function DistributorQodeSidebar({ open = false, onClose }: QodeSi
       <NavLink href="/distributors/documents" icon={<FileText className="h-4 w-4" />}>
         Decks
       </NavLink>
-      <NavLink href="/distributors/indicators" icon={<LineChart className="h-4 w-4" />}>
+      {/* <NavLink href="/distributors/indicators" icon={<LineChart className="h-4 w-4" />}>
         Market indicators
-      </NavLink>
+      </NavLink> */}
       <NavLink
         href="/trust/risk-managment-and-controls"
         icon={<ShieldCheck className="h-4 w-4" />}
