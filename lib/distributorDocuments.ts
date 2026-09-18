@@ -18,6 +18,8 @@ export type DistributorDocument = {
   asOf: string;
   /** Strategy documents carry their strategy name, for colour and grouping. */
   strategy?: string;
+  /** Which section of the page this belongs in. Defaults to "deck". */
+  kind?: "deck" | "factsheet";
   /** What the browser saves it as. */
   downloadName: string;
 };
@@ -41,6 +43,7 @@ export const DISTRIBUTOR_DOCUMENTS: readonly DistributorDocument[] = [
     title: "Qode All Weather Factsheet",
     asOf: "August 2026",
     strategy: "Qode All Weather",
+    kind: "factsheet",
     downloadName: "Qode All Weather Factsheet.pdf",
   },
   {
@@ -55,6 +58,7 @@ export const DISTRIBUTOR_DOCUMENTS: readonly DistributorDocument[] = [
     title: "Qode Growth Fund Factsheet",
     asOf: "August 2026",
     strategy: "Qode Growth Fund",
+    kind: "factsheet",
     downloadName: "Qode Growth Fund Factsheet.pdf",
   },
   {
@@ -69,6 +73,7 @@ export const DISTRIBUTOR_DOCUMENTS: readonly DistributorDocument[] = [
     title: "Qode Tactical Fund Factsheet",
     asOf: "August 2026",
     strategy: "Qode Tactical Fund",
+    kind: "factsheet",
     downloadName: "Qode Tactical Fund Factsheet.pdf",
   },
 ];
