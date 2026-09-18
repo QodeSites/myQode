@@ -13,8 +13,7 @@ export type DistributorDocument = {
   title: string;
   /**
    * The month the document itself states on its cover — NOT the file date.
-   * The corporate overview reads August 2026; all three strategy decks read
-   * July 2026. Showing one date for all four would misdate three of them.
+   * All seven documents currently read August 2026.
    */
   asOf: string;
   /** Strategy documents carry their strategy name, for colour and grouping. */
@@ -33,42 +32,42 @@ export const DISTRIBUTOR_DOCUMENTS: readonly DistributorDocument[] = [
   {
     slug: "qode-all-weather",
     title: "Qode All Weather",
-    asOf: "July 2026",
+    asOf: "August 2026",
     strategy: "Qode All Weather",
     downloadName: "Qode All Weather.pdf",
   },
   {
     slug: "qode-all-weather-factsheet",
     title: "Qode All Weather Factsheet",
-    asOf: "July 2026",
+    asOf: "August 2026",
     strategy: "Qode All Weather",
     downloadName: "Qode All Weather Factsheet.pdf",
   },
   {
     slug: "qode-growth-fund",
     title: "Qode Growth Fund",
-    asOf: "July 2026",
+    asOf: "August 2026",
     strategy: "Qode Growth Fund",
     downloadName: "Qode Growth Fund.pdf",
   },
   {
     slug: "qode-growth-fund-factsheet",
     title: "Qode Growth Fund Factsheet",
-    asOf: "July 2026",
+    asOf: "August 2026",
     strategy: "Qode Growth Fund",
     downloadName: "Qode Growth Fund Factsheet.pdf",
   },
   {
     slug: "qode-tactical-fund",
     title: "Qode Tactical Fund",
-    asOf: "July 2026",
+    asOf: "August 2026",
     strategy: "Qode Tactical Fund",
     downloadName: "Qode Tactical Fund.pdf",
   },
   {
     slug: "qode-tactical-fund-factsheet",
     title: "Qode Tactical Fund Factsheet",
-    asOf: "July 2026",
+    asOf: "August 2026",
     strategy: "Qode Tactical Fund",
     downloadName: "Qode Tactical Fund Factsheet.pdf",
   },
