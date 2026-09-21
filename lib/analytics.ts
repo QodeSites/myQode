@@ -39,6 +39,12 @@ export function initAnalytics(): void {
       capture_pageview: true,
       capture_pageleave: true,
       autocapture: true,
+      // Autocapture records the TEXT of clicked elements. On a holdings row or
+      // a portfolio tile that text IS the number, so it is masked globally —
+      // sanitize_properties below cannot help, because the value arrives as an
+      // element label rather than a property.
+      mask_all_text: true,
+      mask_all_element_attributes: true,
       // Replay would record holdings and portfolio values on screen.
       disable_session_recording: true,
       persistence: "localStorage+cookie",
