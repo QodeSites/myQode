@@ -3,6 +3,9 @@
 // Uses the same pre-computed approach as the web version:
 //   pms_master_sheet WHERE account_code = accountId (no runtime SUM).
 // Benchmark: always NIFTY 50 for combined/aggregate views.
+// period=ALL is the web's Drawdown chart exactly (see portfolio/drawdown/route.ts): peak starts at NAV 10
+// with a synthetic 0% row one day before inception when the first NAV isn't 10; benchmark needs an index
+// row on the inception date.
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
@@ -19,9 +22,9 @@ const COMBINED_BENCHMARK = 'NIFTY 50'
 
 // Compute running drawdown from an ASC array of { date, nav }.
 // Returns a map of date → drawdown % (all values ≤ 0). Peak resets at first point.
-function computeDrawdownMap(navRows: { date: string; nav: number }[]): Record<string, number> {
+function computeDrawdownMap(navRows: { date: string; nav: number }[], startPeak = -Infinity): Record<string, number> {
   const result: Record<string, number> = {}
-  let peak = -Infinity
+  let peak = startPeak
   for (const r of navRows) {
     if (r.nav > peak) peak = r.nav
     result[r.date] = peak > 0 ? +(((r.nav - peak) / peak) * 100).toFixed(4) : 0
@@ -112,9 +115,13 @@ export async function GET(request: NextRequest) {
       ? closedAt
       : String(portRows[portRows.length - 1].report_date).split('T')[0]
 
-    // Recompute drawdown from windowStart so first value is always 0
+    // Recompute drawdown from windowStart so first value is always 0 (ALL: peak starts at NAV 10 like the web)
+    const isAll = period === 'ALL'
+    const firstNav = parseFloat(portRows[0].nav)
+    const synthetic = isAll && firstNav !== 10
     const portDDMap = computeDrawdownMap(
-      portRows.map((r: any) => ({ date: String(r.report_date).split('T')[0], nav: parseFloat(r.nav) }))
+      portRows.map((r: any) => ({ date: String(r.report_date).split('T')[0], nav: parseFloat(r.nav) })),
+      synthetic ? 10 : -Infinity
     )
 
     // ── 2. Benchmark – fetch from windowStart so peak resets at same point ───
@@ -128,8 +135,10 @@ export async function GET(request: NextRequest) {
       [COMBINED_BENCHMARK, windowStart, windowEnd]
     )
 
+    // ALL (web chart): the benchmark exists only when the index has a row on the inception date itself
+    const benchRows = isAll && !benchResult.rows.some((r: any) => String(r.date).split('T')[0] === windowStart) ? [] : benchResult.rows
     const benchDDWindow = computeDrawdownMap(
-      benchResult.rows.map((r: any) => ({ date: String(r.date).split('T')[0], nav: parseFloat(r.nav) }))
+      benchRows.map((r: any) => ({ date: String(r.date).split('T')[0], nav: parseFloat(r.nav) }))
     )
 
     // ── 3. Align on portfolio dates (spine), forward-fill benchmark DD ───────
@@ -137,6 +146,12 @@ export async function GET(request: NextRequest) {
     let lastBenchDD: number | null = null
 
     const series: { date: string; portfolio: number; benchmark: number | null }[] = []
+
+    // the web's synthetic starting point, one day before inception: both drawdowns 0
+    if (synthetic) {
+      const t = new Date(windowStart + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() - 1)
+      series.push({ date: t.toISOString().split('T')[0], portfolio: 0, benchmark: benchRows.length ? 0 : null })
+    }
 
     for (const date of portfolioDates) {
       if (benchDDWindow[date] !== undefined) lastBenchDD = benchDDWindow[date]
