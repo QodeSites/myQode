@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
-import { razorpayConfig, createRazorpayOrder, checkoutToken } from '@/lib/razorpay'
+import { razorpayConfig, createRazorpayOrder, checkoutToken, checkoutContact } from '@/lib/razorpay'
 
 const MIN_AMOUNT = 100
 const MAX_AMOUNT = 500000 // per-transaction ceiling verified on the Razorpay account (see app/demo)
@@ -36,10 +36,9 @@ export async function POST(request: NextRequest) {
     const customerName = [client.salutation, client.firstname, client.middlename, client.lastname].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim() || accountId
     const phone = String(client.mobile || '').replace(/\D/g, '').slice(-10)
 
-    // TEST keys: never hand the real client's contact details to the gateway (no receipt/SMS can reach them).
-    const prefill = cfg.isTest
-      ? { name: customerName, email: 'test@razorpay.com', contact: '9999999999' }
-      : { name: customerName, email: client.email || '', contact: phone }
+    // Who Checkout thinks is paying — see checkoutContact(): placeholders with test keys, name-only while
+    // client notifications are off, the client's real details in production.
+    const prefill = checkoutContact(customerName, client.email, phone)
 
     const receipt = `qode_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     const rzOrder: any = await createRazorpayOrder(amount, receipt, {

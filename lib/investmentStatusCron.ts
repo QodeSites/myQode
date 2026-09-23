@@ -154,7 +154,19 @@ async function expireStale(): Promise<number> {
        AND payment_type  != 'SIP'
        AND created_at    <  NOW() - INTERVAL '2 days'`
   )
-  return rowCount ?? 0
+  // Razorpay SIP mandates that were never authorised: Razorpay itself expires the subscription after
+  // 2 days (expire_by, lib/razorpay.ts); this keeps our row in step so it leaves the client's pending list.
+  // Cashfree SIP rows are left alone (SUBSCRIPTION_EXPIRED webhook handles those).
+  const sip = await pool.query(
+    `UPDATE payment_transactions SET
+       investment_status = 'EXPIRED',
+       updated_at        = NOW()
+     WHERE investment_status = 'PENDING_PAYMENT'
+       AND payment_type  = 'SIP'
+       AND gateway       = 'razorpay'
+       AND created_at    <  NOW() - INTERVAL '2 days'`
+  )
+  return (rowCount ?? 0) + (sip.rowCount ?? 0)
 }
 
 // ── Main entry ────────────────────────────────────────────────────────────────
