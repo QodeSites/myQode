@@ -13,18 +13,6 @@ function formatDate(d: Date | string | null): string {
   return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
-// Go back N business days (Monday–Friday) from a date
-function businessDaysAgo(date: Date, days: number): Date {
-  const target = new Date(date)
-  let count = 0
-  while (count < days) {
-    target.setDate(target.getDate() - 1)
-    const dow = target.getDay()
-    if (dow !== 0 && dow !== 6) count++
-  }
-  return target
-}
-
 // Simple absolute return %
 function simpleReturn(current: number, past: number | null): number | null {
   if (past == null || past === 0) return null
@@ -131,7 +119,14 @@ export async function GET(request: NextRequest) {
     const totalReturns = latestValue - amountInvested
 
     // Returns % — NAV-based: CAGR if >= 1 year since inception, absolute otherwise — matches web
-    const returnsPercent = inceptionReturn(latestNav, firstNav, inceptionDate, latestDate) ?? 0
+    // Same anchor as the web: when the first NAV isn't 10, measure from a synthetic NAV of 10
+    // dated one day before inception (the account's true starting point).
+    const needsSyntheticAnchor = firstNav !== 10
+    const siBaseNav = needsSyntheticAnchor ? 10 : firstNav
+    const siBaseDate: string = needsSyntheticAnchor
+      ? (() => { const d = new Date(inceptionDate); d.setDate(d.getDate() - 1); return d.toISOString() })()
+      : inceptionDate
+    const returnsPercent = inceptionReturn(latestNav, siBaseNav, siBaseDate, latestDate) ?? 0
 
     // ── Trailing return helpers (ASC) ─────────────────────────────────────────
     const latestDateObj = new Date(latestDate)
@@ -151,10 +146,17 @@ export async function GET(request: NextRequest) {
       return t
     }
 
-    // 7 calendar days back
-    const nav1W = navOnOrBefore(activeRows, new Date(latestDateObj.getTime() - 7 * 86400000), 'report_date', 'nav')
-    // 10 business days back
-    const nav10D = navOnOrBefore(activeRows, businessDaysAgo(latestDateObj, 10), 'report_date', 'nav')
+    // 1W / 10D count ROWS, exactly like the web page (calculateTrailingReturnsForData):
+    //   1W  = 5 rows back in the series
+    //   10D = the benchmark's 10th trading date from its end, applied to the portfolio too;
+    //         falls back to 10 rows back when there is no benchmark data.
+    const rowsBack = (n: number): number | null => {
+      const i = activeRows.length - 1 - n
+      return i >= 0 ? parseFloat(activeRows[i].nav) : null
+    }
+    const dateKey = (d: Date | string) => new Date(d).toISOString().slice(0, 10)
+    const nav1W = rowsBack(5)
+    const nav10D = rowsBack(10)
     const nav1M  = navOnOrBefore(activeRows, getMonthTarget(1),  'report_date', 'nav')
     const nav3M  = navOnOrBefore(activeRows, getMonthTarget(3),  'report_date', 'nav')
     const nav6M  = navOnOrBefore(activeRows, getMonthTarget(6),  'report_date', 'nav')
@@ -177,7 +179,7 @@ export async function GET(request: NextRequest) {
       y3:   cagrReturn(latestNav, nav3Y, 3),          // 3Y window → CAGR (annualised)
       currentDD: parseFloat(latest.drawdown_percent || 0),
       maxDD: +maxDDRaw.toFixed(2),
-      sinceInception: inceptionReturn(latestNav, firstNav, inceptionDate, latestDate),
+      sinceInception: inceptionReturn(latestNav, siBaseNav, siBaseDate, latestDate),
     }
 
     // --- Benchmark data from tblresearch_new (db2) ---
@@ -223,8 +225,14 @@ export async function GET(request: NextRequest) {
           return t
         }
 
-        const b1W  = benchNavOnOrBefore(bRows, new Date(latestBenchDate.getTime() - 7 * 86400000))
-        const b10D = benchNavOnOrBefore(bRows, businessDaysAgo(latestBenchDate, 10))
+        // bRows is DESC: index n = n trading rows back (web: 1W = 5 rows, 10D = 10 rows).
+        const b1W  = bRows.length > 5  ? parseFloat(bRows[5].nav)  : null
+        const b10D = bRows.length > 10 ? parseFloat(bRows[10].nav) : null
+        if (bRows.length > 10) {
+          const tenDKey = dateKey(bRows[10].date)
+          const startRow = activeRows.find((r: any) => dateKey(r.report_date) === tenDKey)
+          portfolioTrailing.d10 = startRow ? simpleReturn(latestNav, parseFloat(startRow.nav)) : null
+        }
         const b1M  = benchNavOnOrBefore(bRows, getBMonthTarget(1))
         const b3M  = benchNavOnOrBefore(bRows, getBMonthTarget(3))
         const b6M  = benchNavOnOrBefore(bRows, getBMonthTarget(6))

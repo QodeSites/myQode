@@ -3,6 +3,8 @@
 // Uses the same pre-computed approach as the web version:
 //   pms_master_sheet WHERE account_code = accountId (no runtime SUM).
 // Benchmark: always NIFTY 50 for combined/aggregate views.
+// period=ALL is the web's NAV chart exactly (see portfolio/nav/route.ts): synthetic NAV=10 row one day
+// before inception when the first NAV isn't 10; benchmark anchored ON the inception date or not shown.
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
@@ -16,6 +18,9 @@ const PERIOD_DAYS: Record<string, number> = {
 }
 
 const COMBINED_BENCHMARK = 'NIFTY 50'
+
+// 'YYYY-MM-DD' → the day before, as the web computes its synthetic inception date
+const dayBefore = (d: string) => { const t = new Date(d.split('T')[0] + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() - 1); return t.toISOString().split('T')[0] }
 
 export async function GET(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)
@@ -100,7 +105,10 @@ export async function GET(request: NextRequest) {
     const windowEnd: string   = closedAt && closedAt < String(portRows[portRows.length - 1].report_date).split('T')[0]
       ? closedAt
       : String(portRows[portRows.length - 1].report_date).split('T')[0]
-    const basePortNav = parseFloat(portRows[0].nav)
+    const isAll = period === 'ALL'
+    const firstNav = parseFloat(portRows[0].nav)
+    const syntheticDate = isAll && firstNav !== 10 ? dayBefore(windowStart) : null
+    const basePortNav = syntheticDate ? 10 : firstNav
 
     // Build a map: date → raw portfolio nav
     const portNavMap: Record<string, number> = {}
@@ -128,14 +136,20 @@ export async function GET(request: NextRequest) {
     const benchNavMap: Record<string, number> = {}
     for (const r of benchResult.rows) benchNavMap[String(r.date).split('T')[0]] = parseFloat(r.nav)
 
-    const baseBenchNav: number | null =
-      baseRes.rows.length > 0 ? parseFloat(baseRes.rows[0].nav) : null
+    // on or just before windowStart — for ALL, exactly on inception (web rule)
+    const baseBenchNav: number | null = isAll
+      ? (benchNavMap[windowStart] ?? null)
+      : baseRes.rows.length > 0 ? parseFloat(baseRes.rows[0].nav) : null
 
     // ── 4. Walk portfolio dates (spine) ASC, forward-fill benchmark ──────────
     const portfolioDates = portRows.map((r: any) => String(r.report_date).split('T')[0])
     let lastBenchRaw: number | null = baseBenchNav
 
-    const series: { date: string; portfolio: number; benchmark: number | null }[] = []
+    // nav / benchmarkValue are the raw (un-rebased) values, for the chart tooltip — same as the web tooltip.
+    const series: { date: string; portfolio: number; benchmark: number | null; nav: number; benchmarkValue: number | null }[] = []
+
+    // the web's synthetic starting point: NAV 10, benchmark rebased to 10 (= 100 here), one day before inception
+    if (syntheticDate) series.push({ date: syntheticDate, portfolio: 100, benchmark: baseBenchNav !== null ? 100 : null, nav: 10, benchmarkValue: baseBenchNav })
 
     for (const date of portfolioDates) {
       if (benchNavMap[date] !== undefined) lastBenchRaw = benchNavMap[date]
@@ -148,7 +162,7 @@ export async function GET(request: NextRequest) {
           ? +(((lastBenchRaw / baseBenchNav) * 100).toFixed(4))
           : null
 
-      series.push({ date, portfolio: portRebased, benchmark: benchRebased })
+      series.push({ date, portfolio: portRebased, benchmark: benchRebased, nav: portNavMap[date], benchmarkValue: lastBenchRaw })
     }
 
     // ── 5. Min / max across both series for Y-axis scaling ───────────────────
