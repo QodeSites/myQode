@@ -23,6 +23,10 @@ const dialogByTitle: Record<string, { title: string; pdfSrc?: string; imageSrc?:
     pdfSrc: "/policies/concentration-limits.pdf",
     // imageSrc: "/concentration-limits-policy-preview.png",
   },
+  "Referral Policy": {
+    title: "Referral Policy",
+    pdfSrc: "/policies/Referral%20Policy_Signed.pdf",
+  },
 }
 
 type Policy = { title: string; description: string; href: string }
@@ -47,6 +51,12 @@ const policies: Policy[] = [
   {
     title: "Concentration Limits",
     description: "We impose no sector caps; portfolios are built bottom‑up, with structural gold allocations.",
+    href: "#",
+  },
+  {
+    title: "Referral Policy",
+    description:
+      "Our signed referral policy sets out how client referrals are handled, including eligibility, disclosures and the terms that apply to referred and referring parties.",
     href: "#",
   },
 ]
