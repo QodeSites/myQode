@@ -6,9 +6,6 @@
 //
 // The client sends no identifiers: the groups come from the verified token,
 // so one investor cannot request another family's primary code.
-//
-// Unlike the web route this returns no data-as-of date — the mobile notice
-// does not carry the Nuvama downtime line.
 // ----------------------------------------------------------------------------
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
@@ -23,12 +20,12 @@ export async function GET(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)
   if (error) return error
 
-  try {
-    // Virtual accounts (demo reviewer, admin) have no real family to resolve.
-    if (user!.isReviewer || user!.isSuperAdmin) {
-      return NextResponse.json({ success: true, primaries: [] })
-    }
+  // Virtual accounts (demo reviewer, admin) have no real family to resolve.
+  if (user!.isReviewer || user!.isSuperAdmin) {
+    return NextResponse.json({ success: true, dataAsOf: null, primaries: [] })
+  }
 
+  try {
     const email = (user!.email || '').trim()
     const codes = [user!.clientCode, ...(user!.accountCodes || [])]
       .map((c) => (c || '').trim())
@@ -66,6 +63,16 @@ export async function GET(request: NextRequest) {
     const signoff = await fetchSignoffRows()
     const primaries = resolvePrimaryUccsByGroup(members as ClientRow[], signoff)
 
+    // Nuvama downtime means portfolio figures lag live markets, so the notice
+    // states the date the data is current to. Non-fatal if this query fails.
+    let dataAsOf: string | null = null
+    try {
+      const { rows } = await query(`SELECT to_char(max(report_date), 'YYYY-MM-DD') AS latest FROM pms_master_sheet`, [])
+      if (rows?.[0]?.latest) dataAsOf = String(rows[0].latest)
+    } catch {
+      // Non-fatal: the notice simply omits the as-of line.
+    }
+
     const nameByGroup = new Map<string, string>()
     for (const m of members as any[]) {
       const g = String(m.groupid || '').trim()
@@ -74,6 +81,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      dataAsOf,
       primaries: primaries.map((p) => ({
         uccCode: p.uccCode,
         strategy: p.strategy,
@@ -81,8 +89,8 @@ export async function GET(request: NextRequest) {
       })),
     })
   } catch (err) {
-    // Advisory notice only — never break the screen because the feed is down.
-    console.error('mobile primary-ucc error:', err)
+    // Advisory notice only — never break the dashboard because the feed is down.
+    console.error('[mobile/primary-ucc]', err)
     return NextResponse.json({ success: false, primaries: [] })
   }
 }

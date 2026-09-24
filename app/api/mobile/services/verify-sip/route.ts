@@ -1,63 +1,28 @@
-// GET /api/mobile/services/verify-sip?subscriptionId=qode_xxx
-// Called by the mobile app immediately after the Cashfree SDK mandate flow
-// completes (success or failure). Syncs the live subscription status from
-// Cashfree into payment_transactions so the user sees the correct state
-// without waiting for a webhook.
-//
-// This is the SIP equivalent of /api/mobile/payments/verify for one-time orders.
+// GET /api/mobile/services/verify-sip?subscriptionId=sub_xxx
+// Called by the mobile app immediately after the Razorpay Checkout mandate-authorisation flow completes
+// (success or failure). Syncs the live subscription status from Razorpay into payment_transactions so the
+// user sees the correct state without waiting for a webhook — the SIP equivalent of
+// /api/mobile/payments/razorpay/verify for one-time orders.
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
+import { fetchRazorpaySubscription } from '@/lib/razorpay'
 
-async function makeCashfreeGet(endpoint: string) {
-  const clientId     = process.env.CASHFREE_APP_ID || process.env.CASHFREE_CLIENT_ID
-  const clientSecret = process.env.CASHFREE_SECRET_KEY
-  const baseUrl =
-    process.env.CASHFREE_ENVIRONMENT === 'production'
-      ? 'https://api.cashfree.com/pg'
-      : 'https://sandbox.cashfree.com/pg'
-
-  if (!clientId || !clientSecret) {
-    throw new Error('Cashfree credentials not configured')
-  }
-
-  const resp = await fetch(`${baseUrl}${endpoint}`, {
-    method: 'GET',
-    headers: {
-      accept:            'application/json',
-      'x-api-version':   '2025-01-01',
-      'x-client-id':     clientId,
-      'x-client-secret': clientSecret,
-    },
-  })
-
-  if (!resp.ok) {
-    const body = await resp.json().catch(() => ({}))
-    const err: any = new Error(body.message || `Cashfree error ${resp.status}`)
-    err.httpStatus = resp.status
-    err.cfCode     = body.code
-    throw err
-  }
-  return resp.json()
-}
-
-// Map Cashfree subscription_status → Qode investment_status
-function mapSubscriptionStatus(cfStatus: string): string {
-  const s = (cfStatus ?? '').toUpperCase()
-  switch (s) {
-    case 'ACTIVE':               return 'SIP_ACTIVE'
-    case 'INITIALIZED':
-    case 'BANK_APPROVAL_PENDING': return 'PENDING_PAYMENT'
-    case 'ON_HOLD':              return 'PENDING_PAYMENT'
-    case 'PAUSED':
-    case 'CUSTOMER_PAUSED':      return 'SIP_PAUSED'
-    case 'CANCELLED':
-    case 'CUSTOMER_CANCELLED':   return 'SIP_CANCELLED'
-    case 'COMPLETED':            return 'SIP_COMPLETED'
-    case 'EXPIRED':
-    case 'LINK_EXPIRED':         return 'SIP_MANDATE_FAILED'
-    case 'FAILED':               return 'SIP_MANDATE_FAILED'
-    default:                     return 'PENDING_PAYMENT'
+// Razorpay subscription_status → Qode investment_status
+// SIP_AUTHORISED = mandate registered, first instalment still ahead (Razorpay `authenticated`, or `created`
+// with our signed payment id). SIP_ACTIVE = at least one instalment charged (Razorpay `active`/`pending`).
+// Only SIP_ACTIVE can be paused; both can be cancelled.
+function mapStatus(rzStatus: string): string {
+  switch ((rzStatus || '').toLowerCase()) {
+    case 'active':
+    case 'pending':        return 'SIP_ACTIVE'       // 'pending' = mandate live, a charge retry is in progress
+    case 'authenticated':  return 'SIP_AUTHORISED'    // mandate authorised, first charge not yet attempted
+    case 'halted':         return 'SIP_MANDATE_FAILED' // Razorpay halts after repeated charge failures
+    case 'cancelled':      return 'SIP_CANCELLED'
+    case 'completed':      return 'SIP_COMPLETED'
+    case 'expired':        return 'SIP_MANDATE_FAILED'
+    case 'created':
+    default:                return 'PENDING_PAYMENT'   // not yet authorised
   }
 }
 
@@ -67,103 +32,79 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const subscriptionId = searchParams.get('subscriptionId')
-
-  if (!subscriptionId) {
-    return NextResponse.json(
-      { error: 'subscriptionId is required' },
-      { status: 400 }
-    )
-  }
+  if (!subscriptionId) return NextResponse.json({ error: 'subscriptionId is required' }, { status: 400 })
 
   try {
-    // ── Verify ownership ─────────────────────────────────────────────────────
     const txRes = await pool.query(
-      `SELECT order_id, nuvama_code, client_id, amount, payment_type,
-              payment_status, investment_status, frequency, cf_subscription_id
-       FROM payment_transactions
-       WHERE order_id = $1 LIMIT 1`,
+      `SELECT order_id, nuvama_code, client_id, amount, payment_type, payment_status, investment_status,
+              frequency, razorpay_subscription_id, payment_message
+       FROM payment_transactions WHERE razorpay_subscription_id = $1 LIMIT 1`,
       [subscriptionId]
     )
-    if (!txRes.rows.length) {
-      return NextResponse.json({ error: 'Subscription not found' }, { status: 404 })
-    }
+    if (!txRes.rows.length) return NextResponse.json({ error: 'Subscription not found' }, { status: 404 })
     const tx = txRes.rows[0]
 
-    if (!user!.accountCodes?.includes(tx.nuvama_code)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-    if (tx.payment_type !== 'SIP') {
-      return NextResponse.json(
-        { error: 'This endpoint is for SIP subscriptions only' },
-        { status: 400 }
-      )
-    }
+    if (!user!.accountCodes?.includes(tx.nuvama_code)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    if (tx.payment_type !== 'SIP') return NextResponse.json({ error: 'This endpoint is for SIP subscriptions only' }, { status: 400 })
 
-    // ── Fetch live status from Cashfree ──────────────────────────────────────
-    const cfSub = await makeCashfreeGet(`/subscriptions/${subscriptionId}`)
-    const cfStatus     = cfSub.subscription_status ?? 'UNKNOWN'
-    const investStatus = mapSubscriptionStatus(cfStatus)
+    const rzSub: any = await fetchRazorpaySubscription(subscriptionId)
+    const rzStatus = rzSub.status ?? 'unknown'
+    // Razorpay can still report `created` for a few seconds after the client authorised (an immediate first
+    // charge is captured asynchronously). Our own record wins there: a signed payment id from the return
+    // route, or a row already marked active, means the mandate IS authorised — never downgrade it because
+    // the gateway has not caught up yet (that downgrade made the app void a perfectly good SIP).
+    const authorised = !!tx.razorpay_payment_id || ['SIP_AUTHORISED', 'SIP_ACTIVE', 'SIP_PAUSED'].includes(tx.investment_status)
+    const mapped = mapStatus(rzStatus)
+    const investStatus = mapped === 'PENDING_PAYMENT' && authorised
+      ? (['SIP_ACTIVE', 'SIP_PAUSED'].includes(tx.investment_status) ? tx.investment_status : 'SIP_AUTHORISED')
+      : mapped
+    // IST calendar date (en-CA gives YYYY-MM-DD); toISOString would report the UTC day, one day early
+    const nextChargeDate = rzSub.charge_at ? new Date(rzSub.charge_at * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) : null
 
-    // Map Cashfree status to our payment_status column value
-    const paymentStatus = cfStatus.toUpperCase()
-
-    const nextChargeDate = cfSub.next_charge_time
-      ? new Date(cfSub.next_charge_time).toISOString().split('T')[0]
-      : null
-
-    // ── Sync to DB if changed ────────────────────────────────────────────────
-    const statusChanged =
-      tx.payment_status     !== paymentStatus  ||
-      tx.investment_status  !== investStatus
-
+    const statusChanged = tx.investment_status !== investStatus
     if (statusChanged) {
       await pool.query(
         `UPDATE payment_transactions SET
            payment_status    = $1,
            investment_status = CASE
-             -- Never downgrade a terminal status
-             WHEN investment_status IN ('SIP_CANCELLED','SIP_COMPLETED','SIP_MANDATE_FAILED','EXPIRED')
-               THEN investment_status
+             WHEN investment_status IN ('SIP_CANCELLED','SIP_COMPLETED','SIP_MANDATE_FAILED') THEN investment_status
+             WHEN investment_status IN ('SIP_AUTHORISED','SIP_ACTIVE','SIP_PAUSED') AND $2 = 'PENDING_PAYMENT' THEN investment_status   -- never back to pending
+             WHEN investment_status IN ('SIP_ACTIVE','SIP_PAUSED') AND $2 = 'SIP_AUTHORISED' THEN investment_status         -- never back from charged to registered
              ELSE $2
            END,
            next_charge_date  = COALESCE($3::date, next_charge_date),
            updated_at        = NOW()
-         WHERE order_id = $4`,
-        [paymentStatus, investStatus, nextChargeDate, subscriptionId]
+         WHERE razorpay_subscription_id = $4`,
+        [rzStatus, investStatus, nextChargeDate, subscriptionId]
       )
     }
 
+    // What the row ended up as: a terminal state we already recorded (e.g. Mandate Failed after a bank decline,
+    // even though we then voided the subscription on Razorpay → 'cancelled') is what the client is told.
+    const TERMINAL = ['SIP_CANCELLED', 'SIP_COMPLETED', 'SIP_MANDATE_FAILED']
+    const finalStatus = TERMINAL.includes(tx.investment_status) ? tx.investment_status : investStatus
     return NextResponse.json({
       subscriptionId,
-      cfSubscriptionStatus: cfStatus,
-      investmentStatus:     statusChanged ? investStatus : tx.investment_status,
-      isActive:             investStatus === 'SIP_ACTIVE',
-      isMandatePending:     investStatus === 'PENDING_PAYMENT',
-      isFailed:             investStatus === 'SIP_MANDATE_FAILED',
-      amount:               parseFloat(tx.amount),
-      frequency:            tx.frequency,
-      nextChargeDate:       nextChargeDate ?? null,
-      authorizationDetails: {
-        authorizationStatus:
-          cfSub.authorisation_details?.authorization_status ?? null,
-        authorizationTime:
-          cfSub.authorisation_details?.authorization_time ?? null,
-      },
+      razorpaySubscriptionStatus: rzStatus,
+      investmentStatus: finalStatus,
+      isActive: finalStatus === 'SIP_ACTIVE' || finalStatus === 'SIP_AUTHORISED',     // mandate live (set-up succeeded)
+      isCharged: finalStatus === 'SIP_ACTIVE',                                          // first instalment done → pausable
+      authorised: authorised && !TERMINAL.includes(finalStatus),
+      isMandatePending: finalStatus === 'PENDING_PAYMENT',
+      isFailed: finalStatus === 'SIP_MANDATE_FAILED',
+      amount: parseFloat(tx.amount),
+      frequency: tx.frequency,
+      nextChargeDate: nextChargeDate ?? null,
+      lastError: tx.payment_message || null,          // Razorpay's reason for the last failed authorisation
+      authAttempts: rzSub.auth_attempts ?? 0,
+      paidCount: rzSub.paid_count ?? 0,
+      remainingCount: rzSub.remaining_count ?? null,
     })
   } catch (err: any) {
     console.error('[mobile/services/verify-sip]', err)
-
-    // If Cashfree returns 404, the subscription doesn't exist on their end
-    if (err.httpStatus === 404) {
-      return NextResponse.json(
-        { error: 'Subscription not found on Cashfree' },
-        { status: 404 }
-      )
+    if (err?.message?.includes('404') || /not exist/i.test(err?.message || '')) {
+      return NextResponse.json({ error: 'Subscription not found on Razorpay' }, { status: 404 })
     }
-
-    return NextResponse.json(
-      { error: 'Failed to verify SIP status', code: err.cfCode ?? 'VERIFY_FAILED' },
-      { status: 500 }
-    )
+    return NextResponse.json({ error: 'Failed to verify SIP status' }, { status: 500 })
   }
 }
