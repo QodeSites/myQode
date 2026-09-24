@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import crypto from 'crypto';
 import nodemailer from 'nodemailer';
+import { isProductionEmail, internalRecipient } from '@/lib/graphEmail';
 
 export async function POST(request: NextRequest) {
   try {
@@ -82,6 +83,19 @@ export async function POST(request: NextRequest) {
 
 // Email sending function for admin
 async function sendSetupEmail(email: string, clientName: string, setupLink: string, clientCode: string) {
+  // This route talks to SMTP directly rather than going through
+  // lib/graphEmail, so it does NOT inherit the environment-based diversion
+  // applied there. Enforce the same rule explicitly: outside production, never
+  // send a setup link to a real client address.
+  if (!isProductionEmail()) {
+    const redirected = internalRecipient()
+    console.log(
+      `[send-bulk-setup-emails] non-production: diverting setup email for ${clientCode} ` +
+      `to ${redirected} (would have gone to ${email})`,
+    )
+    email = redirected
+  }
+
   const transporter = nodemailer.createTransporter({
     host: process.env.EMAIL_HOST,
     port: parseInt(process.env.EMAIL_PORT || '587'),

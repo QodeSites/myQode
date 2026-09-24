@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>myQode - Reports</title>
+<!-- Fonts: Lato for UI, Playfair Display for Headings -->
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&amp;family=Lato:wght@400;700&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            "colors": {
+                    "surface-container-highest": "#e4e2e1",
+                    "primary-fixed": "#b5efce",
+                    "inverse-surface": "#303030",
+                    "on-tertiary": "#ffffff",
+                    "tertiary-container": "#c6aa25",
+                    "on-surface-variant": "#404943",
+                    "primary-container": "#02422b",
+                    "on-error": "#ffffff",
+                    "tertiary": "#DABD38",
+                    "error-container": "#ffdad6",
+                    "surface-container-high": "#eae7e7",
+                    "on-secondary": "#ffffff",
+                    "secondary-container": "#e5e3d5",
+                    "on-secondary-fixed": "#1c1c14",
+                    "on-surface": "#1b1c1c",
+                    "surface-dim": "#dcd9d9",
+                    "surface-container": "#f0eded",
+                    "surface-tint": "#32694f",
+                    "secondary": "#605f54",
+                    "on-tertiary-fixed-variant": "#544600",
+                    "on-tertiary-container": "#4b3f00",
+                    "surface-variant": "#e4e2e1",
+                    "inverse-primary": "#9ad3b3",
+                    "primary-fixed-dim": "#9ad3b3",
+                    "on-error-container": "#93000a",
+                    "error": "#ba1a1a",
+                    "on-primary-container": "#76af91",
+                    "surface-container-lowest": "#ffffff",
+                    "primary": "#02422B",
+                    "inverse-on-surface": "#f3f0f0",
+                    "tertiary-fixed": "#ffe264",
+                    "on-primary": "#ffffff",
+                    "surface": "#FCF9EB",
+                    "outline-variant": "#c0c9c1",
+                    "outline": "#707973",
+                    "on-primary-fixed": "#002113",
+                    "secondary-fixed-dim": "#c9c7ba",
+                    "tertiary-fixed-dim": "#e3c540",
+                    "on-primary-fixed-variant": "#175038",
+                    "on-secondary-fixed-variant": "#48473d",
+                    "background": "#FCF9EB",
+                    "surface-bright": "#FCF9EB",
+                    "secondary-fixed": "#e5e3d5",
+                    "on-tertiary-fixed": "#221b00",
+                    "surface-container-low": "#f6f3f2",
+                    "on-secondary-container": "#66655a",
+                    "on-background": "#1b1c1c",
+                    /* New Brand Surfaces */
+                    "brand-warm-light": "#f7f4e6",
+                    "brand-warm-card": "#f1eee0",
+                    "brand-warm-hover": "#ebe8db",
+                    "brand-warm-active": "#e5e3d5"
+            },
+            "borderRadius": {
+                    "DEFAULT": "0.125rem",
+                    "lg": "8px", /* Cards maintain 8px radius */
+                    "xl": "0.5rem",
+                    "full": "9999px" /* Fully rounded for pills/chips */
+            },
+            "spacing": {
+                    "margin-mobile": "20px", /* Adjusted to 20px per request */
+                    "margin-desktop": "64px",
+                    "container-max": "1280px",
+                    "gutter": "24px",
+                    "base": "8px",
+                    "unit": "8px"
+            },
+            "fontFamily": {
+                    "body-md": [
+                            "\"Lato\""
+                    ],
+                    "headline-lg-mobile": [
+                            "Playfair Display"
+                    ],
+                    "headline-md": [
+                            "Playfair Display"
+                    ],
+                    "label-md": [
+                            "\"Lato\""
+                    ],
+                    "label-sm": [
+                            "\"Lato\""
+                    ],
+                    "display-lg": [
+                            "Playfair Display"
+                    ],
+                    "headline-lg": [
+                            "Playfair Display"
+                    ],
+                    "body-lg": [
+                            "\"Lato\""
+                    ]
+            },
+            "fontSize": {
+                    "body-md": [
+                            "16px",
+                            {
+                                    "lineHeight": "24px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "headline-lg-mobile": [
+                            "28px",
+                            {
+                                    "lineHeight": "36px",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "headline-md": [
+                            "24px",
+                            {
+                                    "lineHeight": "32px",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "label-md": [
+                            "14px",
+                            {
+                                    "lineHeight": "20px",
+                                    "letterSpacing": "0.05em",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "label-sm": [
+                            "12px",
+                            {
+                                    "lineHeight": "16px",
+                                    "fontWeight": "400"
+                            }
+                    ],
+                    "display-lg": [
+                            "48px",
+                            {
+                                    "lineHeight": "56px",
+                                    "letterSpacing": "-0.02em",
+                                    "fontWeight": "700"
+                            }
+                    ],
+                    "headline-lg": [
+                            "32px",
+                            {
+                                    "lineHeight": "40px",
+                                    "fontWeight": "600"
+                            }
+                    ],
+                    "body-lg": [
+                            "18px",
+                            {
+                                    "lineHeight": "28px",
+                                    "fontWeight": "400"
+                            }
+                    ]
+            }
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        .active-tab-indicator {
+            height: 3px;
+            background-color: #DABD38;
+            width: 32px;
+            position: absolute;
+            top: 0;
+            border-radius: 0 0 4px 4px;
+        }
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .hairline-border {
+            border: 1px solid rgba(2, 66, 43, 0.1);
+        }
+        body {
+          min-height: max(884px, 100dvh);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body-md selection:bg-primary-fixed">
+<!-- Top Navigation Shell (Identical to Home/Source) -->
+<header class="w-full top-0 sticky z-50 bg-surface border-b border-outline-variant/10">
+<div class="flex justify-between items-center px-margin-mobile md:px-margin-desktop py-unit w-full max-w-container-max mx-auto h-16">
+<!-- Account Switcher Pill (Fully Rounded) -->
+<div class="flex items-center gap-2 bg-brand-warm-hover/50 px-3 py-1.5 rounded-full border border-outline-variant/30 cursor-pointer active:opacity-80 transition-colors hover:bg-brand-warm-active">
+<div class="w-6 h-6 rounded-full overflow-hidden">
+<img alt="Aditya V." class="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDm9NVni9YsZidvGffGkOEUigfQrGgCIH77G1vK3ZfSirbSOJ0okcnFs4FTq4VTKZX0ITc0e5C-JS-J1nJGelru6aMYjLGVU8CGMlI-eNAhppqBH0Qo3XJCEHSlHvCwsU6fPUvQYrMoQtITimMxKWcHbVMd2kSD7LQuPLZpi3qDyeDdbgp8A4eDZEoi8E9nHv9jGQpV1-SASP7VprKJS06SJOo2LeC7nJWXTb-bGFobYj3DgsctlZP7"/>
+</div>
+<span class="font-label-md text-label-md text-primary">Aditya V.</span>
+<span class="material-symbols-outlined text-sm leading-none text-primary">expand_more</span>
+</div>
+<!-- Center Empty -->
+<div class="hidden md:block"></div>
+<!-- Trailing Actions -->
+<div class="flex items-center gap-4">
+<button class="w-10 h-10 flex items-center justify-center hover:bg-brand-warm-hover transition-colors rounded-full">
+<span class="material-symbols-outlined text-on-surface-variant">auto_awesome</span>
+</button>
+<button class="relative w-10 h-10 flex items-center justify-center hover:bg-brand-warm-hover transition-colors rounded-full">
+<span class="material-symbols-outlined text-on-surface-variant">notifications</span>
+<span class="absolute top-2.5 right-2.5 w-2 h-2 bg-error rounded-full border-2 border-surface"></span>
+</button>
+</div>
+</div>
+</header>
+<main class="max-w-container-max mx-auto px-margin-mobile md:px-margin-desktop py-12 pb-32">
+<!-- Screen Title & Search (Heading in Playfair) -->
+<section class="flex justify-between items-end mb-10">
+<h1 class="font-headline-md text-headline-md md:text-display-lg text-primary">Reports</h1>
+<button class="w-12 h-12 flex items-center justify-center hairline-border rounded-full hover:bg-brand-warm-hover transition-all">
+<span class="material-symbols-outlined text-primary">search</span>
+</button>
+</section>
+<!-- Primary 'Latest' Bento Section (8px Radii Cards) -->
+<section class="grid grid-cols-1 md:grid-cols-2 gap-gutter mb-16">
+<!-- Statement Card -->
+<div class="bg-brand-warm-card hairline-border p-8 rounded-lg group cursor-pointer hover:bg-brand-warm-hover transition-all">
+<div class="flex justify-between items-start mb-12">
+<span class="font-label-md text-label-md text-secondary uppercase tracking-widest">Monthly Insight</span>
+<span class="material-symbols-outlined text-tertiary text-[32px] group-hover:scale-110 transition-transform">download_for_offline</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-primary mb-2">June 2026 Statement</h3>
+<p class="text-on-surface-variant font-body-md">Your comprehensive wealth overview and transaction history.</p>
+</div>
+<!-- Factsheet Card -->
+<div class="bg-brand-warm-card hairline-border p-8 rounded-lg group cursor-pointer hover:bg-brand-warm-hover transition-all">
+<div class="flex justify-between items-start mb-12">
+<span class="font-label-md text-label-md text-secondary uppercase tracking-widest">Quarterly Performance</span>
+<span class="material-symbols-outlined text-tertiary text-[32px] group-hover:scale-110 transition-transform">download_for_offline</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-primary mb-2">Q1 FY26-27 Factsheet</h3>
+<p class="text-on-surface-variant font-body-md">Detailed asset allocation and fund strategy performance reports.</p>
+</div>
+</section>
+<!-- Filter Chips (Fully Rounded) -->
+<section class="mb-12 overflow-x-auto scrollbar-hide">
+<div class="flex gap-3 min-w-max">
+<button class="px-6 py-2.5 bg-primary text-on-primary rounded-full font-label-md text-label-md transition-all" onclick="filterDocs('All')">Statements</button>
+<button class="px-6 py-2.5 hairline-border bg-transparent text-on-surface-variant hover:bg-brand-warm-hover rounded-full font-label-md text-label-md transition-all" onclick="filterDocs('Tax')">Capital Gains &amp; Tax</button>
+<button class="px-6 py-2.5 hairline-border bg-transparent text-on-surface-variant hover:bg-brand-warm-hover rounded-full font-label-md text-label-md transition-all" onclick="filterDocs('Contract')">Contract Notes</button>
+<button class="px-6 py-2.5 hairline-border bg-transparent text-on-surface-variant hover:bg-brand-warm-hover rounded-full font-label-md text-label-md transition-all" onclick="toggleEmptyState()">Agreements</button>
+<button class="px-6 py-2.5 hairline-border bg-transparent text-on-surface-variant hover:bg-brand-warm-hover rounded-full font-label-md text-label-md transition-all" onclick="filterDocs('KYC')">KYC</button>
+</div>
+</section>
+<!-- Tax Content (8px Radii Card) -->
+<section class="bg-brand-warm-card hairline-border p-6 md:p-10 rounded-lg mb-16 flex flex-col md:flex-row items-center justify-between gap-8" id="tax-section">
+<div class="flex flex-col gap-2 w-full md:w-auto">
+<span class="font-label-sm text-label-sm text-secondary uppercase tracking-widest">Tax Planning</span>
+<div class="flex items-center gap-4">
+<h2 class="font-headline-sm text-headline-sm text-primary">FY 2025-26</h2>
+<span class="material-symbols-outlined text-outline-variant">unfold_more</span>
+</div>
+</div>
+<button class="w-full md:w-auto bg-primary-container text-on-primary-container hover:bg-primary transition-colors px-10 py-4 rounded-full font-label-md text-label-md flex items-center justify-center gap-3">
+<span class="material-symbols-outlined">download</span>
+            Download Capital Gains Report
+        </button>
+</section>
+<!-- Main Document List -->
+<section class="space-y-12" id="document-list">
+<div id="active-content">
+<!-- Group June -->
+<div class="mb-10">
+<h4 class="font-label-md text-label-md text-secondary uppercase tracking-[0.2em] mb-6 border-b border-outline-variant/20 pb-4">June 2026</h4>
+<div class="space-y-1">
+<!-- Doc Item -->
+<div class="flex items-center justify-between py-5 px-4 hover:bg-brand-warm-light rounded-lg transition-colors group cursor-pointer">
+<div class="flex items-center gap-6">
+<div class="w-12 h-12 rounded-lg bg-brand-warm-hover flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">description</span>
+</div>
+<div>
+<h5 class="font-body-md font-bold text-on-surface">Portfolio Statement — June 2026</h5>
+<p class="text-label-sm text-on-surface-variant">Jun 14, 2026 • 2.4 MB</p>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="px-4 py-2 text-primary hover:bg-brand-warm-active rounded-full transition-colors hidden md:flex font-label-md">View</button>
+<span class="material-symbols-outlined text-tertiary cursor-pointer hover:scale-110 transition-transform">download</span>
+</div>
+</div>
+<!-- Doc Item -->
+<div class="flex items-center justify-between py-5 px-4 hover:bg-brand-warm-light rounded-lg transition-colors group cursor-pointer">
+<div class="flex items-center gap-6">
+<div class="w-12 h-12 rounded-lg bg-brand-warm-hover flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">receipt_long</span>
+</div>
+<div>
+<h5 class="font-body-md font-bold text-on-surface">Contract Note #CN-4821</h5>
+<p class="text-label-sm text-on-surface-variant">Jun 08, 2026 • 840 KB</p>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="px-4 py-2 text-primary hover:bg-brand-warm-active rounded-full transition-colors hidden md:flex font-label-md">View</button>
+<span class="material-symbols-outlined text-tertiary cursor-pointer hover:scale-110 transition-transform">download</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Group May -->
+<div class="mb-10 opacity-80">
+<h4 class="font-label-md text-label-md text-secondary uppercase tracking-[0.2em] mb-6 border-b border-outline-variant/20 pb-4">May 2026</h4>
+<div class="flex items-center justify-between py-5 px-4 hover:bg-brand-warm-light rounded-lg transition-colors group cursor-pointer">
+<div class="flex items-center gap-6">
+<div class="w-12 h-12 rounded-lg bg-brand-warm-hover flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">description</span>
+</div>
+<div>
+<h5 class="font-body-md font-bold text-on-surface">Portfolio Statement — May 2026</h5>
+<p class="text-label-sm text-on-surface-variant">May 12, 2026 • 2.1 MB</p>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<button class="px-4 py-2 text-primary hover:bg-brand-warm-active rounded-full transition-colors hidden md:flex font-label-md">View</button>
+<span class="material-symbols-outlined text-tertiary cursor-pointer hover:scale-110 transition-transform">download</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Empty State -->
+<div class="hidden flex flex-col items-center justify-center py-20 text-center" id="empty-state">
+<div class="w-24 h-24 rounded-full bg-brand-warm-card flex items-center justify-center mb-6">
+<span class="material-symbols-outlined text-outline-variant text-[48px]">history_edu</span>
+</div>
+<h3 class="font-headline-sm text-headline-sm text-primary mb-2">No active agreements</h3>
+<p class="text-on-surface-variant font-body-md max-w-md mx-auto">You don't have any pending or historical legal agreements at this time. New agreements will appear here for your signature.</p>
+<button class="mt-8 text-primary font-label-md text-label-md underline underline-offset-4" onclick="toggleEmptyState()">Return to Statements</button>
+</div>
+</section>
+<!-- Footer Note -->
+<footer class="mt-24 pt-12 border-t border-outline-variant/20 text-center">
+<p class="text-on-surface-variant font-body-md">
+            Need something older? <a class="text-primary font-bold hover:underline" href="#">Ask us</a> and we'll fetch it from the archives.
+        </p>
+</footer>
+</main>
+<!-- Bottom Navigation Shell (Identical structure, Lato font) -->
+<nav class="fixed bottom-0 w-full z-50 bg-surface border-t border-outline-variant/10 shadow-lg">
+<div class="max-w-container-max mx-auto flex justify-around items-center px-margin-mobile pt-2 pb-safe h-16">
+<!-- Home -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant/70 hover:bg-brand-warm-light transition-colors w-full h-full relative group" href="#">
+<span class="material-symbols-outlined">home</span>
+<span class="font-label-sm text-label-sm">Home</span>
+</a>
+<!-- Portfolio -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant/70 hover:bg-brand-warm-light transition-colors w-full h-full relative group" href="#">
+<span class="material-symbols-outlined">account_balance_wallet</span>
+<span class="font-label-sm text-label-sm">Portfolio</span>
+</a>
+<!-- Reports (ACTIVE) -->
+<a class="flex flex-col items-center justify-center text-primary font-bold hover:bg-brand-warm-light transition-colors w-full h-full relative group" href="#">
+<div class="active-tab-indicator"></div>
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">description</span>
+<span class="font-label-sm text-label-sm">Reports</span>
+</a>
+<!-- Services -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant/70 hover:bg-brand-warm-light transition-colors w-full h-full relative group" href="#">
+<span class="material-symbols-outlined">room_service</span>
+<span class="font-label-sm text-label-sm">Services</span>
+</a>
+<!-- More -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant/70 hover:bg-brand-warm-light transition-colors w-full h-full relative group" href="#">
+<span class="material-symbols-outlined">more_horiz</span>
+<span class="font-label-sm text-label-sm">More</span>
+</a>
+</div>
+</nav>
+<script>
+    function toggleEmptyState() {
+        const list = document.getElementById('active-content');
+        const empty = document.getElementById('empty-state');
+        const tax = document.getElementById('tax-section');
+
+        if (empty.classList.contains('hidden')) {
+            list.classList.add('hidden');
+            tax.classList.add('hidden');
+            empty.classList.remove('hidden');
+        } else {
+            list.classList.remove('hidden');
+            tax.classList.remove('hidden');
+            empty.classList.add('hidden');
+        }
+    }
+
+    function filterDocs(type) {
+        const empty = document.getElementById('empty-state');
+        const list = document.getElementById('active-content');
+        const tax = document.getElementById('tax-section');
+
+        empty.classList.add('hidden');
+        list.classList.remove('hidden');
+        tax.classList.remove('hidden');
+
+        console.log("Filtering for:", type);
+    }
+
+    // Interaction for cards
+    document.querySelectorAll('.group').forEach(card => {
+        card.addEventListener('mousedown', () => {
+            card.classList.add('scale-[0.98]');
+        });
+        card.addEventListener('mouseup', () => {
+            card.classList.remove('scale-[0.98]');
+        });
+    });
+</script>
+</body></html>
