@@ -117,31 +117,89 @@ export default function PaymentSuccessPage() {
 
       console.log('Processing payment success for order ID:', orderId)
 
-      const response = await fetch(`/api/cashfree/payment-details?order_id=${orderId}`)
-      const data = await response.json()
+      // Razorpay is the web gateway; Cashfree still serves the mobile app and
+      // any in-flight legacy orders, so fall back to it when the Razorpay
+      // lookup finds nothing for this id.
+      const isRazorpayOrder = Boolean(sessionStorage.getItem('qode_payment_razorpay_order_id'))
+        || orderId.startsWith('qode_')
+        || orderId.startsWith('order_')
+
+      // The browser can return from checkout BEFORE the webhook lands, so a
+      // PENDING result is not final — poll briefly before reporting anything.
+      const POLL_ATTEMPTS = 5
+      const POLL_DELAY_MS = 2000
+
+      let data: any = null
+      let usedGateway: 'razorpay' | 'cashfree' = isRazorpayOrder ? 'razorpay' : 'cashfree'
+
+      for (let attempt = 0; attempt < POLL_ATTEMPTS; attempt++) {
+        const endpoint = usedGateway === 'razorpay'
+          ? `/api/razorpay/payment-details?order_id=${encodeURIComponent(orderId)}`
+          : `/api/cashfree/payment-details?order_id=${encodeURIComponent(orderId)}`
+
+        const response = await fetch(endpoint, { credentials: 'include' })
+        const body = await response.json().catch(() => ({}))
+
+        // Unknown to Razorpay — try the legacy gateway once, then stop.
+        if (usedGateway === 'razorpay' && response.status === 404 && attempt === 0) {
+          usedGateway = 'cashfree'
+          continue
+        }
+
+        if (body?.success) {
+          data = body
+          // Settled either way — stop polling.
+          if (usedGateway !== 'razorpay' || body.settled || !body.pending) break
+        }
+
+        if (attempt < POLL_ATTEMPTS - 1) {
+          await new Promise((r) => setTimeout(r, POLL_DELAY_MS))
+        }
+      }
+
+      if (!data) {
+        throw new Error('Failed to fetch payment details')
+      }
 
       console.log('Payment details API response:', data)
 
-      if (!data.success) {
-        throw new Error('Failed to fetch payment details: ' + (data.error || 'Unknown error'))
+      // Razorpay returns a flat object; Cashfree nests under `payment`.
+      const details = usedGateway === 'razorpay' ? data : data.payment
+
+      setPaymentDetails(usedGateway === 'razorpay' ? { ...data, payment: data } : data)
+
+      // Still unconfirmed after polling: the money may have moved and the
+      // webhook simply has not arrived. Say so plainly rather than claiming
+      // success or failure.
+      if (usedGateway === 'razorpay' && data.pending) {
+        setEmailStatus('sent')
+        setLoading(false)
+        toast({
+          title: 'Confirming Your Payment',
+          description:
+            'Your payment is being confirmed. This usually takes a few moments — ' +
+            'you will receive an email once it is complete. Please do not pay again.',
+        })
+        return
       }
 
-      setPaymentDetails(data)
-      await sendPaymentSuccessEmail(data.payment)
+      await sendPaymentSuccessEmail(details)
       setEmailStatus('sent')
       setLoading(false)
 
       toast({
         title: 'Payment Successful',
-        description: data.payment.payment_type === 'sip' || data.payment.frequency 
+        description: details.payment_type === 'sip' || details.frequency 
           ? 'Your Systematic Investment Plan has been successfully authorized.'
-          : data.payment.is_new_strategy 
+          : details.is_new_strategy 
           ? 'Your new strategy investment request has been submitted successfully.'
           : 'Your payment has been processed successfully.',
       })
 
       sessionStorage.removeItem('qode_payment_order_id')
       sessionStorage.removeItem('qode_payment_cf_order_id')
+      sessionStorage.removeItem('qode_payment_razorpay_order_id')
+      sessionStorage.removeItem('qode_payment_subscription_id')
       sessionStorage.removeItem('qode_payment_type')
       sessionStorage.removeItem('qode_payment_amount')
       sessionStorage.removeItem('qode_payment_nuvama_code')

@@ -20,10 +20,15 @@ const APP_NAME    = 'Qode Invest'
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send'
 
 // ── Dev/test override ─────────────────────────────────────────────────────────
-// Set NOTIFICATION_TEST_EMAIL in .env.local to redirect ALL outgoing emails
-// to a single address during testing. The real client email is ignored.
-// Example: NOTIFICATION_TEST_EMAIL=sanket.shinde@qodeinvest.com
+// Set NOTIFICATION_TEST_EMAIL to redirect notification emails to a specific
+// address, regardless of environment. The real client email is ignored.
+// Example: NOTIFICATION_TEST_EMAIL=tech@qodeinvest.com
 // Multiple addresses: NOTIFICATION_TEST_EMAIL=addr1@x.com,addr2@x.com
+//
+// This is narrower than, and composes with, the environment-based diversion in
+// lib/graphEmail.ts: outside production that layer already diverts EVERY email
+// to DEV_EMAIL_REDIRECT_TO, so this override is only needed when you want a
+// different address for notifications specifically.
 const TEST_EMAIL_OVERRIDE = process.env.NOTIFICATION_TEST_EMAIL
   ? process.env.NOTIFICATION_TEST_EMAIL.split(',').map((e) => e.trim())
   : null

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { toast, useToast } from "@/hooks/use-toast";
 import { useClient } from "@/contexts/ClientContext";
 import { AlertTriangle } from 'lucide-react';
+import { openRazorpayCheckout, verifyPayment, verifyMandate } from '@/lib/razorpay-checkout';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -95,7 +96,7 @@ function InfoCard({
 
 /* ---------------------------
    Add Funds / SIP / New Strategy Modal - Enhanced with New Strategy Tab
-   Modified to send email before Cashfree payment/subscription
+   Modified to send email before Razorpay payment/subscription
 ---------------------------- */
 async function sendEmail(emailData: {
   to: string;
@@ -285,7 +286,7 @@ function AddFundsModal({
       `;
 
       console.log('Sending payment success notification to Qode Investor Relations:', {
-        to: 'sanket.shinde@qodeinvest.com',
+        to: 'investor.relations@qodeinvest.com',
         subject: `Payment Completed - ₹${amount} ${activeTab === "newStrategy" ? "New Strategy Investment" : "Investment"} | Qode Advisors`,
         inquiry_type: activeTab === "newStrategy" ? "new_strategy_payment_success" : "payment_success",
         nuvama_code: accountCode,
@@ -496,13 +497,43 @@ function AddFundsModal({
     validateField("amount", value);
   };
 
+  /**
+   * Parses a rupee amount the way the server does, or returns null.
+   *
+   * `parseFloat` is too permissive for money: it reads "10e3" as 10000 and
+   * "1e-3" as 0.001, so a user typing `10e3` was silently charged ₹10,000.
+   * `<input type="number">` accepts scientific notation, so the browser does
+   * not block it either.
+   *
+   * This mirrors the regex in lib/razorpay.ts#toPaise — plain digits with at
+   * most two decimal places — so the client rejects exactly what the server
+   * would, instead of converting it to a number the server then accepts.
+   */
+  const parseAmount = (value: string): number | null => {
+    const trimmed = String(value ?? "").trim();
+    if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return null;
+    const n = Number(trimmed);
+    return Number.isFinite(n) ? n : null;
+  };
+
   const validateField = (name: string, value: string) => {
     setErrors((prev) => {
       const ne = { ...prev };
       if (name === "nuvamaCode") {
         ne.nuvamaCode = value ? "" : "Account ID is required";
       } else if (name === "amount") {
-        ne.amount = !value ? "Amount is required" : Number(value) < 100 ? "Amount must be at least ₹100" : "";
+        // parseAmount rejects scientific notation ("10e3"), hex, and sub-paisa
+        // precision — all of which Number()/parseFloat would have accepted.
+        const parsed = parseAmount(value);
+        ne.amount = !value
+          ? "Amount is required"
+          : parsed === null
+            ? "Enter a plain amount in rupees, e.g. 10000"
+            : parsed < 100
+              ? "Amount must be at least ₹100"
+              : parsed > 500000
+                ? "Amount cannot exceed ₹5,00,000"
+                : "";
       } else if (name === "selectedStrategy") {
         ne.selectedStrategy = value ? "" : "Please select a strategy";
       } else if (name === "startDate" && value) {
@@ -545,8 +576,13 @@ function AddFundsModal({
       return false;
     }
 
-    const amount = parseFloat(currentAmount);
-    if (isNaN(amount) || amount < 100) {
+    // isFormValid runs during render, so it must be PURE — no toast, no
+    // setState. Raising a toast here fired on every keystroke and set state
+    // mid-render, which React throws on: typing the third decimal of "99.999"
+    // crashed the page. Invalid input simply makes the form invalid; the
+    // message comes from validateField, which runs on change.
+    const amount = parseAmount(currentAmount);
+    if (amount === null || amount < 100 || amount > 500000) {
       return false;
     }
 
@@ -686,293 +722,307 @@ function AddFundsModal({
     );
   };
 
-  const initiateCashfreePayment = async (orderToken: string, orderId: string) => {
+  // Resets the form after a completed (or accepted-as-pending) transaction.
+  const resetPaymentForm = () => {
+    setFormData({
+      nuvamaCode: selectedClientCode || 'QAW0001',
+      amount: '',
+    });
+    setNewStrategyData({
+      selectedStrategy: '',
+      amount: ''
+    });
+    setErrors({
+      nuvamaCode: '',
+      amount: '',
+      startDate: '',
+      endDate: '',
+      selectedStrategy: '',
+    });
+    setTimeout(() => {
+      setPaymentStatus('');
+      onClose();
+    }, 3000);
+  };
+
+  /**
+   * Opens Razorpay Checkout for a one-time payment and confirms it server-side.
+   *
+   * The outcome handling is deliberately asymmetric: only an explicit gateway
+   * failure is reported as a failure. A dismissed modal or a dead network is
+   * reported as "still confirming", because in both cases the bank may already
+   * have debited the client and the webhook is what settles the truth.
+   */
+  const initiateRazorpayPayment = async (order: {
+    key_id: string;
+    razorpay_order_id: string;
+    order_id: string;
+    amount: number;
+    prefill?: { name?: string; email?: string; contact?: string };
+  }) => {
     setLoading(true);
+    const currentAmount = activeTab === "newStrategy" ? newStrategyData.amount : formData.amount;
+
     try {
-      if (!window.Cashfree) {
+      const outcome = await openRazorpayCheckout({
+        keyId: order.key_id,
+        amountPaise: order.amount,
+        orderId: order.razorpay_order_id,
+        name: 'Qode Advisors LLP',
+        description: activeTab === "newStrategy"
+          ? `New strategy investment - ₹${currentAmount}`
+          : `Investment - ₹${currentAmount}`,
+        prefill: order.prefill,
+        notes: { order_id: order.order_id },
+      });
+
+      if (outcome.kind === 'unavailable') {
+        setPaymentStatus('Payment window could not be opened.');
         toast({
-          title: "Loading",
-          description: "Loading payment SDK...",
+          title: "Payment Unavailable",
+          description: outcome.message,
+          variant: "destructive",
         });
-        await new Promise((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = 'https://sdk.cashfree.com/js/v3/cashfree.js';
-          const timeout = setTimeout(() => {
-            toast({
-              title: "Error",
-              description: "Payment SDK load timeout",
-              variant: "destructive",
-            });
-            reject(new Error('SDK timeout'));
-          }, 10000);
-          script.onload = () => { clearTimeout(timeout); setTimeout(resolve, 500); };
-          script.onerror = () => {
-            clearTimeout(timeout);
-            toast({
-              title: "Error",
-              description: "Failed to load payment SDK",
-              variant: "destructive",
-            });
-            reject(new Error('SDK load failed'));
-          };
-          document.head.appendChild(script);
-        });
+        return;
       }
 
-      const cashfree = window.Cashfree({
-        mode: process.env.NEXT_PUBLIC_CASHFREE_ENV === 'production' ? 'production' : 'sandbox'
-      });
-
-      return new Promise((resolve, reject) => {
-        const paymentTimeout = setTimeout(() => {
-          toast({
-            title: "Error",
-            description: `Payment timed out`,
-            variant: "destructive",
-          });
-          reject(new Error('Payment timeout'));
-        }, 300000);
-
-        cashfree.checkout({
-          paymentSessionId: orderToken,
-          redirectTarget: '_self',
-          onSuccess: async (result) => {
-            clearTimeout(paymentTimeout);
-            const currentAmount = activeTab === "newStrategy" ? newStrategyData.amount : formData.amount;
-            setPaymentStatus('Payment completed successfully!');
-            console.log('Payment Success:', result);
-            toast({
-              title: "Payment Successful",
-              description: `Your payment of ₹${currentAmount} has been processed successfully.`,
-            });
-
-            // Send success notification to Qode Investor Relations ONLY AFTER successful payment
-            try {
-              await sendPaymentSuccessEmail(currentAmount, result);
-              toast({
-                title: "Notification Sent",
-                description: "Payment notification has been sent to Qode Investor Relations.",
-              });
-            } catch (emailError) {
-              console.error('Failed to send payment success notification:', emailError);
-              toast({
-                title: "Email Error",
-                description: "Payment was successful, but we couldn't send the notification. Please contact support.",
-                variant: "destructive",
-              });
-            }
-
-            // Reset form
-            setFormData({
-              nuvamaCode: selectedClientCode || 'QAW0001',
-              amount: '',
-            });
-            setNewStrategyData({
-              selectedStrategy: '',
-              amount: ''
-            });
-            setErrors({
-              nuvamaCode: '',
-              amount: '',
-              startDate: '',
-              endDate: '',
-              selectedStrategy: '',
-            });
-
-            setTimeout(() => {
-              setPaymentStatus('');
-              onClose();
-            }, 3000);
-            resolve(result);
-          },
-          onError: (error) => {
-            clearTimeout(paymentTimeout);
-            setPaymentStatus('Payment failed. Please try again.');
-            toast({
-              title: "Payment Failed",
-              description: error.message || "Payment could not be processed. Please try again.",
-              variant: "destructive",
-            });
-            reject(error);
-          },
-          onClose: () => {
-            clearTimeout(paymentTimeout);
-            setPaymentStatus('Payment cancelled by user.');
-            toast({
-              title: "Payment Cancelled",
-              description: "Payment was cancelled by the user.",
-              variant: "destructive",
-            });
-            reject(new Error('Payment cancelled'));
-          }
-        }).catch((err) => {
-          clearTimeout(paymentTimeout);
-          toast({
-            title: "Error",
-            description: `Payment failed: ${err.message}`,
-            variant: "destructive",
-          });
-          reject(err);
+      if (outcome.kind === 'dismissed') {
+        // No payment was made — the modal was closed before authorisation.
+        setPaymentStatus('Payment cancelled.');
+        toast({
+          title: "Payment Cancelled",
+          description: "You closed the payment window. No amount has been debited.",
         });
+        return;
+      }
+
+      if (outcome.kind === 'failed') {
+        setPaymentStatus('Payment failed. Please try again.');
+        toast({
+          title: "Payment Failed",
+          description: outcome.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Authorised by Razorpay — now confirm with our server before claiming success.
+      setPaymentStatus('Confirming your payment...');
+      const verification = await verifyPayment({
+        razorpayOrderId: outcome.orderId ?? order.razorpay_order_id,
+        razorpayPaymentId: outcome.paymentId,
+        signature: outcome.signature,
       });
-    } catch (error) {
+
+      if (verification.status === 'success') {
+        setPaymentStatus('Payment completed successfully!');
+        toast({
+          title: "Payment Successful",
+          description: `Your payment of ₹${currentAmount} has been processed successfully.`,
+        });
+
+        try {
+          await sendPaymentSuccessEmail(
+            currentAmount,
+            { razorpay_payment_id: outcome.paymentId, order_id: order.order_id },
+            activeTab === "newStrategy" ? 'new_strategy' : 'one_time',
+          );
+        } catch (emailError) {
+          // The payment is already safe; a failed notification must not look
+          // like a failed payment.
+          console.error('Failed to send payment success notification:', emailError);
+        }
+
+        resetPaymentForm();
+        return;
+      }
+
+      if (verification.status === 'pending') {
+        // Money may well have moved. Never say "failed" here.
+        setPaymentStatus('Payment received — confirmation pending.');
+        toast({
+          title: "Confirming Your Payment",
+          description: verification.message,
+        });
+        resetPaymentForm();
+        return;
+      }
+
+      setPaymentStatus('Payment could not be verified.');
       toast({
-        title: "Error",
-        description: `Initialization failed: ${error.message}`,
+        title: "Verification Failed",
+        description: verification.message,
         variant: "destructive",
       });
-      throw error;
+    } catch (error: any) {
+      console.error('Razorpay payment error:', error);
+      setPaymentStatus('Something went wrong.');
+      toast({
+        title: "Error",
+        description: "Something went wrong during payment. If an amount was debited, do not pay again — please contact support.",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const initiateCashfreeSubscription = async (subscriptionSessionId, subscriptionId) => {
-    console.log('Starting SIP authorization with session:', subscriptionSessionId);
+  /**
+   * Opens Razorpay Checkout for SIP mandate authorisation.
+   *
+   * IMPORTANT: a successfully authorised mandate does NOT mean the SIP is
+   * active. TPV is disabled on this Razorpay account, so the server verifies
+   * that the authorising bank account matches the client's registered account
+   * before activating. UPI Autopay in particular usually cannot be verified
+   * automatically, so an "authorised but pending review" outcome is normal and
+   * must be communicated honestly rather than shown as a plain success.
+   */
+  const initiateRazorpaySubscription = async (subscription: {
+    key_id: string;
+    razorpay_subscription_id: string;
+    order_id: string;
+    amount: number;
+    prefill?: { name?: string; email?: string; contact?: string };
+    registered_account_last4?: string | null;
+  }) => {
     setLoading(true);
+    const currentAmount = sipData.amount || formData.amount;
 
     try {
-      if (!window.Cashfree) {
+      const outcome = await openRazorpayCheckout({
+        keyId: subscription.key_id,
+        amountPaise: subscription.amount,
+        subscriptionId: subscription.razorpay_subscription_id,
+        name: 'Qode Advisors LLP',
+        description: `SIP mandate - ₹${currentAmount} ${sipData.frequency}`,
+        prefill: subscription.prefill,
+        notes: { order_id: subscription.order_id },
+      });
+
+      if (outcome.kind === 'unavailable') {
+        setPaymentStatus('Payment window could not be opened.');
         toast({
-          title: "Loading",
-          description: "Loading payment SDK...",
+          title: "SIP Setup Unavailable",
+          description: outcome.message,
+          variant: "destructive",
         });
-
-        await new Promise((resolve, reject) => {
-          const script = document.createElement('script');
-          script.src = 'https://sdk.cashfree.com/js/v3/cashfree.js';
-
-          const timeout = setTimeout(() => {
-            toast({
-              title: "Error",
-              description: "Payment SDK load timeout",
-              variant: "destructive",
-            });
-            reject(new Error('SDK timeout'));
-          }, 10000);
-
-          script.onload = () => {
-            clearTimeout(timeout);
-            console.log('Cashfree SDK loaded successfully');
-            setTimeout(resolve, 500);
-          };
-
-          script.onerror = () => {
-            clearTimeout(timeout);
-            toast({
-              title: "Error",
-              description: "Failed to load payment SDK",
-              variant: "destructive",
-            });
-            reject(new Error('SDK load failed'));
-          };
-
-          document.head.appendChild(script);
-        });
+        return;
       }
 
-      console.log('Initializing Cashfree with mode:', process.env.NEXT_PUBLIC_CASHFREE_ENV === 'production' ? 'production' : 'sandbox');
-
-      const cashfree = window.Cashfree({
-        mode: process.env.NEXT_PUBLIC_CASHFREE_ENV === 'production' ? 'production' : 'sandbox'
-      });
-
-      return new Promise((resolve, reject) => {
-        const paymentTimeout = setTimeout(() => {
-          toast({
-            title: "Error",
-            description: "SIP setup timed out",
-            variant: "destructive",
-          });
-          reject(new Error('SIP setup timeout'));
-        }, 300000);
-
-        console.log('Calling cashfree.subscriptionsCheckout with subsSessionId:', subscriptionSessionId);
-
-        cashfree.subscriptionsCheckout({
-          subsSessionId: subscriptionSessionId,
-          redirectTarget: '_self',
-        }).then(async (result) => {
-          clearTimeout(paymentTimeout);
-          if (result.error) {
-            console.error('SIP Checkout Error:', result.error);
-            toast({
-              title: "SIP Authorization Failed",
-              description: result.error.message || 'SIP setup failed',
-              variant: "destructive",
-            });
-            reject(new Error(result.error.message || 'SIP setup failed'));
-          } else {
-            console.log('SIP checkout successful, result:', result);
-            toast({
-              title: "SIP Authorized",
-              description: "Your SIP has been set up and authorized successfully.",
-            });
-
-            // Send success notification to Qode Investor Relations ONLY AFTER successful SIP authorization
-            try {
-              await sendSipSuccessEmail(result);
-              toast({
-                title: "Notification Sent",
-                description: "SIP authorization notification has been sent to Qode Investor Relations.",
-              });
-            } catch (emailError) {
-              console.error('Failed to send SIP success notification:', emailError);
-              toast({
-                title: "Email Error",
-                description: "SIP was authorized successfully, but we couldn't send the notification. Please contact support.",
-                variant: "destructive",
-              });
-            }
-
-            // Reset form
-            setFormData({
-              nuvamaCode: selectedClientCode || 'QAW0001',
-              amount: '',
-            });
-
-            setSipData({
-              frequency: 'monthly',
-              startDate: '',
-              endDate: '',
-              amount: ''
-            });
-
-            setErrors({
-              nuvamaCode: '',
-              amount: '',
-              startDate: '',
-              endDate: '',
-              selectedStrategy: '',
-            });
-
-            setTimeout(() => {
-              setPaymentStatus('');
-              onClose();
-            }, 3000);
-
-            resolve(result);
-          }
-        }).catch((error) => {
-          clearTimeout(paymentTimeout);
-          console.error('SIP Checkout Promise Error:', error);
-          toast({
-            title: "Error",
-            description: `SIP authorization failed: ${error.message}`,
-            variant: "destructive",
-          });
-          reject(error);
+      if (outcome.kind === 'dismissed') {
+        setPaymentStatus('SIP setup cancelled.');
+        toast({
+          title: "SIP Setup Cancelled",
+          description: "You closed the authorisation window. No mandate has been created.",
         });
+        return;
+      }
+
+      if (outcome.kind === 'failed') {
+        setPaymentStatus('SIP authorisation failed.');
+        toast({
+          title: "SIP Authorisation Failed",
+          description: outcome.message,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Mandate authorised — the server now runs the payer-account check.
+      setPaymentStatus('Verifying your mandate...');
+      const verification = await verifyMandate({
+        razorpayPaymentId: outcome.paymentId,
+        razorpaySubscriptionId: outcome.subscriptionId ?? subscription.razorpay_subscription_id,
+        signature: outcome.signature,
       });
 
-    } catch (error) {
-      console.error('SIP initialization error:', error);
+      if (verification.status === 'success' && verification.activated) {
+        setPaymentStatus('SIP activated successfully!');
+        toast({
+          title: "SIP Active",
+          description: `Your ${sipData.frequency} SIP of ₹${currentAmount} is now active.`,
+        });
+
+        try {
+          await sendSipSuccessEmail({
+            razorpay_payment_id: outcome.paymentId,
+            razorpay_subscription_id: subscription.razorpay_subscription_id,
+            order_id: subscription.order_id,
+          });
+        } catch (emailError) {
+          console.error('Failed to send SIP success notification:', emailError);
+        }
+
+        setFormData({
+          nuvamaCode: selectedClientCode || 'QAW0001',
+          amount: '',
+        });
+        setSipData({
+          frequency: 'monthly',
+          startDate: '',
+          endDate: '',
+          amount: ''
+        });
+        setErrors({
+          nuvamaCode: '',
+          amount: '',
+          startDate: '',
+          endDate: '',
+          selectedStrategy: '',
+        });
+        setTimeout(() => {
+          setPaymentStatus('');
+          onClose();
+        }, 3000);
+        return;
+      }
+
+      // Authorised but held — usually because the payer account could not be
+      // matched to the registered account. Be explicit; do not imply failure,
+      // and do not imply the SIP is running.
+      if (verification.status === 'pending') {
+        setPaymentStatus('Mandate authorised — verification pending.');
+        toast({
+          title: verification.verificationStatus === 'MISMATCH'
+            ? "Bank Account Does Not Match"
+            : "Mandate Under Verification",
+          description: verification.message,
+          variant: verification.verificationStatus === 'MISMATCH' ? "destructive" : undefined,
+        });
+
+        // Still notify internally so ops can pick it up.
+        try {
+          await sendSipSuccessEmail({
+            razorpay_payment_id: outcome.paymentId,
+            razorpay_subscription_id: subscription.razorpay_subscription_id,
+            order_id: subscription.order_id,
+            verification_status: verification.verificationStatus,
+          });
+        } catch (emailError) {
+          console.error('Failed to send SIP pending notification:', emailError);
+        }
+
+        setTimeout(() => {
+          setPaymentStatus('');
+          onClose();
+        }, 5000);
+        return;
+      }
+
+      setPaymentStatus('Mandate could not be verified.');
       toast({
-        title: "Error",
-        description: `SIP initialization failed: ${error.message}`,
+        title: "Verification Failed",
+        description: verification.message,
         variant: "destructive",
       });
-      throw error;
+    } catch (error: any) {
+      console.error('Razorpay SIP error:', error);
+      setPaymentStatus('Something went wrong.');
+      toast({
+        title: "Error",
+        description: "Something went wrong during SIP setup. Please contact support before trying again.",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
@@ -1021,8 +1071,20 @@ function AddFundsModal({
       }
 
       const currentAmount = activeTab === "newStrategy" ? newStrategyData.amount : formData.amount;
-      const amount = parseFloat(currentAmount);
-      
+      const amount = parseAmount(currentAmount);
+      // Null means the field held something parseFloat would have silently
+      // coerced — "10e3", "1e-3", stray text. Stop rather than charge a
+      // number the user never typed.
+      if (amount === null) {
+        toast({
+          title: "Check the amount",
+          description: "Enter a plain amount in rupees, for example 10000.",
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
+      }
+
       if (isNaN(amount) || amount <= 0) {
         toast({
           title: "Error",
@@ -1106,187 +1168,133 @@ function AddFundsModal({
     }
   };
 
- const handleConfirmPayment = async () => {
-  try {
-    setShowSummaryModal(false);
-    setLoading(true);
-    setPaymentStatus('');
-    console.log('handleConfirmPayment called with activeTab:', activeTab);
-    const currentAmount = activeTab === "newStrategy" ? newStrategyData.amount : formData.amount;
-    const amount = parseFloat(currentAmount);
-    const investmentType = activeTab === "newStrategy" ? "new_strategy" : "one_time";
+  /**
+   * Runs after the user confirms in the summary modal. Creates the order or
+   * subscription server-side, then hands off to Razorpay Checkout.
+   */
+  const handleConfirmPayment = async () => {
+    try {
+      setShowSummaryModal(false);
+      setLoading(true);
+      setPaymentStatus('');
+      console.log('handleConfirmPayment called with activeTab:', activeTab);
 
-    // Validate required customer information
-    if (!customer_name || customer_name.trim() === '') {
-      throw new Error('Missing required fields: customer_name');
-    }
-    if (!customer_email || customer_email.trim() === '') {
-      throw new Error('Missing required fields: customer_email');
-    }
-    if (!customer_phone || customer_phone.trim() === '') {
-      throw new Error('Missing required fields: customer_phone');
-    }
+      const currentAmount = activeTab === "newStrategy" ? newStrategyData.amount : formData.amount;
+      const amount = parseAmount(currentAmount);
+      // Null means the field held something parseFloat would have silently
+      // coerced — "10e3", "1e-3", stray text. Stop rather than charge a
+      // number the user never typed.
+      if (amount === null) {
+        toast({
+          title: "Check the amount",
+          description: "Enter a plain amount in rupees, for example 10000.",
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
+      }
 
-    let accountCodeToUse = formData.nuvamaCode;
+      // The account the payment is for. The server independently checks that
+      // the logged-in session actually owns this account before creating an
+      // order, so this value is a request — not an authorisation.
+      const accountCodeToUse = formData.nuvamaCode;
 
-    if (activeTab === 'sip') {
-      console.log('Processing SIP flow...');
+      if (!accountCodeToUse || !accountCodeToUse.trim()) {
+        toast({
+          title: "Error",
+          description: "Please select an account before proceeding.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (activeTab === 'sip') {
+      console.log('Processing SIP flow (Razorpay)...');
+
+      // Customer identity and the registered bank account are resolved
+      // server-side from nuvama_code — they are deliberately not sent from here.
       const sipPayload = {
-        order_amount: amount,
+        amount: amount,
         nuvama_code: accountCodeToUse.trim(),
-        sip_details: {
-          frequency: sipData.frequency,
-          start_date: sipData.startDate,
-          ...(sipData.endDate && { end_date: sipData.endDate }),
-        },
-        order_meta: {
-          return_url: `${window.location.origin}/payment/sip-success`,
-        },
-        client_id: selectedClientId,
-        customer_name: customer_name,
-        customer_email: customer_email,
-        customer_phone: customer_phone,
-        order_type: 'sip', // Explicitly set for SIP
+        frequency: sipData.frequency,
+        ...(sipData.startDate && { start_date: sipData.startDate }),
       };
 
-      console.log('Sending SIP payload:', sipPayload);
-
-      const response = await fetch('/api/cashfree/setup-sip', {
+      const response = await fetch('/api/razorpay/subscriptions/create', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(sipPayload),
       });
 
-      let responseData;
-      const contentType = response.headers.get('content-type');
+      const responseData = await response.json().catch(() => ({}));
 
-      if (contentType && contentType.includes('application/json')) {
-        responseData = await response.json();
-      } else {
-        const responseText = await response.text();
-        console.log('Non-JSON response received:', responseText);
-        try {
-          responseData = JSON.parse(responseText);
-        } catch {
-          throw new Error(response.ok ? 'Invalid response format from server' : `Server error: ${response.status}`);
-        }
+      if (!response.ok || !responseData.success) {
+        console.error('SIP creation failed:', responseData);
+        throw new Error(responseData.error || 'Failed to set up the SIP');
       }
 
-      console.log('SIP API Response:', responseData);
-
-      if (!response.ok) {
-        console.error('SIP API Error Response:', responseData);
-        const errorMessage = responseData?.message || responseData?.error || `HTTP ${response.status}: Failed to create SIP order`;
-        throw new Error(errorMessage);
+      if (!responseData.razorpay_subscription_id) {
+        throw new Error('Subscription could not be created. Please contact support.');
       }
 
-      if (!responseData.success) {
-        console.error('API returned success: false:', responseData);
-        throw new Error(responseData.message || responseData.error || 'SIP order creation failed');
-      }
-
-      if (!responseData.data) {
-        console.error('Missing data object in response:', responseData);
-        throw new Error('Invalid response structure: missing data object');
-      }
-
-      const subscriptionSessionId = responseData.data.checkout_url;
-      const subscriptionId = responseData.data.subscription_id || responseData.data.order_id;
-
-      if (!subscriptionSessionId) {
-        console.error('No subscription session ID in response data:', responseData.data);
-        console.error('Available fields in data:', Object.keys(responseData.data));
-        throw new Error('Subscription session ID not provided by SIP service');
-      }
-
-      if (!subscriptionId) {
-        console.error('No subscription ID in response data:', responseData.data);
-        throw new Error('Subscription ID not provided by SIP service');
-      }
-
-      // Store subscription ID for success page
-      sessionStorage.setItem('qode_payment_order_id', subscriptionId);
+      // Retained for the success page, which reads these on return.
+      sessionStorage.setItem('qode_payment_order_id', responseData.order_id);
+      sessionStorage.setItem('qode_payment_subscription_id', responseData.razorpay_subscription_id);
       sessionStorage.setItem('qode_payment_type', 'sip');
       sessionStorage.setItem('qode_payment_amount', currentAmount);
       sessionStorage.setItem('qode_payment_nuvama_code', accountCodeToUse);
 
-      console.log('Initiating Cashfree subscription with session ID:', subscriptionSessionId, 'Subscription ID:', subscriptionId);
-
       toast({
-        title: "SIP Authorization Starting",
-        description: "Opening payment gateway for SIP authorization...",
+        title: "SIP Authorisation Starting",
+        description: "Opening the payment window to authorise your mandate...",
       });
 
-      await initiateCashfreeSubscription(subscriptionSessionId, subscriptionId);
+      await initiateRazorpaySubscription(responseData);
     } else {
-      console.log('Processing payment flow...');
+      console.log('Processing payment flow (Razorpay)...');
+
+      // Amount is re-validated server-side; customer identity comes from the
+      // session and the database, never from this payload.
       const orderPayload = {
         amount: amount,
-        currency: 'INR',
-        customer_name: customer_name,
-        customer_email: customer_email,
-        customer_phone: customer_phone,
         nuvama_code: accountCodeToUse.trim(),
-        client_id: selectedClientId,
-        order_type: activeTab === "newStrategy" ? 'new_strategy' : 'one_time', // Set order_type dynamically
-        return_url: `${window.location.origin}/payment/success`,
         ...(activeTab === "newStrategy" && {
           is_new_strategy: true,
           strategy_type: newStrategyData.selectedStrategy,
         }),
       };
 
-      console.log('Sending order payload:', orderPayload);
-
-      const response = await fetch('/api/cashfree/create-order', {
+      const response = await fetch('/api/razorpay/create-order', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify(orderPayload),
       });
 
-      if (!response.ok) {
-        let errorData;
-        try {
-          errorData = await response.json();
-        } catch {
-          errorData = { error: `Server error: ${response.status}` };
-        }
-        console.error('API Error Response:', errorData);
-        throw new Error(errorData.error || errorData.message || 'Failed to create payment order');
+      const orderData = await response.json().catch(() => ({}));
+
+      if (!response.ok || !orderData.success) {
+        console.error('Order creation failed:', orderData);
+        throw new Error(orderData.error || 'Failed to create the payment order');
       }
 
-      const orderData = await response.json();
-      console.log('Order created successfully:', orderData);
-
-      if (!orderData.payment_session_id) {
-        console.error('Missing payment_session_id in orderData:', orderData);
-        throw new Error('Payment session ID is missing in the response');
+      if (!orderData.razorpay_order_id) {
+        throw new Error('Payment order could not be created. Please try again.');
       }
 
-      if (!orderData.order_id) {
-        console.error('Missing order_id in orderData:', orderData);
-        throw new Error('Order ID is missing in the response');
-      }
-
-      // Store order details for success page
       sessionStorage.setItem('qode_payment_order_id', orderData.order_id);
-      sessionStorage.setItem('qode_payment_cf_order_id', orderData.cf_order_id || '');
+      sessionStorage.setItem('qode_payment_razorpay_order_id', orderData.razorpay_order_id);
       sessionStorage.setItem('qode_payment_type', activeTab === "newStrategy" ? 'new_strategy' : 'one_time');
       sessionStorage.setItem('qode_payment_amount', currentAmount);
       sessionStorage.setItem('qode_payment_nuvama_code', accountCodeToUse);
 
       toast({
         title: "Payment Starting",
-        description: "Opening payment gateway...",
+        description: "Opening the payment window...",
       });
 
-      await initiateCashfreePayment(orderData.payment_session_id, orderData.order_id);
+      await initiateRazorpayPayment(orderData);
     }
   } catch (error) {
     console.error('Payment error:', error);
@@ -1318,7 +1326,7 @@ function AddFundsModal({
           </div>
           <div className="flex items-center justify-center text-[14px] text-text-secondary">
             <Lock className="sm:w-[16px] sm:h-[16px] mr-[5px]" />
-            <span className="font-body">Secure Payment Gateway Powered by Cashfree</span>
+            <span className="font-body">Secure Payment Gateway Powered by Razorpay</span>
           </div>
         </div>
 
@@ -1733,7 +1741,9 @@ function SwitchReallocationModal({
 
     try {
       await sendEmail({
-        to: "sanket.shinde@qodeinvest.com",
+        // Team inbox, not an individual — a request must not be missed because
+        // one person is away. Diverted automatically outside production.
+        to: "investor.relations@qodeinvest.com",
         subject: `New Switch/Reallocation Request from ${payload.nuvamaCode}`,
         html: emailHtml,
         from: "investor.relations@qodeinvest.com",
@@ -1991,7 +2001,8 @@ function WithdrawalModal({
 
     try {
       await sendEmail({
-        to: "sanket.shinde@qodeinvest.com",
+        // Team inbox, not an individual — see the switch handler above.
+        to: "investor.relations@qodeinvest.com",
         subject: `New Withdrawal Request from ${payload.nuvamaCode}`,
         html: emailHtml,
         from: "investor.relations@qodeinvest.com",
@@ -2622,7 +2633,7 @@ MICR Code: 40000213`;
               <div>• Failed: {refreshResult.failed}</div>
               {refreshResult.updated > 0 && (
                 <div className="text-xs text-green-600 mt-2">
-                  Transaction statuses have been updated with the latest information from Cashfree.
+                  Transaction statuses have been updated with the latest information from the payment gateway.
                 </div>
               )}
             </div>

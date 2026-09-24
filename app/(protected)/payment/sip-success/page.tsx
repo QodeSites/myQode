@@ -60,11 +60,18 @@ export default function SipSuccessPage() {
       }
 
       try {
-        const response = await fetch(`/api/cashfree/setup-sip?subscription_id=${encodeURIComponent(subscriptionId)}&action=verify`, {
+        // Razorpay subscription ids are prefixed `sub_`. Anything else is a
+        // legacy Cashfree subscription, which is still serviced by its own route.
+        const isRazorpay = subscriptionId.startsWith('sub_')
+          || Boolean(sessionStorage.getItem('qode_payment_subscription_id'));
+
+        const endpoint = isRazorpay
+          ? `/api/razorpay/payment-details?subscription_id=${encodeURIComponent(subscriptionId)}`
+          : `/api/cashfree/setup-sip?subscription_id=${encodeURIComponent(subscriptionId)}&action=verify`;
+
+        const response = await fetch(endpoint, {
           method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
         });
 
@@ -77,7 +84,40 @@ export default function SipSuccessPage() {
         setSubscriptionDetails(data);
         setLoading(false);
 
-        if (data.status === 'ACTIVE') {
+        if (isRazorpay) {
+          // TPV is disabled on this Razorpay account, so an authorised mandate
+          // is NOT automatically an active SIP — the payer bank account must
+          // first be matched against the client's registered account.
+          const verification = data.payer_verification_status;
+          const isActive = data.investment_status === 'SIP_ACTIVE';
+
+          if (isActive) {
+            toast({
+              title: 'SIP Setup Successful',
+              description: 'Your Systematic Investment Plan is now active.',
+            });
+          } else if (verification === 'MISMATCH') {
+            toast({
+              title: 'Bank Account Does Not Match',
+              description:
+                'Your mandate was authorised from a bank account that does not match the one registered with us. ' +
+                'For regulatory reasons your SIP cannot start until this is resolved — our team will contact you shortly.',
+              variant: 'destructive',
+            });
+          } else if (verification === 'UNVERIFIABLE' || verification === 'PENDING') {
+            toast({
+              title: 'Mandate Under Verification',
+              description:
+                'Your mandate has been authorised and is pending a final verification check. ' +
+                'Our team will confirm your SIP within one working day.',
+            });
+          } else {
+            toast({
+              title: 'SIP Setup Pending',
+              description: 'Your SIP is being processed. Please check back shortly.',
+            });
+          }
+        } else if (data.status === 'ACTIVE') {
           toast({
             title: 'SIP Setup Successful',
             description: 'Your Systematic Investment Plan has been successfully authorized.',
@@ -187,7 +227,7 @@ export default function SipSuccessPage() {
               <div className="flex items-start gap-2">
                 <span className="mt-1 text-primary" aria-hidden="true">•</span>
                 <p className="text-sm text-muted-foreground">
-                  <span className="font-semibold">Cashfree Subscription ID:</span> {subscriptionDetails.cf_subscription_id}
+                  <span className="font-semibold">Subscription ID:</span> {subscriptionDetails.cf_subscription_id}
                 </p>
               </div>
               <div className="flex items-start gap-2">

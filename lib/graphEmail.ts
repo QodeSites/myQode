@@ -100,9 +100,93 @@ function toRecipients(value: AddressInput): Array<{ emailAddress: { address: str
     .map((address) => ({ emailAddress: { address: address.trim() } }))
 }
 
+// ── Environment-based recipient routing ──────────────────────────────────────
+//
+// Outside production, ALL mail is diverted to a single inbox. This is not a
+// convenience — it is what stops a developer testing the payment flow from
+// emailing a real investor about a payment that never happened.
+//
+// The redirect is applied here, at the single point every send passes through,
+// rather than at ~15 individual call sites: a call site added later is covered
+// automatically, and there is exactly one place to audit.
+
+/** Where all non-production mail is diverted. */
+const DEV_REDIRECT_TO = process.env.DEV_EMAIL_REDIRECT_TO || 'tech@qodeinvest.com'
+
+/** Default internal recipient in production. */
+const PROD_INTERNAL_TO =
+  process.env.INTERNAL_EMAIL_TO || 'investor.relations@qodeinvest.com'
+
+/**
+ * True only in a real production deployment.
+ *
+ * Defaults to non-production when NODE_ENV is unset, so an environment we
+ * cannot positively identify diverts mail rather than sending it to clients.
+ * Failing safe matters more here than convenience.
+ */
+export function isProductionEmail(): boolean {
+  if (process.env.EMAIL_ENVIRONMENT) {
+    return process.env.EMAIL_ENVIRONMENT.toLowerCase() === 'production'
+  }
+  return process.env.NODE_ENV === 'production'
+}
+
+/** The internal team address for the current environment. */
+export function internalRecipient(): string {
+  return isProductionEmail() ? PROD_INTERNAL_TO : DEV_REDIRECT_TO
+}
+
+function flatten(value: AddressInput): string[] {
+  if (!value) return []
+  return (Array.isArray(value) ? value : [value])
+    .filter((a): a is string => typeof a === 'string' && a.trim().length > 0)
+    .map((a) => a.trim())
+}
+
+/**
+ * Applies the environment routing rule to a payload.
+ *
+ * In production the payload is returned untouched. Outside production every
+ * recipient is replaced with the redirect inbox, cc/bcc are dropped entirely
+ * (so a stray cc cannot reach a client), and the subject is prefixed with the
+ * original recipients so the diverted mail is still intelligible.
+ */
+function applyEnvironmentRouting(payload: SendEmailPayload): SendEmailPayload {
+  if (isProductionEmail()) return payload
+
+  const originalTo = flatten(payload.to)
+  const originalCc = flatten(payload.cc)
+  const originalBcc = flatten(payload.bcc)
+  const all = [...originalTo, ...originalCc, ...originalBcc]
+
+  console.log(
+    `[graphEmail] non-production: diverting to ${DEV_REDIRECT_TO} ` +
+    `(would have gone to ${all.join(', ') || 'nobody'})`,
+  )
+
+  const banner =
+    `<div style="background:#fff4d6;border-left:4px solid #dabd38;padding:12px 16px;` +
+    `margin-bottom:20px;font-family:Arial,sans-serif;font-size:13px;color:#37584f">` +
+    `<strong>Test email — not sent to the real recipient.</strong><br>` +
+    `Environment: ${process.env.NODE_ENV || 'unknown'}<br>` +
+    `In production this would go to: ${originalTo.join(', ') || '(none)'}` +
+    (originalCc.length ? `<br>cc: ${originalCc.join(', ')}` : '') +
+    (originalBcc.length ? `<br>bcc: ${originalBcc.join(', ')}` : '') +
+    `</div>`
+
+  return {
+    ...payload,
+    to: DEV_REDIRECT_TO,
+    cc: undefined,
+    bcc: undefined,
+    subject: `[TEST → ${originalTo[0] ?? 'unknown'}] ${payload.subject}`,
+    html: banner + payload.html,
+  }
+}
+
 // ── Core send ─────────────────────────────────────────────────────────────────
 export async function sendGraphEmail(
-  payload: SendEmailPayload
+  rawPayload: SendEmailPayload
 ): Promise<SendEmailResult> {
   if (!isGraphEmailConfigured()) {
     const message =
@@ -110,6 +194,10 @@ export async function sendGraphEmail(
     console.warn('[graphEmail]', message)
     return { data: null, error: { message } }
   }
+
+  // Divert everything away from real recipients outside production. Applied
+  // before any recipient is read, so nothing downstream can bypass it.
+  const payload = applyEnvironmentRouting(rawPayload)
 
   const toRecipientsList = toRecipients(payload.to)
   if (toRecipientsList.length === 0) {

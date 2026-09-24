@@ -33,6 +33,10 @@ async function checkSettlements(): Promise<number> {
      FROM payment_transactions
      WHERE investment_status = 'PAYMENT_SUCCESS'
        AND payment_type      != 'SIP'
+       -- Razorpay rows now share this table. Without this filter we would ask
+       -- Cashfree to settle order ids that only exist in Razorpay, and every
+       -- lookup would fail. Razorpay has its own cron: lib/razorpayReconcile.ts
+       AND gateway           = 'cashfree'
        AND created_at        >= NOW() - INTERVAL '30 days'`
   )
   if (rows.length === 0) return 0
@@ -152,6 +156,9 @@ async function expireStale(): Promise<number> {
        updated_at        = NOW()
      WHERE investment_status = 'PENDING_PAYMENT'
        AND payment_type  != 'SIP'
+       -- Scoped to Cashfree: Razorpay orders are expired by their own cron,
+       -- which first re-checks the gateway in case a webhook was simply missed.
+       AND gateway       = 'cashfree'
        AND created_at    <  NOW() - INTERVAL '2 days'`
   )
   return rowCount ?? 0
