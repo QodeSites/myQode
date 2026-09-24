@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
-import { fetchRazorpaySubscription } from '@/lib/razorpay'
+import { fetchRazorpaySubscription, fetchRazorpaySubscriptionInvoices } from '@/lib/razorpay'
 
 // Razorpay SIPs move on Razorpay's own schedule (mandate registered → first debit → active). The webhook
 // reports that, but a dev server behind a tunnel may not have one registered — so the list itself re-syncs
@@ -24,7 +24,7 @@ async function syncRazorpaySips(rows: any[]) {
   // Razorpay's expire_by + the daily cron), and a row refreshed in the last minute is left alone.
   const open = rows.filter((r) => r.payment_type === 'SIP' && r.gateway === 'razorpay' && r.razorpay_subscription_id
     && ['SIP_AUTHORISED', 'SIP_ACTIVE', 'SIP_PAUSED'].includes(r.investment_status)
-    && Date.now() - new Date(r.updated_at).getTime() > 60_000).slice(0, 5)
+    && Date.now() - new Date(r.updated_at).getTime() > 60_000).slice(0, 3)   // 2 Razorpay calls each; more risks "Too many requests"
   for (const r of open) {
     try {
       const s: any = await fetchRazorpaySubscription(r.razorpay_subscription_id)
@@ -42,6 +42,26 @@ async function syncRazorpaySips(rows: any[]) {
         [next, rz, nextCharge, r.razorpay_subscription_id]
       )
       if (changed) { r.investment_status = next; r.payment_status = rz; if (nextCharge) r.next_charge_date = nextCharge }
+
+      // Instalments: Razorpay issues one invoice per cycle and marks it paid when the debit succeeds — that is
+      // the truth about money moving, independent of the subscription's own status (which, for e-mandate,
+      // can sit at `created` long after the first instalment was captured). Mirror paid invoices into
+      // sip_charges (idempotent on the payment id) so "First Charge" and the instalment list are right even
+      // without a webhook. Only needed while the row shows no charges yet or is live.
+      const inv: any = await fetchRazorpaySubscriptionInvoices(r.razorpay_subscription_id)
+      const paid: any[] = (inv?.items || []).filter((i: any) => i.status === 'paid' && i.payment_id && Number(i.amount) > 0)
+      let n = 0
+      for (const i of paid.sort((a: any, b: any) => (a.paid_at || 0) - (b.paid_at || 0))) {
+        n++
+        const res = await pool.query(
+          `INSERT INTO sip_charges (subscription_id, razorpay_subscription_id, gateway, nuvama_code, client_id, installment_number,
+                                    charge_amount, currency, charge_status, razorpay_payment_id, razorpay_invoice_id, payment_time, charge_date, created_at, updated_at)
+           VALUES ($1,$2,'razorpay',$3,$4,$5,$6,'INR','SUCCESS',$7,$8,to_timestamp($9::double precision),(to_timestamp($9::double precision) AT TIME ZONE 'Asia/Kolkata')::date,NOW(),NOW())
+           ON CONFLICT (razorpay_payment_id) WHERE razorpay_payment_id IS NOT NULL DO NOTHING`,
+          [r.order_id, r.razorpay_subscription_id, r.nuvama_code, r.client_id, n, Number(i.amount) / 100, i.payment_id, i.id, Number(i.paid_at || i.issued_at || Date.now() / 1000)]
+        )
+        if (res.rowCount) { r.charges_count = String(Number(r.charges_count || 0) + 1); r.successful_charges = String(Number(r.successful_charges || 0) + 1) }
+      }
     } catch (e: any) {
       console.warn('[investment-status] razorpay sync failed for', r.razorpay_subscription_id, e?.message)
       if (process.env.NODE_ENV !== 'production') {
@@ -248,7 +268,7 @@ export async function GET(request: NextRequest) {
          pt.frequency, pt.start_date, pt.end_date,
          pt.total_installments, pt.next_charge_date,
          pt.cf_subscription_id,
-         pt.gateway, pt.razorpay_subscription_id, pt.razorpay_payment_id,
+         pt.gateway, pt.razorpay_subscription_id, pt.razorpay_payment_id, pt.nuvama_code, pt.client_id,
          -- SIP charge summary (count, last successful charge date)
          COUNT(sc.id)                                  AS charges_count,
          COUNT(sc.id) FILTER (WHERE sc.charge_status = 'SUCCESS')  AS successful_charges,
@@ -268,7 +288,7 @@ export async function GET(request: NextRequest) {
                 pt.frequency, pt.start_date, pt.end_date,
                 pt.total_installments, pt.next_charge_date,
                 pt.cf_subscription_id,
-                pt.gateway, pt.razorpay_subscription_id, pt.razorpay_payment_id
+                pt.gateway, pt.razorpay_subscription_id, pt.razorpay_payment_id, pt.nuvama_code, pt.client_id
        ORDER BY pt.created_at DESC`,
       [accountId]
     )
@@ -342,7 +362,9 @@ export async function GET(request: NextRequest) {
         // Qode lifecycle status
         investmentStatus: status,
         statusLabel:      meta.label,
-        statusMessage:    meta.message,
+        statusMessage:    isSip && status === 'SIP_AUTHORISED' && parseInt(r.charges_count ?? '0', 10) > 0
+          ? `Your first instalment has been charged and the mandate is registered. Razorpay is still activating the subscription on its side; Pause becomes available once it is active. You can cancel at any time.`
+          : meta.message,
         statusColor:      meta.color,
         isTerminal:       meta.isTerminal,
         // Timestamps

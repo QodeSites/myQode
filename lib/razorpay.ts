@@ -105,6 +105,11 @@ export function createRazorpaySubscription(planId: string, totalCount: number, n
   })
 }
 
+// One invoice per cycle; status 'paid' + payment_id = that instalment was debited.
+export function fetchRazorpaySubscriptionInvoices(subscriptionId: string) {
+  return rz('/invoices?subscription_id=' + encodeURIComponent(subscriptionId) + '&count=100')
+}
+
 export function fetchRazorpaySubscription(subscriptionId: string) {
   return rz('/subscriptions/' + encodeURIComponent(subscriptionId))
 }
