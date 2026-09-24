@@ -1,4 +1,5 @@
 import withPWA from 'next-pwa';
+import { withSentryConfig } from '@sentry/nextjs';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -55,7 +56,7 @@ const nextConfig = {
   },
 };
 
-export default withPWA({
+const pwaConfig = withPWA({
   dest: 'public',
   register: true,
   skipWaiting: true,
@@ -171,3 +172,19 @@ export default withPWA({
     }
   ]
 })(nextConfig);
+
+/**
+ * Source-map upload runs only where SENTRY_AUTH_TOKEN is set — CI, never a
+ * developer's machine. Without it the build is unchanged and errors still
+ * report; only readable file names and line numbers are missing.
+ */
+export default withSentryConfig(pwaConfig, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  sentryUrl: process.env.SENTRY_URL,
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: !process.env.CI,
+  sourcemaps: { deleteSourcemapsAfterUpload: true },
+  disableLogger: true,
+  telemetry: false,
+});

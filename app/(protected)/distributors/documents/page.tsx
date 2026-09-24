@@ -103,8 +103,13 @@ function DocumentRow({ doc }: { doc: DistributorDocument }) {
 }
 
 export default function DistributorDocumentsPage() {
-  const strategyDocs = DISTRIBUTOR_DOCUMENTS.filter((d) => d.strategy);
   const firmDocs = DISTRIBUTOR_DOCUMENTS.filter((d) => !d.strategy);
+  const strategyDocs = DISTRIBUTOR_DOCUMENTS.filter(
+    (d) => d.strategy && d.kind !== "factsheet",
+  );
+  const factsheetDocs = DISTRIBUTOR_DOCUMENTS.filter(
+    (d) => d.kind === "factsheet",
+  );
 
   return (
     <div className="flex w-full flex-col gap-5 pb-10">
@@ -133,6 +138,19 @@ export default function DistributorDocumentsPage() {
           </h2>
           <ul className="mt-3 flex flex-col gap-2">
             {strategyDocs.map((d) => (
+              <DocumentRow key={d.slug} doc={d} />
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {factsheetDocs.length ? (
+        <section className="rounded-xl border border-border/20 bg-card shadow-sm px-5 py-5">
+          <h2 className="text-base font-semibold text-foreground">
+            Factsheets
+          </h2>
+          <ul className="mt-3 flex flex-col gap-2">
+            {factsheetDocs.map((d) => (
               <DocumentRow key={d.slug} doc={d} />
             ))}
           </ul>

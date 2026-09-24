@@ -18,8 +18,13 @@
 import { NextResponse } from 'next/server'
 
 const DEFAULT_MIN_VERSION    = '1.0.0'
-const DEFAULT_LATEST_VERSION = '1.1.2'
-const DEFAULT_IOS_URL        = 'https://apps.apple.com/app/myqode/id6743498744'
+// Keep in step with the version actually in the stores. When this falls behind,
+// APP_LATEST_VERSION being unset silently advertises an OLD build as current —
+// every user then reads as up to date and the update prompt never fires.
+const DEFAULT_LATEST_VERSION = '1.2.5'
+// App Store id 6761060137. The previous id (6743498744) does not exist and
+// answered 404 in every storefront, so the iOS "Update" button was a dead link.
+const DEFAULT_IOS_URL        = 'https://apps.apple.com/in/app/myqode/id6761060137'
 const DEFAULT_ANDROID_URL    = 'https://play.google.com/store/apps/details?id=com.qodeinvest.myqode'
 const DEFAULT_MESSAGE        = 'A new version of myQode is available. Please update for the best experience and latest features.'
 const FORCE_MESSAGE          = 'A critical update is required. Please update myQode to continue using the app.'

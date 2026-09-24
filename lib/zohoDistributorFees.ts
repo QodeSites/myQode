@@ -1,4 +1,4 @@
-// Distributor revenue share, sourced from Zoho CRM.
+// Distributor revenue-sharing terms, sourced from Zoho CRM.
 //
 // WHY THIS EXISTS
 // The fee calculator previously read `intermediary_fee_percentage` from
@@ -7,45 +7,72 @@
 // page reported ₹0 distributor share for ~97% of the book while looking
 // perfectly healthy.
 //
-// WHICH FIELD, AND WHY IT MATTERS
-// Zoho holds two numbers that both look like "the distributor percentage" but
-// mean entirely different things:
+// WHICH FIELD DRIVES THE SPLIT
+// `Base_Distributor_Share` — the agreed % of the RACK RATE fee the distributor
+// keeps, per their signed agreement. Not `Distributor_Net_Fee_Pct` on the
+// Investors module, which is a trail-style rate on AUM and means something
+// else entirely. `Distributor_Share_Category` is a display picklist ("65%")
+// that mirrors the same number.
 //
-//   Distributor.Distributor_Share_Category   e.g. "65%"   ← THIS ONE
-//       A revenue-share slab: the fraction of the fee Qode bills the client
-//       that the distributor keeps. Set per distributor (22 have it).
-//
-//   Investors.Distributor_Net_Fee_Pct        e.g. 0.98
-//       A trail-style rate applied to AUM, set per investor (87 have it).
-//
-// 65% of a fee and 0.98% of AUM are not interchangeable — they produce very
-// different amounts. The share is computed from Share_Category, per the
-// business definition: share = total fees billed × category.
+// Values in use today: 50 (Standard 50:50), 55 and 50 (Tiered), 60 and 65
+// (Flat Custom Split).
 import { getZohoAccessToken, zohoApiDomain } from '@/lib/zoho'
+
+/** The revenue-sharing arrangement, per the signed agreement. */
+export type RevenueSharingModel =
+  | 'Standard 50:50'
+  | 'Flat Custom Split'
+  | 'Tiered'
+  | 'Special Arrangement'
+  | string
 
 export interface DistributorShare {
   /** Distributor's email, lowercased — matches the portal login. */
   distributorEmail: string
   distributorName: string | null
-  /** Share of billed fees, as a percentage (65 means 65%). Null when the
-   *  category is unset in Zoho — deliberately distinct from a real 0%. */
+
+  /**
+   * Share of the RACK RATE fee, as a percentage (65 means 65%).
+   * Null when unset in Zoho — deliberately distinct from a real 0%.
+   */
   sharePct: number | null
-  /** The raw picklist value, e.g. "65%" — shown as-is where the exact label
-   *  matters more than the parsed number. */
+
+  /** The picklist label, e.g. "65%" — shown where the exact wording matters. */
   shareCategory: string | null
+
+  /** Standard 50:50 | Flat Custom Split | Tiered | Special Arrangement. */
+  model: RevenueSharingModel | null
+
+  /**
+   * True when the performance-fee split uses the same rack-rate basis as the
+   * fixed-fee split. Zoho's `Performance_Fee_Split_Basis` checkbox.
+   *
+   * Note this is a *basis* flag, not a separate rate: no distributor currently
+   * has a performance split that differs from their fixed split. Part 7 of the
+   * implementation plan flags that as an open question, so if a separate rate
+   * ever appears it needs its own field rather than being inferred here.
+   */
+  perfFeeSplitOnRackRate: boolean
+
+  /** 'Yes' | 'No' | null — whether they may discount the investor's fee. */
+  discountAllowed: string | null
+
+  /** Maximum discount % they are permitted to pass on, when allowed. */
+  maxDiscountPct: number | null
+
+  /** AUM breakpoints for Tiered arrangements — free text, needs a human. */
+  tieredDetails: string | null
 }
 
-/** Cached briefly: this is a full-module read and Zoho rate-limits API calls.
- *  Share categories change rarely, so minutes of staleness are harmless. */
+/** Cached briefly: a full-module read, and Zoho rate-limits API calls. */
 let cache: { data: Map<string, DistributorShare>; expiresAt: number } | null = null
 const CACHE_TTL_MS = 5 * 60 * 1000
 
 /**
- * Parses a share category into a number.
+ * Parses a share value into a number.
  *
- * The field is a picklist of strings ("65%"), not a number, so it needs
- * stripping before arithmetic. Returns null for unset — distinct from 0%,
- * which would be a real "this distributor earns nothing" rate.
+ * Handles both the numeric field and the picklist string ("65%"). Returns null
+ * for unset — distinct from 0%, which would be a real "earns nothing" rate.
  */
 export function parseSharePct(value: unknown): number | null {
   if (value === null || value === undefined || value === '') return null
@@ -57,8 +84,7 @@ export function parseSharePct(value: unknown): number | null {
  * Runs a COQL query against Zoho CRM.
  *
  * COQL requires a WHERE clause even when you want everything — `where X is not
- * null` is the idiomatic way to say "all rows". It also caps at 200 rows per
- * call, hence the pagination in fetchAll.
+ * null` is the idiomatic way to say "all rows" — and caps at 200 rows per call.
  */
 async function coql(selectQuery: string): Promise<any[]> {
   const token = await getZohoAccessToken()
@@ -82,25 +108,26 @@ async function coql(selectQuery: string): Promise<any[]> {
 }
 
 /**
- * Fetches every distributor that has a share category set.
+ * Fetches every distributor with an agreed share.
  *
- * Indexed by BOTH Email and Secondary_Email. A firm's CRM contact is often not
+ * Indexed by BOTH Email and Secondary_Email: a firm's CRM contact is often not
  * the address they log into the portal with — One Battalion is
- * jash@thepersonalcfo.in in Zoho but signs in as advisory@onebattalion.in —
- * and matching on the primary alone left them, and most others, unmapped.
- * Secondary_Email is where that portal address is already recorded.
+ * jash@thepersonalcfo.in in Zoho but signs in as advisory@onebattalion.in.
  */
 async function fetchAll(): Promise<Map<string, DistributorShare>> {
   const out = new Map<string, DistributorShare>()
   const PAGE = 200
   let offset = 0
 
-  // Bounded to avoid an unbounded loop if Zoho ever misreports pagination.
   for (let page = 0; page < 50; page++) {
     const rows = await coql(
-      `select Email, Secondary_Email, Name, Distributor_Share_Category, Base_Distributor_Share
+      `select Email, Secondary_Email, Name,
+              Effective_Distributor_Split,
+              Base_Distributor_Share, Effective_Revenue_Share, Distributor_Share_Category,
+              Revenue_Sharing_Model, Performance_Fee_Split_Basis,
+              Discount_Allowed, Max_Discount_Permitted, Tiered_Revenue_Details
          from Distributor
-        where Distributor_Share_Category is not null
+        where Base_Distributor_Share is not null
         limit ${offset}, ${PAGE}`,
     )
 
@@ -109,17 +136,33 @@ async function fetchAll(): Promise<Map<string, DistributorShare>> {
       const secondary = String(r.Secondary_Email ?? '').trim().toLowerCase()
       if (!primary && !secondary) continue   // unusable without a join key
 
-      // Prefer the picklist category, falling back to the numeric field —
-      // they agree wherever both are set, but the category is the field the
-      // business maintains.
+      // Resolution order, most specific first.
+      //
+      // `Effective_Distributor_Split` is the field intended to replace the
+      // hardcoded 50%, so it leads. It is NOT used alone: it is populated on
+      // only 21 of 129 distributors, and is empty on both Tiered ones —
+      // Nuarch (a ₹4.3 lakh/quarter book) and Finwin. Using it as the sole
+      // source would drop those to a 0% share.
+      //
+      // Verified across every populated record: it agrees with the existing
+      // resolution on all 20 that have both, so leading with it changes no
+      // current payout, and it takes over automatically as it is filled in.
       const sharePct =
-        parseSharePct(r.Distributor_Share_Category) ?? parseSharePct(r.Base_Distributor_Share)
+        parseSharePct(r.Effective_Distributor_Split) ??
+        parseSharePct(r.Effective_Revenue_Share) ??
+        parseSharePct(r.Base_Distributor_Share) ??
+        parseSharePct(r.Distributor_Share_Category)
 
       const record: DistributorShare = {
         distributorEmail: primary || secondary,
         distributorName: r.Name ?? null,
         sharePct,
         shareCategory: r.Distributor_Share_Category ?? null,
+        model: r.Revenue_Sharing_Model ?? null,
+        perfFeeSplitOnRackRate: r.Performance_Fee_Split_Basis !== false,
+        discountAllowed: r.Discount_Allowed ?? null,
+        maxDiscountPct: parseSharePct(r.Max_Discount_Permitted),
+        tieredDetails: r.Tiered_Revenue_Details ?? null,
       }
 
       // Both addresses resolve to the same record. First write wins, so a
@@ -137,7 +180,7 @@ async function fetchAll(): Promise<Map<string, DistributorShare>> {
   return out
 }
 
-/** Every distributor share, keyed by lowercased email. */
+/** Every distributor's terms, keyed by lowercased email. */
 export async function getDistributorShares(): Promise<Map<string, DistributorShare>> {
   if (cache && cache.expiresAt > Date.now()) return cache.data
   const data = await fetchAll()
@@ -145,7 +188,7 @@ export async function getDistributorShares(): Promise<Map<string, DistributorSha
   return data
 }
 
-/** The share for one distributor, or null when Zoho has no category for them. */
+/** Terms for one distributor, or null when Zoho has no record for them. */
 export async function getShareForDistributor(
   distributorEmail: string | null | undefined,
 ): Promise<DistributorShare | null> {

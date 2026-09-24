@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
 
     let inquiryId: string | null = null;
     try {
-      const rows = await query(
+      const result = await query(
         `INSERT INTO pms_clients_tracker.qode_microsite_inquiries
            (type, nuvama_code, client_id, user_email, subject, status, priority,
             data, email_to, email_from, created_at, updated_at)
@@ -129,7 +129,8 @@ export async function POST(request: NextRequest) {
           PARTNERSHIPS,
         ],
       );
-      inquiryId = rows?.[0]?.id ?? null;
+      // lib/db1 query() resolves to a pg QueryResult, so rows come off .rows.
+      inquiryId = result?.rows?.[0]?.id ?? null;
     } catch (err) {
       // A ticket that is mailed but unrecorded is still a ticket the team
       // will answer; one that is recorded but never mailed can sit unseen.

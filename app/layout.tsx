@@ -6,6 +6,7 @@ import { Lato, Playfair_Display } from "next/font/google"
 import { Suspense } from "react"
 import { ClientProvider } from "@/contexts/ClientContext"
 import { FirebaseAnalyticsProvider } from "@/components/firebase-analytics-provider"
+import { AnalyticsProvider } from "@/components/analytics-provider"
 
 const lato = Lato({
   subsets: ["latin"],
@@ -107,6 +108,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <link rel="apple-touch-startup-image" href="/icons/512.png" />
       </head>
       <body className="font-sans bg-background text-foreground">
+        <AnalyticsProvider />
         {/* WCAG 2.4.1 Bypass Blocks — skip link as first focusable element */}
         <a href="#main-content" className="skip-to-content">
           Skip to main content
