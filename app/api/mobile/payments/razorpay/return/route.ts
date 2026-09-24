@@ -7,7 +7,7 @@
 // as the checkout page.
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
-import { verifyCheckoutToken, verifyPaymentSignature, verifySubscriptionSignature } from '@/lib/razorpay'
+import { verifyCheckoutToken, verifyPaymentSignature, verifySubscriptionSignature, cancelRazorpaySubscription } from '@/lib/razorpay'
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
 // Android Chrome honours intent:// links for launching an app far more reliably than a bare custom
@@ -151,11 +151,19 @@ async function handle(request: NextRequest) {
         return back('SIP mandate authorised', 'Taking you back to the app…', 'success')
       }
       if (errDesc) {
+        // Bank declined / mandate rejected → the SIP itself has failed: say so on the row (Mandate Failed)
+        // rather than leaving it pending for the app to void as "cancelled". A closed window is not a failure:
+        // the row stays pending and the app decides (Try again voids it).
         await pool.query(
-          `UPDATE payment_transactions SET payment_message = $1, updated_at = NOW()
+          `UPDATE payment_transactions
+           SET payment_message = $1,
+               investment_status = CASE WHEN $3 = 'failed' AND investment_status = 'PENDING_PAYMENT' THEN 'SIP_MANDATE_FAILED' ELSE investment_status END,
+               updated_at = NOW()
            WHERE razorpay_subscription_id = $2 AND gateway = 'razorpay' AND investment_status = 'PENDING_PAYMENT'`,
-          [errDesc.slice(0, 500), subId]
+          [errDesc.slice(0, 500), subId, failStatus]
         )
+        // Best effort: void the never-authorised subscription on Razorpay too, so it cannot be authorised later.
+        if (failStatus === 'failed') cancelRazorpaySubscription(subId).catch(() => {})
         return back(failStatus === 'cancelled' ? 'SIP not completed' : 'SIP not set up', errDesc, failStatus)
       }
       return back('Returning to the app', 'We will confirm the SIP status in the app.', 'unknown')

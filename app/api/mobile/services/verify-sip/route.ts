@@ -79,15 +79,19 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // What the row ended up as: a terminal state we already recorded (e.g. Mandate Failed after a bank decline,
+    // even though we then voided the subscription on Razorpay → 'cancelled') is what the client is told.
+    const TERMINAL = ['SIP_CANCELLED', 'SIP_COMPLETED', 'SIP_MANDATE_FAILED']
+    const finalStatus = TERMINAL.includes(tx.investment_status) ? tx.investment_status : investStatus
     return NextResponse.json({
       subscriptionId,
       razorpaySubscriptionStatus: rzStatus,
-      investmentStatus: statusChanged ? investStatus : tx.investment_status,
-      isActive: investStatus === 'SIP_ACTIVE' || investStatus === 'SIP_AUTHORISED',   // mandate live (set-up succeeded)
-      isCharged: investStatus === 'SIP_ACTIVE',                                        // first instalment done → pausable
-      authorised,                                   // mandate authorised on our side, whatever Razorpay's status lag says
-      isMandatePending: investStatus === 'PENDING_PAYMENT',
-      isFailed: investStatus === 'SIP_MANDATE_FAILED',
+      investmentStatus: finalStatus,
+      isActive: finalStatus === 'SIP_ACTIVE' || finalStatus === 'SIP_AUTHORISED',     // mandate live (set-up succeeded)
+      isCharged: finalStatus === 'SIP_ACTIVE',                                          // first instalment done → pausable
+      authorised: authorised && !TERMINAL.includes(finalStatus),
+      isMandatePending: finalStatus === 'PENDING_PAYMENT',
+      isFailed: finalStatus === 'SIP_MANDATE_FAILED',
       amount: parseFloat(tx.amount),
       frequency: tx.frequency,
       nextChargeDate: nextChargeDate ?? null,
