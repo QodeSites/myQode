@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
 import { verifyPaymentSignature, fetchRazorpayPayment, fetchRazorpayOrderPayments, fetchRazorpayOrder, paymentMethodJson } from '@/lib/razorpay'
+import { notifyIrPayment } from '@/lib/mobileIrMail'
 
 export async function POST(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)
@@ -48,21 +49,23 @@ export async function POST(request: NextRequest) {
     const isFailed = status === 'failed'
     const investmentStatus = isSuccess ? 'PAYMENT_SUCCESS' : isFailed ? 'PAYMENT_FAILED' : 'PENDING_PAYMENT'
 
-    await pool.query(
-      `UPDATE payment_transactions
+    const { rows: upd } = await pool.query(
+      `UPDATE payment_transactions t
        SET payment_status = $1,
            investment_status = CASE
-             WHEN investment_status IN ('DEPLOYED','SETTLED','CANCELLED','EXPIRED') THEN investment_status
-             WHEN investment_status = 'PAYMENT_SUCCESS' AND $2 <> 'PAYMENT_FAILED' THEN investment_status
+             WHEN t.investment_status IN ('DEPLOYED','SETTLED','CANCELLED','EXPIRED') THEN t.investment_status
+             WHEN t.investment_status = 'PAYMENT_SUCCESS' AND $2 <> 'PAYMENT_FAILED' THEN t.investment_status
              ELSE $2 END,
-           razorpay_payment_id = COALESCE($3, razorpay_payment_id),
-           razorpay_signature  = COALESCE($4, razorpay_signature),
-           payment_time   = COALESCE(to_timestamp($5::double precision), payment_time),
-           payment_method = COALESCE($6::jsonb, payment_method),
-           bank_reference = COALESCE($7, bank_reference),
-           payment_message = COALESCE($8, payment_message),
+           razorpay_payment_id = COALESCE($3, t.razorpay_payment_id),
+           razorpay_signature  = COALESCE($4, t.razorpay_signature),
+           payment_time   = COALESCE(to_timestamp($5::double precision), t.payment_time),
+           payment_method = COALESCE($6::jsonb, t.payment_method),
+           bank_reference = COALESCE($7, t.bank_reference),
+           payment_message = COALESCE($8, t.payment_message),
            updated_at = NOW()
-       WHERE razorpay_order_id = $9`,
+       FROM (SELECT id, investment_status AS prev_status FROM payment_transactions WHERE razorpay_order_id = $9 FOR UPDATE) old
+       WHERE t.id = old.id
+       RETURNING t.client_id, t.investment_status, old.prev_status`,
       [
         status.toUpperCase(), investmentStatus,
         payment?.id || null, signature || null,
@@ -73,6 +76,11 @@ export async function POST(request: NextRequest) {
         orderId,
       ]
     )
+
+    // "Payment Completed" to Investor Relations, once, when this call is what confirmed it (web parity).
+    if (upd[0] && upd[0].prev_status === 'PENDING_PAYMENT' && upd[0].investment_status === 'PAYMENT_SUCCESS') {
+      notifyIrPayment({ kind: 'one_time', accountId: tx.nuvama_code, clientId: upd[0].client_id, userEmail: user!.email, amount: Number(tx.amount), reference: orderId, method: payment?.method || null })
+    }
 
     return NextResponse.json({
       orderId, paymentStatus: status.toUpperCase(), investmentStatus,

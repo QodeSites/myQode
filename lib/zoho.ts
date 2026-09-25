@@ -54,6 +54,34 @@ function crmApiDomain(): string {
 // token cache rather than each refreshing their own — Zoho rate-limits token
 // requests, and duplicate caches would multiply them for no benefit.
 export const getZohoAccessToken = getAccessToken
+
+// Create-only token for the mobile app's switch requests (Strategy_Switch_Requests is a custom module).
+// Minted with scope ZohoCRM.modules.custom.CREATE via /api/auth/zoho/authorize?write=switch and stored as
+// ZOHO_CRM_WRITE_REFRESH_TOKEN. Kept separate so the token everything else runs on stays read-only.
+let cachedWriteToken: { token: string; expiresAt: number } | null = null
+export function hasZohoWriteToken(): boolean {
+  return Boolean(process.env.ZOHO_CRM_WRITE_REFRESH_TOKEN)
+}
+export async function getZohoWriteAccessToken(): Promise<string> {
+  if (!process.env.ZOHO_CRM_WRITE_REFRESH_TOKEN) {
+    throw new Error('ZOHO_CRM_WRITE_REFRESH_TOKEN is not set — mint one via /api/auth/zoho/authorize?write=switch')
+  }
+  if (cachedWriteToken && cachedWriteToken.expiresAt > Date.now() + 60_000) return cachedWriteToken.token
+  const res = await fetch(`https://accounts.zoho.${DATA_CENTER}/oauth/v2/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      refresh_token: process.env.ZOHO_CRM_WRITE_REFRESH_TOKEN,
+      client_id: process.env.ZOHO_CRM_CLIENT_ID!,
+      client_secret: process.env.ZOHO_CRM_CLIENT_SECRET!,
+      grant_type: 'refresh_token',
+    }),
+  })
+  if (!res.ok) throw new Error(`Zoho write-token refresh failed: ${res.status} ${await res.text()}`)
+  const data = (await res.json()) as { access_token: string; expires_in: number }
+  cachedWriteToken = { token: data.access_token, expiresAt: Date.now() + data.expires_in * 1000 }
+  return cachedWriteToken.token
+}
 export const zohoApiDomain = crmApiDomain
 
 /**

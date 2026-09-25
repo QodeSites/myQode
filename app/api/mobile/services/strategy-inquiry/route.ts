@@ -2,6 +2,7 @@
 // Submit a strategy question to the fund manager team.
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
+import { irRecipient, irSubject } from '@/lib/mobileIrMail'
 
 export async function POST(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)
@@ -21,6 +22,7 @@ export async function POST(request: NextRequest) {
     if (!user!.accountCodes?.includes(accountId)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
+    if (String(question).trim().length > 2000) return NextResponse.json({ error: 'Please keep it under 2000 characters.' }, { status: 400 })
 
     const emailHtml = `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#EFECD3">
@@ -44,8 +46,8 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        to: 'investor.relations@qodeinvest.com',
-        subject: `Strategy Question from ${accountId}`,
+        to: irRecipient(),   // investor.relations@ — or MOBILE_IR_EMAIL_OVERRIDE while testing (lib/mobileIrMail.ts)
+        subject: irSubject(`Strategy Question from ${accountId}`),
         html: emailHtml,
         from: 'investor.relations@qodeinvest.com',
         fromName: 'Qode Investor Relations',

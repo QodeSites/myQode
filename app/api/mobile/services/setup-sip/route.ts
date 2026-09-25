@@ -14,7 +14,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
 import { createRazorpayPlan, createRazorpaySubscription, checkoutToken } from '@/lib/razorpay'
-import { registeredBankFor } from '../registered-bank/route'
+import { registeredBankFor } from '@/lib/registeredBank'
 
 const FREQUENCIES = ['daily', 'weekly', 'monthly', 'quarterly', 'yearly']
 const MIN_AMOUNT = 100

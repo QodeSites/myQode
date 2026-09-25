@@ -132,6 +132,21 @@ export function fetchRazorpayPayment(paymentId: string) {
   return rz('/payments/' + encodeURIComponent(paymentId))
 }
 
+// Settlement reconciliation for one calendar month: one row per payment/refund with `settled`,
+// `settlement_id`, `settlement_utr`, `settled_at` and `credit` (amount − fee − tax, in paise) — the
+// Razorpay equivalent of Cashfree's PGFetchSettlements that the investment-status cron polls.
+// Verified live on the test account (2026-09-24): GET /settlements/recon/combined?year&month → { count, items }.
+export async function fetchRazorpaySettlementRecon(year: number, month: number) {
+  const items: any[] = []
+  for (let skip = 0; skip < 5000; skip += 100) {
+    const page: any = await rz(`/settlements/recon/combined?year=${year}&month=${month}&count=100&skip=${skip}`)
+    const got: any[] = page?.items || []
+    items.push(...got)
+    if (got.length < 100) break
+  }
+  return items
+}
+
 export function fetchRazorpayOrder(orderId: string) {
   return rz('/orders/' + encodeURIComponent(orderId))
 }

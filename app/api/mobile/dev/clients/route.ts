@@ -35,7 +35,19 @@ export async function GET(req: NextRequest) {
       []
     )
 
-    return NextResponse.json({ clients: result.rows })
+    // Partner (distributor) logins, listed first so the partner app can be tested too. Same rule as the
+    // login route: a row with no clientcode (lib/distributorIdentity.ts).
+    const partners = await query(
+      `SELECT DISTINCT ON (d.clientname, lower(d.email))
+              d.clientname AS name, d.email, NULL AS "clientCode", 'Partner login' AS "schemeName", NULL AS "ownerId",
+              true AS "isDistributor"
+         FROM pms_clients_master d
+        WHERE d.clientcode IS NULL AND d.email IS NOT NULL AND d.email <> ''
+        ORDER BY d.clientname ASC, lower(d.email)`,
+      []
+    ).catch(() => ({ rows: [] as any[] }))
+
+    return NextResponse.json({ clients: [...partners.rows, ...result.rows] })
   } catch (err) {
     console.error('[dev/clients] error:', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

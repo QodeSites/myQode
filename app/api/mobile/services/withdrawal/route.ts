@@ -2,6 +2,7 @@
 // Submit a withdrawal request. Sends notification email.
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
+import { irRecipient, irSubject } from '@/lib/mobileIrMail'
 
 export async function POST(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)
@@ -62,8 +63,8 @@ export async function POST(request: NextRequest) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        to: 'investor.relations@qodeinvest.com',
-        subject: `New Withdrawal Request from ${accountId}`,
+        to: irRecipient(),   // investor.relations@ — or MOBILE_IR_EMAIL_OVERRIDE while testing (lib/mobileIrMail.ts)
+        subject: irSubject(`New Withdrawal Request from ${accountId}`),
         html: emailHtml,
         from: 'investor.relations@qodeinvest.com',
         fromName: 'Qode Investor Relations',

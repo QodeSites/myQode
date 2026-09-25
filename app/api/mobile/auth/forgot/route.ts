@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import crypto from 'crypto'
 import { graphMailer, isGraphEmailConfigured } from '@/lib/graphEmail'
+import { mailPlan } from '@/lib/authMailRedirect'
 
 const resend = isGraphEmailConfigured() ? graphMailer : null
 
@@ -41,6 +42,8 @@ export async function POST(req: NextRequest) {
     )
 
     if (userRes.rows.length > 0) {
+      const plan = mailPlan(userRes.rows[0].email, body?.testRedirect)
+      if (plan.refuse) return NextResponse.json({ error: plan.refuse, code: 'TEST_REDIRECT_MISSING' }, { status: 409 })
       const rawToken = crypto.randomBytes(32).toString('hex')
       const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex')
       const expiresAt = new Date(Date.now() + TOKEN_TTL_MIN * 60 * 1000)
@@ -110,8 +113,8 @@ export async function POST(req: NextRequest) {
         if (resend) {
           await resend.emails.send({
             from: 'Qode Investor Relations <investor.relations@qodeinvest.com>',
-            to: userRes.rows[0].email,
-            subject: 'Reset your password – myQode',
+            to: plan.to,
+            subject: plan.subjectPrefix + 'Reset your password – myQode',
             html: emailHtml,
           })
         } else {

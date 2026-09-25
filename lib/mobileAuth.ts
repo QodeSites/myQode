@@ -21,6 +21,11 @@ export interface MobileAuthUser {
   isImpersonated?: boolean        // true when super admin is viewing as a client
   impersonatedBy?: string         // email of the super admin who is impersonating
   isReviewer?: boolean            // Play Store / App Store reviewer — served mock data
+  // Distributor (partner) login: a pms_clients_master row with clientcode IS NULL, the same rule as the
+  // web (lib/distributorIdentity.ts). accountCodes is empty — a distributor reads their book only through
+  // /api/mobile/distributor/*, which re-resolve the distributor from the email on every call.
+  isDistributor?: boolean
+  distributorName?: string        // pms_clients_master.clientname — the intermediaryname key of their clients
 }
 
 export async function verifyMobileAuth(request: NextRequest): Promise<{

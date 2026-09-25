@@ -5,25 +5,7 @@
 // the app never needs the full account number, only enough for the client to recognise it.
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
-import db1 from '@/lib/db1'
-
-export async function registeredBankFor(accountId: string) {
-  const { rows } = await db1.query(
-    `SELECT account_number, ifsc_code, client_name, verification_status
-       FROM pms_clients_tracker.pms_clients_bank_details
-      WHERE nuvama_code = $1
-      ORDER BY updated_at DESC LIMIT 1`,
-    [accountId]
-  )
-  if (!rows.length) return null
-  const r = rows[0]
-  return {
-    accountNumber: String(r.account_number || '').trim(),
-    ifsc: String(r.ifsc_code || '').trim().toUpperCase(),
-    holderName: String(r.client_name || '').trim(),
-    verified: String(r.verification_status || '').toLowerCase() === 'verified',
-  }
-}
+import { registeredBankFor } from '@/lib/registeredBank'
 
 export async function GET(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)

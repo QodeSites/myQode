@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import { query } from '@/lib/db'
+import { resolveDistributorByEmail } from '@/lib/distributorIdentity'
 
 export async function GET(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)
@@ -33,6 +34,18 @@ export async function GET(request: NextRequest) {
       accountCodes:  [],
       isHeadOfFamily: false,
       isSuperAdmin:  true,
+    })
+  }
+
+  // Distributor: re-check the role (same rule as the web) — a partner whose row gained a clientcode or was
+  // removed is told so, and the app signs them out on isDistributor=false.
+  if (user!.isDistributor) {
+    const distributor = await resolveDistributorByEmail(user!.email).catch(() => null)
+    if (!distributor) return NextResponse.json({ error: 'This partner login is no longer active.', code: 'NOT_DISTRIBUTOR' }, { status: 401 })
+    return NextResponse.json({
+      clientId: '', clientCode: '', name: distributor.clientname, email: user!.email,
+      accountCodes: [], isHeadOfFamily: false, isSuperAdmin: false,
+      isDistributor: true, role: 'distributor',
     })
   }
 

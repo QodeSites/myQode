@@ -2,6 +2,7 @@
 // Raise a family mapping or account change request. Sends notification email.
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
+import { irRecipient, irSubject } from '@/lib/mobileIrMail'
 
 export async function POST(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)
@@ -21,6 +22,7 @@ export async function POST(request: NextRequest) {
     if (!user!.accountCodes?.includes(accountId)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
+    if (String(message).trim().length > 2000) return NextResponse.json({ error: 'Please keep it under 2000 characters.' }, { status: 400 })
 
     const isHeadOfFamily = user!.isHeadOfFamily
     const subject = `${isHeadOfFamily ? 'Family Mapping' : 'Account'} Request — ${accountId}`
@@ -46,12 +48,12 @@ export async function POST(request: NextRequest) {
         </div>
       </div>`
 
-    const emailRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/send-email`, {
+    const emailRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL?.trim() || 'http://localhost:2069'}/api/send-email`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        to: 'investor.relations@qodeinvest.com',
-        subject,
+        to: irRecipient(),   // investor.relations@ — or MOBILE_IR_EMAIL_OVERRIDE while testing (lib/mobileIrMail.ts)
+        subject: irSubject(subject),
         html: emailHtml,
         from: 'investor.relations@qodeinvest.com',
         fromName: 'myQode Mobile',

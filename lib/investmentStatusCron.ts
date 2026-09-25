@@ -2,9 +2,15 @@
 // Schedule: 9:00 AM and 12:00 PM IST daily (just after pms_master_sheet updates at 8am/11am)
 //
 // Pipeline (ONE-TIME payments only — SIPs are tracked via webhooks):
-//   PAYMENT_SUCCESS  →  (Cashfree settlement API has transfer_utr?)  → SETTLED
+//   PAYMENT_SUCCESS  →  (gateway settlement has a UTR?)              → SETTLED
+//                        Cashfree: PGFetchSettlements(order_id) has transfer_utr
+//                        Razorpay: settlements/recon/combined row for the payment id is settled
 //   SETTLED          →  (cash_in_out match in pms_master_sheet?)     → DEPLOYED
 //   PENDING_PAYMENT  →  (older than 2 days, payment_type ≠ SIP?)     → EXPIRED
+//
+// Client notifications: Cashfree rows notify as the web always has. Razorpay rows (mobile app) follow
+// shouldNotifyClient() — silent with test keys / RAZORPAY_NOTIFY_CLIENT=false, so a real client account
+// can be used for testing without being emailed.
 //
 // IMPORTANT: Steps run SEQUENTIALLY — checkSettlements must complete before
 // checkDeployments so that orders newly settled in this run can also be
@@ -12,8 +18,12 @@
 import pool from '@/lib/db'
 import { Cashfree, CFEnvironment } from 'cashfree-pg'
 import { notifyClientById } from '@/lib/notifications'
+import { fetchRazorpaySettlementRecon, shouldNotifyClient } from '@/lib/razorpay'
 
-const SETTLEMENT_TOLERANCE = 0.05  // ±5% — covers Cashfree service charges deducted pre-settlement
+const SETTLEMENT_TOLERANCE = 0.05  // ±5% — covers gateway charges deducted pre-settlement
+
+// Razorpay rows are only ever notified when the keys/flag say so (see header).
+const notifyAllowed = (gateway: string | null | undefined) => gateway !== 'razorpay' || shouldNotifyClient()
 
 function initCashfree() {
   const clientId     = process.env.CASHFREE_APP_ID || process.env.CASHFREE_CLIENT_ID
@@ -25,11 +35,11 @@ function initCashfree() {
 }
 
 // ── Step 1: PAYMENT_SUCCESS → SETTLED ────────────────────────────────────────
-// Poll Cashfree's settlements API for each pending transaction.
-// Only advances status when transfer_utr is present (funds actually moved).
+// Poll the gateway's settlement data for each pending transaction.
+// Only advances status when a UTR is present (funds actually moved).
 async function checkSettlements(): Promise<number> {
   const { rows } = await pool.query(
-    `SELECT order_id, cf_payment_id, amount, client_id
+    `SELECT order_id, cf_payment_id, amount, client_id, gateway, razorpay_payment_id, created_at
      FROM payment_transactions
      WHERE investment_status = 'PAYMENT_SUCCESS'
        AND payment_type      != 'SIP'
@@ -37,43 +47,89 @@ async function checkSettlements(): Promise<number> {
   )
   if (rows.length === 0) return 0
 
-  const cashfree = initCashfree()
+  const cashfreeRows = rows.filter((r) => r.gateway !== 'razorpay')
+  const razorpayRows = rows.filter((r) => r.gateway === 'razorpay')
   let settled = 0
 
-  for (const tx of rows) {
-    try {
-      const resp: any = await cashfree.PGFetchSettlements('2023-08-01', undefined, undefined, {
-        pagination: { limit: 5, cursor: null },
-        filters:    { order_ids: [tx.order_id] },
-      })
+  const markSettled = async (tx: any, settlementAmount: number | null, utr: string, settledAt: Date | null) => {
+    await pool.query(
+      `UPDATE payment_transactions SET
+         investment_status = 'SETTLED',
+         settlement_amount = $1,
+         transfer_utr      = $2,
+         settled_at        = COALESCE($3::timestamptz, NOW()),
+         updated_at        = NOW()
+       WHERE order_id = $4`,
+      [settlementAmount, utr, settledAt, tx.order_id]
+    )
+    console.log(`[cron] SETTLED: ${tx.order_id} UTR=${utr}`)
+    settled++
 
-      const settlements: any[] = resp?.data?.data ?? []
-      const match = settlements.find(
-        (s: any) => s.transfer_utr && s.order_id === tx.order_id
-      )
+    // Notify investor that Qode has received their funds
+    if (notifyAllowed(tx.gateway)) {
+      notifyClientById(tx.client_id, 'SETTLED', {
+        amount:  parseFloat(tx.amount),
+        orderId: tx.order_id,
+      }).catch(() => {})
+    }
+  }
 
-      if (match) {
-        await pool.query(
-          `UPDATE payment_transactions SET
-             investment_status = 'SETTLED',
-             settlement_amount = $1,
-             transfer_utr      = $2,
-             settled_at        = NOW(),
-             updated_at        = NOW()
-           WHERE order_id = $3`,
-          [match.settlement_amount ?? null, match.transfer_utr, tx.order_id]
+  // Cashfree (web orders) — one settlements query per order, as before.
+  if (cashfreeRows.length > 0) {
+    const cashfree = initCashfree()
+    for (const tx of cashfreeRows) {
+      try {
+        const resp: any = await cashfree.PGFetchSettlements('2023-08-01', undefined, undefined, {
+          pagination: { limit: 5, cursor: null },
+          filters:    { order_ids: [tx.order_id] },
+        })
+
+        const settlements: any[] = resp?.data?.data ?? []
+        const match = settlements.find(
+          (s: any) => s.transfer_utr && s.order_id === tx.order_id
         )
-        console.log(`[cron] SETTLED: ${tx.order_id} UTR=${match.transfer_utr}`)
-        settled++
+        if (match) await markSettled(tx, match.settlement_amount ?? null, match.transfer_utr, null)
+      } catch (err) {
+        console.warn(`[cron] Settlement check failed for ${tx.order_id}:`, err)
+      }
+    }
+  }
 
-        // Notify investor that Qode has received their funds
-        notifyClientById(tx.client_id, 'SETTLED', {
-          amount:  parseFloat(tx.amount),
-          orderId: tx.order_id,
-        }).catch(() => {})
+  // Razorpay (mobile orders) — the recon report is per calendar month, so fetch each month between the
+  // oldest pending order and today once, then look every pending payment up in it.
+  if (razorpayRows.length > 0) {
+    try {
+      const recon = new Map<string, any>()
+      const months = new Set<string>()
+      const now = new Date()
+      for (const tx of razorpayRows) {
+        const d = new Date(tx.created_at)
+        for (const m = new Date(d.getFullYear(), d.getMonth(), 1); m <= now; m.setMonth(m.getMonth() + 1)) {
+          months.add(`${m.getFullYear()}-${m.getMonth() + 1}`)
+        }
+      }
+      for (const ym of months) {
+        const [y, m] = ym.split('-').map(Number)
+        for (const item of await fetchRazorpaySettlementRecon(y, m)) {
+          if (item?.type === 'payment' && item.entity_id) recon.set(item.entity_id, item)
+        }
+      }
+      for (const tx of razorpayRows) {
+        try {
+          const item = tx.razorpay_payment_id ? recon.get(tx.razorpay_payment_id) : null
+          if (!item || !item.settled || !item.settlement_utr) continue
+          await markSettled(
+            tx,
+            item.credit != null ? Number(item.credit) / 100 : null,
+            String(item.settlement_utr),
+            item.settled_at ? new Date(Number(item.settled_at) * 1000) : null
+          )
+        } catch (err) {
+          console.warn(`[cron] Settlement check failed for ${tx.order_id}:`, err)
+        }
       }
     } catch (err) {
-      console.warn(`[cron] Settlement check failed for ${tx.order_id}:`, err)
+      console.warn('[cron] Razorpay settlement recon failed:', err)
     }
   }
   return settled
@@ -85,7 +141,7 @@ async function checkSettlements(): Promise<number> {
 // This confirms the money was actually deployed into the PMS strategy.
 async function checkDeployments(): Promise<number> {
   const { rows } = await pool.query(
-    `SELECT order_id, nuvama_code, amount, settlement_amount, settled_at, client_id, strategy_type
+    `SELECT order_id, nuvama_code, amount, settlement_amount, settled_at, client_id, strategy_type, gateway
      FROM payment_transactions
      WHERE investment_status = 'SETTLED'
        AND payment_type      != 'SIP'
@@ -131,12 +187,14 @@ async function checkDeployments(): Promise<number> {
       deployed++
 
       // Notify investor — this is the final, most important status update
-      notifyClientById(tx.client_id, 'DEPLOYED', {
-        amount:       matchAmount,
-        orderId:      tx.order_id,
-        strategyType: tx.strategy_type ?? undefined,
-        deployedAt:   String(deployedDate),
-      }).catch(() => {})
+      if (notifyAllowed(tx.gateway)) {
+        notifyClientById(tx.client_id, 'DEPLOYED', {
+          amount:       matchAmount,
+          orderId:      tx.order_id,
+          strategyType: tx.strategy_type ?? undefined,
+          deployedAt:   String(deployedDate),
+        }).catch(() => {})
+      }
     }
   }
   return deployed

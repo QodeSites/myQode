@@ -1,15 +1,18 @@
 // POST /api/mobile/payments/razorpay/webhook
 // Razorpay → server. Configure in the Razorpay dashboard with RAZORPAY_WEBHOOK_SECRET and the events
-// payment.captured, payment.failed, order.paid (one-time payments) plus subscription.authenticated,
-// subscription.activated, subscription.charged, subscription.pending, subscription.halted,
-// subscription.cancelled, subscription.paused, subscription.resumed, subscription.completed (SIPs).
+// payment.captured, payment.failed, order.paid, refund.processed (one-time payments) plus
+// subscription.authenticated, subscription.activated, subscription.charged, subscription.pending,
+// subscription.halted, subscription.cancelled, subscription.paused, subscription.resumed,
+// subscription.completed (SIPs).
 // Verifies X-Razorpay-Signature over the raw body.
-// Updates payment_transactions (+ sip_charges per installment). Client notifications (lib/notifications,
-// like the Cashfree webhook) follow the keys: on with live keys, off with test keys — see
-// shouldNotifyClient() in lib/razorpay.ts; RAZORPAY_NOTIFY_CLIENT=true|false overrides.
+// Updates payment_transactions (+ sip_charges per installment). Client notifications use the same
+// lib/notifications events as the Cashfree webhook (SIP_ACTIVE, SIP_PAYMENT_SUCCESS, …) and follow the
+// keys: on with live keys, off with test keys — see shouldNotifyClient() in lib/razorpay.ts;
+// RAZORPAY_NOTIFY_CLIENT=true|false overrides.
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { verifyWebhookSignature, paymentMethodJson, shouldNotifyClient } from '@/lib/razorpay'
+import { notifyIrPayment } from '@/lib/mobileIrMail'
 
 // Razorpay subscription_status → Qode investment_status (same mapping as verify-sip)
 function mapSubStatus(rzStatus: string): string {
@@ -35,18 +38,24 @@ async function handleSubscriptionEvent(event: string, evt: any) {
   const investStatus = mapSubStatus(sub?.status)
   const nextChargeDate = sub?.charge_at ? new Date(sub.charge_at * 1000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) : null
 
+  // Forward-only, same rules as verify-sip / investment-status: finished states stick, a charged or paused
+  // SIP never drops back to "registered", and Mandate Failed (recorded by the return route after a bank
+  // decline, or by `halted`) only moves on if Razorpay reports the mandate live again (`active`).
   const { rows } = await pool.query(
-    `UPDATE payment_transactions
+    `UPDATE payment_transactions t
      SET investment_status = CASE
-           WHEN investment_status IN ('SIP_CANCELLED','SIP_COMPLETED') THEN investment_status
-           WHEN investment_status IN ('SIP_ACTIVE','SIP_PAUSED') AND $1 IN ('SIP_AUTHORISED','PENDING_PAYMENT') THEN investment_status
+           WHEN t.investment_status IN ('SIP_CANCELLED','SIP_COMPLETED') THEN t.investment_status
+           WHEN t.investment_status = 'SIP_MANDATE_FAILED' AND $1 <> 'SIP_ACTIVE' THEN t.investment_status
+           WHEN t.investment_status IN ('SIP_ACTIVE','SIP_PAUSED') AND $1 IN ('SIP_AUTHORISED','PENDING_PAYMENT') THEN t.investment_status
            ELSE $1 END,
-         payment_status = COALESCE($5, payment_status),      -- Razorpay's own state: authenticated | active | paused …
-         next_charge_date = COALESCE($2::date, next_charge_date),
-         razorpay_payment_id = COALESCE($3, razorpay_payment_id),
+         payment_status = COALESCE($5, t.payment_status),      -- Razorpay's own state: authenticated | active | paused …
+         next_charge_date = COALESCE($2::date, t.next_charge_date),
+         razorpay_payment_id = COALESCE($3, t.razorpay_payment_id),
          updated_at = NOW()
-     WHERE razorpay_subscription_id = $4 AND gateway = 'razorpay'
-     RETURNING client_id, nuvama_code, amount, order_id, frequency`,
+     FROM (SELECT id, investment_status AS prev_status FROM payment_transactions
+           WHERE razorpay_subscription_id = $4 AND gateway = 'razorpay' FOR UPDATE) old
+     WHERE t.id = old.id
+     RETURNING t.client_id, t.nuvama_code, t.amount, t.order_id, t.frequency, t.investment_status, t.next_charge_date, old.prev_status`,
     [investStatus, nextChargeDate, payment?.id || null, subId, sub?.status ? String(sub.status).toLowerCase() : null]
   )
   if (!rows.length) return NextResponse.json({ ok: true, ignored: 'unknown subscription ' + subId })
@@ -71,14 +80,63 @@ async function handleSubscriptionEvent(event: string, evt: any) {
     )
   }
 
-  if (shouldNotifyClient() && event === 'subscription.charged') {
-    const { notifyClientById } = await import('@/lib/notifications')
-    notifyClientById(tx.client_id, 'PAYMENT_SUCCESS', {
-      orderId: tx.order_id, amount: Number(tx.amount), nuvamaCode: tx.nuvama_code,
-    } as any).catch(() => {})
+  // Investor Relations: "SIP set up", once, when the webhook is what first confirmed the mandate.
+  if (tx.prev_status === 'PENDING_PAYMENT' && ['SIP_AUTHORISED', 'SIP_ACTIVE'].includes(tx.investment_status)) {
+    notifyIrPayment({ kind: 'sip', accountId: tx.nuvama_code, clientId: tx.client_id, userEmail: null, amount: Number(tx.amount), reference: subId, frequency: tx.frequency })
   }
 
-  return NextResponse.json({ ok: true, updated: rows.length, investStatus })
+  // Client notifications — the same events, per state, that the Cashfree webhook sends on the web.
+  if (shouldNotifyClient()) {
+    const { notifyClientById } = await import('@/lib/notifications')
+    const base = { amount: Number(tx.amount), subscriptionId: subId, frequency: tx.frequency || undefined }
+    const next = tx.next_charge_date ? String(tx.next_charge_date).slice(0, 10) : nextChargeDate || undefined
+    const becameLive = ['PENDING_PAYMENT', 'SIP_MANDATE_FAILED'].includes(tx.prev_status)
+      && ['SIP_AUTHORISED', 'SIP_ACTIVE'].includes(tx.investment_status)
+    let note: Promise<void> | null = null
+    if (becameLive && (event === 'subscription.authenticated' || event === 'subscription.activated')) {
+      note = notifyClientById(tx.client_id, 'SIP_ACTIVE', { ...base, nextChargeDate: next })
+    } else if (event === 'subscription.charged') {
+      note = notifyClientById(tx.client_id, 'SIP_PAYMENT_SUCCESS', {
+        ...base, amount: payment?.amount ? Number(payment.amount) / 100 : Number(tx.amount),
+        installmentNumber: sub?.paid_count || undefined, nextChargeDate: next,
+      })
+    } else if (event === 'subscription.pending' || event === 'subscription.halted') {
+      // a scheduled debit failed (pending = Razorpay is retrying; halted = it gave up)
+      note = notifyClientById(tx.client_id, 'SIP_PAYMENT_FAILED', {
+        ...base, installmentNumber: sub?.paid_count ? Number(sub.paid_count) + 1 : undefined,
+        failureReason: payment?.error_description || (event === 'subscription.halted' ? 'Instalment debits failed repeatedly; the SIP has been halted' : 'Instalment debit failed; Razorpay will retry'),
+      })
+    } else if (event === 'subscription.cancelled' && tx.prev_status !== 'SIP_CANCELLED') {
+      note = notifyClientById(tx.client_id, 'SIP_CANCELLED', base)
+    } else if (event === 'subscription.completed' && tx.prev_status !== 'SIP_COMPLETED') {
+      note = notifyClientById(tx.client_id, 'SIP_COMPLETED', base)
+    }
+    if (note) note.catch(() => {})
+  }
+
+  return NextResponse.json({ ok: true, updated: rows.length, investStatus: tx.investment_status })
+}
+
+// refund.processed: money went back to the client. A full refund cancels the investment (web: Cashfree
+// REFUND SUCCESS → CANCELLED unless already DEPLOYED); a partial one is only noted on the row.
+async function handleRefund(evt: any) {
+  const refund = evt?.payload?.refund?.entity
+  const payment = evt?.payload?.payment?.entity
+  const paymentId: string = refund?.payment_id || payment?.id || ''
+  if (!paymentId) return NextResponse.json({ ok: true, ignored: 'refund without payment id' })
+  const refunded = Number(payment?.amount_refunded ?? refund?.amount ?? 0)
+  const full = payment?.amount ? refunded >= Number(payment.amount) : true
+  const partial = 'Partial refund of \u20b9' + (Number(refund?.amount || 0) / 100).toLocaleString('en-IN')
+  const { rowCount } = await pool.query(
+    `UPDATE payment_transactions
+     SET investment_status = CASE WHEN $1 AND investment_status <> 'DEPLOYED' THEN 'CANCELLED' ELSE investment_status END,
+         payment_status    = CASE WHEN $1 THEN 'REFUNDED' ELSE payment_status END,
+         payment_message   = $2,
+         updated_at        = NOW()
+     WHERE razorpay_payment_id = $3 AND gateway = 'razorpay' AND payment_type <> 'SIP'`,
+    [full, `${full ? 'Refund' : partial} processed: ${refund?.id || ''}`.trim(), paymentId]
+  )
+  return NextResponse.json({ ok: true, updated: rowCount || 0, full })
 }
 
 const SUBSCRIPTION_EVENTS = new Set([
@@ -101,6 +159,10 @@ export async function POST(request: NextRequest) {
     try { return await handleSubscriptionEvent(event, evt) }
     catch (err) { console.error('[mobile/payments/razorpay/webhook] subscription event', err); return NextResponse.json({ error: 'Internal server error' }, { status: 500 }) }
   }
+  if (event === 'refund.processed') {
+    try { return await handleRefund(evt) }
+    catch (err) { console.error('[mobile/payments/razorpay/webhook] refund', err); return NextResponse.json({ error: 'Internal server error' }, { status: 500 }) }
+  }
 
   const payment = evt?.payload?.payment?.entity
   const orderId: string = payment?.order_id || evt?.payload?.order?.entity?.id || ''
@@ -113,20 +175,22 @@ export async function POST(request: NextRequest) {
     if (!investmentStatus) return NextResponse.json({ ok: true, ignored: event })
 
     const { rows } = await pool.query(
-      `UPDATE payment_transactions
+      `UPDATE payment_transactions t
        SET payment_status = $1,
            investment_status = CASE
-             WHEN investment_status IN ('DEPLOYED','SETTLED','CANCELLED','EXPIRED') THEN investment_status
-             WHEN investment_status = 'PAYMENT_SUCCESS' AND $2 = 'PAYMENT_FAILED' THEN investment_status
+             WHEN t.investment_status IN ('DEPLOYED','SETTLED','CANCELLED','EXPIRED') THEN t.investment_status
+             WHEN t.investment_status = 'PAYMENT_SUCCESS' AND $2 = 'PAYMENT_FAILED' THEN t.investment_status
              ELSE $2 END,
-           razorpay_payment_id = COALESCE($3, razorpay_payment_id),
-           payment_time   = COALESCE(to_timestamp($4::double precision), payment_time),
-           payment_method = COALESCE($5::jsonb, payment_method),
-           bank_reference = COALESCE($6, bank_reference),
-           payment_message = COALESCE($7, payment_message),
+           razorpay_payment_id = COALESCE($3, t.razorpay_payment_id),
+           payment_time   = COALESCE(to_timestamp($4::double precision), t.payment_time),
+           payment_method = COALESCE($5::jsonb, t.payment_method),
+           bank_reference = COALESCE($6, t.bank_reference),
+           payment_message = COALESCE($7, t.payment_message),
            updated_at = NOW()
-       WHERE razorpay_order_id = $8 AND gateway = 'razorpay'
-       RETURNING client_id, nuvama_code, amount, order_id, investment_status`,
+       FROM (SELECT id, investment_status AS prev_status FROM payment_transactions
+             WHERE razorpay_order_id = $8 AND gateway = 'razorpay' FOR UPDATE) old
+       WHERE t.id = old.id
+       RETURNING t.client_id, t.nuvama_code, t.amount, t.order_id, t.investment_status, t.strategy_type, old.prev_status`,
       [
         String(payment?.status || (investmentStatus === 'PAYMENT_SUCCESS' ? 'captured' : 'failed')).toUpperCase(),
         investmentStatus,
@@ -139,12 +203,20 @@ export async function POST(request: NextRequest) {
       ]
     )
 
+    if (rows.length && rows[0].prev_status === 'PENDING_PAYMENT' && rows[0].investment_status === 'PAYMENT_SUCCESS') {
+      notifyIrPayment({ kind: 'one_time', accountId: rows[0].nuvama_code, clientId: rows[0].client_id, userEmail: null, amount: Number(rows[0].amount), reference: orderId, method: payment?.method || null })
+    }
     if (rows.length && shouldNotifyClient()) {
       const { notifyClientById } = await import('@/lib/notifications')
       const tx = rows[0]
-      notifyClientById(tx.client_id, investmentStatus === 'PAYMENT_SUCCESS' ? 'PAYMENT_SUCCESS' : 'PAYMENT_FAILED', {
-        orderId: tx.order_id, amount: Number(tx.amount), nuvamaCode: tx.nuvama_code,
-      } as any).catch(() => {})
+      // Only when this event actually changed the row (a captured payment re-delivered, or payment.failed
+      // after a success, must not e-mail the client again).
+      if (tx.investment_status === investmentStatus && tx.prev_status !== investmentStatus) {
+        notifyClientById(tx.client_id, investmentStatus === 'PAYMENT_SUCCESS' ? 'PAYMENT_SUCCESS' : 'PAYMENT_FAILED', {
+          orderId: tx.order_id, amount: Number(tx.amount), strategyType: tx.strategy_type || undefined,
+          failureReason: investmentStatus === 'PAYMENT_FAILED' ? payment?.error_description || undefined : undefined,
+        }).catch(() => {})
+      }
     }
 
     return NextResponse.json({ ok: true, updated: rows.length })
