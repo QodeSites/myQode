@@ -70,8 +70,11 @@ export async function GET(request: NextRequest) {
   const oauthError = url.searchParams.get('error')
   // `reveal` may arrive directly, or via the `state` Zoho echoes back from
   // /authorize — Zoho discards any other params we try to pass through.
+  const stateParts = String(url.searchParams.get('state') || '').split('-')
   const reveal =
-    url.searchParams.get('reveal') === '1' || url.searchParams.get('state') === 'reveal'
+    url.searchParams.get('reveal') === '1' || stateParts.includes('reveal')
+  // ?write=switch flow: the token is the create-only one, stored under its own name.
+  const envName = stateParts.includes('switch') ? 'ZOHO_CRM_WRITE_REFRESH_TOKEN' : 'ZOHO_CRM_REFRESH_TOKEN'
 
   // ── Gate: same secret as /authorize ─────────────────────────────────────
   // Zoho does not forward our query params, so the secret is only enforced
@@ -193,7 +196,7 @@ export async function GET(request: NextRequest) {
     console.log(
       '\n========================================================\n' +
       '[zoho/callback] REFRESH TOKEN — copy into .env, then remove\n' +
-      `ZOHO_CRM_REFRESH_TOKEN=${refreshToken}\n` +
+      `${envName}=${refreshToken}\n` +
       `scope=${scope}\n` +
       '========================================================\n',
     )
@@ -223,7 +226,7 @@ export async function GET(request: NextRequest) {
        <div class="label">Next steps</div>
        <ol>
          <li>Copy the token from the server log into <code>.env</code>:
-           <pre>ZOHO_CRM_REFRESH_TOKEN=&lt;token&gt;</pre></li>
+           <pre>${envName}=&lt;token&gt;</pre></li>
          <li>Add <code>ZOHO_CRM_ORG_ID</code> — Zoho CRM → Setup → General → Company Details.</li>
          <li>Restart the server, then verify with
            <code>/api/auth/zoho/status?secret=&lt;ADMIN_SETUP_SECRET&gt;</code>.</li>

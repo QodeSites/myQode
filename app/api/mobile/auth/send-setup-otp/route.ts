@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { graphMailer, isGraphEmailConfigured } from '@/lib/graphEmail';
+import { mailPlan } from '@/lib/authMailRedirect';
 
 const resend = isGraphEmailConfigured() ? graphMailer : null;
 
@@ -42,6 +43,8 @@ export async function POST(request: NextRequest) {
     }
 
     const client = result.rows[0];
+    const plan = mailPlan(client.email, body?.testRedirect);
+    if (plan.refuse) return NextResponse.json({ error: plan.refuse, code: 'TEST_REDIRECT_MISSING' }, { status: 409 });
 
     // Generate 6-digit OTP, valid for 10 minutes
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
@@ -115,8 +118,8 @@ export async function POST(request: NextRequest) {
       if (resend) {
         await resend.emails.send({
           from: 'Qode Investor Relations <investor.relations@qodeinvest.com>',
-          to: [client.email],
-          subject: 'Your Qode Password Setup Verification Code',
+          to: plan.to,
+          subject: plan.subjectPrefix + 'Your Qode Password Setup Verification Code',
           html: emailHtml,
         });
       } else {

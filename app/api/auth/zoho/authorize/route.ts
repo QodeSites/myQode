@@ -47,6 +47,13 @@ const READ_SCOPES = [
  */
 const WRITE_SCOPE = 'ZohoCRM.modules.ALL'
 
+/**
+ * `?write=switch` — the narrow, permanent write token for the mobile app's strategy-switch requests.
+ * CREATE only, and only on custom modules (Strategy_Switch_Requests): it cannot edit or delete anything, nor
+ * touch Leads/Contacts/Deals. Stored separately as ZOHO_CRM_WRITE_REFRESH_TOKEN (lib/zoho.ts).
+ */
+const SWITCH_WRITE_SCOPE = 'ZohoCRM.modules.custom.CREATE'
+
 export async function GET(request: NextRequest) {
   const url = new URL(request.url)
 
@@ -85,7 +92,8 @@ export async function GET(request: NextRequest) {
 
   // Opt-in write scope for one-off backfills; read-only otherwise.
   const wantsWrite = url.searchParams.get('write') === '1'
-  const scopes = wantsWrite ? [...READ_SCOPES, WRITE_SCOPE] : READ_SCOPES
+  const wantsSwitch = url.searchParams.get('write') === 'switch'
+  const scopes = wantsSwitch ? [...READ_SCOPES, SWITCH_WRITE_SCOPE] : wantsWrite ? [...READ_SCOPES, WRITE_SCOPE] : READ_SCOPES
 
   const authUrl = new URL(`https://accounts.zoho.${dataCenter}/oauth/v2/auth`)
   authUrl.searchParams.set('scope', scopes.join(','))
@@ -94,9 +102,9 @@ export async function GET(request: NextRequest) {
   // Zoho drops any extra query params we add, but echoes `state` back verbatim.
   // That is the only way to carry `reveal` through the redirect, so someone
   // without server-log access can still retrieve the token from the callback.
-  if (url.searchParams.get('reveal') === '1') {
-    authUrl.searchParams.set('state', 'reveal')
-  }
+  // state carries `reveal` and/or `switch` (which env variable the callback should name) through Zoho.
+  const state = [url.searchParams.get('reveal') === '1' ? 'reveal' : '', wantsSwitch ? 'switch' : ''].filter(Boolean).join('-')
+  if (state) authUrl.searchParams.set('state', state)
   // offline is what makes Zoho return a refresh_token rather than only an
   // access token — without it the callback succeeds but yields nothing durable.
   authUrl.searchParams.set('access_type', 'offline')

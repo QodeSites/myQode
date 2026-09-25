@@ -105,7 +105,7 @@ export async function POST(request: NextRequest) {
         'pending', // Default status
         priority,
         JSON.stringify(inquirySpecificData), // Store inquiry-specific fields as JSON
-        to,
+        Array.isArray(to) ? to.join(',') : to,
         from || 'investor.relations@qodeinvest.com',
       ];
 

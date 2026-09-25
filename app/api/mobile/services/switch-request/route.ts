@@ -21,7 +21,8 @@
 // record from the CRM afterwards (it blocks the investor with "request in progress" until then).
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
-import { getZohoAccessToken, zohoApiDomain } from '@/lib/zoho'
+import { getZohoAccessToken, getZohoWriteAccessToken, hasZohoWriteToken, zohoApiDomain } from '@/lib/zoho'
+import { irRecipient, irSubject, IR_EMAIL } from '@/lib/mobileIrMail'
 
 const STRATS = ['QAW', 'QTF', 'QGF'] as const
 type Strat = typeof STRATS[number]
@@ -31,8 +32,10 @@ const IS_PROD = process.env.NODE_ENV === 'production'
 const LIVE = IS_PROD || process.env.SWITCH_REQUEST_LIVE === '1'   // create the CRM record?
 const DRY_RUN = !LIVE
 
+// Reads use the app's read-only token; creating the switch record uses the create-only one (lib/zoho.ts).
 async function zoho(path: string, init?: RequestInit) {
-  const token = await getZohoAccessToken()
+  const writes = (init?.method || 'GET').toUpperCase() !== 'GET'
+  const token = writes ? await getZohoWriteAccessToken() : await getZohoAccessToken()
   const res = await fetch(`${zohoApiDomain()}/crm/v2/${path}`, {
     ...init, cache: 'no-store',
     headers: { Authorization: `Zoho-oauthtoken ${token}`, 'Content-Type': 'application/json', ...(init?.headers || {}) },
@@ -64,6 +67,47 @@ async function pendingRequests(investorIds: string[]): Promise<Record<string, an
   return out
 }
 const pendingRequest = async (investorId: string) => (await pendingRequests([investorId]))[investorId] || null
+
+// Investor Relations email for a switch request — the web's account-services page sends this same
+// "New Switch/Reallocation Request" to IR (inquiry_type 'switch'). Sent in production, or on a dev server when
+// MOBILE_IR_EMAIL_OVERRIDE points it at the testers; never from a dev server to the real IR inbox.
+async function emailIrSwitch(user: any, view: any, isFull: boolean, fromList: string[], toList: string[], fromAmt: (s: any) => number, toAmt: (s: any) => number, requestId: string | null, dryRun: boolean) {
+  if (!IS_PROD && !(process.env.MOBILE_IR_EMAIL_OVERRIDE || '').trim()) return
+  const rows = isFull
+    ? `<p><strong>Switch From:</strong> ${fromList.join(', ')}</p><p><strong>Switch To:</strong> ${toList.join(', ')}</p>`
+    : `<p><strong>Moving out:</strong> ${fromList.map((s) => `${s} ${rs(fromAmt(s))}`).join(', ')}</p><p><strong>Moving in:</strong> ${toList.map((s) => `${s} ${rs(toAmt(s))}`).join(', ')}</p>`
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#EFECD3">
+      <div style="background:#02422B;padding:16px;border-radius:8px;margin-bottom:16px;text-align:center">
+        <h1 style="margin:0;color:#DABD38;font-family:Georgia,serif">Switch / Reallocation Request</h1>
+      </div>
+      <div style="background:#fff;padding:16px;border:1px solid #37584F;border-radius:8px">
+        <p><strong>Submitted via:</strong> myQode Mobile App</p>
+        <p><strong>Date:</strong> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</p>
+        <div style="background:#EFECD3;padding:12px;border-left:4px solid #DABD38;margin:12px 0">
+          <p><strong>Investor:</strong> ${view.legalName}</p>
+          <p><strong>User Email:</strong> ${user.email}</p>
+          <p><strong>Switch Type:</strong> ${isFull ? 'Full Switch' : 'Partial Switch'}</p>
+          ${rows}
+          <p><strong>Zoho request:</strong> ${requestId ?? (dryRun ? 'not created (dry run on a test server)' : '—')}</p>
+        </div>
+      </div>
+    </div>`
+  try {
+    const base = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL?.trim() || 'http://localhost:2069'
+    const res = await fetch(`${base}/api/send-email`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: irRecipient(), subject: irSubject(`New Switch/Reallocation Request from ${view.legalName}`), html,
+        from: IR_EMAIL, fromName: 'Qode Investor Relations', inquiry_type: 'switch',
+        nuvama_code: (user.accountCodes || []).find((c: string) => /^Q/.test(c)) || user.clientCode || 'MOBILE',
+        client_id: user.clientId || '', user_email: user.email, priority: 'normal',
+        switch_type: isFull ? 'Full Switch' : 'Partial Switch', switch_from: fromList, switch_to: toList, zoho_request_id: requestId,
+      }),
+    })
+    if (!res.ok) console.warn('[switch-request] IR email answered', res.status)
+  } catch (err) { console.warn('[switch-request] IR email failed:', (err as any)?.message) }
+}
 
 const investorView = (inv: any) => ({
   id: String(inv.id), legalName: String(inv.Legal_Name || inv.Name || ''),
@@ -155,15 +199,21 @@ export async function POST(request: NextRequest) {
 
     if (DRY_RUN) {
       console.log('[mobile/services/switch-request] DRY RUN (not production) — would create:', JSON.stringify(record))
+      await emailIrSwitch(user, view, isFull, fromList, toList, fromAmt, toAmt, null, true)
       return NextResponse.json({ success: true, dryRun: true, requestId: null, investor: view, record })
     }
     // Production fires the CRM workflow rules (RM notification lives there). A live TEST on a dev server
     // passes trigger: [] — Zoho then runs no workflow, approval or blueprint for this record.
     const trigger = IS_PROD ? ['workflow'] : []
+    if (!hasZohoWriteToken()) {
+      console.error('[mobile/services/switch-request] ZOHO_CRM_WRITE_REFRESH_TOKEN is not set — the switch record cannot be created. Mint it via /api/auth/zoho/authorize?write=switch')
+      return NextResponse.json({ error: 'Switch requests can’t be submitted from the app right now. Please contact Investor Relations, or try again later.', code: 'SWITCH_UNAVAILABLE' }, { status: 503 })
+    }
     if (!IS_PROD) console.log('[mobile/services/switch-request] LIVE TEST (SWITCH_REQUEST_LIVE=1, triggers off) — creating:', JSON.stringify(record))
     const created = await zoho('Strategy_Switch_Requests', { method: 'POST', body: JSON.stringify({ data: [record], trigger }) })
     const id = created?.data?.[0]?.details?.id ?? null
     if (!id) throw new Error(created?.data?.[0]?.message || 'Zoho did not return a record id')
+    await emailIrSwitch(user, view, isFull, fromList, toList, fromAmt, toAmt, String(id), false)
     return NextResponse.json({ success: true, dryRun: false, requestId: String(id), investor: view })
   } catch (err: any) {
     console.error('[mobile/services/switch-request POST]', err)

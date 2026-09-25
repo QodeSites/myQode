@@ -9,6 +9,7 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import type { MobileAuthUser } from '@/lib/mobileAuth'
 import { REVIEWER_ACCOUNT_CODES } from '@/lib/reviewerMock'
+import { resolveDistributorByEmail } from '@/lib/distributorIdentity'
 
 // Reviewer account — used by App Store / Play Store reviewers.
 // Shows hardcoded dummy data so no real client data is exposed during review.
@@ -35,6 +36,9 @@ export async function POST(request: NextRequest) {
     // Accept both `username` and `email` as the login identifier
     // Strip any extra whitespace a user may have typed or copy-pasted around the email
     const rawUsername: string | undefined = body?.username ?? body?.email
+    // Optional, from the app's Client / Distributor switch. The role is still decided by the row (an investor
+    // row is an investor whatever was picked); the switch only turns a wrong pick into a clear message.
+    const wantRole: 'client' | 'distributor' | null = body?.role === 'distributor' ? 'distributor' : body?.role === 'client' ? 'client' : null
     const username: string | undefined = typeof rawUsername === 'string' ? rawUsername.trim() : rawUsername
     const password: string | undefined = body?.password
 
@@ -47,7 +51,10 @@ export async function POST(request: NextRequest) {
 
     // Dev bypass: password is optional in development so Expo Go / simulator
     // testing can log in to any real account without knowing its password.
-    const isDevelopment = process.env.NODE_ENV === 'development'
+    // Development skips password checks (passwordless dev picker). MOBILE_LOGIN_ENFORCE_PASSWORD=1 turns the real
+    // checks back on while still on the dev server, so first-time password setup and wrong-password handling
+    // can be tested as a client would see them.
+    const isDevelopment = process.env.NODE_ENV === 'development' && process.env.MOBILE_LOGIN_ENFORCE_PASSWORD !== '1'
 
     // ── Reviewer bypass (Play Store / App Store review) ───────────────────────
     // Checked FIRST — before the dev-mode password bypass — so reviewer credentials
@@ -174,6 +181,60 @@ export async function POST(request: NextRequest) {
         console.log('[login] blocked — invalid password for', user.clientcode)
         return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
       }
+    }
+
+    // ── Distributor (partner) login ───────────────────────────────────────────
+    // Same rule as the web (lib/distributorIdentity.ts): a row with no clientcode whose email resolves as a
+    // distributor. Investor rows sort first in the lookup above, so a person who is both an investor and a
+    // partner signs in as the investor — as on the web. A distributor gets no accountCodes; their book is
+    // read through /api/mobile/distributor/*, which re-check the role on every call.
+    if (!user.clientcode) {
+      const distributor = await resolveDistributorByEmail(user.email)
+      if (distributor) {
+        if (wantRole === 'client') {
+          return NextResponse.json({ error: 'This email is a partner (distributor) login. Switch to Distributor to sign in.', code: 'ROLE_MISMATCH', role: 'distributor' }, { status: 403 })
+        }
+        await query(
+          `UPDATE pms_clients_master
+           SET last_login_at = NOW(), login_count = COALESCE(login_count, 0) + 1,
+               last_app_login_at = NOW(), app_login_count = COALESCE(app_login_count, 0) + 1,
+               first_app_login_at = COALESCE(first_app_login_at, NOW())
+           WHERE lower(email) = $1 AND clientcode IS NULL`,
+          [distributor.email]
+        ).catch((e: any) => console.warn('[login] distributor login tracking failed', e?.message))
+        await query(
+          `INSERT INTO login_events (email, platform, os) VALUES ($1, 'app', $2)`,
+          [user.email, clientOS]
+        ).catch(() => {})
+
+        const payload: MobileAuthUser = {
+          userId: distributor.email,
+          email: user.email,
+          clientCode: '',
+          clientId: '',
+          accountCodes: [],
+          ownerIds: [],
+          groupId: '',
+          isHeadOfFamily: false,
+          isDistributor: true,
+          distributorName: distributor.clientname,
+        }
+        const token = jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: '30d' })
+        console.log('[login] distributor →', distributor.clientname)
+        return NextResponse.json({
+          token,
+          expiresIn: 60 * 60 * 24 * 30,
+          user: {
+            clientId: '', clientCode: '', name: distributor.clientname, email: user.email,
+            accountCodes: [], isHeadOfFamily: false, isSuperAdmin: false,
+            isDistributor: true, role: 'distributor',
+          },
+        })
+      }
+    }
+
+    if (wantRole === 'distributor') {
+      return NextResponse.json({ error: 'This email is an investor login, not a partner login. Switch to Client to sign in.', code: 'ROLE_MISMATCH', role: 'client' }, { status: 403 })
     }
 
     // Fetch all account codes for this owner — exclude matured/closed accounts

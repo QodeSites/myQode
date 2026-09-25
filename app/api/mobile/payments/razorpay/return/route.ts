@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
 import { verifyCheckoutToken, verifyPaymentSignature, verifySubscriptionSignature, cancelRazorpaySubscription } from '@/lib/razorpay'
+import { notifyIrPayment } from '@/lib/mobileIrMail'
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
 // Android Chrome honours intent:// links for launching an app far more reliably than a bare custom
@@ -141,13 +142,18 @@ async function handle(request: NextRequest) {
     if (isSip) {
       if (paymentId && signature && verifySubscriptionSignature(subId, paymentId, signature)) {
         await pool.query(
-          `UPDATE payment_transactions
+          `UPDATE payment_transactions t
            SET razorpay_payment_id = $1, razorpay_signature = $2, payment_status = 'AUTHORIZED',
-               investment_status = CASE WHEN investment_status = 'PENDING_PAYMENT' THEN 'SIP_AUTHORISED' ELSE investment_status END,
+               investment_status = CASE WHEN t.investment_status = 'PENDING_PAYMENT' THEN 'SIP_AUTHORISED' ELSE t.investment_status END,
                updated_at = NOW()
-           WHERE razorpay_subscription_id = $3 AND gateway = 'razorpay'`,
+           FROM (SELECT id, investment_status AS prev_status FROM payment_transactions WHERE razorpay_subscription_id = $3 AND gateway = 'razorpay' FOR UPDATE) old
+           WHERE t.id = old.id
+           RETURNING t.nuvama_code, t.client_id, t.amount, t.frequency, old.prev_status`,
           [paymentId, signature, subId]
-        )
+        ).then(({ rows }) => {
+          const r = rows[0]
+          if (r && r.prev_status === 'PENDING_PAYMENT') notifyIrPayment({ kind: 'sip', accountId: r.nuvama_code, clientId: r.client_id, userEmail: null, amount: Number(r.amount), reference: subId, frequency: r.frequency })
+        })
         return back('SIP mandate authorised', 'Taking you back to the app…', 'success')
       }
       if (errDesc) {
@@ -171,13 +177,18 @@ async function handle(request: NextRequest) {
 
     if (paymentId && signature && verifyPaymentSignature(orderId, paymentId, signature)) {
       await pool.query(
-        `UPDATE payment_transactions
+        `UPDATE payment_transactions t
          SET razorpay_payment_id = $1, razorpay_signature = $2, payment_status = 'AUTHORIZED',
-             investment_status = CASE WHEN investment_status = 'PENDING_PAYMENT' THEN 'PAYMENT_SUCCESS' ELSE investment_status END,
+             investment_status = CASE WHEN t.investment_status = 'PENDING_PAYMENT' THEN 'PAYMENT_SUCCESS' ELSE t.investment_status END,
              updated_at = NOW()
-         WHERE razorpay_order_id = $3 AND gateway = 'razorpay'`,
+         FROM (SELECT id, investment_status AS prev_status FROM payment_transactions WHERE razorpay_order_id = $3 AND gateway = 'razorpay' FOR UPDATE) old
+         WHERE t.id = old.id
+         RETURNING t.nuvama_code, t.client_id, t.amount, old.prev_status`,
         [paymentId, signature, orderId]
-      )
+      ).then(({ rows }) => {
+        const r = rows[0]
+        if (r && r.prev_status === 'PENDING_PAYMENT') notifyIrPayment({ kind: 'one_time', accountId: r.nuvama_code, clientId: r.client_id, userEmail: null, amount: Number(r.amount), reference: orderId })
+      })
       return back('Payment received', 'Taking you back to the app…', 'success')
     }
     if (errDesc) {
