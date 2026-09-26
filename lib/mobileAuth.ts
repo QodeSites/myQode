@@ -26,6 +26,10 @@ export interface MobileAuthUser {
   // /api/mobile/distributor/*, which re-resolve the distributor from the email on every call.
   isDistributor?: boolean
   distributorName?: string        // pms_clients_master.clientname — the intermediaryname key of their clients
+  // A partner viewing one of their investors (/api/mobile/distributor/view-account): read-only — every non-GET
+  // request made with such a token is refused below.
+  viewOnly?: boolean
+  viewedByDistributor?: boolean
 }
 
 export async function verifyMobileAuth(request: NextRequest): Promise<{
@@ -48,6 +52,15 @@ export async function verifyMobileAuth(request: NextRequest): Promise<{
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as MobileAuthUser
+    if (decoded.viewOnly && request.method !== 'GET' && request.method !== 'HEAD') {
+      return {
+        user: null,
+        error: NextResponse.json(
+          { error: 'You are viewing this account — changes are not available.', code: 'VIEW_ONLY' },
+          { status: 403 }
+        ),
+      }
+    }
     return { user: decoded, error: null }
   } catch {
     return {

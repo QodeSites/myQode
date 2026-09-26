@@ -19,28 +19,37 @@ export const ZOHO_MODULE_TABS: Record<string, string> = {
   Distributor: 'CustomModule5',
 }
 
-let cachedToken: { token: string; expiresAt: number } | null = null
-let refreshing: Promise<string> | null = null
+// Token state is kept on globalThis, not in module variables: the dev server gives each route its own copy of
+// this module and resets it on every reload, so module variables meant a fresh Zoho refresh per route and per
+// reload — enough to hit Zoho's refresh rate limit ("too many requests continuously"). One copy per process now.
+// After a rate-limit refusal, refreshes pause for RATE_LIMIT_PAUSE_MS instead of retrying into the limit.
+type ZohoTok = { token: string; expiresAt: number }
+type ZohoTokenStore = { read: ZohoTok | null; readRefresh: Promise<string> | null; write: ZohoTok | null; writeRefresh: Promise<string> | null; pausedUntil: number }
+const tokens: ZohoTokenStore = ((globalThis as any).__qodeZohoTokens ??= { read: null, readRefresh: null, write: null, writeRefresh: null, pausedUntil: 0 })
+const RATE_LIMIT_PAUSE_MS = 60_000
 
 async function getAccessToken(): Promise<string> {
-  if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) {
-    return cachedToken.token
+  if (tokens.read && tokens.read.expiresAt > Date.now() + 60_000) {
+    return tokens.read.token
   }
   // One refresh at a time — concurrent callers share it instead of each
   // minting a token (Zoho rate-limits refreshes).
-  refreshing ??= refreshAccessToken().finally(() => {
-    refreshing = null
+  tokens.readRefresh ??= refreshAccessToken().finally(() => {
+    tokens.readRefresh = null
   })
-  return refreshing
+  return tokens.readRefresh
 }
 
 async function refreshAccessToken(): Promise<string> {
-  cachedToken = await mintToken(process.env.ZOHO_CRM_REFRESH_TOKEN!, 'Zoho token refresh failed')
-  return cachedToken.token
+  tokens.read = await mintToken(process.env.ZOHO_CRM_REFRESH_TOKEN!, 'Zoho token refresh failed')
+  return tokens.read.token
 }
 
 // Exchange a refresh token for an access token. Zoho reports refresh errors (e.g. invalid_client) as HTTP 200 + {error}.
 async function mintToken(refreshToken: string, what: string): Promise<{ token: string; expiresAt: number }> {
+  if (Date.now() < tokens.pausedUntil) {
+    throw new Error(`${what}: Zoho rate limit — refreshes paused for ${Math.ceil((tokens.pausedUntil - Date.now()) / 1000)}s more`)
+  }
   const res = await fetch(`https://accounts.zoho.${DATA_CENTER}/oauth/v2/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -53,7 +62,9 @@ async function mintToken(refreshToken: string, what: string): Promise<{ token: s
   })
 
   if (!res.ok) {
-    throw new Error(`${what}: ${res.status} ${await res.text()}`)
+    const text = await res.text()
+    if (/too many requests/i.test(text)) tokens.pausedUntil = Date.now() + RATE_LIMIT_PAUSE_MS
+    throw new Error(`${what}: ${res.status} ${text}`)
   }
 
   const data = (await res.json()) as { access_token?: string; expires_in?: number; error?: string }
@@ -87,8 +98,8 @@ export async function zohoFetch(url: string, init: RequestInit = {}, opts: { wri
   if (res.status !== 401) return res
 
   // Drop the rejected token unless a concurrent caller already replaced it.
-  if (opts.write) { if (cachedWriteToken?.token === token) cachedWriteToken = null }
-  else if (cachedToken?.token === token) cachedToken = null
+  if (opts.write) { if (tokens.write?.token === token) tokens.write = null }
+  else if (tokens.read?.token === token) tokens.read = null
   return send(await get())
 }
 
@@ -104,8 +115,6 @@ export const getZohoAccessToken = getAccessToken
 // Create-only token for the mobile app's switch requests (Strategy_Switch_Requests is a custom module).
 // Minted with scope ZohoCRM.modules.custom.CREATE via /api/auth/zoho/authorize?write=switch and stored as
 // ZOHO_CRM_WRITE_REFRESH_TOKEN. Kept separate so the token everything else runs on stays read-only.
-let cachedWriteToken: { token: string; expiresAt: number } | null = null
-let refreshingWrite: Promise<string> | null = null
 export function hasZohoWriteToken(): boolean {
   return Boolean(process.env.ZOHO_CRM_WRITE_REFRESH_TOKEN)
 }
@@ -113,11 +122,11 @@ export async function getZohoWriteAccessToken(): Promise<string> {
   if (!process.env.ZOHO_CRM_WRITE_REFRESH_TOKEN) {
     throw new Error('ZOHO_CRM_WRITE_REFRESH_TOKEN is not set — mint one via /api/auth/zoho/authorize?write=switch')
   }
-  if (cachedWriteToken && cachedWriteToken.expiresAt > Date.now() + 60_000) return cachedWriteToken.token
-  refreshingWrite ??= mintToken(process.env.ZOHO_CRM_WRITE_REFRESH_TOKEN, 'Zoho write-token refresh failed')
-    .then((t) => { cachedWriteToken = t; return t.token })
-    .finally(() => { refreshingWrite = null })
-  return refreshingWrite
+  if (tokens.write && tokens.write.expiresAt > Date.now() + 60_000) return tokens.write.token
+  tokens.writeRefresh ??= mintToken(process.env.ZOHO_CRM_WRITE_REFRESH_TOKEN, 'Zoho write-token refresh failed')
+    .then((t) => { tokens.write = t; return t.token })
+    .finally(() => { tokens.writeRefresh = null })
+  return tokens.writeRefresh
 }
 export const zohoApiDomain = crmApiDomain
 

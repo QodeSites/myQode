@@ -3,7 +3,7 @@
 //
 //   GET  /api/mobile/services/switch-request
 //        → every Investor record on the login email (family logins have one per member): legal name,
-//          QAW/QTF/QGF invested, and whether that investor already has a Pending request
+//          QAW/QTF/QGF invested, and that investor's Pending requests (date, type, from → to)
 //   POST /api/mobile/services/switch-request
 //        investorId (one of the GET list; optional when there is only one), plus
 //        Full:    { switchType: 'Full Switch',    from: ['QAW', …], to: ['QTF', …] }
@@ -11,7 +11,9 @@
 //        → creates a Strategy_Switch_Requests record (Status Pending, Filled_By_Investor true, Owner = investor's owner)
 //
 // Rules applied exactly as in Zoho: a strategy cannot be on both sides; Partial: total out = total in and each
-// From amount ≤ that strategy's invested value; Full: at least one From and one To; one Pending request at a time.
+// From amount ≤ that strategy's invested value; Full: at least one From and one To.
+// Pending requests: a new request is refused only when a Pending one already switches OUT of the same strategy
+// (the same money can't be moved twice); a request out of a different strategy goes through.
 // The investor is identified by the verified JWT email (same lookup the Zoho automation falls back to).
 // Notifications (WhatsApp to the RM) stay in Zoho — put them on a CRM workflow for record creation; this route
 // sends nothing. In development (NODE_ENV !== 'production') the record is NOT created (dry run) so test logins
@@ -53,19 +55,30 @@ async function findInvestors(email: string): Promise<any[]> {
   return body?.data || []
 }
 
-// Pending request per investor id — one Zoho call for the whole family (criteria OR), not one per member.
-async function pendingRequests(investorIds: string[]): Promise<Record<string, any>> {
+// Pending requests per investor id — one Zoho call for the whole family (criteria OR), not one per member — each
+// with the strategies it moves out of and into (Full: the Full_Switch_From/To ticks; Partial: non-zero amounts).
+const PENDING_FIELDS = ['Investor_Name', 'Status', 'Request_Date', 'Switch_Type',
+  ...STRATS.flatMap((s) => [`Full_Switch_From_${s}`, `Full_Switch_To_${s}`, `${s}_From_Amount`, `${s}_To_Amount`])].join(',')
+type Pending = { requestDate: string | null; switchType: string | null; from: Strat[]; to: Strat[] }
+const pendingView = (r: any): Pending => {
+  const full = String(r.Switch_Type || '') === 'Full Switch'
+  return {
+    requestDate: r.Request_Date || null, switchType: r.Switch_Type || null,
+    from: STRATS.filter((s) => (full ? r[`Full_Switch_From_${s}`] === true : n(r[`${s}_From_Amount`]) > 0)),
+    to: STRATS.filter((s) => (full ? r[`Full_Switch_To_${s}`] === true : n(r[`${s}_To_Amount`]) > 0)),
+  }
+}
+async function pendingRequests(investorIds: string[]): Promise<Record<string, Pending[]>> {
   if (!investorIds.length) return {}
   const crit = investorIds.map((id) => `(Investor_Name:equals:${id})`).join('or')
-  const body = await zoho(`Strategy_Switch_Requests/search?criteria=${encodeURIComponent(investorIds.length > 1 ? `(${crit})` : crit)}&fields=Investor_Name,Status,Request_Date,Switch_Type&per_page=200`)
-  const out: Record<string, any> = {}
+  const body = await zoho(`Strategy_Switch_Requests/search?criteria=${encodeURIComponent(investorIds.length > 1 ? `(${crit})` : crit)}&fields=${PENDING_FIELDS}&per_page=200`)
+  const out: Record<string, Pending[]> = {}
   for (const r of (body?.data || []) as any[]) {
     const id = String(r.Investor_Name?.id || '')
-    if (id && String(r.Status || '').trim() === 'Pending' && !out[id]) out[id] = r
+    if (id && String(r.Status || '').trim() === 'Pending') (out[id] = out[id] || []).push(pendingView(r))
   }
   return out
 }
-const pendingRequest = async (investorId: string) => (await pendingRequests([investorId]))[investorId] || null
 
 // Investor Relations email for a switch request — the web's account-services page sends this same
 // "New Switch/Reallocation Request" to IR (inquiry_type 'switch'). Sent in production, or on a dev server when
@@ -122,8 +135,7 @@ export async function GET(request: NextRequest) {
     if (!list.length) return NextResponse.json({ investors: [], message: 'We could not find your investor record. Please contact Investor Relations.' })
     const pend = await pendingRequests(list.map((inv) => String(inv.id)))
     const investors = list.map((inv) => {
-      const p = pend[String(inv.id)]
-      return { ...investorView(inv), pending: p ? { requestDate: p.Request_Date || null, switchType: p.Switch_Type || null } : null }
+      return { ...investorView(inv), pending: pend[String(inv.id)] || [] }
     })
     return NextResponse.json({ investors, dryRun: DRY_RUN })
   } catch (err: any) {
@@ -170,9 +182,17 @@ export async function POST(request: NextRequest) {
     const investorId = String(inv.id)
     const view = investorView(inv)
 
-    // one Pending request at a time (the Zoho automation ignores duplicates; we tell the user instead)
-    const pend = await pendingRequest(investorId)
-    if (pend) return NextResponse.json({ error: 'You already have a switch request in progress' + (pend.Request_Date ? ` (submitted ${String(pend.Request_Date).slice(0, 10)})` : '') + '. Our team will reach out once it is processed.', code: 'PENDING_EXISTS' }, { status: 409 })
+    // A Pending request already moving out of the same strategy blocks this one (the Zoho automation ignores
+    // duplicates; we tell the user instead). A request out of a different strategy is allowed.
+    const pend = (await pendingRequests([investorId]))[investorId] || []
+    const clash = pend.find((p) => p.from.some((s) => fromList.includes(s)))
+    if (clash) {
+      const same = clash.from.filter((s) => fromList.includes(s)).join(', ')
+      return NextResponse.json({
+        error: `A switch request out of ${same} is already in progress` + (clash.requestDate ? ` (submitted ${String(clash.requestDate).slice(0, 10)})` : '') + '. Our team will reach out once it is processed; a new request for this strategy can be made after that.',
+        code: 'PENDING_EXISTS', pending: clash,
+      }, { status: 409 })
+    }
 
     // holdings check (Partial only), against the Investors record like Zoho does
     if (!isFull) {

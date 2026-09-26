@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
           <h1 style="margin:0;color:#DABD38;font-family:Georgia,serif">Partner Ticket</h1>
         </div>
         <div style="background:#fff;padding:16px;border:1px solid #37584F;border-radius:8px">
-          <p><strong>Raised via:</strong> myQode partner app</p>
+          <p><strong>Submitted via:</strong> myQode Distributor Portal</p>
           <p><strong>Date:</strong> ${new Date().toLocaleDateString('en-IN')}</p>
           <div style="background:#EFECD3;padding:12px;border-left:4px solid #DABD38;margin:12px 0">
             <p><strong>Partner:</strong> ${esc(d.clientname)}</p>

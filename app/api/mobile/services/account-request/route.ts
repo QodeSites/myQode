@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
           <div style="background:#EFECD3;padding:12px;border-left:4px solid #DABD38;margin:12px 0">
             <p><strong>User Role:</strong> ${isHeadOfFamily ? 'Head of Family' : 'Account Owner'}</p>
             <p><strong>Account Code:</strong> ${accountId}</p>
-            <p><strong>Client ID:</strong> ${user!.clientId}</p>
+            <p><strong>Client ID:</strong> ${String(user!.clientId ?? '').replace(/\.0+$/, '')}</p>
             <p><strong>User Email:</strong> ${user!.email}</p>
             <p><strong>Message:</strong></p>
             <p>${String(message).replace(/\n/g, '<br/>')}</p>
