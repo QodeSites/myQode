@@ -11,7 +11,7 @@
 // `Rack_Rate_Performance_Fee`, `Fees_Structure` (a free-text multiselect) and
 // `Primary_distributo`. The names below are the real ones — verified against
 // the live module, not the plan.
-import { getZohoAccessToken, zohoApiDomain } from '@/lib/zoho'
+import { zohoApiDomain, zohoFetch } from '@/lib/zoho'
 
 export interface InvestorFeeTerms {
   /** Lowercased email — the join key against pms_clients_master. */
@@ -100,11 +100,9 @@ function toPct(value: unknown): number | null {
 }
 
 async function coql(selectQuery: string): Promise<any[]> {
-  const token = await getZohoAccessToken()
-  const res = await fetch(`${zohoApiDomain()}/crm/v3/coql`, {
+  const res = await zohoFetch(`${zohoApiDomain()}/crm/v3/coql`, {
     method: 'POST',
     headers: {
-      Authorization: `Zoho-oauthtoken ${token}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ select_query: selectQuery }),

@@ -20,7 +20,7 @@
 // Lead_Stage is effectively binary in production (105 of 112 distributor leads
 // read "Onboarding Investor", 7 read "Lost Lead"). Investor_Stage carries the
 // real funnel. Leads convert to Investors already, so nothing is lost.
-import { getZohoAccessToken, zohoApiDomain } from "@/lib/zoho";
+import { zohoApiDomain, zohoFetch } from "@/lib/zoho";
 
 /**
  * The seven values present in production, funnel order first, inactive last.
@@ -93,11 +93,9 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 let journeyCache: { data: Map<string, DistributorJourney>; expiresAt: number } | null = null;
 
 async function coql(selectQuery: string): Promise<any[]> {
-  const token = await getZohoAccessToken();
-  const res = await fetch(`${zohoApiDomain()}/crm/v3/coql`, {
+  const res = await zohoFetch(`${zohoApiDomain()}/crm/v3/coql`, {
     method: "POST",
     headers: {
-      Authorization: `Zoho-oauthtoken ${token}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({ select_query: selectQuery }),

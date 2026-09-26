@@ -21,7 +21,7 @@
 // record from the CRM afterwards (it blocks the investor with "request in progress" until then).
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
-import { getZohoAccessToken, getZohoWriteAccessToken, hasZohoWriteToken, zohoApiDomain } from '@/lib/zoho'
+import { hasZohoWriteToken, zohoApiDomain, zohoFetch } from '@/lib/zoho'
 import { irRecipient, irSubject, IR_EMAIL } from '@/lib/mobileIrMail'
 
 const STRATS = ['QAW', 'QTF', 'QGF'] as const
@@ -35,11 +35,10 @@ const DRY_RUN = !LIVE
 // Reads use the app's read-only token; creating the switch record uses the create-only one (lib/zoho.ts).
 async function zoho(path: string, init?: RequestInit) {
   const writes = (init?.method || 'GET').toUpperCase() !== 'GET'
-  const token = writes ? await getZohoWriteAccessToken() : await getZohoAccessToken()
-  const res = await fetch(`${zohoApiDomain()}/crm/v2/${path}`, {
+  const res = await zohoFetch(`${zohoApiDomain()}/crm/v2/${path}`, {
     ...init, cache: 'no-store',
-    headers: { Authorization: `Zoho-oauthtoken ${token}`, 'Content-Type': 'application/json', ...(init?.headers || {}) },
-  })
+    headers: { 'Content-Type': 'application/json', ...(init?.headers || {}) },
+  }, { write: writes })
   if (res.status === 204) return null
   const body: any = await res.json().catch(() => null)
   if (!res.ok) throw new Error(body?.message || body?.data?.[0]?.message || `Zoho ${path} failed (${res.status})`)

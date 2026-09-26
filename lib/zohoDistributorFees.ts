@@ -16,7 +16,7 @@
 //
 // Values in use today: 50 (Standard 50:50), 55 and 50 (Tiered), 60 and 65
 // (Flat Custom Split).
-import { getZohoAccessToken, zohoApiDomain } from '@/lib/zoho'
+import { zohoApiDomain, zohoFetch } from '@/lib/zoho'
 
 /** The revenue-sharing arrangement, per the signed agreement. */
 export type RevenueSharingModel =
@@ -87,11 +87,9 @@ export function parseSharePct(value: unknown): number | null {
  * null` is the idiomatic way to say "all rows" — and caps at 200 rows per call.
  */
 async function coql(selectQuery: string): Promise<any[]> {
-  const token = await getZohoAccessToken()
-  const res = await fetch(`${zohoApiDomain()}/crm/v3/coql`, {
+  const res = await zohoFetch(`${zohoApiDomain()}/crm/v3/coql`, {
     method: 'POST',
     headers: {
-      Authorization: `Zoho-oauthtoken ${token}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ select_query: selectQuery }),

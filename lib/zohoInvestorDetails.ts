@@ -12,7 +12,7 @@
 // pms_clients_master.intermediaryname, so a distributor only ever asks about
 // their own book. This module is a lookup by email and enforces nothing — do
 // not call it with an unfiltered client list.
-import { getZohoAccessToken, zohoApiDomain } from '@/lib/zoho'
+import { zohoApiDomain, zohoFetch } from '@/lib/zoho'
 
 export interface InvestorCrmDetail {
   /** Lowercased email — the join key against pms_clients_master. */
@@ -29,11 +29,9 @@ let cache: { data: Map<string, InvestorCrmDetail>; expiresAt: number } | null = 
 const CACHE_TTL_MS = 5 * 60 * 1000
 
 async function coql(selectQuery: string): Promise<any[]> {
-  const token = await getZohoAccessToken()
-  const res = await fetch(`${zohoApiDomain()}/crm/v3/coql`, {
+  const res = await zohoFetch(`${zohoApiDomain()}/crm/v3/coql`, {
     method: 'POST',
     headers: {
-      Authorization: `Zoho-oauthtoken ${token}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({ select_query: selectQuery }),

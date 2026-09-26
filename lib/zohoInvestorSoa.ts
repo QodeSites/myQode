@@ -7,7 +7,7 @@
 // Verified 2026-09-01: 102 of 418 investors carry a PDF; 316 do not. An
 // investor without one is the ordinary case, so every function here returns
 // null rather than throwing when nothing is attached.
-import { getZohoAccessToken, zohoApiDomain } from "@/lib/zoho";
+import { zohoApiDomain, zohoFetch } from "@/lib/zoho";
 
 export type SoaFile = {
   fileName: string;
@@ -29,10 +29,8 @@ export async function findSoaForInvestor(email: string): Promise<SoaFile | null>
   const key = String(email ?? "").trim().toLowerCase();
   if (!key) return null;
 
-  const token = await getZohoAccessToken();
-  const res = await fetch(
+  const res = await zohoFetch(
     `${zohoApiDomain()}/crm/v2/Investors/search?email=${encodeURIComponent(key)}&fields=Name,Email,SOA_Reports`,
-    { headers: { Authorization: `Zoho-oauthtoken ${token}` }, cache: "no-store" },
   );
 
   // 204 means no matching investor — a normal answer, not a failure.
@@ -72,10 +70,8 @@ export async function downloadSoa(
   recordId: string,
   attachmentId: string,
 ): Promise<{ body: ArrayBuffer; fileName: string } | null> {
-  const token = await getZohoAccessToken();
-  const res = await fetch(
+  const res = await zohoFetch(
     `${zohoApiDomain()}/crm/v2/Investors/${encodeURIComponent(recordId)}/actions/download_fields_attachment?fields_attachment_id=${encodeURIComponent(attachmentId)}`,
-    { headers: { Authorization: `Zoho-oauthtoken ${token}` }, cache: "no-store" },
   );
 
   if (!res.ok) return null;

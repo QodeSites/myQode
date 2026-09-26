@@ -20,17 +20,32 @@ export const ZOHO_MODULE_TABS: Record<string, string> = {
 }
 
 let cachedToken: { token: string; expiresAt: number } | null = null
+let refreshing: Promise<string> | null = null
 
 async function getAccessToken(): Promise<string> {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) {
     return cachedToken.token
   }
+  // One refresh at a time — concurrent callers share it instead of each
+  // minting a token (Zoho rate-limits refreshes).
+  refreshing ??= refreshAccessToken().finally(() => {
+    refreshing = null
+  })
+  return refreshing
+}
 
+async function refreshAccessToken(): Promise<string> {
+  cachedToken = await mintToken(process.env.ZOHO_CRM_REFRESH_TOKEN!, 'Zoho token refresh failed')
+  return cachedToken.token
+}
+
+// Exchange a refresh token for an access token. Zoho reports refresh errors (e.g. invalid_client) as HTTP 200 + {error}.
+async function mintToken(refreshToken: string, what: string): Promise<{ token: string; expiresAt: number }> {
   const res = await fetch(`https://accounts.zoho.${DATA_CENTER}/oauth/v2/token`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
-      refresh_token: process.env.ZOHO_CRM_REFRESH_TOKEN!,
+      refresh_token: refreshToken,
       client_id: process.env.ZOHO_CRM_CLIENT_ID!,
       client_secret: process.env.ZOHO_CRM_CLIENT_SECRET!,
       grant_type: 'refresh_token',
@@ -38,12 +53,43 @@ async function getAccessToken(): Promise<string> {
   })
 
   if (!res.ok) {
-    throw new Error(`Zoho token refresh failed: ${res.status} ${await res.text()}`)
+    throw new Error(`${what}: ${res.status} ${await res.text()}`)
   }
 
-  const data = (await res.json()) as { access_token: string; expires_in: number }
-  cachedToken = { token: data.access_token, expiresAt: Date.now() + data.expires_in * 1000 }
-  return cachedToken.token
+  const data = (await res.json()) as { access_token?: string; expires_in?: number; error?: string }
+  if (!data.access_token) {
+    throw new Error(`${what}: ${JSON.stringify(data).slice(0, 300)}`)
+  }
+  return { token: data.access_token, expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000 }
+}
+
+/**
+ * fetch() against the Zoho API with auth attached, retrying once on 401.
+ *
+ * A cached token can be revoked before its expires_in: the refresh token is
+ * shared with new-qode-website, and Zoho caps live access tokens per refresh
+ * token, revoking the oldest as new ones are minted. Without the retry every
+ * Zoho-backed route 500s with INVALID_TOKEN until the process restarts or the
+ * cached expiry passes.
+ *
+ * { write: true } uses the create-only token (ZOHO_CRM_WRITE_REFRESH_TOKEN) instead of the read-only one.
+ */
+export async function zohoFetch(url: string, init: RequestInit = {}, opts: { write?: boolean } = {}): Promise<Response> {
+  const send = (token: string) => {
+    const headers = new Headers(init.headers)
+    headers.set('Authorization', `Zoho-oauthtoken ${token}`)
+    return fetch(url, { cache: 'no-store', ...init, headers })
+  }
+  const get = opts.write ? getZohoWriteAccessToken : getAccessToken
+
+  const token = await get()
+  const res = await send(token)
+  if (res.status !== 401) return res
+
+  // Drop the rejected token unless a concurrent caller already replaced it.
+  if (opts.write) { if (cachedWriteToken?.token === token) cachedWriteToken = null }
+  else if (cachedToken?.token === token) cachedToken = null
+  return send(await get())
 }
 
 function crmApiDomain(): string {
@@ -59,6 +105,7 @@ export const getZohoAccessToken = getAccessToken
 // Minted with scope ZohoCRM.modules.custom.CREATE via /api/auth/zoho/authorize?write=switch and stored as
 // ZOHO_CRM_WRITE_REFRESH_TOKEN. Kept separate so the token everything else runs on stays read-only.
 let cachedWriteToken: { token: string; expiresAt: number } | null = null
+let refreshingWrite: Promise<string> | null = null
 export function hasZohoWriteToken(): boolean {
   return Boolean(process.env.ZOHO_CRM_WRITE_REFRESH_TOKEN)
 }
@@ -67,20 +114,10 @@ export async function getZohoWriteAccessToken(): Promise<string> {
     throw new Error('ZOHO_CRM_WRITE_REFRESH_TOKEN is not set — mint one via /api/auth/zoho/authorize?write=switch')
   }
   if (cachedWriteToken && cachedWriteToken.expiresAt > Date.now() + 60_000) return cachedWriteToken.token
-  const res = await fetch(`https://accounts.zoho.${DATA_CENTER}/oauth/v2/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      refresh_token: process.env.ZOHO_CRM_WRITE_REFRESH_TOKEN,
-      client_id: process.env.ZOHO_CRM_CLIENT_ID!,
-      client_secret: process.env.ZOHO_CRM_CLIENT_SECRET!,
-      grant_type: 'refresh_token',
-    }),
-  })
-  if (!res.ok) throw new Error(`Zoho write-token refresh failed: ${res.status} ${await res.text()}`)
-  const data = (await res.json()) as { access_token: string; expires_in: number }
-  cachedWriteToken = { token: data.access_token, expiresAt: Date.now() + data.expires_in * 1000 }
-  return cachedWriteToken.token
+  refreshingWrite ??= mintToken(process.env.ZOHO_CRM_WRITE_REFRESH_TOKEN, 'Zoho write-token refresh failed')
+    .then((t) => { cachedWriteToken = t; return t.token })
+    .finally(() => { refreshingWrite = null })
+  return refreshingWrite
 }
 export const zohoApiDomain = crmApiDomain
 
@@ -94,12 +131,10 @@ export async function findZohoRecordUrlByEmail(
 ): Promise<string | null> {
   if (!ORG_ID) throw new Error('ZOHO_CRM_ORG_ID not set')
 
-  const token = await getAccessToken()
   const domain = crmApiDomain()
 
-  const res = await fetch(
-    `${domain}/crm/v2/${moduleApiName}/search?email=${encodeURIComponent(email)}`,
-    { headers: { Authorization: `Zoho-oauthtoken ${token}` }, cache: 'no-store' }
+  const res = await zohoFetch(
+    `${domain}/crm/v2/${moduleApiName}/search?email=${encodeURIComponent(email)}`
   )
 
   if (res.status === 204) return null // no matching record
@@ -157,7 +192,6 @@ const SOURCE_CACHE_TTL_MS = 5 * 60 * 1000
 async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> {
   if (sourceCache && sourceCache.expiresAt > Date.now()) return sourceCache.data
 
-  const token = await getAccessToken()
   const domain = crmApiDomain()
   const rawByEmail = new Map<string, RawRecord[]>()
   const flatRawRecords: Array<{ email: string; source: string; activated: boolean; activationDate: string | null; name: string | null }> = []
@@ -166,9 +200,8 @@ async function fetchInvestorRecords(): Promise<Map<string, ZohoInvestorRecord>> 
   let page = 1
   let more = true
   while (more) {
-    const res = await fetch(
-      `${domain}/crm/v2/Investors?fields=Email,Secondary_Email,Name,Investor_Source,Activation_Date,Investor_Size,Invested_Amount,Owner,Annual_Review_Status&per_page=200&page=${page}`,
-      { headers: { Authorization: `Zoho-oauthtoken ${token}` }, cache: 'no-store' }
+    const res = await zohoFetch(
+      `${domain}/crm/v2/Investors?fields=Email,Secondary_Email,Name,Investor_Source,Activation_Date,Investor_Size,Invested_Amount,Owner,Annual_Review_Status&per_page=200&page=${page}`
     )
     if (res.status === 204) break // no (more) records
     if (!res.ok) {
