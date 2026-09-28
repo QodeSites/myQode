@@ -2,6 +2,7 @@
 // Submit a strategy switch / reallocation request. Sends notification email.
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
+import { sendClientAck, clientName } from '@/lib/mobileAckMail'
 import { irRecipient, irSubject } from '@/lib/mobileIrMail'
 
 const STRATEGIES: Record<string, string> = {
@@ -81,6 +82,14 @@ export async function POST(request: NextRequest) {
       throw new Error(emailData.error || 'Email send failed')
     }
 
+    // Acknowledgement to the investor (IR got its own notification above).
+    await sendClientAck({
+      to: user!.email, name: await clientName(user!.email), reference: emailData.inquiry_id,
+      subject: 'We’ve received your switch request', title: 'Switch request received',
+      intro: 'We’ve received your request to switch strategies, raised from the myQode app.',
+      details: [['Account', accountId], ['Currently invested in', investedIn], ['Switch to', switchTo], ['Amount', amount], ['Reason', reason], ['Notes', additionalNotes]],
+      next: 'Our Investor Relations team will confirm the details with you before anything moves. You do not need to send this again.',
+    })
     return NextResponse.json({ success: true, inquiry_id: emailData.inquiry_id })
   } catch (err) {
     console.error('[mobile/services/switch]', err)

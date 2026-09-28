@@ -2,6 +2,7 @@
 // Raise a family mapping or account change request. Sends notification email.
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
+import { sendClientAck, clientName } from '@/lib/mobileAckMail'
 import { irRecipient, irSubject } from '@/lib/mobileIrMail'
 
 export async function POST(request: NextRequest) {
@@ -68,6 +69,13 @@ export async function POST(request: NextRequest) {
     const emailData = await emailRes.json()
     if (!emailRes.ok) throw new Error(emailData.error || 'Email send failed')
 
+    // Acknowledgement to the investor (IR got its own notification above).
+    await sendClientAck({
+      to: user!.email, name: await clientName(user!.email), reference: emailData.inquiry_id,
+      subject: `We’ve received your ${isHeadOfFamily ? 'family' : 'account'} request`, title: `${isHeadOfFamily ? 'Family' : 'Account'} request received`,
+      intro: 'We’ve received the request you raised from the myQode app.',
+      details: [['Account', accountId], ['Your request', message]],
+    })
     return NextResponse.json({ success: true, inquiry_id: emailData.inquiry_id })
   } catch (err) {
     console.error('[mobile/services/account-request]', err)

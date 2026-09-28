@@ -2,6 +2,7 @@
 // Submit an investor referral. Sends notification email to IR team.
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
+import { sendClientAck, clientName } from '@/lib/mobileAckMail'
 import { irRecipient, irSubject } from '@/lib/mobileIrMail'
 
 export async function POST(request: NextRequest) {
@@ -23,10 +24,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
     // Same rules as the app (src/validate.js): a real name, a valid email, a 10-digit Indian mobile.
-    const mobile = String(phone).replace(/\D/g, '').replace(/^(91|0)(?=\d{10}$)/, '')
+    // "+CC number" from the app's country picker (older builds send bare digits: treated as Indian).
+    const intl = String(phone).trim().match(/^\+(\d{1,4})\s*(\d+)$/)
+    const cc = intl ? intl[1] : '91'
+    const mobile = intl ? intl[2] : String(phone).replace(/\D/g, '').replace(/^(91|0)(?=\d{10}$)/, '')
     if (String(name).trim().replace(/[^A-Za-z]/g, '').length < 2 || String(name).length > 80) return NextResponse.json({ error: 'Please enter the referred person’s full name.' }, { status: 400 })
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(email).trim())) return NextResponse.json({ error: 'That email address doesn’t look right.' }, { status: 400 })
-    if (!/^[6-9]\d{9}$/.test(mobile)) return NextResponse.json({ error: 'Enter a valid 10-digit Indian mobile number.' }, { status: 400 })
+    if (cc === '91' ? !/^[6-9]\d{9}$/.test(mobile) : !/^\d{6,15}$/.test(mobile)) {
+      return NextResponse.json({ error: cc === '91' ? 'Enter a valid 10-digit Indian mobile number.' : 'Enter a valid mobile number (6 to 15 digits).' }, { status: 400 })
+    }
     if (description && String(description).length > 500) return NextResponse.json({ error: 'Please keep the note under 500 characters.' }, { status: 400 })
 
     const emailHtml = `
@@ -76,6 +82,14 @@ export async function POST(request: NextRequest) {
       throw new Error(emailData.error || 'Email send failed')
     }
 
+    // Acknowledgement to the investor (IR got its own notification above).
+    await sendClientAck({
+      to: user!.email, name: await clientName(user!.email), reference: emailData.inquiry_id,
+      subject: 'We’ve received your referral', title: 'Referral received',
+      intro: `Thank you for referring ${String(name).trim()} to Qode. We’ve received the details below from the myQode app.`,
+      details: [['Referred investor', name], ['Email', email], ['Mobile', phone], ['Note', description], ['Your account', accountId]],
+      next: 'Our Investor Relations team will reach out to them and keep you posted. You do not need to send this again.',
+    })
     return NextResponse.json({ success: true, inquiry_id: emailData.inquiry_id })
   } catch (err) {
     console.error('[mobile/engagement/referral]', err)

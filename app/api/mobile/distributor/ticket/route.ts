@@ -6,6 +6,7 @@
 // While testing, MOBILE_IR_EMAIL_OVERRIDE (lib/mobileIrMail) receives the email instead of partnerships@.
 import { NextRequest, NextResponse } from 'next/server'
 import { requireMobileDistributor } from '@/lib/mobileDistributor'
+import { sendClientAck, clientName } from '@/lib/mobileAckMail'
 import { query } from '@/lib/db1'
 import { graphMailer } from '@/lib/graphEmail'
 
@@ -80,5 +81,12 @@ export async function POST(request: NextRequest) {
   if (sent?.error && !inquiryId) {
     return NextResponse.json({ error: 'We couldn’t send that. Please try again, or email partnerships@qodeinvest.com.' }, { status: 502 })
   }
+  await sendClientAck({
+    to: d.email, name: d.clientname, reference: inquiryId, from: 'partnerships',
+    subject: 'We’ve received your ticket', title: 'Ticket received',
+    intro: 'We’ve received the ticket you raised from the myQode Distributor Portal.',
+    details: [['Topic', topicLabel], ['About investor', aboutInvestor], ['Message', message]],
+    next: 'The partnerships team will reply to you by email. You do not need to send this again.',
+  })
   return NextResponse.json({ ok: true, inquiryId })
 }

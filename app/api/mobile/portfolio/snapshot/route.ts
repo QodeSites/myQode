@@ -95,6 +95,11 @@ export async function GET(request: NextRequest) {
     }
 
     const codes = accounts.map((a: any) => a.clientcode)
+    // Accounts with legacy Orbis rows (web: the "Orbis+Nuvama" badge in the account picker, and the three data-source views)
+    const orbisCodes = new Set<string>(
+      (await pool.query(`SELECT DISTINCT nuvama_code FROM orbis_master_sheet WHERE nuvama_code = ANY($1::text[])`, [codes])
+        .catch(() => ({ rows: [] as any[] }))).rows.map((r: any) => r.nuvama_code),
+    )
 
     // Latest 2 portfolio values per account to detect closed accounts
     const portfolioResult = await pool.query(
@@ -159,6 +164,7 @@ export async function GET(request: NextRequest) {
           strategyPrefix: getPrefix(a.clientcode),
           strategyName: getStrategyName(a.clientcode),
           strategyColor: getStrategyColor(a.clientcode),
+          hasOrbis: orbisCodes.has(a.clientcode),
           type: 'Individual Account',
           clientId: a.clientid,
           lastUpdated: pv?.date ?? null,

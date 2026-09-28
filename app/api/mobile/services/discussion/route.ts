@@ -2,6 +2,7 @@
 // Raise a general query / discussion topic with the IR team.
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
+import { sendClientAck, clientName } from '@/lib/mobileAckMail'
 import { irRecipient, irSubject } from '@/lib/mobileIrMail'
 
 export async function POST(request: NextRequest) {
@@ -63,6 +64,14 @@ export async function POST(request: NextRequest) {
     const emailData = await emailRes.json()
     if (!emailRes.ok) throw new Error(emailData.error || 'Email send failed')
 
+    // Acknowledgement to the investor (IR got its own notification above).
+    await sendClientAck({
+      to: user!.email, name: await clientName(user!.email), reference: emailData.inquiry_id,
+      subject: 'We’ve received your discussion request', title: 'Discussion request received',
+      intro: 'We’ve received your request for a discussion with Investor Relations, raised from the myQode app.',
+      details: [['Account', accountId], ['Topic', topic]],
+      next: 'Our Investor Relations team will get in touch to arrange a time. You do not need to send this again.',
+    })
     return NextResponse.json({ success: true, inquiry_id: emailData.inquiry_id })
   } catch (err) {
     console.error('[mobile/services/discussion]', err)

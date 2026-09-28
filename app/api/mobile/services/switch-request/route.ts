@@ -23,6 +23,7 @@
 // record from the CRM afterwards (it blocks the investor with "request in progress" until then).
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
+import { sendClientAck, clientName } from '@/lib/mobileAckMail'
 import { hasZohoWriteToken, zohoApiDomain, zohoFetch } from '@/lib/zoho'
 import { irRecipient, irSubject, IR_EMAIL } from '@/lib/mobileIrMail'
 
@@ -219,6 +220,15 @@ export async function POST(request: NextRequest) {
     if (DRY_RUN) {
       console.log('[mobile/services/switch-request] DRY RUN (not production) — would create:', JSON.stringify(record))
       await emailIrSwitch(user, view, isFull, fromList, toList, fromAmt, toAmt, null, true)
+    await sendClientAck({
+      to: user!.email, name: view.legalName, reference: null,
+      subject: 'We’ve received your switch request', title: 'Switch request received',
+      intro: `We’ve received your request to switch strategies for ${view.legalName}, raised from the myQode app.`,
+      details: [['Switch type', isFull ? 'Full Switch' : 'Partial Switch'],
+        ['Moving out of', isFull ? fromList.join(', ') : fromList.map((s) => `${s} ${rs(fromAmt(s))}`).join(', ')],
+        ['Moving into', isFull ? toList.join(', ') : toList.map((s) => `${s} ${rs(toAmt(s))}`).join(', ')]],
+      next: 'Your relationship manager will confirm the details with you before anything moves. You do not need to send this again.',
+    })
       return NextResponse.json({ success: true, dryRun: true, requestId: null, investor: view, record })
     }
     // Production fires the CRM workflow rules (RM notification lives there). A live TEST on a dev server
@@ -233,6 +243,15 @@ export async function POST(request: NextRequest) {
     const id = created?.data?.[0]?.details?.id ?? null
     if (!id) throw new Error(created?.data?.[0]?.message || 'Zoho did not return a record id')
     await emailIrSwitch(user, view, isFull, fromList, toList, fromAmt, toAmt, String(id), false)
+    await sendClientAck({
+      to: user!.email, name: view.legalName, reference: String(id),
+      subject: 'We’ve received your switch request', title: 'Switch request received',
+      intro: `We’ve received your request to switch strategies for ${view.legalName}, raised from the myQode app.`,
+      details: [['Switch type', isFull ? 'Full Switch' : 'Partial Switch'],
+        ['Moving out of', isFull ? fromList.join(', ') : fromList.map((s) => `${s} ${rs(fromAmt(s))}`).join(', ')],
+        ['Moving into', isFull ? toList.join(', ') : toList.map((s) => `${s} ${rs(toAmt(s))}`).join(', ')]],
+      next: 'Your relationship manager will confirm the details with you before anything moves. You do not need to send this again.',
+    })
     return NextResponse.json({ success: true, dryRun: false, requestId: String(id), investor: view })
   } catch (err: any) {
     console.error('[mobile/services/switch-request POST]', err)

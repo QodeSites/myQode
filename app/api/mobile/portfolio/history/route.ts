@@ -10,6 +10,7 @@ import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
 import db2 from '@/lib/db2'
 import { getStrategyName, getStrategyBenchmark, getStrategyColor, getPrefix } from '@/lib/strategyConfig'
+import { normaliseAccountCode } from '@/lib/utils'
 
 export async function GET(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)
@@ -24,6 +25,9 @@ export async function GET(request: NextRequest) {
   if (!user!.accountCodes?.includes(accountId)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
+  // Owner ids arrive float-formatted ("50602.0", as in the JWT) but pms_master_sheet stores "50602": the app asks
+  // for each owner's series this way to build a family total for a login that has no group aggregate.
+  const dbAccountId = normaliseAccountCode(accountId)
 
   const strategy = {
     prefix: getPrefix(accountId),
@@ -43,14 +47,14 @@ export async function GET(request: NextRequest) {
          FROM public.pms_master_sheet
          WHERE account_code = $1
          ORDER BY report_date ASC`,
-        [accountId]
+        [dbAccountId]
       ),
       pool.query(
         `SELECT date, nav, market_value, net_capital_flow, capital_amount
          FROM orbis_master_sheet
          WHERE nuvama_code = $1
          ORDER BY date ASC`,
-        [accountId]
+        [dbAccountId]
       ),
     ])
 
@@ -58,7 +62,7 @@ export async function GET(request: NextRequest) {
     const orbis = orbisRes.rows
 
     // Same rule as /api/auth/client-data: latest non-zero capital and market value.
-    let orbisMetrics: { latestCapitalAmount: number; latestMarketValue: number } | null = null
+    let orbisMetrics: { latestCapitalAmount: number; latestMarketValue: number; latestDate: string | null } | null = null
     if (orbis.length > 0) {
       const desc = [...orbis].reverse()
       const cap = desc.find((r: any) => Number(r.capital_amount) > 0)
@@ -66,6 +70,7 @@ export async function GET(request: NextRequest) {
       orbisMetrics = {
         latestCapitalAmount: cap ? Number(cap.capital_amount) : 0,
         latestMarketValue: mkt ? Number(mkt.market_value) : 0,
+        latestDate: (mkt || cap || desc[0])?.date ?? null,
       }
     }
 
@@ -76,12 +81,17 @@ export async function GET(request: NextRequest) {
     const last = lastNuvama && lastOrbis ? (new Date(lastNuvama) > new Date(lastOrbis) ? lastNuvama : lastOrbis) : (lastNuvama ?? lastOrbis)
     if (strategy.benchmark && first && last) {
       try {
+        // From two weeks BEFORE the first row: the maths anchors the benchmark on its last value on or before
+        // inception, and an inception that falls on a market holiday (QGF0004: 11 Apr 2024) has no benchmark row
+        // that day — fetching from the inception date itself then left no anchor and no benchmark at all.
+        const fromDate = new Date(first)
+        fromDate.setDate(fromDate.getDate() - 14)
         const b = await db2.query(
           `SELECT date, nav
            FROM public.tblresearch_new
            WHERE indices = $1 AND date >= $2 AND date <= $3
            ORDER BY date ASC`,
-          [strategy.benchmark, first, last]
+          [strategy.benchmark, fromDate.toISOString().slice(0, 10), last]
         )
         benchmark = b.rows.map((r: any) => ({ date: r.date, nav: parseFloat(r.nav) }))
       } catch (benchErr) {

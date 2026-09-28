@@ -2,6 +2,7 @@
 // Submit a strategy question to the fund manager team.
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
+import { sendClientAck, clientName } from '@/lib/mobileAckMail'
 import { irRecipient, irSubject } from '@/lib/mobileIrMail'
 
 export async function POST(request: NextRequest) {
@@ -63,6 +64,13 @@ export async function POST(request: NextRequest) {
     const emailData = await emailRes.json()
     if (!emailRes.ok) throw new Error(emailData.error || 'Email send failed')
 
+    // Acknowledgement to the investor (IR got its own notification above).
+    await sendClientAck({
+      to: user!.email, name: await clientName(user!.email), reference: emailData.inquiry_id,
+      subject: 'We’ve received your question', title: 'Question received',
+      intro: 'We’ve received your question for the investment team, raised from the myQode app.',
+      details: [['Account', accountId], ['Your question', question]],
+    })
     return NextResponse.json({ success: true, inquiry_id: emailData.inquiry_id })
   } catch (err) {
     console.error('[mobile/services/strategy-inquiry]', err)

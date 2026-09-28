@@ -10,7 +10,9 @@ import { reviewerMockPerformance } from '@/lib/reviewerMock'
 function formatDate(d: Date | string | null): string {
   if (!d) return ''
   const date = typeof d === 'string' ? new Date(d) : d
-  return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+  // DD-Mon-YYYY (25-Sep-2026): the app's date format
+  const M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+  return `${String(date.getDate()).padStart(2, '0')}-${M[date.getMonth()]}-${date.getFullYear()}`
 }
 
 // Simple absolute return %
