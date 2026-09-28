@@ -13,7 +13,6 @@ const MAX_AMOUNT = 500000 // per-transaction ceiling verified on the Razorpay ac
 export async function POST(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)
   if (error) return error
-  if (user!.isReviewer) return NextResponse.json({ error: 'Not available for the reviewer account' }, { status: 403 })
 
   let body: any
   try { body = await request.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
@@ -26,6 +25,23 @@ export async function POST(request: NextRequest) {
 
   try {
     const cfg = razorpayConfig()
+
+    // Payment-gateway / store reviewers (reviewer@qodeinvest.com, mock accounts): open the real Razorpay Checkout
+    // so the flow can be reviewed, but record nothing — no payment_transactions row, no client data, no IR mail.
+    // The order is tagged reviewer=true; the checkout and verify routes read it back from Razorpay.
+    if (user!.isReviewer) {
+      const receipt = `qode_review_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+      const rzOrder: any = await createRazorpayOrder(amount, receipt, { nuvama_code: accountId, order_type: 'one_time', source: 'qode_mobile_app', reviewer: 'true' })
+      const exp = Date.now() + 30 * 60 * 1000
+      const base = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL || '').trim().replace(/\/$/, '') || new URL(request.url).origin
+      const q = new URLSearchParams({ orderId: rzOrder.id, exp: String(exp), t: checkoutToken(rzOrder.id, exp) })
+      return NextResponse.json({
+        orderId: rzOrder.id, amount, currency: 'INR', keyId: cfg.keyId, environment: cfg.isTest ? 'test' : 'live',
+        prefill: { name: 'Reviewer' },
+        checkoutPath: '/api/mobile/payments/razorpay/checkout?' + q.toString(),
+        checkoutUrl: base + '/api/mobile/payments/razorpay/checkout?' + q.toString(),
+      })
+    }
     const clientRes = await pool.query(
       `SELECT clientid, clientcode, email, mobile, salutation, firstname, middlename, lastname
        FROM pms_clients_master WHERE clientcode = $1 LIMIT 1`,
