@@ -8,6 +8,7 @@
 //    Richer metrics (sessions, active devices, crashes) but needs a request created first.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/adminAuth'
 import jwt from 'jsonwebtoken'
 import zlib from 'zlib'
 import { promisify } from 'util'
@@ -76,6 +77,8 @@ function pastDates(days: number): string[] {
 }
 
 export async function GET(request: NextRequest) {
+  const { error: authError } = await requireAdmin(request, 'staff')
+  if (authError) return authError
   const missingVars = ['APP_STORE_KEY_ID', 'APP_STORE_ISSUER_ID', 'APP_STORE_PRIVATE_KEY'].filter(
     k => !process.env[k]
   )

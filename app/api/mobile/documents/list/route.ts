@@ -49,6 +49,8 @@ export async function GET(request: NextRequest) {
   if (!user!.accountCodes?.includes(accountId)) {
     return NextResponse.json({ error: 'Forbidden', available: user!.accountCodes }, { status: 403 })
   }
+  // Reviewer mock accounts have no client row or S3 folder: show the categories, empty.
+  if (user!.isReviewer) return NextResponse.json({ categories: CATEGORIES.map(c => ({ id: c.id, label: c.label, description: c.description, fileCount: 0 })) })
 
   // clientcode (e.g. QAW0009) ≠ clientid; S3 folders are keyed by clientid
   const clientRes = await query(

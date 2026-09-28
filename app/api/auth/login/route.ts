@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { WEB_SESSION_COOKIE, signWebSession, webSessionCookieOptions } from '@/lib/webSession'
 import { query } from '@/lib/db'
 import { cookies } from 'next/headers'
 import bcrypt from 'bcryptjs'
@@ -244,6 +245,7 @@ async function handleDevPasswordlessLogin(username: string) {
     ]
 
     // Set client data cookie
+    cookieStore.set(WEB_SESSION_COOKIE, signWebSession(clientData.map(c => c.clientcode)), webSessionCookieOptions)
     cookieStore.set('qode-clients', JSON.stringify(clientData), {
       httpOnly: true,
       sameSite: 'lax',
@@ -355,6 +357,7 @@ async function handleDevBypassLogin(email: string) {
     ]
 
     // Set client data cookie
+    cookieStore.set(WEB_SESSION_COOKIE, signWebSession(clientData.map(c => c.clientcode)), webSessionCookieOptions)
     cookieStore.set('qode-clients', JSON.stringify(clientData), {
       httpOnly: true,
       sameSite: 'lax',
@@ -448,6 +451,7 @@ async function setSessionCookies(user: ExtendedClientData) {
   })
 
   // Set client data cookie
+  cookieStore.set(WEB_SESSION_COOKIE, signWebSession(clientData.map(c => c.clientcode)), webSessionCookieOptions)
   cookieStore.set('qode-clients', JSON.stringify(clientData), {
     httpOnly: true,
     sameSite: 'lax',

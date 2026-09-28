@@ -1,5 +1,6 @@
 // app/api/admin/queries/route.ts
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdmin, audit } from '@/lib/adminAuth'
 import { query } from '@/lib/db';
 import pool from '@/lib/db1';
 import { graphMailer as resend } from '@/lib/graphEmail';
@@ -106,6 +107,8 @@ async function sendQueryEmail(query: QueryMessage, action: 'resolved' | 'updated
 }
 
 export async function GET(request: NextRequest) {
+  const { error: authError } = await requireAdmin(request, 'staff')
+  if (authError) return authError
   const client = await pool.connect();
 
   try {
@@ -219,6 +222,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  // Staff (the IR team) answer, resolve, reopen, annotate and reprioritise queries; deleting one needs a super admin.
+  const { admin, error: authError } = await requireAdmin(request, 'staff')
+  if (authError) return authError
   const client = await pool.connect();
 
   try {
@@ -532,6 +538,9 @@ export async function POST(request: NextRequest) {
       }
 
       case 'delete': {
+        if (admin!.level !== 'super') {
+          return NextResponse.json({ error: 'This needs backoffice access', code: 'ADMIN_FORBIDDEN' }, { status: 403 });
+        }
         if (!queryId) {
           return NextResponse.json(
             { error: 'Query ID is required' },
@@ -557,6 +566,7 @@ export async function POST(request: NextRequest) {
           );
 
           await client.query('COMMIT');
+          await audit(request, admin!, 'query.delete', String(queryId));
 
           return NextResponse.json({
             success: true,

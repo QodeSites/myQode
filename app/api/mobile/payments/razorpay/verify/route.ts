@@ -26,6 +26,24 @@ export async function POST(request: NextRequest) {
        FROM payment_transactions WHERE razorpay_order_id = $1 LIMIT 1`,
       [orderId]
     )
+    // Reviewer orders are not recorded (see create-order): report Razorpay's status, write nothing, notify no one.
+    if (!rows.length && user!.isReviewer) {
+      const o: any = await fetchRazorpayOrder(orderId).catch(() => null)
+      if (o?.notes?.reviewer !== 'true') return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+      if (paymentId && signature && !verifyPaymentSignature(orderId, paymentId, signature)) {
+        return NextResponse.json({ error: 'Payment signature mismatch', code: 'BAD_SIGNATURE' }, { status: 400 })
+      }
+      const list: any = await fetchRazorpayOrderPayments(orderId).catch(() => null)
+      const items: any[] = list?.items || []
+      const p = items.find((x) => x.status === 'captured') || items.find((x) => x.status === 'authorized') || items[items.length - 1] || null
+      const st: string = p?.status || 'created'
+      const ok = st === 'captured' || st === 'authorized', bad = st === 'failed'
+      return NextResponse.json({
+        orderId, paymentStatus: st.toUpperCase(), investmentStatus: ok ? 'PAYMENT_SUCCESS' : bad ? 'PAYMENT_FAILED' : 'PENDING_PAYMENT',
+        isSuccess: ok, isFailed: bad, attempts: Number(o?.attempts || 0), amount: Number(o.amount) / 100,
+        payment: p ? { id: p.id, method: p.method, vpa: p.vpa || null, bank: p.bank || null, time: p.created_at, reference: p.acquirer_data?.rrn || null, message: p.error_description || null } : null,
+      })
+    }
     if (!rows.length) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
     const tx = rows[0]
     if (!user!.accountCodes?.includes(tx.nuvama_code)) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })

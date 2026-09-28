@@ -4,6 +4,7 @@
 // Mirrors the web /api/auth/complete-otp-setup route under the mobile API namespace.
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { recordWrongOtp, clearWrongOtp, TOO_MANY_OTP } from '@/lib/mobileOtpAttempts';
 import bcrypt from 'bcryptjs';
 
 export async function POST(request: NextRequest) {
@@ -68,9 +69,11 @@ export async function POST(request: NextRequest) {
     );
 
     if (otpResult.rows.length === 0) {
+      if (await recordWrongOtp(email)) return NextResponse.json(TOO_MANY_OTP, { status: 429 });
       return NextResponse.json({ error: 'Invalid or expired OTP' }, { status: 400 });
     }
 
+    clearWrongOtp(email);
     const hashedPassword = await bcrypt.hash(newPassword, 12);
 
     // Update password for ALL accounts with this email address

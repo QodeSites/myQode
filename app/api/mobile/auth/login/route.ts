@@ -10,6 +10,8 @@ import jwt from 'jsonwebtoken'
 import type { MobileAuthUser } from '@/lib/mobileAuth'
 import { REVIEWER_ACCOUNT_CODES } from '@/lib/reviewerMock'
 import { resolveDistributorByEmail } from '@/lib/distributorIdentity'
+import { findLoginRow, distributorMobileSession, investorActiveAccounts, allAccountsClosed, investorAccountCodes, investorMobileSession } from '@/lib/mobileSession'
+import { isAppAdmin, checkAdminPassword, audit } from '@/lib/adminAuth'
 
 // Reviewer account — used by App Store / Play Store reviewers.
 // Shows hardcoded dummy data so no real client data is exposed during review.
@@ -17,9 +19,9 @@ const REVIEWER_EMAIL    = 'reviewer@qodeinvest.com'
 const REVIEWER_PASSWORD = 'Review@123'
 
 // Admin account — a virtual account not in pms_clients_master.
-// Hardcoded credentials for the dedicated impersonation account.
+// Password comes from MOBILE_ADMIN_PASSWORD; when it is unset the admin login is disabled.
 const ADMIN_EMAIL    = 'admin@qodeinvest.com'
-const ADMIN_PASSWORD = 'AdminQode#@2026'
+const ADMIN_PASSWORD = process.env.MOBILE_ADMIN_PASSWORD || ''
 
 export async function POST(request: NextRequest) {
   try {
@@ -59,7 +61,7 @@ export async function POST(request: NextRequest) {
     // ── Reviewer bypass (Play Store / App Store review) ───────────────────────
     // Checked FIRST — before the dev-mode password bypass — so reviewer credentials
     // always require the correct password regardless of NODE_ENV.
-    if (username.toLowerCase() === REVIEWER_EMAIL && password === REVIEWER_PASSWORD) {
+    if (username?.toLowerCase() === REVIEWER_EMAIL && password === REVIEWER_PASSWORD) {
       const payload: MobileAuthUser = {
         userId: 'reviewer',
         email: REVIEWER_EMAIL,
@@ -94,12 +96,30 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // ── App admin (APP_ADMIN_EMAILS ⊂ BACKOFFICE_ADMINS, password in admin_users) ──
+    // Signs the app in to admin mode: a super-admin token that can impersonate anyone and use /api/admin/*.
+    // Checked first, so an admin email never falls through to the client lookup.
+    if (isAppAdmin(username)) {
+      const { admin, error } = await checkAdminPassword(username, password || '')
+      if (!admin) return NextResponse.json({ error }, { status: 401 })
+      await audit(request, admin, 'admin.login', null, { via: 'app' })
+      const payload: MobileAuthUser & { isAdmin: boolean; name: string } = {
+        userId: 'admin:' + admin.email, email: admin.email, clientCode: 'ADMIN', clientId: 'admin',
+        accountCodes: [], ownerIds: [], groupId: null as any, isHeadOfFamily: false, isSuperAdmin: true, isAdmin: true, name: admin.name,
+      }
+      const token = jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: '12h' })
+      return NextResponse.json({
+        token, expiresIn: 60 * 60 * 12,
+        user: { clientId: 'admin', clientCode: 'ADMIN', name: admin.name, email: admin.email, accountCodes: [], isHeadOfFamily: false, isSuperAdmin: true, isAdmin: true },
+      })
+    }
+
     // ── Admin bypass ─────────────────────────────────────────────────────────────
     // Virtual admin account — not in pms_clients_master.
     // Checked BEFORE the dev-mode password bypass so that dev mode sending
     // password='' cannot accidentally match (password is always required here).
     if (username.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
-      if (password !== ADMIN_PASSWORD) {
+      if (!ADMIN_PASSWORD || password !== ADMIN_PASSWORD) {
         return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
       }
       const payload: MobileAuthUser = {
@@ -131,15 +151,8 @@ export async function POST(request: NextRequest) {
 
     // Look up user — prefer head_of_family=true row when multiple rows share the same email
     // (one person can have accounts across multiple schemes, only one row has head_of_family=true)
-    const userResult = await query(
-      `SELECT clientid, clientcode, email, groupid, password, head_of_family, ownerid,
-              salutation, firstname, middlename, lastname
-       FROM pms_clients_master
-       WHERE (email = $1 OR UPPER(clientcode) = UPPER($1))
-       ORDER BY head_of_family DESC NULLS LAST, clientcode ASC
-       LIMIT 1`,
-      [username]
-    )
+    const loginRow = await findLoginRow(username)
+    const userResult = { rows: loginRow ? [loginRow] : [] }
 
     console.log('[login] user lookup →', {
       identifier: username,
@@ -192,7 +205,7 @@ export async function POST(request: NextRequest) {
       const distributor = await resolveDistributorByEmail(user.email)
       if (distributor) {
         if (wantRole === 'client') {
-          return NextResponse.json({ error: 'This email is a partner (distributor) login. Switch to Distributor to sign in.', code: 'ROLE_MISMATCH', role: 'distributor' }, { status: 403 })
+          return NextResponse.json({ error: 'This email is a distributor login. Switch to Distributor to sign in.', code: 'ROLE_MISMATCH', role: 'distributor' }, { status: 403 })
         }
         await query(
           `UPDATE pms_clients_master
@@ -207,86 +220,24 @@ export async function POST(request: NextRequest) {
           [user.email, clientOS]
         ).catch(() => {})
 
-        const payload: MobileAuthUser = {
-          userId: distributor.email,
-          email: user.email,
-          clientCode: '',
-          clientId: '',
-          accountCodes: [],
-          ownerIds: [],
-          groupId: '',
-          isHeadOfFamily: false,
-          isDistributor: true,
-          distributorName: distributor.clientname,
-        }
+        const { payload, user: distributorUser } = distributorMobileSession(user.email, distributor)
         const token = jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: '30d' })
         console.log('[login] distributor →', distributor.clientname)
         return NextResponse.json({
           token,
           expiresIn: 60 * 60 * 24 * 30,
-          user: {
-            clientId: '', clientCode: '', name: distributor.clientname, email: user.email,
-            accountCodes: [], isHeadOfFamily: false, isSuperAdmin: false,
-            isDistributor: true, role: 'distributor',
-          },
+          user: distributorUser,
         })
       }
     }
 
     if (wantRole === 'distributor') {
-      return NextResponse.json({ error: 'This email is an investor login, not a partner login. Switch to Client to sign in.', code: 'ROLE_MISMATCH', role: 'client' }, { status: 403 })
+      return NextResponse.json({ error: 'This email is an investor login, not a distributor login. Switch to Client to sign in.', code: 'ROLE_MISMATCH', role: 'client' }, { status: 403 })
     }
 
     // Fetch all account codes for this owner — exclude matured/closed accounts
     // maturity_date IS NULL means open-ended (no fixed term), otherwise only include future-dated ones
-    let accountsResult;
-    let accountsFetchMethod: string;
-
-    if (user.head_of_family) {
-      accountsResult = await query(
-        `SELECT clientid, clientcode, ownerid, maturity_date FROM pms_clients_master
-         WHERE groupid = $1
-           AND (maturity_date IS NULL OR maturity_date > NOW())`,
-        [user.groupid]
-      )
-      accountsFetchMethod = `groupid=${user.groupid} (head of family)`
-
-      // Edge case: entire group may be matured (e.g. client moved to a new group).
-      // Fall back to email lookup so active accounts in other groups are still visible.
-      if (accountsResult.rows.length === 0) {
-        console.log('[login] group has 0 active accounts — falling back to email lookup', {
-          groupid: user.groupid,
-          email:   user.email,
-        })
-        accountsResult = await query(
-          `SELECT clientid, clientcode, ownerid, maturity_date FROM pms_clients_master
-           WHERE email = $1
-             AND (maturity_date IS NULL OR maturity_date > NOW())`,
-          [user.email]
-        )
-        accountsFetchMethod = `email=${user.email} (fallback — group fully matured)`
-      }
-    } else {
-      accountsResult = await query(
-        `SELECT clientid, clientcode, ownerid, maturity_date FROM pms_clients_master
-         WHERE email = $1
-           AND (maturity_date IS NULL OR maturity_date > NOW())`,
-        [user.email]
-      )
-      accountsFetchMethod = `email=${user.email}`
-    }
-
-    console.log('[login] accounts fetched →', {
-      method:   accountsFetchMethod,
-      count:    accountsResult.rows.length,
-      accounts: accountsResult.rows.map((a: any) => ({
-        clientcode:    a.clientcode,
-        ownerid:       a.ownerid,
-        maturity_date: a.maturity_date ?? 'NULL (open-ended)',
-      })),
-    })
-
-    const accounts = accountsResult.rows
+    const accounts = await investorActiveAccounts(user)
 
     // ── All-accounts-closed guard ─────────────────────────────────────────────
     // If the active-account query came back empty, check whether ALL accounts
@@ -294,30 +245,7 @@ export async function POST(request: NextRequest) {
     // If so, the client's portfolio has been fully closed — return a clear error
     // instead of silently issuing a JWT with no accountCodes.
     if (accounts.length === 0) {
-      const allAccountsResult = await query(
-        `SELECT clientcode, maturity_date
-         FROM pms_clients_master
-         WHERE email = $1`,
-        [user.email]
-      )
-
-      const allRows = allAccountsResult.rows
-      const hasAnyRow = allRows.length > 0
-      const allMatured = hasAnyRow && allRows.every(
-        (r: any) => r.maturity_date && new Date(r.maturity_date) <= new Date()
-      )
-
-      console.log('[login] no active accounts →', {
-        email:       user.email,
-        totalRows:   allRows.length,
-        allMatured,
-        maturityDates: allRows.map((r: any) => ({
-          clientcode:    r.clientcode,
-          maturity_date: r.maturity_date ?? 'NULL',
-        })),
-      })
-
-      if (allMatured) {
+      if (await allAccountsClosed(user.email)) {
         return NextResponse.json(
           {
             error: 'Your account has been closed. If you think this is an error, please contact our IR team.',
@@ -330,33 +258,7 @@ export async function POST(request: NextRequest) {
       // and issue the JWT — the portfolio screens will simply show no data.
     }
 
-    // Exclude QLF (Qode Liquid Fund) accounts — not offered through the mobile app.
-    const individualCodes: string[] = accounts
-      .map((a: any) => a.clientcode)
-      .filter((code: string) => Boolean(code) && !code.toUpperCase().startsWith('QLF'))
-
-    // Include group-level and owner-level consolidated account codes so the
-    // portfolio APIs (which check accountCodes) allow GROUP/OWNER aggregated views.
-    // These match rows in pms_master_sheet where account_code = groupid / ownerid.
-    // NOTE: these are deliberately NOT stripped of their ".0" suffix.
-    // ownerid/groupid are stored float-formatted ("65941.0") and the mobile app
-    // sends that same raw value as `accountId`. The portfolio routes authorise
-    // with a strict `accountCodes.includes(accountId)`, so normalising here
-    // would make every GROUP/OWNER request 403. The suffix is stripped at the
-    // point of the DB lookup instead (see /api/portfolio-history-by-code).
-    const uniqueOwnerIds: string[] = [...new Set(
-      accounts.map((a: any) => a.ownerid).filter(Boolean)
-    )] as string[]
-    const groupCode: string[] = user.head_of_family && user.groupid ? [user.groupid] : []
-
-    const accountCodes: string[] = [...individualCodes, ...uniqueOwnerIds, ...groupCode]
-
-    console.log('[login] JWT accountCodes →', {
-      individualCodes,
-      uniqueOwnerIds,
-      groupCode,
-      total: accountCodes,
-    })
+    const accountCodes = investorAccountCodes(user, accounts)
 
     // Track login. OS-specific columns/timestamps only update when the client
     // actually reported a recognized platform — an unrecognized value still
@@ -388,43 +290,13 @@ export async function POST(request: NextRequest) {
       [user.email, clientOS]
     )
 
-    const clientName = [user.salutation, user.firstname, user.middlename, user.lastname]
-      .filter(Boolean)
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-
-    // Super admin email comes from environment so it can be changed without a code deploy.
-    // Set SUPER_ADMIN_EMAIL in .env.local / production environment.
-    const SUPER_ADMIN_EMAIL = (process.env.SUPER_ADMIN_EMAIL ?? 'karan@qodeinvest.com').toLowerCase()
-    const isSuperAdmin = user.email.toLowerCase() === SUPER_ADMIN_EMAIL
-
-    const payload: MobileAuthUser = {
-      userId: user.clientid,
-      email: user.email,
-      clientCode: user.clientcode,
-      clientId: user.clientid,
-      accountCodes,
-      ownerIds: [user.ownerid || user.clientid],
-      groupId: user.groupid,
-      isHeadOfFamily: user.head_of_family,
-      ...(isSuperAdmin && { isSuperAdmin: true }),
-    }
-
+    const { payload, user: investorUser } = investorMobileSession(user, accountCodes)
     const token = jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: '30d' })
 
     return NextResponse.json({
       token,
       expiresIn: 60 * 60 * 24 * 30, // seconds
-      user: {
-        clientId: user.clientid,
-        clientCode: user.clientcode,
-        name: clientName,
-        email: user.email,
-        accountCodes,
-        isHeadOfFamily: user.head_of_family,
-        isSuperAdmin,
-      },
+      user: investorUser,
     })
   } catch (error) {
     console.error('[mobile/auth/login] error:', error)

@@ -2,6 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import pool from '@/lib/db1';
+import { requireAdmin, audit } from '@/lib/adminAuth';
+import { investorPortalImpersonation, distributorPortalImpersonation } from '@/lib/impersonation';
 
 interface DistributorData {
   id: string;
@@ -100,6 +102,8 @@ interface DashboardStatistics {
 }
 
 export async function GET(request: NextRequest) {
+  const { error: authError } = await requireAdmin(request, 'staff');
+  if (authError) return authError;
   const client = await pool.connect();
 
   try {
@@ -321,12 +325,14 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Admin impersonation endpoint
+// Admin impersonation endpoint (super admins). Returns a signed one-time link, see lib/impersonation.ts.
 export async function POST(request: NextRequest) {
+  const { admin, error } = await requireAdmin(request, 'super');
+  if (error) return error;
   try {
     const { action, clientCode, distributorEmail } = await request.json();
 
-    // Distributor impersonation — lookup by email since clientcode is null
+    // Distributor impersonation: lookup by email since clientcode is null
     if (action === 'impersonate-distributor') {
       if (!distributorEmail) {
         return NextResponse.json(
@@ -334,55 +340,18 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-
-      const distributorResult = await query(
-        `SELECT clientid, clientcode, email, groupid, head_of_family, ownerid,
-                salutation, firstname, middlename, lastname, clienttype
-         FROM pms_clients_master
-         WHERE email = $1 AND clienttype = 'DISTRIBUTORS'
-         LIMIT 1`,
-        [distributorEmail]
-      );
-
-      if (distributorResult.rows.length === 0) {
-        return NextResponse.json(
-          { error: 'Distributor not found' },
-          { status: 404 }
-        );
+      const imp = await distributorPortalImpersonation(distributorEmail, admin!.email);
+      if (!imp) {
+        return NextResponse.json({ error: 'Distributor not found' }, { status: 404 });
       }
-
-      const distributor = distributorResult.rows[0];
-
-      // clientData mirrors real distributor login: clientid present, clientcode may be null
-      const clientData = [{
-        clientid: distributor.clientid,
-        clientcode: distributor.clientcode,
-      }];
-
-      const impersonationToken = Buffer.from(JSON.stringify({
-        adminImpersonation: true,
-        clientCode: distributor.clientcode,
-        clientType: 'DISTRIBUTORS',
-        timestamp: Date.now(),
-        clientData,
-        userContext: {
-          clientid: distributor.clientid,
-          clientcode: distributor.clientcode,
-          email: distributor.email,
-          groupid: distributor.groupid,
-          head_of_family: false,
-          ownerid: distributor.ownerid,
-        },
-        targetClientName: `${distributor.salutation || ''} ${distributor.firstname} ${distributor.middlename || ''} ${distributor.lastname}`.trim(),
-      })).toString('base64');
-
+      await audit(request, admin!, 'user.impersonate', imp.targetEmail || distributorEmail, { target: 'portal', role: 'distributor', from: 'dashboard' });
       return NextResponse.json({
         success: true,
-        impersonationToken,
-        redirectUrl: `/api/admin/impersonate?token=${impersonationToken}`,
-        clientData,
+        impersonationToken: imp.token,
+        redirectUrl: imp.redirectUrl,
+        clientData: imp.clientData,
         isHeadOfFamily: false,
-        targetClientName: `${distributor.salutation || ''} ${distributor.firstname} ${distributor.middlename || ''} ${distributor.lastname}`.trim(),
+        targetClientName: imp.targetClientName,
       });
     }
 
@@ -393,72 +362,18 @@ export async function POST(request: NextRequest) {
           { status: 400 }
         );
       }
-
-      // Get client data for impersonation with role information
-      const clientResult = await query(
-        `SELECT clientid, clientcode, email, groupid, head_of_family, ownerid,
-                salutation, firstname, middlename, lastname
-         FROM pms_clients_master
-         WHERE clientcode = $1`,
-        [clientCode]
-      );
-
-      if (clientResult.rows.length === 0) {
-        return NextResponse.json(
-          { error: 'Client not found' },
-          { status: 404 }
-        );
+      const imp = await investorPortalImpersonation(clientCode, admin!.email);
+      if (!imp) {
+        return NextResponse.json({ error: 'Client not found' }, { status: 404 });
       }
-
-      const targetClient = clientResult.rows[0];
-      const { groupid, email, head_of_family, ownerid } = targetClient;
-
-      // Get associated client codes based on role (same logic as login)
-      let associatedResult;
-
-      if (head_of_family) {
-        // If target is head of family, get all accounts in the group
-        associatedResult = await query(
-          'SELECT clientid, clientcode FROM pms_clients_master WHERE groupid = $1',
-          [groupid]
-        );
-      } else {
-        // If target is not head of family, get only accounts with this ownerid
-        associatedResult = await query(
-          'SELECT clientid, clientcode FROM pms_clients_master WHERE ownerid = $1',
-          [ownerid]
-        );
-      }
-
-      const clientData = associatedResult.rows.map((row: any) => ({
-        clientid: row.clientid,
-        clientcode: row.clientcode
-      }));
-
-      // Create comprehensive impersonation token with role information
-      const impersonationToken = Buffer.from(JSON.stringify({
-        adminImpersonation: true,
-        clientCode,
-        timestamp: Date.now(),
-        clientData,
-        userContext: {
-          clientid: targetClient.clientid,
-          clientcode: targetClient.clientcode,
-          email: targetClient.email,
-          groupid: targetClient.groupid,
-          head_of_family: targetClient.head_of_family,
-          ownerid: targetClient.ownerid
-        },
-        targetClientName: `${targetClient.salutation || ''} ${targetClient.firstname} ${targetClient.middlename || ''} ${targetClient.lastname}`.trim()
-      })).toString('base64');
-
+      await audit(request, admin!, 'user.impersonate', imp.targetEmail || clientCode, { target: 'portal', clientCode, from: 'dashboard' });
       return NextResponse.json({
         success: true,
-        impersonationToken,
-        redirectUrl: `/api/admin/impersonate?token=${impersonationToken}`,
-        clientData,
-        isHeadOfFamily: head_of_family,
-        targetClientName: `${targetClient.salutation || ''} ${targetClient.firstname} ${targetClient.middlename || ''} ${targetClient.lastname}`.trim()
+        impersonationToken: imp.token,
+        redirectUrl: imp.redirectUrl,
+        clientData: imp.clientData,
+        isHeadOfFamily: imp.isHeadOfFamily,
+        targetClientName: imp.targetClientName,
       });
     }
 

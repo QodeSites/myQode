@@ -17,6 +17,7 @@
 // just GA4 property viewer access.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/adminAuth'
 import jwt from 'jsonwebtoken'
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token'
@@ -77,6 +78,8 @@ async function runReport(propertyId: string, body: object, token: string) {
 }
 
 export async function GET(request: NextRequest) {
+  const { error: authError } = await requireAdmin(request, 'staff')
+  if (authError) return authError
   const propertyId = process.env.FIREBASE_GA_PROPERTY_ID
   if (!propertyId)
     return NextResponse.json({ error: 'FIREBASE_GA_PROPERTY_ID not set' }, { status: 503 })

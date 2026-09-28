@@ -2,7 +2,8 @@
 // AUM, activation date, annual review status) with myQode's real login/
 // platform data. Investors only (distributors excluded — see
 // client-platform-activity for that distinction).
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/adminAuth'
 import { query } from '@/lib/db'
 import { getInvestorRecordMap } from '@/lib/zoho'
 
@@ -12,7 +13,9 @@ function daysBetween(a: Date, b: Date): number {
   return Math.round((b.getTime() - a.getTime()) / 86_400_000)
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { error: authError } = await requireAdmin(request, 'staff')
+  if (authError) return authError
   try {
     let zohoMap = new Map<string, Awaited<ReturnType<typeof getInvestorRecordMap>> extends Map<string, infer V> ? V : never>()
     try {

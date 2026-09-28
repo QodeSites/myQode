@@ -9,11 +9,14 @@
 //   - both         both > 0
 //   - unclassified logged in before platform-split tracking existed
 //                  (login_count > 0 but web/app counters are still 0)
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/adminAuth'
 import { query } from '@/lib/db'
 import { getInvestorSourceMap, getRawInvestorRecords } from '@/lib/zoho'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { error: authError } = await requireAdmin(request, 'staff')
+  if (authError) return authError
   try {
     // Zoho CRM's Investor_Source per email — best-effort. A Zoho hiccup
     // shouldn't take down the whole dashboard, so this degrades to "unknown"

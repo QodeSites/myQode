@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdmin, audit } from '@/lib/adminAuth'
 import { query } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
+  const { admin, error: authError } = await requireAdmin(request, 'super')
+  if (authError) return authError
   try {
     const data = await request.json();
 
@@ -49,6 +52,7 @@ export async function POST(request: NextRequest) {
     ];
 
     const result = await query(text, values);
+    await audit(request, admin!, 'distributor.create', email, { name: clientname, from: 'legacy' });
 
     return NextResponse.json({
       success: true,

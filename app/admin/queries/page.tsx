@@ -1,8 +1,6 @@
 // app/admin/queries/page.tsx
 "use client";
 
-import { AdminAuthProvider } from '@/components/admin-auth-provider';
-import { AdminLayout } from '@/components/admin-layout';
 import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1208,10 +1206,6 @@ function QueryResolverContent() {
 
 export default function QueryResolverPage() {
   return (
-    <AdminAuthProvider>
-      <AdminLayout title="Queries Management">
-        <QueryResolverContent />
-      </AdminLayout>
-    </AdminAuthProvider>
+    <QueryResolverContent />
   );
 }

@@ -23,6 +23,7 @@
 //     with at least "View app information" permission.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/adminAuth'
 import jwt from 'jsonwebtoken'
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token'
@@ -196,6 +197,8 @@ function pickColumn(row: Record<string, string>, candidates: string[]): number {
 }
 
 export async function GET(request: NextRequest) {
+  const { error: authError } = await requireAdmin(request, 'staff')
+  if (authError) return authError
   const packageName = process.env.GOOGLE_PLAY_PACKAGE_NAME
   const bucket = process.env.GOOGLE_PLAY_REPORT_BUCKET
   if (!packageName) return NextResponse.json({ error: 'GOOGLE_PLAY_PACKAGE_NAME not set' }, { status: 503 })

@@ -1,6 +1,7 @@
 export const metadata = {
-  title: 'Login | myQode',
-  description: 'Log in to your myQode portfolio dashboard.',
+  title: 'Sign in',
+  description: 'Sign in to myQode to see your Qode PMS portfolio, statements and requests.',
+  alternates: { canonical: '/login' },
 }
 
 export default function LoginLayout({

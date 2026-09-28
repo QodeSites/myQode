@@ -5,9 +5,12 @@
 // historical backfill. Both charts will be sparse/empty until real usage
 // accumulates; that's expected, not a bug.
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/adminAuth'
 import { query } from '@/lib/db'
 
 export async function GET(request: NextRequest) {
+  const { error: authError } = await requireAdmin(request, 'staff')
+  if (authError) return authError
   const { searchParams } = new URL(request.url)
   const weeks = Math.min(Math.max(parseInt(searchParams.get('weeks') ?? '12'), 1), 52)
 

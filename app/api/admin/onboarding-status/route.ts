@@ -1,8 +1,11 @@
 // app/api/admin/onboarding-status/route.ts
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdmin } from '@/lib/adminAuth'
 import { query } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
+  const { error: authError } = await requireAdmin(request, 'staff')
+  if (authError) return authError
   try {
     // Get all clients from pipeline data with their onboarding status
     const result = await query(

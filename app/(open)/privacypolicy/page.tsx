@@ -1,3 +1,11 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Privacy policy",
+  description: "How Qode Advisors LLP collects, uses and protects your personal information.",
+  alternates: { canonical: "/privacypolicy" },
+};
+
 import React from 'react';
 
 const PrivacyPolicy: React.FC = () => {

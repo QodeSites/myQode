@@ -1,3 +1,11 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Contact us",
+  description: "Reach Qode Investor Relations by phone, email or at our Mumbai office.",
+  alternates: { canonical: "/contactus" },
+};
+
 
 
 export default async function Page() {

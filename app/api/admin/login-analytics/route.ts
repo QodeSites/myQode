@@ -9,9 +9,12 @@
 // per platform and recent activity within the requested window.
 
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/adminAuth'
 import { query } from '@/lib/db'
 
 export async function GET(request: NextRequest) {
+  const { error: authError } = await requireAdmin(request, 'staff')
+  if (authError) return authError
   const { searchParams } = new URL(request.url)
   const days = Math.min(Math.max(parseInt(searchParams.get('days') ?? '30'), 1), 365)
 

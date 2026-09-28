@@ -5,10 +5,13 @@
 //
 // All real data from pms_clients_master (created_at, password_set_at,
 // first_web_login_at, first_app_login_at). No modeling.
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/adminAuth'
 import { query } from '@/lib/db'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { error: authError } = await requireAdmin(request, 'staff')
+  if (authError) return authError
   try {
     const result = await query(
       `SELECT

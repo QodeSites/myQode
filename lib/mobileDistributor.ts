@@ -18,6 +18,11 @@ import {
 } from '@/lib/distributorIdentity'
 import { getJourneyForDistributor, getOnboardingStages } from '@/lib/zohoDistributorJourney'
 import { query } from '@/lib/db'
+import { isBackofficeAdmin } from '@/lib/adminAuth'
+
+// POSTs that only read: view-account issues a read-only token for one of their investors, fees runs the
+// calculator for a period, file-link signs a download link. They stay available when admin is viewing.
+const READ_ONLY_POSTS = ['/view-account', '/fees', '/file-link']
 
 export async function requireMobileDistributor(request: NextRequest): Promise<{
   user: MobileAuthUser | null
@@ -26,8 +31,14 @@ export async function requireMobileDistributor(request: NextRequest): Promise<{
 }> {
   const { user, error } = await verifyMobileAuth(request)
   if (error) return { user: null, distributor: null, error }
-  if (user!.isReviewer || user!.isImpersonated) {
+  // A backoffice admin viewing a distributor (bo/impersonate, audited) may read their book; changes such as tickets
+  // or invoices are not made in the distributor's name.
+  const adminView = !!user!.isImpersonated && !!user!.isDistributor && isBackofficeAdmin(user!.impersonatedBy)
+  if (user!.isReviewer || (user!.isImpersonated && !adminView)) {
     return { user, distributor: null, error: NextResponse.json({ error: 'Not a distributor' }, { status: 403 }) }
+  }
+  if (adminView && request.method !== 'GET' && request.method !== 'HEAD' && !READ_ONLY_POSTS.some(p => request.nextUrl.pathname.endsWith(p))) {
+    return { user, distributor: null, error: NextResponse.json({ error: 'You are viewing this distributor from admin. Changes are not available.', code: 'VIEW_ONLY' }, { status: 403 }) }
   }
   const distributor = await resolveDistributorByEmail(user!.email)
   if (!distributor) {

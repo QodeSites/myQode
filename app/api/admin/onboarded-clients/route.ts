@@ -1,9 +1,12 @@
 // One row per distinct onboarded client (password set, i.e. not the default
 // 'Qode@123') — used by the App Analytics tab's contact list.
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/adminAuth'
 import { query } from '@/lib/db'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const { error: authError } = await requireAdmin(request, 'staff')
+  if (authError) return authError
   try {
     const result = await query(
       `SELECT DISTINCT ON (email)

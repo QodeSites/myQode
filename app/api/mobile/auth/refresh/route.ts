@@ -18,7 +18,7 @@ export async function POST(request: NextRequest) {
   try {
     if (user!.isDistributor) {
       const d = await resolveDistributorByEmail(user!.email)
-      if (!d) return NextResponse.json({ error: 'This partner login is no longer active.', code: 'NOT_DISTRIBUTOR' }, { status: 401 })
+      if (!d) return NextResponse.json({ error: 'This distributor login is no longer active.', code: 'NOT_DISTRIBUTOR' }, { status: 401 })
     } else {
       const { rows } = await query(`SELECT 1 FROM pms_clients_master WHERE clientid = $1 LIMIT 1`, [user!.clientId])
       if (!rows.length) return NextResponse.json({ error: 'Account not found' }, { status: 401 })

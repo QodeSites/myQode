@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
+import { registerDevice, unregisterDevice } from '@/lib/appNotify'
 
 export async function POST(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)
@@ -42,6 +43,20 @@ export async function POST(request: NextRequest) {
       { error: 'platform must be "ios" or "android"' },
       { status: 400 }
     )
+  }
+
+  // The myQode app sends app: 'myqode'. Its devices live in app_push_devices (lib/appNotify.ts), keyed by login
+  // email: client_push_tokens holds the older Qode app's tokens, and Expo rejects a send that mixes two projects.
+  // Admin viewing a client and the store reviewer never register (the popups would reach the wrong phone).
+  if (body.app === 'myqode') {
+    if (user!.isReviewer || user!.isImpersonated) return NextResponse.json({ success: true, skipped: true })
+    try {
+      await registerDevice(user!.email, pushToken, platform ?? null, typeof body.appVersion === 'string' ? body.appVersion.slice(0, 20) : null)
+      return NextResponse.json({ success: true })
+    } catch (err) {
+      console.error('[mobile/services/register-push-token myqode]', err)
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    }
   }
 
   try {
@@ -87,6 +102,11 @@ export async function DELETE(request: NextRequest) {
 
   if (!pushToken) {
     return NextResponse.json({ error: 'pushToken is required' }, { status: 400 })
+  }
+
+  if (body.app === 'myqode') {
+    try { await unregisterDevice(String(pushToken)); return NextResponse.json({ success: true }) }
+    catch (err) { console.error('[mobile/services/register-push-token DELETE myqode]', err); return NextResponse.json({ error: 'Internal server error' }, { status: 500 }) }
   }
 
   try {

@@ -1,3 +1,11 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Terms and conditions",
+  description: "Terms that apply to your use of the myQode client portal and app.",
+  alternates: { canonical: "/termsandcondition" },
+};
+
 import React from 'react';
 
 const TermsnConditions: React.FC = () => {

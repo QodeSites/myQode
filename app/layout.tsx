@@ -22,19 +22,40 @@ const playfair = Playfair_Display({
   display: "swap",
 })
 
-const APP_NAME = "Qode Dashboard";
-const APP_DEFAULT_TITLE = "Qode Dashboard";
-const APP_TITLE_TEMPLATE = "%s - Qode";
-const APP_DESCRIPTION = "Client dashboard for Qode";
+const APP_NAME = "myQode";
+const APP_DEFAULT_TITLE = "myQode by Qode Advisors";
+const APP_TITLE_TEMPLATE = "%s | myQode";
+const APP_DESCRIPTION = "Sign in to see your Qode PMS accounts: portfolio value, returns against the benchmark, holdings, statements and service requests.";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://myqode.qodeinvest.com";
+
+// Organisation details for search engines (schema.org). Same contact details the app shows.
+const ORG_SCHEMA = {
+  "@context": "https://schema.org",
+  "@type": "FinancialService",
+  name: "Qode Advisors LLP",
+  description: "SEBI registered portfolio manager.",
+  url: SITE_URL,
+  logo: `${SITE_URL}/icons/512.png`,
+  email: "investor.relations@qodeinvest.com",
+  telephone: "+91 98203 00028",
+  address: {
+    "@type": "PostalAddress",
+    streetAddress: "2nd Floor, Tree Building, Raghuvanshi Mills Compound, Gandhi Nagar, Upper Worli, Lower Parel",
+    addressLocality: "Mumbai",
+    addressRegion: "Maharashtra",
+    postalCode: "400013",
+    addressCountry: "IN",
+  },
+}
 
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   applicationName: APP_NAME,
   title: {
     default: APP_DEFAULT_TITLE,
     template: APP_TITLE_TEMPLATE,
   },
   description: APP_DESCRIPTION,
-  generator: "v0.app",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
@@ -58,6 +79,7 @@ export const metadata: Metadata = {
       template: APP_TITLE_TEMPLATE,
     },
     description: APP_DESCRIPTION,
+    images: [{ url: "/icons/512.png", width: 512, height: 512, alt: "Qode" }],
   },
   twitter: {
     card: "summary",
@@ -66,6 +88,7 @@ export const metadata: Metadata = {
       template: APP_TITLE_TEMPLATE,
     },
     description: APP_DESCRIPTION,
+    images: ["/icons/512.png"],
   },
   icons: {
     icon: "/favicon.ico",
@@ -91,6 +114,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en" className={`${lato.variable} ${playfair.variable} antialiased`}>
       <head>
         <link rel="manifest" href="/manifest.json" />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(ORG_SCHEMA) }} />
         
         {/* iOS-specific meta tags */}
         <meta name="apple-mobile-web-app-capable" content="yes" />

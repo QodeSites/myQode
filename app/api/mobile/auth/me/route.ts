@@ -11,9 +11,13 @@ export async function GET(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)
   if (error) return error
 
+  // Impersonation flags straight from the token (any kind of token), so the app can show a banner.
+  const imp = { isImpersonated: !!user!.isImpersonated, impersonatedBy: user!.impersonatedBy ?? null }
+
   // Reviewer and admin virtual accounts — return JWT payload directly (not in DB)
   if (user!.isReviewer) {
     return NextResponse.json({
+      ...imp,
       clientId:      user!.clientId,
       clientCode:    user!.clientCode,
       name:          'Demo User',
@@ -27,13 +31,15 @@ export async function GET(request: NextRequest) {
 
   if (user!.isSuperAdmin && user!.clientId === 'admin') {
     return NextResponse.json({
+      ...imp,
       clientId:      'admin',
       clientCode:    'ADMIN',
-      name:          'Admin',
+      name:          (user as any).name || 'Admin',
       email:         user!.email,
       accountCodes:  [],
       isHeadOfFamily: false,
       isSuperAdmin:  true,
+      isAdmin:       !!(user as any).isAdmin,   // backoffice admin: the app opens its admin mode
     })
   }
 
@@ -41,8 +47,9 @@ export async function GET(request: NextRequest) {
   // removed is told so, and the app signs them out on isDistributor=false.
   if (user!.isDistributor) {
     const distributor = await resolveDistributorByEmail(user!.email).catch(() => null)
-    if (!distributor) return NextResponse.json({ error: 'This partner login is no longer active.', code: 'NOT_DISTRIBUTOR' }, { status: 401 })
+    if (!distributor) return NextResponse.json({ error: 'This distributor login is no longer active.', code: 'NOT_DISTRIBUTOR' }, { status: 401 })
     return NextResponse.json({
+      ...imp,
       clientId: '', clientCode: '', name: distributor.clientname, email: user!.email,
       accountCodes: [], isHeadOfFamily: false, isSuperAdmin: false,
       isDistributor: true, role: 'distributor',
@@ -63,6 +70,7 @@ export async function GET(request: NextRequest) {
     if (!result.rows.length) {
       // Client not found — return JWT payload as fallback so the app isn't broken
       return NextResponse.json({
+      ...imp,
         clientId:      user!.clientId,
         clientCode:    user!.clientCode,
         name:          '',
@@ -84,6 +92,7 @@ export async function GET(request: NextRequest) {
     // query as login, which is expensive and out of scope for a /me refresh).
     // If accountCodes need to change (e.g. new account added), the user must re-login.
     return NextResponse.json({
+      ...imp,
       clientId:      row.clientid,
       clientCode:    row.clientcode,
       name:          clientName,
@@ -96,6 +105,7 @@ export async function GET(request: NextRequest) {
     console.error('[mobile/auth/me]', err)
     // Fall back to JWT payload so the app keeps working on DB errors
     return NextResponse.json({
+      ...imp,
       clientId:      user!.clientId,
       clientCode:    user!.clientCode,
       name:          '',

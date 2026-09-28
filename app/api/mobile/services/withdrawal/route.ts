@@ -8,6 +8,8 @@ import { irRecipient, irSubject } from '@/lib/mobileIrMail'
 export async function POST(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)
   if (error) return error
+  // App Store / Play Store reviewer (mock accounts): the form works, but nothing reaches Investor Relations.
+  if (user!.isReviewer) return NextResponse.json({ success: true, inquiry_id: 'REVIEW-' + Date.now().toString().slice(-6) })
 
   try {
     const body = await request.json()

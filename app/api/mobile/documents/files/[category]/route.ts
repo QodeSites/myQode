@@ -41,6 +41,7 @@ export async function GET(
   if (!user!.accountCodes?.includes(accountId)) {
     return NextResponse.json({ error: 'Forbidden', available: user!.accountCodes }, { status: 403 })
   }
+  if (user!.isReviewer) return NextResponse.json({ category, accountId, files: [] })
 
   // clientcode (e.g. QAW0009) ≠ clientid; S3 folders are keyed by clientid
   const clientRes = await query(

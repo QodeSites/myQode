@@ -1,9 +1,7 @@
 // app/admin/onboarding/page.tsx
 "use client";
 
-import { AdminAuthProvider } from '@/components/admin-auth-provider';
-import { AdminLayout } from '@/components/admin-layout';
-import { useAdminAuthContext } from '@/components/admin-auth-provider';
+import { useBackofficeAdmin } from '@/components/admin-kit';
 import { useState, useEffect, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -179,7 +177,7 @@ const DISTRIBUTOR_ONLY_ADMINS = [
 ];
 
 function AdminDashboardContent() {
-  const { user } = useAdminAuthContext();
+  const { admin: user } = useBackofficeAdmin();
   const isDistributorOnlyAdmin = DISTRIBUTOR_ONLY_ADMINS.includes((user?.email || '').toLowerCase());
 
   const [clients, setClients] = useState<GroupedClientData[]>([]);
@@ -2627,10 +2625,6 @@ function AdminDashboardContent() {
 
 export default function AdminOnboardingPage() {
   return (
-    <AdminAuthProvider>
-      <AdminLayout title="Admin Dashboard">
-        <AdminDashboardContent />
-      </AdminLayout>
-    </AdminAuthProvider>
+    <AdminDashboardContent />
   );
 }

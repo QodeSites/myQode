@@ -1,3 +1,11 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Cancellation and refund policy",
+  description: "How cancellations and refunds work for payments made through myQode.",
+  alternates: { canonical: "/cancellation" },
+};
+
 
 
 export default async function Page() {

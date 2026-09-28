@@ -14,6 +14,7 @@ export async function POST() {
       expires: new Date(0) // Set to past date to expire immediately
     })
     
+    cookieStore.set('qode-session', '', { httpOnly: true, sameSite: 'lax', path: '/', expires: new Date(0) })
     cookieStore.set('qode-clients', '', {
       httpOnly: true,
       sameSite: 'lax',

@@ -318,10 +318,10 @@ export default function DistributorInvestorsPage() {
     setBusy(clientCode);
     setMessage(null);
     try {
-      const res = await fetch("/api/admin/dashboard", {
+      const res = await fetch("/api/distributor/view-investor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "impersonate", clientCode }),
+        body: JSON.stringify({ clientCode }),
       });
       const body = await res.json();
       if (!body?.success || !body?.redirectUrl) {

@@ -1,10 +1,13 @@
 // app/api/admin/send-bulk-setup-emails/route.ts
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdmin, audit } from '@/lib/adminAuth'
 import { query } from '@/lib/db';
 import crypto from 'crypto';
 import { graphMailer as resend } from '@/lib/graphEmail';
 
 export async function POST(request: NextRequest) {
+  const { admin, error: authError } = await requireAdmin(request, 'super')
+  if (authError) return authError
   try {
     const { clientCodes } = await request.json();
 
@@ -63,6 +66,8 @@ export async function POST(request: NextRequest) {
         errors.push(`${client.clientcode}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
+
+    await audit(request, admin!, 'user.bulk_setup_emails', null, { clientCodes, sentCount });
 
     return NextResponse.json({
       success: true,

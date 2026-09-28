@@ -2,6 +2,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import pool from '@/lib/db1';
+import { requireAdmin, audit } from '@/lib/adminAuth';
+import { investorPortalImpersonation } from '@/lib/impersonation';
 
 interface AdminDashboardData {
     clients: GroupedClientData[];
@@ -83,6 +85,8 @@ interface DashboardStatistics {
 }
 
 export async function GET(request: NextRequest) {
+  const { error: authError } = await requireAdmin(request, 'staff')
+  if (authError) return authError
     const client = await pool.connect();
 
     try {
@@ -335,8 +339,10 @@ export async function GET(request: NextRequest) {
     }
 }
 
-// Admin impersonation endpoint
+// Admin impersonation endpoint (super admins). Returns a signed one-time link, see lib/impersonation.ts.
 export async function POST(request: NextRequest) {
+    const { admin, error } = await requireAdmin(request, 'super');
+    if (error) return error;
     try {
         const { action, clientCode } = await request.json();
 
@@ -347,67 +353,18 @@ export async function POST(request: NextRequest) {
                     { status: 400 }
                 );
             }
-
-            const clientResult = await query(
-                `SELECT clientid, clientcode, email, groupid, head_of_family, ownerid,
-                salutation, firstname, middlename, lastname
-         FROM pms_clients_master 
-         WHERE clientcode = $1`,
-                [clientCode]
-            );
-
-            if (clientResult.rows.length === 0) {
-                return NextResponse.json(
-                    { error: 'Client not found' },
-                    { status: 404 }
-                );
+            const imp = await investorPortalImpersonation(clientCode, admin!.email);
+            if (!imp) {
+                return NextResponse.json({ error: 'Client not found' }, { status: 404 });
             }
-
-            const targetClient = clientResult.rows[0];
-            const { groupid, email, head_of_family, ownerid } = targetClient;
-
-            let associatedResult;
-
-            if (head_of_family) {
-                associatedResult = await query(
-                    'SELECT clientid, clientcode FROM pms_clients_master WHERE groupid = $1',
-                    [groupid]
-                );
-            } else {
-                associatedResult = await query(
-                    'SELECT clientid, clientcode FROM pms_clients_master WHERE ownerid = $1',
-                    [ownerid]
-                );
-            }
-
-            const clientData = associatedResult.rows.map((row: any) => ({
-                clientid: row.clientid,
-                clientcode: row.clientcode
-            }));
-
-            const impersonationToken = Buffer.from(JSON.stringify({
-                adminImpersonation: true,
-                clientCode,
-                timestamp: Date.now(),
-                clientData,
-                userContext: {
-                    clientid: targetClient.clientid,
-                    clientcode: targetClient.clientcode,
-                    email: targetClient.email,
-                    groupid: targetClient.groupid,
-                    head_of_family: targetClient.head_of_family,
-                    ownerid: targetClient.ownerid
-                },
-                targetClientName: `${targetClient.salutation || ''} ${targetClient.firstname} ${targetClient.middlename || ''} ${targetClient.lastname}`.trim()
-            })).toString('base64');
-
+            await audit(request, admin!, 'user.impersonate', imp.targetEmail || clientCode, { target: 'portal', clientCode, from: 'portfolio-performance' });
             return NextResponse.json({
                 success: true,
-                impersonationToken,
-                redirectUrl: `/api/admin/impersonate?token=${impersonationToken}`,
-                clientData,
-                isHeadOfFamily: head_of_family,
-                targetClientName: `${targetClient.salutation || ''} ${targetClient.firstname} ${targetClient.middlename || ''} ${targetClient.lastname}`.trim()
+                impersonationToken: imp.token,
+                redirectUrl: imp.redirectUrl,
+                clientData: imp.clientData,
+                isHeadOfFamily: imp.isHeadOfFamily,
+                targetClientName: imp.targetClientName
             });
         }
 

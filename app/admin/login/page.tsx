@@ -1,181 +1,187 @@
-// app/admin/login/page.tsx
-"use client";
+"use client"
 
-import { useEffect, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, Shield, AlertTriangle, Info } from 'lucide-react';
+import { Suspense, useEffect, useState } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
+import { Eye, EyeOff, Loader2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
-const errorMessages = {
-  oauth_error: 'OAuth authentication failed.',
-  missing_code: 'Authentication response was incomplete.',
-  invalid_state: 'Security validation failed. Please try again.',
-  token_exchange_failed: 'Failed to exchange authorization code for access token.',
-  profile_fetch_failed: 'Failed to fetch user profile from Microsoft.',
-  unauthorized: 'Your Microsoft account is not authorized for admin access.',
-  callback_error: 'An unexpected error occurred during authentication.',
-  session_expired: 'Your session has expired. Please log in again.',
-};
+const MS_ERRORS: Record<string, string> = {
+  oauth_error: "Microsoft sign-in failed.",
+  missing_code: "The Microsoft sign-in response was incomplete.",
+  invalid_state: "Security validation failed. Please try again.",
+  token_exchange_failed: "Could not complete Microsoft sign-in.",
+  profile_fetch_failed: "Could not read your Microsoft profile.",
+  unauthorized: "This Microsoft account is not authorised for the backoffice.",
+  callback_error: "Something went wrong during Microsoft sign-in.",
+  session_expired: "Your session has expired. Please sign in again.",
+}
 
-export default function AdminLoginPage() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const [loading, setLoading] = useState(false);
-  const [checking, setChecking] = useState(true);
-  
-  const error = searchParams.get('error') as keyof typeof errorMessages;
-  const errorDetails = searchParams.get('details');
-  const userEmail = searchParams.get('email');
-  const redirectTo = searchParams.get('redirect') || '/admin/onboarding';
+/** Only allow same-site relative paths inside /admin as a post-login destination. */
+function safeNext(raw: string | null): string {
+  if (!raw) return "/admin"
+  if (!raw.startsWith("/admin") || raw.startsWith("//") || raw.startsWith("/admin/login")) return "/admin"
+  return raw
+}
 
+function LoginForm() {
+  const router = useRouter()
+  const params = useSearchParams()
+  const next = safeNext(params.get("next") || params.get("redirect"))
+  const msError = params.get("error")
+
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [show, setShow] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(msError ? MS_ERRORS[msError] || "Sign-in failed." : null)
+
+  // Already signed in? Skip the form.
   useEffect(() => {
-    // Check if already authenticated
-    checkAuthStatus();
-  }, []);
+    let cancelled = false
+    fetch("/api/admin/auth/me", { credentials: "same-origin", cache: "no-store" })
+      .then((r) => {
+        if (!cancelled && r.ok) router.replace(next)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [next, router])
 
-  const checkAuthStatus = async () => {
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!email.trim() || !password) {
+      setError("Enter your email and password.")
+      return
+    }
+    setBusy(true)
+    setError(null)
     try {
-      const response = await fetch('/api/auth/admin/session');
-      if (response.ok) {
-        const data = await response.json();
-        if (data.authenticated) {
-          router.replace(redirectTo);
-          return;
-        }
+      const res = await fetch("/api/admin/auth/login", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), password }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(data?.error || "Sign-in failed. Please try again.")
+        setBusy(false)
+        return
       }
-    } catch (error) {
-      console.error('Auth check failed:', error);
-    } finally {
-      setChecking(false);
+      router.replace(next)
+    } catch {
+      setError("Could not reach the server. Check your connection and try again.")
+      setBusy(false)
     }
-  };
-
-  const handleMicrosoftLogin = async () => {
-    setLoading(true);
-    try {
-      const loginUrl = `/api/auth/microsoft?redirect=${encodeURIComponent(redirectTo)}`;
-      window.location.href = loginUrl;
-    } catch (error) {
-      console.error('Login failed:', error);
-      setLoading(false);
-    }
-  };
-
-  if (checking) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center space-y-4">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Checking authentication...</p>
-        </div>
-      </div>
-    );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="mx-auto w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center mb-4">
-            <Shield className="w-6 h-6 text-primary" />
-          </div>
-          <CardTitle className="text-2xl font-bold">Admin Access</CardTitle>
-          <p className="text-muted-foreground">
-            Sign in with your Microsoft account to access the admin dashboard
+    <div className="grid min-h-screen lg:grid-cols-[1fr_1.1fr]">
+      <div className="relative hidden flex-col justify-between bg-[#002017] p-12 text-[#EFECD3] lg:flex">
+        <div>
+          <p className="font-serif text-3xl font-bold">myQode</p>
+          <p className="mt-1 text-xs font-medium uppercase tracking-[0.2em] text-[#DABD38]">Backoffice</p>
+        </div>
+        <div className="max-w-md">
+          <p className="font-serif text-4xl leading-tight">Investor and distributor access, in one place.</p>
+          <p className="mt-4 text-sm text-[#EFECD3]/70">
+            Manage sign-ins, help users get set up, and see how the portal and app are being used.
           </p>
-        </CardHeader>
-        
-        <CardContent className="space-y-4">
-          {error && (
-            <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>
-                <div className="space-y-2">
-                  <p><strong>Error:</strong> {errorMessages[error] || 'An unexpected error occurred.'}</p>
-                  {errorDetails && (
-                    <details className="text-xs">
-                      <summary className="cursor-pointer font-medium">Technical Details</summary>
-                      <pre className="mt-2 p-2 bg-destructive/10 rounded text-xs overflow-auto">
-                        {decodeURIComponent(errorDetails)}
-                      </pre>
-                    </details>
-                  )}
-                  {userEmail && (
-                    <p className="text-xs">
-                      <strong>Account:</strong> {userEmail}
-                    </p>
-                  )}
-                </div>
-              </AlertDescription>
-            </Alert>
-          )}
+        </div>
+        <p className="text-xs text-[#EFECD3]/50">Qode Advisors LLP</p>
+      </div>
 
-          {/* Environment Check Info */}
-          <Alert>
-            <Info className="h-4 w-4" />
-            <AlertDescription>
-              <div className="text-xs space-y-1">
-                <p><strong>Debug Info:</strong></p>
-                <p>• Environment: {process.env.NODE_ENV}</p>
-                <p>• Base URL: {typeof window !== 'undefined' ? window.location.origin : 'Loading...'}</p>
-                <p>• Redirect: {redirectTo}</p>
-              </div>
-            </AlertDescription>
-          </Alert>
-
-          <Button 
-            onClick={handleMicrosoftLogin}
-            disabled={loading}
-            className="w-full bg-emerald-900  h-12"
-            size="lg"
-          >
-            {loading ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Signing in...
-              </>
-            ) : (
-              <>
-                <svg className="mr-2 h-5 w-5" viewBox="0 0 24 24">
-                  <path fill="#f35325" d="M1 1h10v10H1z"/>
-                  <path fill="#81bc06" d="M13 1h10v10H13z"/>
-                  <path fill="#05a6f0" d="M1 13h10v10H1z"/>
-                  <path fill="#ffba08" d="M13 13h10v10H13z"/>
-                </svg>
-                Sign in with Microsoft
-              </>
-            )}
-          </Button>
-
-          <div className="text-center text-sm text-muted-foreground space-y-2">
-            <p>Only authorized administrators can access this area.</p>
-            <p>Contact your IT administrator if you need access.</p>
-            
-            {/* Development help */}
-            {process.env.NODE_ENV === 'development' && (
-              <details className="text-xs mt-4">
-                <summary className="cursor-pointer font-medium">Development Setup Help</summary>
-                <div className="mt-2 p-3 bg-muted rounded text-left space-y-2">
-                  <p><strong>Required Environment Variables:</strong></p>
-                  <ul className="list-disc list-inside space-y-1 text-xs">
-                    <li>MICROSOFT_CLIENT_ID</li>
-                    <li>MICROSOFT_CLIENT_SECRET</li>
-                    <li>MICROSOFT_TENANT_ID</li>
-                    <li>NEXTAUTH_URL</li>
-                    <li>NEXTAUTH_SECRET</li>
-                    <li>ADMIN_AUTHORIZED_EMAILS (optional)</li>
-                  </ul>
-                  <p className="text-xs mt-2">
-                    Check console logs for detailed error information.
-                  </p>
-                </div>
-              </details>
-            )}
+      <div className="flex items-center justify-center bg-[#EFECD3]/40 p-6">
+        <div className="w-full max-w-sm">
+          <div className="mb-8 lg:hidden">
+            <p className="font-serif text-3xl font-bold text-[#02422B]">myQode</p>
+            <p className="text-xs font-medium uppercase tracking-[0.2em] text-[#8a7414]">Backoffice</p>
           </div>
-        </CardContent>
-      </Card>
+          <h1 className="font-serif text-3xl font-bold text-[#02422B]">Sign in</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Use your backoffice email and password.</p>
+
+          <form onSubmit={submit} className="mt-8 space-y-4" noValidate>
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                autoComplete="username"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="h-11 bg-white"
+                autoFocus
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <div className="relative">
+                <Input
+                  id="password"
+                  type={show ? "text" : "password"}
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="h-11 bg-white pr-10"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShow((s) => !s)}
+                  className="absolute inset-y-0 right-0 flex w-10 items-center justify-center text-muted-foreground hover:text-foreground"
+                  aria-label={show ? "Hide password" : "Show password"}
+                >
+                  {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
+            </div>
+
+            {error ? (
+              <p role="alert" className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {error}
+              </p>
+            ) : null}
+
+            <Button
+              type="submit"
+              disabled={busy}
+              className="h-11 w-full bg-[#02422B] text-white hover:bg-[#02422B]/90"
+            >
+              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {busy ? "Signing in" : "Sign in"}
+            </Button>
+          </form>
+
+          <div className="my-6 flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            Qode staff
+            <span className="h-px flex-1 bg-border" />
+          </div>
+
+          <a
+            href={`/api/auth/microsoft?redirect=${encodeURIComponent(next)}`}
+            className="flex h-11 w-full items-center justify-center gap-2 rounded-md border border-[#02422B]/20 bg-white text-sm font-medium text-[#002017] transition-colors hover:bg-[#F9F7EC]"
+          >
+            <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+              <path fill="#f35325" d="M1 1h10v10H1z" />
+              <path fill="#81bc06" d="M13 1h10v10H13z" />
+              <path fill="#05a6f0" d="M1 13h10v10H1z" />
+              <path fill="#ffba08" d="M13 13h10v10H13z" />
+            </svg>
+            Sign in with Microsoft
+          </a>
+        </div>
+      </div>
     </div>
-  );
+  )
+}
+
+export default function AdminLoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
+  )
 }

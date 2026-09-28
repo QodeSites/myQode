@@ -43,7 +43,10 @@ export async function middleware(request: NextRequest) {
       return NextResponse.next();
     }
 
-    const sessionId = request.cookies.get('admin-session')?.value;
+    // Either the Microsoft staff session or the backoffice `qode-admin` cookie lets the page load.
+    // Presence check only; the real checks happen server-side (lib/adminAuth, /api/admin/auth/me).
+    const sessionId =
+      request.cookies.get('admin-session')?.value || request.cookies.get('qode-admin')?.value;
     console.log('🔒 Middleware check:', {
       path: request.nextUrl.pathname,
       hasCookie: !!sessionId,

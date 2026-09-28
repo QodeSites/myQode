@@ -3,6 +3,14 @@ import { withSentryConfig } from '@sentry/nextjs';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // The myQode app's web build (myqode-native → npm run build:web → public/app). It is a single-page app:
+  // files under /app/_expo are served as they are; every other /app path gets its index.html.
+  async rewrites() {
+    return [
+      { source: '/app', destination: '/app/index.html' },
+      { source: '/app/:path((?!_expo|assets).*)', destination: '/app/index.html' },
+    ]
+  },
   async headers() {
     return [
       {
@@ -57,6 +65,7 @@ const nextConfig = {
 };
 
 const pwaConfig = withPWA({
+  sourcemap: false, // no service-worker source maps in production
   dest: 'public',
   register: true,
   skipWaiting: true,

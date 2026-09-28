@@ -61,3 +61,9 @@ NAV_ISSUE_VISUALIZATION.md
 # One Battalion (local only)
 onBattalion/
 oneBattalion.zip
+
+# Nuvama report exports (all clients) — never commit
+/reports/
+
+# Razorpay key export (secret, never commit)
+rzp-key.csv

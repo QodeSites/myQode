@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAdmin } from '@/lib/adminAuth'
 import pool from '@/lib/db1'
 
 export async function GET(request: NextRequest) {
+  const { error: authError } = await requireAdmin(request, 'staff')
+  if (authError) return authError
   const { searchParams } = new URL(request.url)
   const days = Math.min(Math.max(parseInt(searchParams.get('days') ?? '30'), 1), 365)
   const platform = searchParams.get('platform') // 'ios' | 'android' | null

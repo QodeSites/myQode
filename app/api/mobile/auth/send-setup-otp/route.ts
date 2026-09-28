@@ -3,6 +3,7 @@
 // Mirrors the web /api/auth/send-setup-otp route under the mobile API namespace,
 // with case-insensitive email matching (the mobile client sends a normalized email).
 import { NextRequest, NextResponse } from 'next/server';
+import { randomInt } from 'crypto';
 import { query } from '@/lib/db';
 import { graphMailer, isGraphEmailConfigured } from '@/lib/graphEmail';
 import { mailPlan } from '@/lib/authMailRedirect';
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
     if (plan.refuse) return NextResponse.json({ error: plan.refuse, code: 'TEST_REDIRECT_MISSING' }, { status: 409 });
 
     // Generate 6-digit OTP, valid for 10 minutes
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otp = randomInt(100000, 1000000).toString();
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
     await query(

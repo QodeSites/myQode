@@ -39,6 +39,12 @@ const jump = (ret: string | null, status: string, android: boolean, fallbackUrl:
   return NextResponse.redirect(go, 302)
 }
 
+// ret is not covered by the checkout token: accept only the app's own deep-link schemes (myqode:// in a build,
+// exp(s):// in Expo Go), never http(s) or javascript:, and nothing that could close the inline <script>.
+const safeRet = (r: string | null) => (r && /^(myqode|exps?):\/\/[^\s"'<>\\]*$/i.test(r) ? r : null)
+// JSON for an inline <script>: escape '<' so a value can never contain '</script>'.
+const js = (v: unknown) => JSON.stringify(v).replace(/</g, '\\u003c')
+
 const page = (title: string, body: string, ret: string | null, status: string, android = false) => {
   // ret = 'none' → no deep link (Expo Go): the user closes the browser and the app re-checks the order.
   const target = ret && ret !== 'none' ? ret + (ret.includes('?') ? '&' : '?') + 'status=' + encodeURIComponent(status) : ''
@@ -50,10 +56,10 @@ const page = (title: string, body: string, ret: string | null, status: string, a
 <body><div class="c"><div style="font-size:22px;font-weight:600">${esc(title)}</div><div class="m">${esc(body)}</div>
 ${go ? `<a class="b" id="go" href="${esc(target)}">RETURN TO THE APP</a><div class="m" id="h" style="display:none">If nothing happens, tap the button above${android ? '' : ', or close this window'}.</div>` : `<div class="m" style="margin-top:18px;font-weight:700">Close this window to return to the app.</div>`}
 <div class="m" style="margin-top:26px;font-size:12px;color:#7a8c86">This result is already recorded — you can close this window at any time.</div></div>
-<script>try{if(window.ReactNativeWebView){window.ReactNativeWebView.postMessage(JSON.stringify({ok:${status === 'success'},recheck:true,status:${JSON.stringify(status)}}))}}catch(e){}
+<script>try{if(window.ReactNativeWebView){window.ReactNativeWebView.postMessage(JSON.stringify({ok:${status === 'success'},recheck:true,status:${js(status)}}))}}catch(e){}
 function ping(k){try{var i=new Image();i.src=location.pathname+location.search.replace(/&?ping=[^&]*/,'')+'&ping='+k+'&_='+Date.now()}catch(e){}}
 ping('shown');
-${go ? `var go=${JSON.stringify(go)},alt=${JSON.stringify(target)};function j(){try{location.replace(go)}catch(e){location.href=go}}
+${go ? `var go=${js(go)},alt=${js(target)};function j(){try{location.replace(go)}catch(e){location.href=go}}
 setTimeout(j,100);setTimeout(j,900);setTimeout(function(){var h=document.getElementById('h');if(h)h.style.display='block'},1800);
 document.getElementById('go').addEventListener('click',function(){ping('tap');setTimeout(function(){try{location.href=go}catch(e){}},700)});` : ''}</script></body></html>`,
     { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } })
@@ -67,7 +73,7 @@ async function handle(request: NextRequest) {
   const id = isSip ? subId : orderId
   const exp = Number(q.get('exp') || 0)
   const t = q.get('t') || ''
-  const ret = q.get('ret') || null
+  const ret = safeRet(q.get('ret'))
   const android = /android/i.test(request.headers.get('user-agent') || '')
   if (!id || !verifyCheckoutToken(id, exp, t)) {
     return page('This link has expired', 'Please go back to the app and start again.', ret, 'expired', android)

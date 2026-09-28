@@ -7,7 +7,7 @@
 // travels in the URL.
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
-import { razorpayConfig, verifyCheckoutToken, checkoutContact } from '@/lib/razorpay'
+import { razorpayConfig, verifyCheckoutToken, checkoutContact, fetchRazorpayOrder } from '@/lib/razorpay'
 
 const page = (html: string, status = 200) =>
   new NextResponse(html, { status, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } })
@@ -31,7 +31,9 @@ export async function GET(request: NextRequest) {
   const id = isSip ? subId : orderId
   const exp = Number(q.get('exp') || 0)
   const t = q.get('t') || ''
-  const ret = q.get('ret') || ''   // app return URL → system-browser (redirect) mode
+  // app return URL → system-browser (redirect) mode; only the app's own deep-link schemes are accepted
+  const rawRet = q.get('ret') || ''
+  const ret = /^(myqode|exps?):\/\/[^\s"'<>\\]*$/i.test(rawRet) || rawRet === 'none' ? rawRet : ''
   if (!id || !verifyCheckoutToken(id, exp, t)) {
     return page('<p style="font-family:sans-serif;padding:24px">This payment link has expired. Please go back and try again.</p>', 403)
   }
@@ -48,8 +50,15 @@ export async function GET(request: NextRequest) {
           WHERE t.razorpay_order_id = $1 LIMIT 1`,
     [id]
   )
-  if (!rows.length) return page(`<p style="font-family:sans-serif;padding:24px">${isSip ? 'SIP' : 'Order'} not found.</p>`, 404)
-  const tx = rows[0]
+  let tx: any = rows[0]
+  // Reviewer orders are not recorded (see create-order); their details come from the order itself.
+  if (!tx && !isSip) {
+    try {
+      const o: any = await fetchRazorpayOrder(id)
+      if (o?.notes?.reviewer === 'true') tx = { amount: Number(o.amount) / 100, client_name: 'Reviewer', nuvama_code: o.notes.nuvama_code || 'DEMO', investment_status: 'PENDING_PAYMENT' }
+    } catch {}
+  }
+  if (!tx) return page(`<p style="font-family:sans-serif;padding:24px">${isSip ? 'SIP' : 'Order'} not found.</p>`, 404)
   const cfg = razorpayConfig()
   const callbackUrl = ret
     ? publicOrigin(request) + '/api/mobile/payments/razorpay/return?' + new URLSearchParams({

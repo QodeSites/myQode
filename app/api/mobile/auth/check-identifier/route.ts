@@ -3,6 +3,7 @@
 // exists before the password modal opens. Returns no sensitive data.
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
+import { isAppAdmin } from '@/lib/adminAuth'
 
 // Admin virtual account — always "exists" for the purpose of this check
 const ADMIN_EMAIL = 'admin@qodeinvest.com'
@@ -23,14 +24,14 @@ export async function POST(request: NextRequest) {
 
     // Virtual accounts — always exist (not in DB), never require setup
     const VIRTUAL_ACCOUNTS = ['admin@qodeinvest.com', 'reviewer@qodeinvest.com']
-    if (VIRTUAL_ACCOUNTS.includes(identifier.trim().toLowerCase())) {
+    if (VIRTUAL_ACCOUNTS.includes(identifier.trim().toLowerCase()) || isAppAdmin(identifier)) {
       return NextResponse.json({ exists: true, requiresSetup: false })
     }
 
     const id = identifier.trim()
     const result = await query(
       `SELECT email, password FROM pms_clients_master
-       WHERE email = $1 OR clientcode ILIKE $2
+       WHERE email = $1 OR UPPER(clientcode) = UPPER($2)
        LIMIT 1`,
       [id, id]
     )

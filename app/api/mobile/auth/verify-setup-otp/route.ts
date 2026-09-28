@@ -3,6 +3,7 @@
 // Mirrors the web /api/auth/verify-setup-otp route under the mobile API namespace.
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { recordWrongOtp, clearWrongOtp, TOO_MANY_OTP } from '@/lib/mobileOtpAttempts';
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,6 +34,7 @@ export async function POST(request: NextRequest) {
     );
 
     if (result.rows.length === 0) {
+      if (await recordWrongOtp(email)) return NextResponse.json(TOO_MANY_OTP, { status: 429 });
       return NextResponse.json({ error: 'Invalid or expired OTP' }, { status: 400 });
     }
 

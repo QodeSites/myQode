@@ -27,6 +27,7 @@ import {
   User,
   TrendingUp,
   BarChart3,
+  FileSpreadsheet,
 } from "lucide-react"
 import { useClient } from "@/contexts/ClientContext"
 import {
@@ -444,6 +445,11 @@ export default function QodeSidebar({ open = false, onClose }: QodeSidebarProps)
                   Snapshot
                 </NavLink>
               </li>
+              <li>
+                <NavLink href="/portfolio/reports" icon={<FileSpreadsheet className="h-4 w-4" />}>
+                  Reports
+                </NavLink>
+              </li>
             </ul>
           </AccordionContent>
         </AccordionItem>
@@ -624,6 +630,11 @@ export default function QodeSidebar({ open = false, onClose }: QodeSidebarProps)
               <li>
                 <NavLink href="/portfolio/snapshot" icon={<BookOpen className="h-4 w-4" />} onClick={onClose}>
                   Snapshot
+                </NavLink>
+              </li>
+              <li>
+                <NavLink href="/portfolio/reports" icon={<FileSpreadsheet className="h-4 w-4" />} onClick={onClose}>
+                  Reports
                 </NavLink>
               </li>
             </ul>
