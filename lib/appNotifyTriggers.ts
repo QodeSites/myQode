@@ -41,14 +41,16 @@ export async function scanMoney(): Promise<number> {
 
   // Payments made in the app or on the web.
   const pays = (await query(
-    `SELECT p.order_id, p.nuvama_code, p.amount, p.payment_type, p.investment_status, p.payment_status, p.frequency, m.schemename, p.payment_time, p.created_at
+    `SELECT p.order_id, p.nuvama_code, p.amount, p.payment_type, p.investment_status, p.payment_status, p.frequency, m.schemename, p.payment_time, p.created_at, p.settled_at, p.gateway, p.payment_method
        FROM payment_transactions p LEFT JOIN pms_clients_master m ON m.clientcode = p.nuvama_code
       WHERE p.updated_at >= $1 AND p.updated_at > NOW() - interval '3 days' AND p.nuvama_code IS NOT NULL`, [from])).rows
   for (const p of pays) {
-    const amt = inr(Number(p.amount) || 0), strat = strategy(p.schemename)
+    const zl = p.payment_method?.label
+    const zohoLabel = p.gateway === 'zoho' ? (zl && zl !== 'Allocation being confirmed' ? zl : 'your Qode portfolio') : null
+    const amt = inr(Number(p.amount) || 0), strat = zohoLabel || strategy(p.schemename)
     const st = String(p.investment_status || '').toUpperCase()
     if (['PAYMENT_SUCCESS', 'SETTLED', 'DEPLOYED'].includes(st)) {
-      const t = await investTimeline(p.payment_time || p.created_at).catch(() => null)
+      const t = await investTimeline(p.payment_time || p.created_at, p.settled_at).catch(() => null)
       n += await notifyAccounts([p.nuvama_code], { category: 'money', dedupeKey: `pay:${p.order_id}:received`, link: 'tab:home',
         title: 'Payment received', body: t
           ? `We have received your ${amt} for ${strat}. It will be invested on ${shortDate(t.deployOn)} and show in your portfolio on ${shortDate(t.visibleOn)}.`
@@ -63,6 +65,18 @@ export async function scanMoney(): Promise<number> {
       n += await notifyAccounts([p.nuvama_code], { category: 'money', dedupeKey: `pay:${p.order_id}:sip-active`, link: 'page:sip',
         title: 'Your SIP is active', body: `Your ${String(p.frequency || '').toLowerCase() || ''} SIP of ${amt} in ${strat} is set up.`.replace('  ', ' ') })
     }
+  }
+
+  // Money received outside the gateways (Zoho Capital Inflows; admin entries notify on save with the same key).
+  const recv = (await query(
+    `SELECT order_id, account_id, amount, received_at, label FROM received_payments
+      WHERE status = 'on_its_way' AND updated_at >= $1 AND updated_at > NOW() - interval '3 days'`, [from]).catch(() => ({ rows: [] as any[] }))).rows
+  for (const r of recv) {
+    const t = await investTimeline(r.received_at, r.received_at).catch(() => null)
+    if (!t) continue
+    const where = r.label && r.label !== 'Allocation being confirmed' ? r.label : 'your Qode portfolio'
+    n += await notifyAccounts([r.account_id], { category: 'money', dedupeKey: `pay:${r.order_id}:received`, link: 'tab:home', title: 'Payment received',
+      body: `We have received your ${inr(Number(r.amount))} for ${where}. It will be invested on ${shortDate(t.deployOn)} and show in your portfolio on ${shortDate(t.visibleOn)}.` })
   }
 
   // SIP instalments.

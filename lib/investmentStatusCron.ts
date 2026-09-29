@@ -23,7 +23,8 @@ import { fetchRazorpaySettlementRecon, shouldNotifyClient } from '@/lib/razorpay
 const SETTLEMENT_TOLERANCE = 0.05  // ±5% — covers gateway charges deducted pre-settlement
 
 // Razorpay rows are only ever notified when the keys/flag say so (see header).
-const notifyAllowed = (gateway: string | null | undefined) => gateway !== 'razorpay' || shouldNotifyClient()
+// 'manual' = a cheque / bank transfer recorded in /admin → Payments, 'zoho' = a Zoho Capital Inflow: the client hears about it in the app, never by email.
+const notifyAllowed = (gateway: string | null | undefined) => gateway !== 'manual' && gateway !== 'zoho' && (gateway !== 'razorpay' || shouldNotifyClient())
 
 function initCashfree() {
   const clientId     = process.env.CASHFREE_APP_ID || process.env.CASHFREE_CLIENT_ID

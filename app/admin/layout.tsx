@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Toaster } from "sonner"
 import {
   Activity,
+  Banknote,
   BarChart3,
   Bell,
   Briefcase,
@@ -53,6 +54,7 @@ const NAV: NavItem[] = [
   { label: "App analytics", href: "/admin/analytics", icon: Activity, isActive: (p) => p.startsWith("/admin/analytics") },
   { label: "Queries", href: "/admin/queries", icon: MessageSquare, isActive: (p) => p.startsWith("/admin/queries") },
   { label: "Feedback", href: "/admin/feedback", icon: MessageSquareHeart, isActive: (p) => p.startsWith("/admin/feedback") },
+  { label: "Payments", href: "/admin/payments", icon: Banknote, isActive: (p) => p.startsWith("/admin/payments") },
   { label: "Notifications", href: "/admin/notifications", icon: Bell, isActive: (p) => p.startsWith("/admin/notifications") },
   { label: "Audit log", href: "/admin/audit", icon: ScrollText, isActive: (p) => p.startsWith("/admin/audit") },
   { label: "Admins", href: "/admin/admins", icon: ShieldCheck, isActive: (p) => p.startsWith("/admin/admins") },

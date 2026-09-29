@@ -9,7 +9,7 @@ import { scanMoney, scanPortfolio, scanReading } from '@/lib/appNotifyTriggers'
 
 const ME = randomUUID()
 const TICK_MS = 15_000
-const EVERY = { receipts: 5 * 60_000, money: 5 * 60_000, reading: 30 * 60_000, portfolio: 30 * 60_000 }
+const EVERY = { receipts: 5 * 60_000, money: 5 * 60_000, reading: 30 * 60_000, portfolio: 30 * 60_000, zoho: 5 * 60_000 }
 const lastRun: Record<string, number> = {}
 
 async function leader(): Promise<boolean> {
@@ -34,7 +34,10 @@ export async function tick(force = false) {
   // Portfolio: only while the day's NAV has had time to land (sheet updates ~8:00 and ~11:00 IST), 9:30–20:00 IST.
   const istMin = (new Date().getUTCHours() * 60 + new Date().getUTCMinutes() + 330) % 1440
   const portfolioHours = istMin >= 570 && istMin < 1200
+  // Zoho first, so a Capital Inflow synced now is announced by the money scan in the same pass
+  const zoho = await job('zoho', async () => (await import('@/lib/zohoService')).syncAll(), force)
   return {
+    zoho,
     money: await job('money', scanMoney, force),
     reading: await job('reading', scanReading, force),
     portfolio: portfolioHours || force ? await job('portfolio', scanPortfolio, force) : null,
