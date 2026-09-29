@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcryptjs'
 import { query } from '@/lib/db'
+import { logAuthEvent } from '@/lib/authEvents'
 
 export type AdminLevel = 'staff' | 'super'
 export type Admin = { email: string; name: string; level: AdminLevel; via: 'password' | 'app' | 'microsoft' }
@@ -72,6 +73,7 @@ export async function checkAdminPassword(email: string, password: string): Promi
     // Five wrong passwords lock the account for 15 minutes.
     await query(`UPDATE admin_users SET failed_attempts = CASE WHEN $2 >= 5 THEN 0 ELSE $2 END,
                    locked_until = CASE WHEN $2 >= 5 THEN now() + interval '15 minutes' ELSE NULL END WHERE email = $1`, [e, n])
+    if (n >= 5) void logAuthEvent(null, { email: e, event: 'lockout', platform: 'admin', meta: { minutes: 15 } })
     return { error: 'Invalid credentials' }
   }
   await query(`UPDATE admin_users SET failed_attempts = 0, locked_until = NULL, last_login_at = now() WHERE email = $1`, [e])

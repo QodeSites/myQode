@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { sendPasswordResetLink } from '@/lib/passwordReset'
+import { logAuthEvent } from '@/lib/authEvents'
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,6 +23,9 @@ export async function POST(req: NextRequest) {
     if (userRes.rows.length >= 0) {
       await sendPasswordResetLink(email)
     }
+
+    // Analytics only: the caller still gets the same generic answer either way.
+    void logAuthEvent(req, { email: userRes.rows.length ? email : null, event: 'password_reset_requested', platform: 'web', meta: { known: userRes.rows.length > 0 } })
 
     // Always return generic response
     return NextResponse.json({

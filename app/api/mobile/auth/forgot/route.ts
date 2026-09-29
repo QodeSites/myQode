@@ -6,6 +6,7 @@ import { query } from '@/lib/db'
 import crypto from 'crypto'
 import { graphMailer, isGraphEmailConfigured } from '@/lib/graphEmail'
 import { mailPlan } from '@/lib/authMailRedirect'
+import { logAuthEvent, osFrom } from '@/lib/authEvents'
 
 const resend = isGraphEmailConfigured() ? graphMailer : null
 
@@ -125,6 +126,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Analytics only: the caller still gets the same generic answer either way.
+    void logAuthEvent(req, { email: userRes.rows.length ? normalizedEmail : null, event: 'password_reset_requested', platform: 'app', os: osFrom(body), meta: { known: userRes.rows.length > 0 } })
     // Always return a generic response — don't reveal whether the email exists
     return NextResponse.json({
       success: true,

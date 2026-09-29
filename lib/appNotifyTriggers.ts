@@ -11,6 +11,7 @@ import { ListObjectsV2Command } from '@aws-sdk/client-s3'
 import { s3 } from '@/lib/s3'
 import { query } from '@/lib/db'
 import { notifyAccounts, notifyEmails, appAudience, getState, setState } from '@/lib/appNotify'
+import { investTimeline, shortDate } from '@/lib/investTimeline'
 
 const inr = (n: number) => {
   const a = Math.abs(n)
@@ -40,20 +41,20 @@ export async function scanMoney(): Promise<number> {
 
   // Payments made in the app or on the web.
   const pays = (await query(
-    `SELECT p.order_id, p.nuvama_code, p.amount, p.payment_type, p.investment_status, p.payment_status, p.frequency, m.schemename
+    `SELECT p.order_id, p.nuvama_code, p.amount, p.payment_type, p.investment_status, p.payment_status, p.frequency, m.schemename, p.payment_time, p.created_at
        FROM payment_transactions p LEFT JOIN pms_clients_master m ON m.clientcode = p.nuvama_code
       WHERE p.updated_at >= $1 AND p.updated_at > NOW() - interval '3 days' AND p.nuvama_code IS NOT NULL`, [from])).rows
   for (const p of pays) {
     const amt = inr(Number(p.amount) || 0), strat = strategy(p.schemename)
     const st = String(p.investment_status || '').toUpperCase()
     if (['PAYMENT_SUCCESS', 'SETTLED', 'DEPLOYED'].includes(st)) {
-      n += await notifyAccounts([p.nuvama_code], { category: 'money', dedupeKey: `pay:${p.order_id}:received`, link: 'page:transactions',
-        title: 'Payment received', body: `We have received your ${amt} for ${strat}. It will be invested within 1–2 working days.` })
+      const t = await investTimeline(p.payment_time || p.created_at).catch(() => null)
+      n += await notifyAccounts([p.nuvama_code], { category: 'money', dedupeKey: `pay:${p.order_id}:received`, link: 'tab:home',
+        title: 'Payment received', body: t
+          ? `We have received your ${amt} for ${strat}. It will be invested on ${shortDate(t.deployOn)} and show in your portfolio on ${shortDate(t.visibleOn)}.`
+          : `We have received your ${amt} for ${strat}. It will be invested on the next working day.` })
     }
-    if (st === 'DEPLOYED') {
-      n += await notifyAccounts([p.nuvama_code], { category: 'money', dedupeKey: `pay:${p.order_id}:deployed`, link: 'tab:portfolio',
-        title: 'Your money is invested', body: `${amt} is now invested in ${strat}.` })
-    }
+    // "Invested" comes from Nuvama's data (the cash_in_out scan below), for app payments and bank transfers alike.
     if (st === 'PAYMENT_FAILED') {
       n += await notifyAccounts([p.nuvama_code], { category: 'money', dedupeKey: `pay:${p.order_id}:failed`, link: 'sheet:add',
         title: 'Payment didn’t go through', body: `Your payment of ${amt} for ${strat} failed. No money was taken; any debit is reversed by your bank. You can try again.` })
@@ -90,7 +91,7 @@ export async function scanMoney(): Promise<number> {
     const v = Number(f.cash_in_out), strat = strategy(f.schemename)
     n += await notifyAccounts([f.account_code], v > 0
       ? { category: 'money', dedupeKey: `cf:${f.account_code}:${f.d}`, link: 'page:transactions',
-          title: 'Investment recorded', body: `${inr(v)} was added to your ${strat} account on ${dayMon(f.d)}.` }
+          title: 'Your money is invested', body: `${inr(v)} is now invested in your ${strat} account and shows in your portfolio.` }
       : { category: 'money', dedupeKey: `cf:${f.account_code}:${f.d}`, link: 'page:transactions',
           title: 'Withdrawal processed', body: `${inr(v)} was withdrawn from your ${strat} account on ${dayMon(f.d)}.` })
   }

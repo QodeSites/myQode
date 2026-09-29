@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import crypto from 'crypto'
 import bcrypt from 'bcryptjs'
+import { logAuthEvent } from '@/lib/authEvents'
 
 export async function POST(req: NextRequest) {
   try {
@@ -102,6 +103,7 @@ export async function POST(req: NextRequest) {
       [email]
     )
 
+    void logAuthEvent(req, { email, event: 'password_reset_completed', platform: 'web' })
     return NextResponse.json({ success: true, message: 'Password has been reset successfully' })
   } catch (err) {
     console.error('Reset password error:', err)

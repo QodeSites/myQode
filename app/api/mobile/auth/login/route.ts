@@ -12,6 +12,7 @@ import { REVIEWER_ACCOUNT_CODES } from '@/lib/reviewerMock'
 import { resolveDistributorByEmail } from '@/lib/distributorIdentity'
 import { findLoginRow, distributorMobileSession, investorActiveAccounts, allAccountsClosed, investorAccountCodes, investorMobileSession } from '@/lib/mobileSession'
 import { isAppAdmin, checkAdminPassword, audit } from '@/lib/adminAuth'
+import { logAuthEvent } from '@/lib/authEvents'
 
 // Reviewer account — used by App Store / Play Store reviewers.
 // Shows hardcoded dummy data so no real client data is exposed during review.
@@ -50,6 +51,9 @@ export async function POST(request: NextRequest) {
     const rawPlatform = typeof body?.platform === 'string' ? body.platform.toLowerCase() : undefined
     const clientOS: 'ios' | 'android' | null =
       rawPlatform === 'ios' || rawPlatform === 'android' ? rawPlatform : null
+    // Analytics (auth_events): every outcome of this request, never the password.
+    const logApp = (event: 'login_success' | 'login_failed', email: string | null | undefined, reason?: string, platform: 'app' | 'admin' = 'app', meta?: Record<string, unknown>) =>
+      void logAuthEvent(request, { email: email ?? null, event, reason: reason ?? null, platform, os: clientOS, meta })
 
     // Dev bypass: password is optional in development so Expo Go / simulator
     // testing can log in to any real account without knowing its password.
@@ -74,6 +78,7 @@ export async function POST(request: NextRequest) {
         isReviewer: true,
       }
       const token = jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: '30d' })
+      logApp('login_success', REVIEWER_EMAIL, undefined, 'app', { role: 'reviewer' })
       return NextResponse.json({
         token,
         expiresIn: 60 * 60 * 24 * 30,
@@ -101,8 +106,12 @@ export async function POST(request: NextRequest) {
     // Checked first, so an admin email never falls through to the client lookup.
     if (isAppAdmin(username)) {
       const { admin, error } = await checkAdminPassword(username, password || '')
-      if (!admin) return NextResponse.json({ error }, { status: 401 })
+      if (!admin) {
+        logApp('login_failed', username, /too many/i.test(String(error)) ? 'locked' : 'wrong_password', 'admin', { via: 'app' })
+        return NextResponse.json({ error }, { status: 401 })
+      }
       await audit(request, admin, 'admin.login', null, { via: 'app' })
+      logApp('login_success', admin.email, undefined, 'admin', { via: 'app' })
       const payload: MobileAuthUser & { isAdmin: boolean; name: string } = {
         userId: 'admin:' + admin.email, email: admin.email, clientCode: 'ADMIN', clientId: 'admin',
         accountCodes: [], ownerIds: [], groupId: null as any, isHeadOfFamily: false, isSuperAdmin: true, isAdmin: true, name: admin.name,
@@ -120,6 +129,7 @@ export async function POST(request: NextRequest) {
     // password='' cannot accidentally match (password is always required here).
     if (username.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
       if (!ADMIN_PASSWORD || password !== ADMIN_PASSWORD) {
+        logApp('login_failed', ADMIN_EMAIL, 'wrong_password', 'admin', { via: 'app' })
         return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
       }
       const payload: MobileAuthUser = {
@@ -134,6 +144,7 @@ export async function POST(request: NextRequest) {
         isSuperAdmin: true,
       }
       const token = jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: '12h' })
+      logApp('login_success', ADMIN_EMAIL, undefined, 'admin', { via: 'app' })
       return NextResponse.json({
         token,
         expiresIn: 60 * 60 * 12,
@@ -170,6 +181,8 @@ export async function POST(request: NextRequest) {
     })
 
     if (userResult.rows.length === 0) {
+      // The identifier matched nobody: store it only if it looks like an email (not a typo'd password).
+      logApp('login_failed', /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(username) ? username : null, 'unknown_user')
       return NextResponse.json(
         { error: 'No account found for this email or ID. Please check and try again.', code: 'USER_NOT_FOUND' },
         { status: 401 }
@@ -183,6 +196,7 @@ export async function POST(request: NextRequest) {
       // Reject default/unset password
       if (!user.password || user.password === 'Qode@123') {
         console.log('[login] blocked — PASSWORD_SETUP_REQUIRED for', user.clientcode)
+        logApp('login_failed', user.email, 'no_password_set')
         return NextResponse.json(
           { error: 'Password setup required', code: 'PASSWORD_SETUP_REQUIRED' },
           { status: 403 }
@@ -192,6 +206,7 @@ export async function POST(request: NextRequest) {
       const isValid = await bcrypt.compare(password!, user.password)
       if (!isValid) {
         console.log('[login] blocked — invalid password for', user.clientcode)
+        logApp('login_failed', user.email, 'wrong_password')
         return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
       }
     }
@@ -205,6 +220,7 @@ export async function POST(request: NextRequest) {
       const distributor = await resolveDistributorByEmail(user.email)
       if (distributor) {
         if (wantRole === 'client') {
+          logApp('login_failed', user.email, 'role_mismatch', 'app', { role: 'distributor' })
           return NextResponse.json({ error: 'This email is a distributor login. Switch to Distributor to sign in.', code: 'ROLE_MISMATCH', role: 'distributor' }, { status: 403 })
         }
         await query(
@@ -223,6 +239,7 @@ export async function POST(request: NextRequest) {
         const { payload, user: distributorUser } = distributorMobileSession(user.email, distributor)
         const token = jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: '30d' })
         console.log('[login] distributor →', distributor.clientname)
+        logApp('login_success', user.email, undefined, 'app', { role: 'distributor' })
         return NextResponse.json({
           token,
           expiresIn: 60 * 60 * 24 * 30,
@@ -232,6 +249,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (wantRole === 'distributor') {
+      logApp('login_failed', user.email, 'role_mismatch', 'app', { role: 'investor' })
       return NextResponse.json({ error: 'This email is an investor login, not a distributor login. Switch to Client to sign in.', code: 'ROLE_MISMATCH', role: 'client' }, { status: 403 })
     }
 
@@ -246,6 +264,7 @@ export async function POST(request: NextRequest) {
     // instead of silently issuing a JWT with no accountCodes.
     if (accounts.length === 0) {
       if (await allAccountsClosed(user.email)) {
+        logApp('login_failed', user.email, 'account_closed')
         return NextResponse.json(
           {
             error: 'Your account has been closed. If you think this is an error, please contact our IR team.',
@@ -292,6 +311,7 @@ export async function POST(request: NextRequest) {
 
     const { payload, user: investorUser } = investorMobileSession(user, accountCodes)
     const token = jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: '30d' })
+    logApp('login_success', user.email, undefined, 'app', { role: 'investor', dev: isDevelopment || undefined })
 
     return NextResponse.json({
       token,

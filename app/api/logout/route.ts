@@ -1,10 +1,15 @@
 // app/api/logout/route.ts
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
+import { logAuthEvent } from '@/lib/authEvents'
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
     const cookieStore = await cookies()
+    // Analytics: who signed out (from the session's user-context cookie, read before it is cleared).
+    let signedOutEmail: string | null = null
+    try { signedOutEmail = JSON.parse(cookieStore.get('qode-user-context')?.value || '{}')?.email || null } catch {}
+    void logAuthEvent(request, { email: signedOutEmail, event: 'logout', platform: 'web' })
     
     // Clear all auth cookies with explicit options to ensure they're properly removed
     cookieStore.set('qode-auth', '', {

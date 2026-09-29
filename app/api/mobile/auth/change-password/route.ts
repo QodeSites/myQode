@@ -13,6 +13,7 @@ import bcrypt from 'bcryptjs'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import { query } from '@/lib/db'
 import { sendClientAck, clientName } from '@/lib/mobileAckMail'
+import { logAuthEvent, osFrom } from '@/lib/authEvents'
 
 const DEV_NO_PASSWORD = process.env.NODE_ENV === 'development' && process.env.MOBILE_LOGIN_ENFORCE_PASSWORD !== '1'
 
@@ -49,7 +50,10 @@ export async function POST(request: NextRequest) {
     if (!DEV_NO_PASSWORD) {
       const stored = row.rows[0].password
       const ok = stored && stored !== 'Qode@123' && (await bcrypt.compare(current, stored))
-      if (!ok) return NextResponse.json({ error: 'Your current password is incorrect', code: 'WRONG_PASSWORD' }, { status: 401 })
+      if (!ok) {
+        void logAuthEvent(request, { email, event: 'login_failed', reason: 'wrong_password', platform: 'app', os: osFrom(body), meta: { during: 'change_password' } })
+        return NextResponse.json({ error: 'Your current password is incorrect', code: 'WRONG_PASSWORD' }, { status: 401 })
+      }
       if (await bcrypt.compare(next, stored)) return NextResponse.json({ error: 'Choose a password you have not used before', code: 'SAME_PASSWORD' }, { status: 400 })
     }
     const hash = await bcrypt.hash(next, 12)
@@ -67,6 +71,7 @@ export async function POST(request: NextRequest) {
       details: [['When', new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })]],
       next: 'If this was you, there is nothing more to do. Your other devices will need the new password the next time they sign in.',
     })
+    void logAuthEvent(request, { email, event: 'password_changed', platform: 'app', os: osFrom(body), meta: { partner: isPartner || undefined } })
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('[mobile/auth/change-password]', err)

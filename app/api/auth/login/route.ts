@@ -3,6 +3,7 @@ import { WEB_SESSION_COOKIE, signWebSession, webSessionCookieOptions } from '@/l
 import { query } from '@/lib/db'
 import { cookies } from 'next/headers'
 import bcrypt from 'bcryptjs'
+import { logAuthEvent } from '@/lib/authEvents'
 
 interface ClientData {
   clientid: string;
@@ -75,6 +76,7 @@ export async function POST(request: NextRequest) {
     )
 
     if (passwordCheck.rows.length === 0) {
+      void logAuthEvent(request, { email: /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(username)) ? username : null, event: 'login_failed', reason: 'unknown_user', platform: 'web' })
       return NextResponse.json(
         { error: 'User not found' },
         { status: 404 }
@@ -85,6 +87,7 @@ export async function POST(request: NextRequest) {
     const isDefaultPassword = currentPassword === 'Qode@123' || !currentPassword
 
     if (isDefaultPassword) {
+      void logAuthEvent(request, { email: /@/.test(String(username)) ? username : null, event: 'login_failed', reason: 'no_password_set', platform: 'web', meta: /@/.test(String(username)) ? undefined : { clientcode: username } })
       return NextResponse.json(
         { requirePasswordSetup: true, message: 'Password setup required' },
         { status: 200 }
@@ -102,6 +105,7 @@ export async function POST(request: NextRequest) {
     )
 
     if (initialResult.rows.length === 0) {
+      void logAuthEvent(request, { email: null, event: 'login_failed', reason: 'unknown_user', platform: 'web' })
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
@@ -114,6 +118,7 @@ export async function POST(request: NextRequest) {
     const isPasswordValid = await bcrypt.compare(password, user.password)
 
     if (!isPasswordValid) {
+      void logAuthEvent(request, { email: user.email, event: 'login_failed', reason: 'wrong_password', platform: 'web' })
       return NextResponse.json(
         { error: 'Invalid credentials' },
         { status: 401 }
@@ -131,6 +136,7 @@ export async function POST(request: NextRequest) {
       [user.email]
     )
     await query(`INSERT INTO login_events (email, platform) VALUES ($1, 'web')`, [user.email])
+    void logAuthEvent(request, { email: user.email, event: 'login_success', platform: 'web' })
 
     // Set session cookies with head of family information
     await setSessionCookies(user)
@@ -527,12 +533,14 @@ async function handleVerifySetupOtp(email: string, otp: string) {
     )
 
     if (result.rows.length === 0) {
+      void logAuthEvent(null, { email, event: 'otp_failed', reason: 'wrong_code', platform: 'web', meta: { flow: 'setup', step: 'verify' } })
       return NextResponse.json(
         { error: 'Invalid or expired verification code' },
         { status: 400 }
       )
     }
 
+    void logAuthEvent(null, { email, event: 'otp_verified', platform: 'web', meta: { flow: 'setup' } })
     return NextResponse.json({
       success: true,
       message: 'Verification code verified successfully'
@@ -606,6 +614,7 @@ async function handleCompletePasswordSetup(email: string, otp: string, newPasswo
     )
 
     if (otpResult.rows.length === 0) {
+      void logAuthEvent(null, { email, event: 'otp_failed', reason: 'wrong_code', platform: 'web', meta: { flow: 'setup', step: 'complete' } })
       return NextResponse.json(
         { error: 'Invalid or expired verification code' },
         { status: 400 }
@@ -686,6 +695,8 @@ async function handleCompletePasswordSetup(email: string, otp: string, newPasswo
       [email]
     )
     await query(`INSERT INTO login_events (email, platform) VALUES ($1, 'web')`, [email])
+    void logAuthEvent(null, { email, event: 'password_set', platform: 'web' })
+    void logAuthEvent(null, { email, event: 'login_success', platform: 'web', meta: { after: 'password_set' } })
 
     return NextResponse.json({
       success: true,

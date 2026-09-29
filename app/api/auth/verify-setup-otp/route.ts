@@ -1,6 +1,7 @@
 // app/api/auth/verify-setup-otp/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { logAuthEvent } from '@/lib/authEvents';
 
 export async function POST(request: NextRequest) {
   try {
@@ -24,12 +25,14 @@ export async function POST(request: NextRequest) {
     );
 
     if (result.rows.length === 0) {
+      void logAuthEvent(request, { email, event: 'otp_failed', reason: 'wrong_code', platform: 'web', meta: { flow: 'setup', step: 'verify' } });
       return NextResponse.json(
         { error: 'Invalid or expired OTP' },
         { status: 400 }
       );
     }
 
+    void logAuthEvent(request, { email, event: 'otp_verified', platform: 'web', meta: { flow: 'setup' } });
     return NextResponse.json({
       success: true,
       message: 'OTP verified successfully'

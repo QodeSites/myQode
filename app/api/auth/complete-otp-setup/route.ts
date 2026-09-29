@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import bcrypt from 'bcryptjs';
+import { logAuthEvent } from '@/lib/authEvents';
 
 export async function POST(request: NextRequest) {
   try {
@@ -52,6 +53,7 @@ export async function POST(request: NextRequest) {
     );
 
     if (otpResult.rows.length === 0) {
+      void logAuthEvent(request, { email, event: 'otp_failed', reason: 'wrong_code', platform: 'web', meta: { flow: 'setup', step: 'complete' } });
       return NextResponse.json(
         { error: 'Invalid or expired OTP' },
         { status: 400 }
@@ -84,6 +86,7 @@ export async function POST(request: NextRequest) {
       [hashedPassword, email]
     );
 
+    void logAuthEvent(request, { email, event: 'password_set', platform: 'web', meta: { accounts: updateResult.rowCount, via: 'otp' } });
     return NextResponse.json({
       success: true,
       message: 'Password setup completed successfully',

@@ -5,6 +5,7 @@ import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { Toaster } from "sonner"
 import {
+  Activity,
   BarChart3,
   Bell,
   Briefcase,
@@ -49,6 +50,7 @@ const NAV: NavItem[] = [
     icon: BarChart3,
     isActive: (p) => p.startsWith("/admin/onboarding"),
   },
+  { label: "App analytics", href: "/admin/analytics", icon: Activity, isActive: (p) => p.startsWith("/admin/analytics") },
   { label: "Queries", href: "/admin/queries", icon: MessageSquare, isActive: (p) => p.startsWith("/admin/queries") },
   { label: "Feedback", href: "/admin/feedback", icon: MessageSquareHeart, isActive: (p) => p.startsWith("/admin/feedback") },
   { label: "Notifications", href: "/admin/notifications", icon: Bell, isActive: (p) => p.startsWith("/admin/notifications") },

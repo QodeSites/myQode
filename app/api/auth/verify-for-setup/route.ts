@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import bcrypt from 'bcryptjs';
+import { logAuthEvent } from '@/lib/authEvents';
 
 export async function POST(request: NextRequest) {
     try {
@@ -35,6 +36,7 @@ export async function POST(request: NextRequest) {
 
         // Check if account is locked
         if (client.locked_until && new Date(client.locked_until) > new Date()) {
+            void logAuthEvent(request, { email: identifier, event: 'login_failed', reason: 'locked', platform: 'web', meta: { during: 'password_setup' } });
             const lockTime = Math.ceil((new Date(client.locked_until).getTime() - Date.now()) / (1000 * 60));
             return NextResponse.json(
                 { error: `Account locked. Try again in ${lockTime} minutes.` },
@@ -65,6 +67,8 @@ export async function POST(request: NextRequest) {
                 'UPDATE pms_clients_master SET login_attempts = $1, locked_until = $2 WHERE email = $3',
                 [newAttempts, lockUntil, identifier]
             );
+            void logAuthEvent(request, { email: identifier, event: 'login_failed', reason: 'wrong_password', platform: 'web', meta: { during: 'password_setup', attempt: newAttempts } });
+            if (lockUntil) void logAuthEvent(request, { email: identifier, event: 'lockout', platform: 'web', meta: { minutes: 30 } });
 
             return NextResponse.json(
                 { error: 'Invalid current password' },

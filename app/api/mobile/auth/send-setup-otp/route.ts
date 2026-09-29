@@ -7,6 +7,7 @@ import { randomInt } from 'crypto';
 import { query } from '@/lib/db';
 import { graphMailer, isGraphEmailConfigured } from '@/lib/graphEmail';
 import { mailPlan } from '@/lib/authMailRedirect';
+import { logAuthEvent, osFrom } from '@/lib/authEvents';
 
 const resend = isGraphEmailConfigured() ? graphMailer : null;
 
@@ -131,6 +132,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to send OTP' }, { status: 500 });
     }
 
+    void logAuthEvent(request, { email, event: 'otp_sent', platform: 'app', os: osFrom(body), meta: { flow: 'setup' } });
     return NextResponse.json({
       success: true,
       message: 'OTP sent successfully',

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { graphMailer as resend } from '@/lib/graphEmail';
 import crypto from 'crypto';
+import { logAuthEvent } from '@/lib/authEvents';
 
 export async function POST(request: NextRequest) {
   try {
@@ -111,6 +112,7 @@ export async function POST(request: NextRequest) {
       html: emailHtml
     });
 
+    void logAuthEvent(request, { email, event: 'otp_sent', platform: 'web', meta: { flow: 'setup' } });
     return NextResponse.json({
       success: true,
       message: 'OTP sent successfully',

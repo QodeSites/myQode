@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { recordWrongOtp, clearWrongOtp, TOO_MANY_OTP } from '@/lib/mobileOtpAttempts';
 import bcrypt from 'bcryptjs';
+import { logAuthEvent, osFrom } from '@/lib/authEvents';
 
 export async function POST(request: NextRequest) {
   try {
@@ -69,7 +70,9 @@ export async function POST(request: NextRequest) {
     );
 
     if (otpResult.rows.length === 0) {
-      if (await recordWrongOtp(email)) return NextResponse.json(TOO_MANY_OTP, { status: 429 });
+      const tooMany = await recordWrongOtp(email);
+      void logAuthEvent(request, { email, event: 'otp_failed', reason: tooMany ? 'too_many' : 'wrong_code', platform: 'app', os: osFrom(body), meta: { flow: 'setup', step: 'complete' } });
+      if (tooMany) return NextResponse.json(TOO_MANY_OTP, { status: 429 });
       return NextResponse.json({ error: 'Invalid or expired OTP' }, { status: 400 });
     }
 
@@ -91,6 +94,7 @@ export async function POST(request: NextRequest) {
       [hashedPassword, email]
     );
 
+    void logAuthEvent(request, { email, event: 'password_set', platform: 'app', os: osFrom(body), meta: { accounts: updateResult.rowCount } });
     return NextResponse.json({
       success: true,
       message: 'Password setup completed successfully',

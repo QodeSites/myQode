@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import bcrypt from 'bcryptjs';
+import { logAuthEvent } from '@/lib/authEvents';
 
 export async function POST(request: NextRequest) {
   try {
@@ -68,6 +69,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (!currentPasswordValid) {
+      void logAuthEvent(request, { email: identifier, event: 'login_failed', reason: 'wrong_password', platform: 'web', meta: { during: 'password_setup' } });
       return NextResponse.json(
         { error: 'Current password is incorrect' },
         { status: 401 }
@@ -98,6 +100,7 @@ export async function POST(request: NextRequest) {
       [hashedPassword, identifier]
     );
 
+    void logAuthEvent(request, { email: identifier, event: 'password_set', platform: 'web', meta: { accounts: updateResult.rowCount, via: 'current_password' } });
     return NextResponse.json({
       success: true,
       message: 'Password setup completed successfully',

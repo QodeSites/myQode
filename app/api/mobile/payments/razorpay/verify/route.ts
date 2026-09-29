@@ -8,6 +8,7 @@ import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
 import { verifyPaymentSignature, fetchRazorpayPayment, fetchRazorpayOrderPayments, fetchRazorpayOrder, paymentMethodJson } from '@/lib/razorpay'
 import { notifyIrPayment } from '@/lib/mobileIrMail'
+import { investTimeline } from '@/lib/investTimeline'
 
 export async function POST(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)
@@ -100,8 +101,10 @@ export async function POST(request: NextRequest) {
       notifyIrPayment({ kind: 'one_time', accountId: tx.nuvama_code, clientId: upd[0].client_id, userEmail: user!.email, amount: Number(tx.amount), reference: orderId, method: payment?.method || null })
     }
 
+    // When the money will be invested and show in myQode (lib/investTimeline.ts: 4 pm cut-off, NSE trading days).
+    const timeline = isSuccess ? await investTimeline(payment?.created_at ? new Date(payment.created_at * 1000) : new Date()).catch(() => null) : null
     return NextResponse.json({
-      orderId, paymentStatus: status.toUpperCase(), investmentStatus,
+      orderId, paymentStatus: status.toUpperCase(), investmentStatus, timeline,
       isSuccess, isFailed, attempts,   // attempts = 0 → the user never got as far as paying
       amount: Number(tx.amount),
       payment: payment ? { id: payment.id, method: payment.method, vpa: payment.vpa || null, bank: payment.bank || null, time: payment.created_at, reference: payment.acquirer_data?.rrn || null, message: payment.error_description || null } : null,
