@@ -20,6 +20,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
+  // The myQode app reports what happened on the phone when setting up popups (permission, token, server call).
+  if (body?.app === 'myqode' && body?.diag) {
+    console.log('[push diag]', user!.email, JSON.stringify(body.diag).slice(0, 600))
+    return NextResponse.json({ success: true })
+  }
+
   const { pushToken, platform } = body
 
   if (!pushToken || typeof pushToken !== 'string') {
@@ -47,12 +53,15 @@ export async function POST(request: NextRequest) {
 
   // The myQode app sends app: 'myqode'. Its devices live in app_push_devices (lib/appNotify.ts), keyed by login
   // email: client_push_tokens holds the older Qode app's tokens, and Expo rejects a send that mixes two projects.
-  // Admin viewing a client and the store reviewer never register (the popups would reach the wrong phone).
+  // The store reviewer never registers. Admin viewing a client registers the phone under the ADMIN (the person
+  // holding it, from the token's impersonatedBy), never under the client, so the client's popups can't reach it.
   if (body.app === 'myqode') {
-    if (user!.isReviewer || user!.isImpersonated) return NextResponse.json({ success: true, skipped: true })
+    if (user!.isReviewer) return NextResponse.json({ success: true, skipped: true })
+    const owner = user!.isImpersonated ? user!.impersonatedBy : user!.email
+    if (!owner) return NextResponse.json({ success: true, skipped: true })
     try {
-      await registerDevice(user!.email, pushToken, platform ?? null, typeof body.appVersion === 'string' ? body.appVersion.slice(0, 20) : null)
-      return NextResponse.json({ success: true })
+      await registerDevice(owner, pushToken, platform ?? null, typeof body.appVersion === 'string' ? body.appVersion.slice(0, 20) : null)
+      return NextResponse.json({ success: true, registeredAs: user!.isImpersonated ? 'admin' : 'self' })
     } catch (err) {
       console.error('[mobile/services/register-push-token myqode]', err)
       return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
