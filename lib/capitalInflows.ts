@@ -131,11 +131,62 @@ export async function notifyAllocations(ids: string[]): Promise<number> {
       const s = split(sc, amount)
       if (!s) continue
       const where = s.parts.every(p => p.amount > 0) && s.parts.length > 1
-        ? s.parts.map(p => `${lakh(p.amount)} into ${NAMES[p.code]}`).join(' and ')
-        : `${lakh(amount)} goes into ${s.label}`
+        ? s.parts.map(p => `${lakh(p.amount)} into ${NAMES[p.code]}`).join(' + ')
+        : `${lakh(amount)} into ${s.label}`
       sent += await notifyAccounts([account], { category: 'money', dedupeKey: `zoho-sc:${id}`, link: 'tab:home', title: 'Allocation confirmed',
-        body: `${where[0].toUpperCase()}${where.slice(1)}. It will be invested on ${shortDate(t.deployOn)} and show in your portfolio on ${shortDate(t.visibleOn)}.` })
+        body: `${where}. Invested ${shortDate(t.deployOn)}.` })
     } catch (e) { console.error('[capitalInflows] notifyAllocations', id, (e as Error).message) }
   }
   return sent
+}
+
+/**
+ * One-off: put the last `days` of money into clients' in-app panels, dated when it happened. Uses the same dedupe
+ * keys as the live notifications, so running it again (or the live sync afterwards) never repeats an entry.
+ * Popups follow the usual rule (held until PUSH_LIVE), so a backfill never buzzes a phone.
+ */
+export async function backfillInbox(days = 7): Promise<{ received: number; allocations: number; razorpay: number }> {
+  const out = { received: 0, allocations: 0, razorpay: 0 }
+  const today = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10)
+  const tense = (t: { deployOn: string; visibleOn: string }) => today >= t.visibleOn
+    ? `Invested ${shortDate(t.deployOn)}, now in your portfolio.`
+    : `Invested ${shortDate(t.deployOn)}, in your portfolio ${shortDate(t.visibleOn)}.`
+
+  const inflows = (await query(`SELECT id, data FROM zoho_mirror WHERE module = 'Capital_Inflows' AND NOT deleted AND data->>'Verification_Status' = 'Verified'
+                                  AND (data->>'Date_of_Receipt')::date >= CURRENT_DATE - $1::int`, [days])).rows
+  for (const { id, data: r } of inflows) {
+    const account = String(r.Nuvama_ID_Entry || '').trim().toUpperCase(), amount = n(r.Amount_Received), at = receivedAt(r)
+    if (!/^Q[A-Z]{2}/.test(account) || !(amount > 0) || !at) continue
+    const t = await investTimeline(at, at)
+    // a Razorpay payment is announced from Razorpay (below), under its own key
+    const rz = (await query(`SELECT 1 FROM payment_transactions WHERE nuvama_code = $1 AND abs(amount - $2) <= greatest(1, $2 * 0.01)
+                               AND investment_status IN ('PAYMENT_SUCCESS', 'SETTLED', 'DEPLOYED') AND coalesce(payment_time, created_at) BETWEEN ($3::date - 3) AND ($3::date + 2) LIMIT 1`,
+      [account, amount, t.countsFrom])).rows.length
+    if (rz) continue
+    const sc = (await query(`SELECT data FROM zoho_mirror WHERE module = 'Scheme_Clarifications' AND NOT deleted AND data->'Capital_Inflow'->>'id' = $1 AND data->>'Verification_Status' = 'Verified' LIMIT 1`, [id])).rows[0]?.data
+    const eo = sc ? null : (await query(`SELECT data FROM zoho_mirror WHERE module = 'Execution_Orders' AND NOT deleted AND data->'Capital_Inflow'->>'id' = $1 LIMIT 1`, [id])).rows[0]?.data
+    const s = split(sc || eo, amount)
+    const where = s?.label || 'your Qode portfolio'
+    out.received += await notifyAccounts([account], { category: 'money', dedupeKey: `pay:zoho_${id}:received`, link: 'tab:home', at,
+      title: 'Payment received', body: `${lakh(amount)} for ${where}. ${tense(t)}` })
+    if (sc && s) {
+      const scAt = sc.Created_Time ? new Date(sc.Created_Time) : at
+      const w = s.parts.every(p => p.amount > 0) && s.parts.length > 1 ? s.parts.map(p => `${lakh(p.amount)} into ${NAMES[p.code]}`).join(' + ') : `${lakh(amount)} into ${s.label}`
+      const scId = (await query(`SELECT id FROM zoho_mirror WHERE module = 'Scheme_Clarifications' AND data->'Capital_Inflow'->>'id' = $1 LIMIT 1`, [id])).rows[0]?.id
+      if (scId) out.allocations += await notifyAccounts([account], { category: 'money', dedupeKey: `zoho-sc:${scId}`, link: 'tab:home', at: scAt,
+        title: 'Allocation confirmed', body: `${w}. ${tense(t)}` })
+    }
+  }
+  // Razorpay payments of the same week
+  const rows = (await query(`SELECT p.order_id, p.nuvama_code, p.amount, coalesce(p.payment_time, p.created_at) AS paid, p.settled_at, m.schemename
+                               FROM payment_transactions p LEFT JOIN pms_clients_master m ON m.clientcode = p.nuvama_code
+                              WHERE p.investment_status IN ('PAYMENT_SUCCESS', 'SETTLED', 'DEPLOYED') AND p.payment_type IN ('ONE_TIME', 'NEW_STRATEGY')
+                                AND coalesce(p.payment_time, p.created_at) >= NOW() - ($1::int * interval '1 day')`, [days])).rows
+  for (const p of rows) {
+    const t = await investTimeline(p.paid, p.settled_at)
+    const strat = String(p.schemename || '').replace(/^QODE ADVISORS LLP\s*-\s*/i, '').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase()) || 'your Qode portfolio'
+    out.razorpay += await notifyAccounts([p.nuvama_code], { category: 'money', dedupeKey: `pay:${p.order_id}:received`, link: 'tab:home', at: p.paid,
+      title: 'Payment received', body: `${lakh(n(p.amount))} for ${strat}. ${tense(t)}` })
+  }
+  return out
 }

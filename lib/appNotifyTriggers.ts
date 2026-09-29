@@ -53,17 +53,17 @@ export async function scanMoney(): Promise<number> {
       const t = await investTimeline(p.payment_time || p.created_at, p.settled_at).catch(() => null)
       n += await notifyAccounts([p.nuvama_code], { category: 'money', dedupeKey: `pay:${p.order_id}:received`, link: 'tab:home',
         title: 'Payment received', body: t
-          ? `We have received your ${amt} for ${strat}. It will be invested on ${shortDate(t.deployOn)} and show in your portfolio on ${shortDate(t.visibleOn)}.`
-          : `We have received your ${amt} for ${strat}. It will be invested on the next working day.` })
+          ? `${amt} for ${strat}. Invested ${shortDate(t.deployOn)}, in your portfolio ${shortDate(t.visibleOn)}.`
+          : `${amt} for ${strat}. Invested the next working day.` })
     }
     // "Invested" comes from Nuvama's data (the cash_in_out scan below), for app payments and bank transfers alike.
     if (st === 'PAYMENT_FAILED') {
       n += await notifyAccounts([p.nuvama_code], { category: 'money', dedupeKey: `pay:${p.order_id}:failed`, link: 'sheet:add',
-        title: 'Payment didn’t go through', body: `Your payment of ${amt} for ${strat} failed. No money was taken; any debit is reversed by your bank. You can try again.` })
+        title: 'Payment didn’t go through', body: `${amt} for ${strat}. No money was taken; you can try again.` })
     }
     if (st === 'SIP_ACTIVE') {
       n += await notifyAccounts([p.nuvama_code], { category: 'money', dedupeKey: `pay:${p.order_id}:sip-active`, link: 'page:sip',
-        title: 'Your SIP is active', body: `Your ${String(p.frequency || '').toLowerCase() || ''} SIP of ${amt} in ${strat} is set up.`.replace('  ', ' ') })
+        title: 'Your SIP is active', body: `${amt} ${String(p.frequency || '').toLowerCase()} SIP in ${strat}.`.replace('  ', ' ') })
     }
   }
 
@@ -76,7 +76,7 @@ export async function scanMoney(): Promise<number> {
     if (!t) continue
     const where = r.label && r.label !== 'Allocation being confirmed' ? r.label : 'your Qode portfolio'
     n += await notifyAccounts([r.account_id], { category: 'money', dedupeKey: `pay:${r.order_id}:received`, link: 'tab:home', title: 'Payment received',
-      body: `We have received your ${inr(Number(r.amount))} for ${where}. It will be invested on ${shortDate(t.deployOn)} and show in your portfolio on ${shortDate(t.visibleOn)}.` })
+      body: `${inr(Number(r.amount))} for ${where}. Invested ${shortDate(t.deployOn)}, in your portfolio ${shortDate(t.visibleOn)}.` })
   }
 
   // SIP instalments.
@@ -88,10 +88,10 @@ export async function scanMoney(): Promise<number> {
     const amt = inr(Number(c.charge_amount) || 0), strat = strategy(c.schemename), s = String(c.charge_status || '').toUpperCase()
     if (s === 'SUCCESS' || s === 'CAPTURED' || s === 'PAID') {
       n += await notifyAccounts([c.nuvama_code], { category: 'money', dedupeKey: `sip:${c.id}:ok`, link: 'page:sip',
-        title: 'SIP instalment received', body: `Your SIP instalment of ${amt} for ${strat} was debited.` })
+        title: 'SIP instalment debited', body: `${amt} for ${strat}.` })
     } else if (s === 'FAILED') {
       n += await notifyAccounts([c.nuvama_code], { category: 'money', dedupeKey: `sip:${c.id}:failed`, link: 'page:sip',
-        title: 'SIP instalment failed', body: `This month’s SIP instalment of ${amt} for ${strat} could not be debited. Please check your bank balance.` })
+        title: 'SIP instalment failed', body: `${amt} for ${strat}. Please check your bank balance.` })
     }
   }
 
@@ -105,9 +105,9 @@ export async function scanMoney(): Promise<number> {
     const v = Number(f.cash_in_out), strat = strategy(f.schemename)
     n += await notifyAccounts([f.account_code], v > 0
       ? { category: 'money', dedupeKey: `cf:${f.account_code}:${f.d}`, link: 'page:transactions',
-          title: 'Your money is invested', body: `${inr(v)} is now invested in your ${strat} account and shows in your portfolio.` }
+          title: 'Your money is invested', body: `${inr(v)} in ${strat} is now in your portfolio.` }
       : { category: 'money', dedupeKey: `cf:${f.account_code}:${f.d}`, link: 'page:transactions',
-          title: 'Withdrawal processed', body: `${inr(v)} was withdrawn from your ${strat} account on ${dayMon(f.d)}.` })
+          title: 'Withdrawal processed', body: `${inr(v)} from ${strat} on ${dayMon(f.d)}.` })
   }
   return n
 }
@@ -148,7 +148,7 @@ export async function scanPortfolio(): Promise<number> {
         const ret = (end.nav / start.nav - 1) * 100
         const mName = MONTHS[+prevMonth.slice(5) - 1]
         n += await notifyAccounts([code], { category: 'portfolio', dedupeKey: `month:${code}:${prevMonth}`, link: 'tab:portfolio',
-          title: `Your ${mName} update`, body: `Your portfolio returned ${pct(ret)} in ${mName} and was worth ${inr(end.v)} at month end.` })
+          title: `Your ${mName} update`, body: `${pct(ret)} return. Worth ${inr(end.v)} at month end.` })
       }
     }
     if (!fresh) continue
@@ -159,14 +159,14 @@ export async function scanPortfolio(): Promise<number> {
     const peak = before.reduce((a, r) => (r.nav > a.nav ? r : a), before[0])
     if (last.nav > peak.nav && (new Date(last.d).getTime() - new Date(peak.d).getTime()) > 30 * 86400000) {
       n += await notifyAccounts([code], { category: 'portfolio', dedupeKey: `ath:${code}:${last.d.slice(0, 7)}`, link: 'tab:portfolio',
-        title: 'Your portfolio reached a new high', body: `On ${dayMon(last.d)} your portfolio’s NAV was the highest it has been in the past year.` })
+        title: 'Your portfolio reached a new high', body: `Your NAV hit a 1-year high on ${dayMon(last.d)}.` })
     }
 
     // Value milestones, each once in a lifetime.
     for (const m of MILESTONES) {
       if (prev.v < m && last.v >= m) {
         n += await notifyAccounts([code], { category: 'portfolio', dedupeKey: `mile:${code}:${m}`, link: 'tab:portfolio',
-          title: `Your portfolio crossed ${inr(m)}`, body: `Your portfolio was worth ${inr(last.v)} on ${dayMon(last.d)}. Thank you for growing with Qode.` })
+          title: `Your portfolio crossed ${inr(m)}`, body: `Worth ${inr(last.v)} on ${dayMon(last.d)}.` })
       }
     }
   }
@@ -180,9 +180,9 @@ export async function scanPortfolio(): Promise<number> {
         AND to_char(m.inceptiondate, 'MM-DD') = $1 AND to_char(m.inceptiondate, 'YYYY') < $2`, [today.slice(5), today.slice(0, 4)])).rows
   for (const a of anniv) {
     const years = ty - Number(a.d.slice(0, 4)), strat = strategy(a.schemename)
-    const tail = a.ret != null && a.ret > 0 ? ` Since you invested, it has returned ${pct(a.ret)}.` : ''
+    const tail = a.ret != null && a.ret > 0 ? ` ${pct(a.ret)} since you invested.` : ''
     n += await notifyAccounts([a.clientcode], { category: 'portfolio', dedupeKey: `anniv:${a.clientcode}:${ty}`, link: 'tab:portfolio',
-      title: `${years} ${years === 1 ? 'year' : 'years'} with ${strat}`, body: `Your ${strat} account turns ${years} today.${tail}` })
+      title: `${years} ${years === 1 ? 'year' : 'years'} with ${strat}`, body: `Thank you for investing with us.${tail}` })
   }
   return n
 }
@@ -215,7 +215,7 @@ export async function scanReading(): Promise<number> {
     const parts = String(newest.Key).split('/')
     const label = (parts.length > 2 ? parts[parts.length - 2] : parts[parts.length - 1].replace(/\.[^.]+$/, '')).replace(/[-_]+/g, ' ').trim()
     n += await notifyEmails(await appAudience(), { category: 'reading', dedupeKey: `read:${newest.Key}`, link: src.link,
-      title: src.title, body: `${label ? label + ': ' : ''}our latest ${src.kind} is ready to read in the app.` })
+      title: src.title, body: `${label ? label + '. ' : ''}Tap to read.` })
   }
   return n
 }

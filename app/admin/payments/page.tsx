@@ -165,7 +165,7 @@ export default function AdminPaymentsPage() {
               <div className="flex justify-between"><span className="text-muted-foreground">Received</span><span className="font-medium">{day(date)}, {time}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">Invested on</span><span className="font-medium">{preview.deployLabel}</span></div>
               <div className="flex justify-between"><span className="text-muted-foreground">In the portfolio on</span><span className="font-medium">{preview.visibleLabel}</span></div>
-              <p className="rounded-md bg-white/70 p-3 text-xs text-stone-700">“We have received your {amt >= 1000 ? rupees(amt) : "₹…"} for {acct?.strategy || "…"}. It will be invested on {preview.deployLabel} and show in your portfolio on {preview.visibleLabel}.”</p>
+              <p className="rounded-md bg-white/70 p-3 text-xs text-stone-700">“{amt >= 1000 ? rupees(amt) : "₹…"} for {acct?.strategy || "…"}. Invested {preview.deployLabel}, in your portfolio {preview.visibleLabel}.”</p>
             </div>
           ) : <p className="text-sm text-muted-foreground">Choose the account and when the money arrived to see the dates.</p>}
         </Panel>

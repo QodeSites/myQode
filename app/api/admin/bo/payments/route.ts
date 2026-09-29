@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
       const strat = strategy(acct.schemename) || 'your'
       notified = await notifyEmails(await recipientsForAccounts([accountId]), {
         category: 'money', dedupeKey: `pay:${orderId}:received`, link: 'tab:home', title: 'Payment received',
-        body: `We have received your ${inr(amount)} for ${strat}. It will be invested on ${shortDate(timeline.deployOn)} and show in your portfolio on ${shortDate(timeline.visibleOn)}.`,
+        body: `${inr(amount)} for ${strat}. Invested ${shortDate(timeline.deployOn)}, in your portfolio ${shortDate(timeline.visibleOn)}.`,
       }, { force: true })
     }
     await audit(req, admin!, 'payments.record', accountId, { orderId, amount, channel, reference, receivedAt: receivedAt.toISOString(), notified })

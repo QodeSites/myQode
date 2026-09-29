@@ -12,8 +12,9 @@
 //   Popups never go out between 21:00 and 09:00 IST except for money; a popup older than 3 days is not sent
 //   (it stays in the inbox).
 //
-// Who gets what before launch: until PUSH_LIVE=1, only PUSH_TEST_EMAILS (default sanket.shinde@qodeinvest.com)
-// get notifications. Everyone else gets nothing, not even an inbox row.
+// Who gets what before launch: every client gets the in-app entry (the bell) at once; the popup on the phone goes out
+// only once PUSH_LIVE=1 (before that only to PUSH_TEST_EMAILS, default sanket.shinde@qodeinvest.com). Held rows are
+// never pushed later.
 import { query } from '@/lib/db'
 
 const EXPO_SEND = 'https://exp.host/--/api/v2/push/send'
@@ -24,7 +25,7 @@ const STALE_DAYS = 3
 
 export type Category = 'money' | 'portfolio' | 'reading' | 'updates'
 export const CATEGORIES: Category[] = ['money', 'portfolio', 'reading', 'updates']
-export type Note = { category: Category; title: string; body: string; link?: string | null; data?: Record<string, unknown>; dedupeKey: string; campaignId?: number | null }
+export type Note = { category: Category; title: string; body: string; link?: string | null; data?: Record<string, unknown>; dedupeKey: string; campaignId?: number | null; at?: Date | string | null }
 
 const lower = (e: unknown) => String(e || '').trim().toLowerCase()
 export const pushLive = () => process.env.PUSH_LIVE === '1'
@@ -96,16 +97,19 @@ export async function appAudience(strategy?: string | null): Promise<string[]> {
  */
 export async function notifyEmails(emails: string[], n: Note, opts: { force?: boolean } = {}): Promise<number> {
   if (!(await tablesReady())) return 0
-  const to = [...new Set(emails.map(lower).filter(Boolean))].filter(e => opts.force || mayNotify(e))
+  // Everyone gets the entry in their in-app panel (the bell). The popup goes out only while PUSH_LIVE=1 (or to the
+  // test list, or when forced by an admin action); otherwise the row is 'held': in the inbox, never pushed.
+  const to = [...new Set(emails.map(lower).filter(Boolean))]
   if (!to.length) return 0
+  const statuses = to.map(e => (opts.force || mayNotify(e) ? 'pending' : 'held'))
   const title = String(n.title).trim().slice(0, 90)
   const body = String(n.body).trim().slice(0, 300)
   const r = await query(
-    `INSERT INTO app_notifications (email, category, title, body, link, data, dedupe_key, campaign_id)
-     SELECT e, $2, $3, $4, $5, $6::jsonb, $7, $8 FROM unnest($1::text[]) AS e
-     ON CONFLICT (email, dedupe_key) DO NOTHING RETURNING id`,
-    [to, n.category, title, body, n.link || null, JSON.stringify(n.data || {}), n.dedupeKey, n.campaignId || null])
-  if (r.rowCount) setImmediate(() => { deliverDue().catch(e => console.error('[appNotify] deliver', e?.message)) })
+    `INSERT INTO app_notifications (email, category, title, body, link, data, dedupe_key, campaign_id, push_status, created_at)
+     SELECT t.e, $2, $3, $4, $5, $6::jsonb, $7, $8, t.st, coalesce($10::timestamptz, NOW()) FROM unnest($1::text[], $9::text[]) AS t(e, st)
+     ON CONFLICT (email, dedupe_key) DO NOTHING RETURNING id, push_status`,
+    [to, n.category, title, body, n.link || null, JSON.stringify(n.data || {}), n.dedupeKey, n.campaignId || null, statuses, n.at ? new Date(n.at).toISOString() : null])
+  if (r.rows.some((x: any) => x.push_status === 'pending')) setImmediate(() => { deliverDue().catch(e => console.error('[appNotify] deliver', e?.message)) })
   return r.rowCount || 0
 }
 
