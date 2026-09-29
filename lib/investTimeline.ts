@@ -63,3 +63,9 @@ export async function investTimeline(paidAt: Date | string, settledAt?: Date | s
 /** "Tue 30 Sep" */
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], MO = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 export const shortDate = (d: string) => { const x = new Date(d + 'T00:00:00Z'); return `${WD[x.getUTCDay()]} ${x.getUTCDate()} ${MO[x.getUTCMonth()]}` }
+
+/** "30 Sep" */
+export const dayMonth = (d: string) => { const x = new Date(d + 'T00:00:00Z'); return `${x.getUTCDate()} ${MO[x.getUTCMonth()]}` }
+/** Notification wording: "Deployment by 30 Sep · Reflects in your portfolio by 1 Oct" */
+export const timelineText = (t: { deployOn: string; visibleOn: string }) =>
+  `Deployment by ${dayMonth(t.deployOn)} · Reflects in your portfolio by ${dayMonth(t.visibleOn)}`

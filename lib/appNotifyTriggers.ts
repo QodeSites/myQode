@@ -11,7 +11,7 @@ import { ListObjectsV2Command } from '@aws-sdk/client-s3'
 import { s3 } from '@/lib/s3'
 import { query } from '@/lib/db'
 import { notifyAccounts, notifyEmails, appAudience, getState, setState } from '@/lib/appNotify'
-import { investTimeline, shortDate } from '@/lib/investTimeline'
+import { investTimeline, shortDate, timelineText } from '@/lib/investTimeline'
 
 const inr = (n: number) => {
   const a = Math.abs(n)
@@ -53,8 +53,8 @@ export async function scanMoney(): Promise<number> {
       const t = await investTimeline(p.payment_time || p.created_at, p.settled_at).catch(() => null)
       n += await notifyAccounts([p.nuvama_code], { category: 'money', dedupeKey: `pay:${p.order_id}:received`, link: 'tab:home',
         title: 'Payment received', body: t
-          ? `${amt} for ${strat}. Invested ${shortDate(t.deployOn)}, in your portfolio ${shortDate(t.visibleOn)}.`
-          : `${amt} for ${strat}. Invested the next working day.` })
+          ? `${amt} for ${strat}. ${timelineText(t)}`
+          : `${amt} for ${strat}. Deployment by the next working day` })
     }
     // "Invested" comes from Nuvama's data (the cash_in_out scan below), for app payments and bank transfers alike.
     if (st === 'PAYMENT_FAILED') {
@@ -76,7 +76,7 @@ export async function scanMoney(): Promise<number> {
     if (!t) continue
     const where = r.label && r.label !== 'Allocation being confirmed' ? r.label : 'your Qode portfolio'
     n += await notifyAccounts([r.account_id], { category: 'money', dedupeKey: `pay:${r.order_id}:received`, link: 'tab:home', title: 'Payment received',
-      body: `${inr(Number(r.amount))} for ${where}. Invested ${shortDate(t.deployOn)}, in your portfolio ${shortDate(t.visibleOn)}.` })
+      body: `${inr(Number(r.amount))} for ${where}. ${timelineText(t)}` })
   }
 
   // SIP instalments.

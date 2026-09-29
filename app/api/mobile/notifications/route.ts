@@ -1,4 +1,4 @@
-// GET /api/mobile/notifications?limit=50&before=<id> → the signed-in login's inbox, newest first (lib/appNotify.ts).
+// GET /api/mobile/notifications?limit=50&before=<id> → the signed-in login's inbox for the last 3 days (older entries drop off), newest first (lib/appNotify.ts).
 //   { items: [{ id, category, title, body, link, createdAt, read }], unread, hasMore }
 // Admin viewing a client sees that client's inbox. The App Store reviewer gets a fixed sample.
 import { NextRequest, NextResponse } from 'next/server'
@@ -30,9 +30,10 @@ export async function GET(request: NextRequest) {
     const [items, unread] = await Promise.all([
       query(
         `SELECT id, category, title, body, link, created_at, read_at FROM app_notifications
-          WHERE email = $1 AND ($2 = 0 OR id < $2) AND created_at > NOW() - interval '180 days'
-          ORDER BY id DESC LIMIT $3`, [email, before, limit + 1]),
-      query(`SELECT count(*)::int AS n FROM app_notifications WHERE email = $1 AND read_at IS NULL AND created_at > NOW() - interval '180 days'`, [email]),
+          WHERE email = $1 AND created_at > NOW() - interval '3 days'
+            AND ($2 = 0 OR (created_at, id) < (SELECT created_at, id FROM app_notifications WHERE id = $2))
+          ORDER BY created_at DESC, id DESC LIMIT $3`, [email, before, limit + 1]),
+      query(`SELECT count(*)::int AS n FROM app_notifications WHERE email = $1 AND read_at IS NULL AND created_at > NOW() - interval '3 days'`, [email]),
     ])
     const rows = items.rows.slice(0, limit)
     return NextResponse.json({

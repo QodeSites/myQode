@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
         ? `UPDATE app_notifications SET read_at = NOW() WHERE email = $1 AND read_at IS NULL`
         : `UPDATE app_notifications SET read_at = NOW() WHERE email = $1 AND read_at IS NULL AND id = ANY($2)`,
       body?.all ? [email] : [email, ids])
-    const n = await query(`SELECT count(*)::int AS n FROM app_notifications WHERE email = $1 AND read_at IS NULL AND created_at > NOW() - interval '180 days'`, [email])
+    const n = await query(`SELECT count(*)::int AS n FROM app_notifications WHERE email = $1 AND read_at IS NULL AND created_at > NOW() - interval '3 days'`, [email])
     return NextResponse.json({ unread: n.rows[0]?.n || 0 })
   } catch (err) {
     console.error('[mobile/notifications/read]', err)

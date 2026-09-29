@@ -12,7 +12,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
 import { requireAdmin, audit } from '@/lib/adminAuth'
 import { query } from '@/lib/db'
-import { investTimeline, shortDate } from '@/lib/investTimeline'
+import { investTimeline, shortDate, timelineText } from '@/lib/investTimeline'
 import { inPortfolio } from '@/lib/paymentProgress'
 import { notifyEmails, recipientsForAccounts } from '@/lib/appNotify'
 
@@ -78,7 +78,7 @@ export async function POST(req: NextRequest) {
         WHERE clientcode = $1 AND (maturity_date IS NULL OR maturity_date > NOW()) LIMIT 1`, [accountId])).rows[0]
     if (!acct) return NextResponse.json({ error: 'That account was not found or is closed' }, { status: 404 })
     const timeline = await investTimeline(receivedAt, receivedAt)
-    if (b?.dryRun) return NextResponse.json({ timeline, deployLabel: shortDate(timeline.deployOn), visibleLabel: shortDate(timeline.visibleOn) })
+    if (b?.dryRun) return NextResponse.json({ timeline, deployLabel: shortDate(timeline.deployOn), visibleLabel: shortDate(timeline.visibleOn), text: timelineText(timeline) })
 
     // Same payment already recorded here, or already in Zoho's Capital Inflows (same account and amount, ±3 days)?
     const dup = (await query(
@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
       const strat = strategy(acct.schemename) || 'your'
       notified = await notifyEmails(await recipientsForAccounts([accountId]), {
         category: 'money', dedupeKey: `pay:${orderId}:received`, link: 'tab:home', title: 'Payment received',
-        body: `${inr(amount)} for ${strat}. Invested ${shortDate(timeline.deployOn)}, in your portfolio ${shortDate(timeline.visibleOn)}.`,
+        body: `${inr(amount)} for ${strat}. ${timelineText(timeline)}`,
       }, { force: true })
     }
     await audit(req, admin!, 'payments.record', accountId, { orderId, amount, channel, reference, receivedAt: receivedAt.toISOString(), notified })

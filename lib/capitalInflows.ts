@@ -13,7 +13,7 @@ import { query } from '@/lib/db'
 import { investTimeline } from '@/lib/investTimeline'
 import { inPortfolio } from '@/lib/paymentProgress'
 import { notifyAccounts } from '@/lib/appNotify'
-import { shortDate } from '@/lib/investTimeline'
+import { dayMonth, timelineText } from '@/lib/investTimeline'
 
 const NAMES: Record<string, string> = { QAW: 'Qode All Weather', QGF: 'Qode Growth Fund', QTF: 'Qode Tactical Fund', QLF: 'Qode Liquid Fund' }
 const n = (v: unknown) => Number(v) || 0
@@ -134,7 +134,7 @@ export async function notifyAllocations(ids: string[]): Promise<number> {
         ? s.parts.map(p => `${lakh(p.amount)} into ${NAMES[p.code]}`).join(' + ')
         : `${lakh(amount)} into ${s.label}`
       sent += await notifyAccounts([account], { category: 'money', dedupeKey: `zoho-sc:${id}`, link: 'tab:home', title: 'Allocation confirmed',
-        body: `${where}. Invested ${shortDate(t.deployOn)}.` })
+        body: `${where}. Deployment by ${dayMonth(t.deployOn)}` })
     } catch (e) { console.error('[capitalInflows] notifyAllocations', id, (e as Error).message) }
   }
   return sent
@@ -149,8 +149,8 @@ export async function backfillInbox(days = 7): Promise<{ received: number; alloc
   const out = { received: 0, allocations: 0, razorpay: 0 }
   const today = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10)
   const tense = (t: { deployOn: string; visibleOn: string }) => today >= t.visibleOn
-    ? `Invested ${shortDate(t.deployOn)}, now in your portfolio.`
-    : `Invested ${shortDate(t.deployOn)}, in your portfolio ${shortDate(t.visibleOn)}.`
+    ? `Deployed ${dayMonth(t.deployOn)} · Reflects in your portfolio`
+    : timelineText(t)
 
   const inflows = (await query(`SELECT id, data FROM zoho_mirror WHERE module = 'Capital_Inflows' AND NOT deleted AND data->>'Verification_Status' = 'Verified'
                                   AND (data->>'Date_of_Receipt')::date >= CURRENT_DATE - $1::int`, [days])).rows
