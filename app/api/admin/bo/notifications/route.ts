@@ -1,7 +1,10 @@
 // Admin → Notifications (lib/appNotify.ts).
 // GET  (staff) → { live, testEmails, devices, outbox, strategies, campaigns: [{ …, stats }] }
-// POST (super) { title, body, link?, category?, audience: { type: 'test' | 'all' | 'strategy' | 'emails', value? } }
-//   'test' sends only to the admin's own login (always allowed); anything else needs PUSH_LIVE=1 on the server.
+// POST (super) { title, body, link?, category?, audience: { type: 'test' | 'all' | 'strategy' | 'emails', value? }, dryRun? }
+//   link: an app destination (LINKS) or 'url:https://…' (opens in the browser).
+//   dryRun: true → { recipients } only, nothing written (the confirmation step shows this count).
+//   'test' sends only to the admin's own login. A campaign to clients is an explicit admin action, so it does NOT
+//   wait for PUSH_LIVE (that switch holds back only the automatic money / portfolio / reading notifications).
 //   Returns { campaignId, recipients }. Audited as notifications.send.
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin, audit } from '@/lib/adminAuth'
@@ -18,7 +21,7 @@ export async function GET(req: NextRequest) {
   if (error) return error
   if (!(await tablesReady())) return NextResponse.json({ ready: false, live: pushLive(), testEmails: testEmails(), campaigns: [] })
   try {
-    const [camps, dev, outbox, strat] = await Promise.all([
+    const [camps, dev, outbox, strat, everyone] = await Promise.all([
       query(
         `SELECT c.id, c.title, c.body, c.link, c.category, c.audience, c.created_by, c.created_at, c.recipients,
                 count(n.id)::int AS total,
@@ -38,10 +41,11 @@ export async function GET(req: NextRequest) {
                     count(*) FILTER (WHERE created_at > NOW() - interval '1 day')::int AS created24h
                FROM app_notifications`),
       query(`SELECT DISTINCT schemename FROM pms_clients_master WHERE schemename IS NOT NULL AND first_app_login_at IS NOT NULL ORDER BY 1`),
+      appAudience(),
     ])
     return NextResponse.json({
       ready: true, live: pushLive(), testEmails: testEmails(), links: LINKS,
-      devices: dev.rows[0], outbox: outbox.rows[0], strategies: strat.rows.map((r: any) => r.schemename),
+      devices: dev.rows[0], outbox: outbox.rows[0], everyone: everyone.length, strategies: strat.rows.map((r: any) => r.schemename),
       campaigns: camps.rows.map((c: any) => ({
         id: Number(c.id), title: c.title, body: c.body, link: c.link, category: c.category, audience: c.audience,
         createdBy: c.created_by, createdAt: c.created_at, recipients: c.recipients,
@@ -61,16 +65,16 @@ export async function POST(req: NextRequest) {
   let b: any = {}
   try { b = await req.json() } catch {}
   const title = String(b?.title || '').trim(), body = String(b?.body || '').trim()
-  const link = b?.link && LINKS.includes(b.link) ? b.link : null
+  const rawLink = String(b?.link || '')
+  const webUrl = rawLink.startsWith('url:') ? rawLink.slice(4).trim() : ''
+  if (webUrl && !/^https:\/\/[^\s]+\.[^\s]+$/i.test(webUrl)) return NextResponse.json({ error: 'Web links must start with https://' }, { status: 400 })
+  const link = webUrl ? 'url:' + webUrl.slice(0, 500) : LINKS.includes(rawLink) ? rawLink : null
   const type = String(b?.audience?.type || '')
   // A test may use any category, so each kind of notification can be tried on the admin's own phone.
   const category: Category = CATS.includes(b?.category) || (type === 'test' && b?.category === 'money') ? b.category : 'updates'
   if (!title || title.length > 90) return NextResponse.json({ error: 'Title is required (up to 90 characters)' }, { status: 400 })
   if (!body || body.length > 300) return NextResponse.json({ error: 'Message is required (up to 300 characters)' }, { status: 400 })
   if (!['test', 'all', 'strategy', 'emails'].includes(type)) return NextResponse.json({ error: 'Choose who receives it' }, { status: 400 })
-  if (type !== 'test' && !pushLive()) {
-    return NextResponse.json({ error: 'Notifications are not live yet (PUSH_LIVE=1 on the server). Send a test to yourself.', code: 'NOT_LIVE' }, { status: 409 })
-  }
 
   let emails: string[] = []
   if (type === 'test') emails = [admin!.email]
@@ -84,6 +88,7 @@ export async function POST(req: NextRequest) {
   }
   emails = [...new Set(emails.map(e => e.toLowerCase()))]
   if (!emails.length) return NextResponse.json({ error: 'Nobody matches this audience' }, { status: 400 })
+  if (b?.dryRun) return NextResponse.json({ recipients: emails.length })
 
   try {
     const audience = { type, value: type === 'strategy' ? String(b.audience.value) : type === 'emails' ? emails : null }
@@ -91,7 +96,7 @@ export async function POST(req: NextRequest) {
       `INSERT INTO app_notification_campaigns (title, body, link, category, audience, created_by, recipients) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
       [title, body, link, category, JSON.stringify(audience), admin!.email, emails.length])
     const campaignId = Number(c.rows[0].id)
-    const written = await notifyEmails(emails, { category, title, body, link, dedupeKey: `campaign:${campaignId}`, campaignId }, { force: type === 'test' })
+    const written = await notifyEmails(emails, { category, title, body, link, dedupeKey: `campaign:${campaignId}`, campaignId }, { force: true })
     await audit(req, admin!, 'notifications.send', type === 'test' ? admin!.email : type, { campaignId, title, recipients: written, audience: type })
     return NextResponse.json({ campaignId, recipients: written })
   } catch (err) {
