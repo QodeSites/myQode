@@ -195,10 +195,10 @@ export async function backfillInbox(days = 7): Promise<{ received: number; alloc
 }
 
 // ── Admin alerts: a popup to the team for every new Capital Inflow / Scheme Clarification, whatever its status ────
-// Recipients: ADMIN_ZOHO_ALERT_EMAILS (comma list; default sanket.shinde@qodeinvest.com). Sent regardless of
+// Recipients: the app admins, APP_ADMIN_EMAILS (the logins that sign in to the app's admin mode). Sent regardless of
 // PUSH_LIVE (force). Only records created in the last day count, so edits to old records stay quiet; the dedupe key
 // makes it one alert per record.
-const adminAlertEmails = () => (process.env.ADMIN_ZOHO_ALERT_EMAILS || 'sanket.shinde@qodeinvest.com').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+const adminAlertEmails = () => String(process.env.APP_ADMIN_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
 const nameOf = (v: any) => String((v && typeof v === 'object' ? v.name : v) || '').replace(/\s+/g, ' ').trim()
 const shortDay = (d: string) => { const m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? dayMonth(`${m[1]}-${m[2]}-${m[3]}`) : '' }
 
