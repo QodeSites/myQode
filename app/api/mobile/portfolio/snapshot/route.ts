@@ -8,6 +8,7 @@ import pool from '@/lib/db'
 import { getStrategyName, getStrategyColor, getPrefix } from '@/lib/strategyConfig'
 import { REVIEWER_MOCK_SNAPSHOT } from '@/lib/reviewerMock'
 import { closures } from '@/lib/accountClosure'
+import { managedSnapshot } from '@/lib/managedAccounts'
 
 function formatINR(amount: number): string {
   return `₹${Math.round(amount).toLocaleString('en-IN')}`
@@ -17,6 +18,11 @@ export async function GET(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)
   if (error) return error
   if (user!.isReviewer) return NextResponse.json(REVIEWER_MOCK_SNAPSHOT)
+  // An admin viewing a managed-account person: their QAC accounts from qode_portfolios (lib/managedAccounts.ts)
+  if (user!.managed) {
+    const snap = await managedSnapshot(user!.userId).catch(e => { console.error('[snapshot managed]', e); return null })
+    return snap ? NextResponse.json(snap) : NextResponse.json({ error: 'No accounts found' }, { status: 404 })
+  }
 
   try {
     const isHoF = user!.isHeadOfFamily

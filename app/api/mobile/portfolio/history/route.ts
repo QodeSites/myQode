@@ -11,6 +11,7 @@ import pool from '@/lib/db'
 import db2 from '@/lib/db2'
 import { getStrategyName, getStrategyBenchmark, getStrategyColor, getPrefix } from '@/lib/strategyConfig'
 import { normaliseAccountCode } from '@/lib/utils'
+import { isManagedCode, managedHistoryRows, managedStrategy, managedLabel, MANAGED_BENCHMARK, MANAGED_COLOR } from '@/lib/managedAccounts'
 
 export async function GET(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)
@@ -28,6 +29,25 @@ export async function GET(request: NextRequest) {
   // Owner ids arrive float-formatted ("50602.0", as in the JWT) but pms_master_sheet stores "50602": the app asks
   // for each owner's series this way to build a family total for a login that has no group aggregate.
   const dbAccountId = normaliseAccountCode(accountId)
+
+  // Managed account (QAC…): master_sheet's Total Portfolio Value series, in the same row shape as Nuvama's
+  if (isManagedCode(accountId)) {
+    try {
+      const [rows, strat] = await Promise.all([managedHistoryRows(accountId), managedStrategy(accountId)])
+      let benchmark: { date: string; nav: number }[] = []
+      if (rows.length) {
+        const fromDate = new Date(rows[0].report_date); fromDate.setDate(fromDate.getDate() - 14)
+        const b = await db2.query(`SELECT date, nav FROM public.tblresearch_new WHERE indices = $1 AND date >= $2 AND date <= $3 ORDER BY date ASC`,
+          [MANAGED_BENCHMARK, fromDate.toISOString().slice(0, 10), rows[rows.length - 1].report_date]).catch(() => ({ rows: [] as any[] }))
+        benchmark = b.rows.map((r: any) => ({ date: r.date, nav: parseFloat(r.nav) }))
+      }
+      return NextResponse.json({ accountId, strategy: { prefix: 'QAC', name: managedLabel(strat), benchmark: MANAGED_BENCHMARK, color: MANAGED_COLOR },
+        nuvama: rows, orbis: [], orbisMetrics: null, benchmark, managed: true })
+    } catch (err) {
+      console.error('[mobile/portfolio/history managed]', err)
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    }
+  }
 
   const strategy = {
     prefix: getPrefix(accountId),

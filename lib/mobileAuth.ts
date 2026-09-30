@@ -30,6 +30,8 @@ export interface MobileAuthUser {
   // request made with such a token is refused below.
   viewOnly?: boolean
   viewedByDistributor?: boolean
+  // An admin viewing a managed-account person (QUS…) with their QAC accounts: lib/managedAccounts.ts. Always viewOnly.
+  managed?: boolean
 }
 
 export async function verifyMobileAuth(request: NextRequest): Promise<{

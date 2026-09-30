@@ -8,6 +8,7 @@ import { verifyMobileAuth } from '@/lib/mobileAuth'
 import { REVIEWER_ACCOUNT_CODES } from '@/lib/reviewerMock'
 import { isoDate, reviewerSecurityRows, REVIEWER_STRATEGY } from '@/lib/mobileReports'
 import { computeSecurities, securitiesFromRows, isAccountCode } from '@/lib/securities'
+import { isManagedCode, managedHoldingRows, managedLabel } from '@/lib/managedAccounts'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,6 +33,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(securitiesFromRows(codes, rows, values, c => REVIEWER_STRATEGY[c] || c))
   }
   if (!codes.length) return NextResponse.json(securitiesFromRows([], [], new Map(), c => c))
+  // Managed accounts: each account's latest broker holdings (lib/managedAccounts.ts), no portfolio-value top-up
+  if (codes.every(isManagedCode)) {
+    try { return NextResponse.json(securitiesFromRows(codes, await managedHoldingRows(codes), new Map(), () => managedLabel(null))) }
+    catch (e) { console.error('[portfolio/securities managed]', e); return NextResponse.json({ error: 'Could not load holdings' }, { status: 500 }) }
+  }
   try {
     return NextResponse.json(await computeSecurities(codes, asOf))
   } catch (e) {
