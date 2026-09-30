@@ -111,6 +111,9 @@ export async function syncAll(): Promise<Record<string, unknown>> {
       out.capitalInflows = await applyCapitalInflows([...ids])
       const { notifyAllocations } = await import('@/lib/capitalInflows')
       out.allocations = await notifyAllocations((results.Scheme_Clarifications?.changed || []).map((r: any) => String(r.id)))
+      // The team hears about every new record at once (a popup to ADMIN_ZOHO_ALERT_EMAILS), whatever its status
+      const { notifyAdminsOfNewRecords } = await import('@/lib/capitalInflows')
+      out.adminAlerts = await notifyAdminsOfNewRecords({ Capital_Inflows: ci?.changed, Scheme_Clarifications: results.Scheme_Clarifications?.changed })
     }
   } finally { running = false }
   return out

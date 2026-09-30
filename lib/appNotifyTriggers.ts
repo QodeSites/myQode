@@ -75,8 +75,12 @@ export async function scanMoney(): Promise<number> {
     const t = await investTimeline(r.received_at, r.received_at).catch(() => null)
     if (!t) continue
     const where = r.label && r.label !== 'Allocation being confirmed' ? r.label : 'your Qode portfolio'
-    n += await notifyAccounts([r.account_id], { category: 'money', dedupeKey: `pay:${r.order_id}:received`, link: 'tab:home', title: 'Payment received',
-      body: `${inr(Number(r.amount))} for ${where}. ${timelineText(t)}` })
+    const note = { category: 'money' as const, dedupeKey: `pay:${r.order_id}:received`, link: 'tab:home', title: 'Payment received',
+      body: `${inr(Number(r.amount))} for ${where}. ${timelineText(t)}` }
+    const w = await notifyAccounts([r.account_id], note)
+    n += w
+    // Zoho inflows and cheques / transfers: the team gets the exact copy the client got (lib/capitalInflows.ts)
+    await (await import('@/lib/capitalInflows')).copyToAdmins(r.account_id, note, w)
   }
 
   // SIP instalments.

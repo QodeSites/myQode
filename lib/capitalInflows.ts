@@ -12,7 +12,7 @@
 import { query } from '@/lib/db'
 import { investTimeline } from '@/lib/investTimeline'
 import { inPortfolio } from '@/lib/paymentProgress'
-import { notifyAccounts } from '@/lib/appNotify'
+import { notifyAccounts, notifyEmails } from '@/lib/appNotify'
 import { dayMonth, timelineText } from '@/lib/investTimeline'
 
 const NAMES: Record<string, string> = { QAW: 'Qode All Weather', QGF: 'Qode Growth Fund', QTF: 'Qode Tactical Fund', QLF: 'Qode Liquid Fund' }
@@ -133,8 +133,11 @@ export async function notifyAllocations(ids: string[]): Promise<number> {
       const where = s.parts.every(p => p.amount > 0) && s.parts.length > 1
         ? s.parts.map(p => `${lakh(p.amount)} into ${NAMES[p.code]}`).join(' + ')
         : `${lakh(amount)} into ${s.label}`
-      sent += await notifyAccounts([account], { category: 'money', dedupeKey: `zoho-sc:${id}`, link: 'tab:home', title: 'Allocation confirmed',
-        body: `${where}. Deployment by ${dayMonth(t.deployOn)}` })
+      const note = { category: 'money' as const, dedupeKey: `zoho-sc:${id}`, link: 'tab:home', title: 'Allocation confirmed',
+        body: `${where}. Deployment by ${dayMonth(t.deployOn)}` }
+      const w = await notifyAccounts([account], note)
+      sent += w
+      await copyToAdmins(account, note, w)
     } catch (e) { console.error('[capitalInflows] notifyAllocations', id, (e as Error).message) }
   }
   return sent
@@ -189,4 +192,56 @@ export async function backfillInbox(days = 7): Promise<{ received: number; alloc
       title: 'Payment received', body: `${lakh(n(p.amount))} for ${strat}. ${tense(t)}` })
   }
   return out
+}
+
+// ── Admin alerts: a popup to the team for every new Capital Inflow / Scheme Clarification, whatever its status ────
+// Recipients: ADMIN_ZOHO_ALERT_EMAILS (comma list; default sanket.shinde@qodeinvest.com). Sent regardless of
+// PUSH_LIVE (force). Only records created in the last day count, so edits to old records stay quiet; the dedupe key
+// makes it one alert per record.
+const adminAlertEmails = () => (process.env.ADMIN_ZOHO_ALERT_EMAILS || 'sanket.shinde@qodeinvest.com').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+const nameOf = (v: any) => String((v && typeof v === 'object' ? v.name : v) || '').replace(/\s+/g, ' ').trim()
+const shortDay = (d: string) => { const m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? dayMonth(`${m[1]}-${m[2]}-${m[3]}`) : '' }
+
+export async function notifyAdminsOfNewRecords(changed: { Capital_Inflows?: any[]; Scheme_Clarifications?: any[] }): Promise<number> {
+  const to = adminAlertEmails()
+  if (!to.length) return 0
+  const fresh = (r: any) => r?.Created_Time && Date.now() - new Date(r.Created_Time).getTime() < 86400000
+  let sent = 0
+  for (const r of (changed.Capital_Inflows || []).filter(fresh)) {
+    try {
+      const account = String(r.Nuvama_ID_Entry || '').trim().toUpperCase()
+      const who = [nameOf(r.Investor_Name), account ? `(${account})` : ''].filter(Boolean).join(' ') || 'Unknown client'
+      const bits = [lakh(n(r.Amount_Received)), who, r.Date_of_Receipt ? `received ${shortDay(r.Date_of_Receipt)}` : '', r.Verification_Status || '']
+      sent += await notifyEmails(to, { category: 'money', dedupeKey: `admin-zoho-ci:${r.id}`, link: 'tab:home', title: 'New Capital Inflow',
+        body: bits.filter(Boolean).join(' · ') }, { force: true })
+    } catch (e) { console.error('[capitalInflows] admin alert CI', r?.id, (e as Error).message) }
+  }
+  for (const r of (changed.Scheme_Clarifications || []).filter(fresh)) {
+    try {
+      const ci = r.Capital_Inflow?.id
+        ? (await query(`SELECT data FROM zoho_mirror WHERE module = 'Capital_Inflows' AND id = $1`, [String(r.Capital_Inflow.id)])).rows[0]?.data : null
+      const account = String(ci?.Nuvama_ID_Entry || '').trim().toUpperCase()
+      const who = [nameOf(r.Investor_Name) || nameOf(ci?.Investor_Name), account ? `(${account})` : ''].filter(Boolean).join(' ') || 'Unknown client'
+      const parts = ['QAW', 'QGF', 'QTF', 'QLF'].map(c => ({ c, a: n(r[`${c}_Amount`]) })).filter(p => p.a > 0)
+      const alloc = parts.length ? parts.map(p => `${lakh(p.a)} ${NAMES[p.c]}`).join(' + ') : lakh(n(r.Amount_Received))
+      sent += await notifyEmails(to, { category: 'money', dedupeKey: `admin-zoho-sc:${r.id}`, link: 'tab:home', title: 'New Scheme Clarification',
+        body: [who, alloc, r.Verification_Status || ''].filter(Boolean).join(' · ') }, { force: true })
+    } catch (e) { console.error('[capitalInflows] admin alert SC', r?.id, (e as Error).message) }
+  }
+  return sent
+}
+
+/**
+ * The client's own notification, copied to the admin list so the team sees exactly what the client saw: same title
+ * and text, with the client's name and account added at the end. Only when the client's copy was just written
+ * (written > 0), so a repeat scan never sends it again.
+ */
+export async function copyToAdmins(account: string, note: Parameters<typeof notifyEmails>[1], written: number): Promise<number> {
+  const to = adminAlertEmails()
+  if (!written || !to.length) return 0
+  try {
+    const who = (await query(`SELECT trim(clientname) AS name FROM pms_clients_master WHERE clientcode = $1 LIMIT 1`, [account])).rows[0]?.name
+    const tag = [who ? String(who).replace(/\s+/g, ' ') : '', `(${account})`].filter(Boolean).join(' ')
+    return await notifyEmails(to, { ...note, dedupeKey: `admin-copy:${note.dedupeKey}`, body: `${note.body}\n— sent to ${tag}` }, { force: true })
+  } catch (e) { console.error('[capitalInflows] copyToAdmins', account, (e as Error).message); return 0 }
 }

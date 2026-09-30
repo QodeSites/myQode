@@ -199,7 +199,7 @@ export function statementFromLines(lines: Lines, meta: {
     : "Nuvama's own report, as imported."
   return {
     accountId: meta.accounts.join(','), accounts: meta.accounts, from: meta.from, to: meta.to, asOf: meta.to,
-    computed: meta.computed, note: meta.note, basis: PLBS_BASIS, coverage: meta.coverage,
+    computed: meta.computed, note: meta.note, basis: '', coverage: meta.coverage,
     pnl: { income, incomeTotal, expenses, expenseTotal, surplus },
     unrealised: { investments: inv, options: opt, net: unrealisedNet },
     balanceSheet: {
