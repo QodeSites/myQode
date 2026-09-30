@@ -6,6 +6,7 @@ import db2 from '@/lib/db2'
 import { getStrategyName, getStrategyBenchmark, getStrategyColor, getPrefix } from '@/lib/strategyConfig'
 import { normaliseAccountCode } from '@/lib/utils'
 import { reviewerMockPerformance } from '@/lib/reviewerMock'
+import { closureFromRows } from '@/lib/accountClosure'
 
 function formatDate(d: Date | string | null): string {
   if (!d) return ''
@@ -101,9 +102,12 @@ export async function GET(request: NextRequest) {
     while (lastNonZeroIdx >= 0 && parseFloat(rows[lastNonZeroIdx].portfolio_value || 0) === 0) {
       lastNonZeroIdx--
     }
-    const isClosed = lastNonZeroIdx < rows.length - 1
-    const closedAtRaw: string | null = isClosed && lastNonZeroIdx >= 0 ? rows[lastNonZeroIdx].report_date : null
-    const activeRows = isClosed && lastNonZeroIdx >= 0 ? rows.slice(0, lastNonZeroIdx + 1) : rows
+    const zeroTail = lastNonZeroIdx < rows.length - 1
+    const activeRows = zeroTail && lastNonZeroIdx >= 0 ? rows.slice(0, lastNonZeroIdx + 1) : rows
+    // Closed also covers a full withdrawal that left a few rupees (under ₹100) — lib/accountClosure.ts
+    const closure = closureFromRows(rows)
+    const isClosed = zeroTail || closure.closed
+    const closedAtRaw: string | null = closure.closedOn || (zeroTail && lastNonZeroIdx >= 0 ? rows[lastNonZeroIdx].report_date : null)
 
     const latest = activeRows[activeRows.length - 1]
     const first = activeRows[0]

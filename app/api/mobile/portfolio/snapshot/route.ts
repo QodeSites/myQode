@@ -7,6 +7,7 @@ import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
 import { getStrategyName, getStrategyColor, getPrefix } from '@/lib/strategyConfig'
 import { REVIEWER_MOCK_SNAPSHOT } from '@/lib/reviewerMock'
+import { closures } from '@/lib/accountClosure'
 
 function formatINR(amount: number): string {
   return `₹${Math.round(amount).toLocaleString('en-IN')}`
@@ -126,10 +127,12 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    const valueMap: Record<string, { value: number; date: string; isClosed: boolean }> = {}
+    // Closed: fully withdrawn (both last values under ₹100 after a withdrawal, or ₹0) — lib/accountClosure.ts
+    const closure = await closures(codes)
+    const valueMap: Record<string, { value: number; date: string; isClosed: boolean; closedOn: string | null }> = {}
     Object.entries(rawMap).forEach(([code, data]) => {
-      const isClosed = data.value === 0 && data.prev === 0
-      valueMap[code] = { value: data.value, date: data.date, isClosed }
+      const c = closure.get(code)
+      valueMap[code] = { value: data.value, date: data.date, isClosed: !!c?.closed, closedOn: c?.closedOn ?? null }
     })
 
     // Group by owner
@@ -171,6 +174,7 @@ export async function GET(request: NextRequest) {
           portfolioValue: +portfolioValue.toFixed(2),
           status,
           isClosed,
+          closedOn: pv?.closedOn ?? null,
           mobile: a.mobile ?? null,
         }
       })
