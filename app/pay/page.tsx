@@ -1,6 +1,7 @@
 // /pay — public demonstration of how myQode clients add money to their Qode PMS account with Razorpay (for the payment
 // gateway's website review). Same Razorpay Checkout the myQode app opens from "Add funds"; real top-ups only happen
-// signed in, in the app. Orders are tagged demo=true and nothing is recorded (app/api/razorpay-demo/*).
+// signed in, in the app. Orders are tagged demo=true and nothing is recorded (app/api/razorpay-demo/*). The page asks for
+// the demonstration login first (lib/payDemoAuth.ts, app/api/razorpay-demo/login).
 "use client"
 
 import { useEffect, useState } from "react"
@@ -25,8 +26,31 @@ export default function PayPage() {
   const [err, setErr] = useState("")
   const [done, setDone] = useState<null | { ok: boolean; status: string; amount: number; paymentId: string; method: string | null }>(null)
   const [mode, setMode] = useState<string>("")
+  const [signedIn, setSignedIn] = useState<boolean | null>(null)
+  const [loginEmail, setLoginEmail] = useState("")
+  const [loginPassword, setLoginPassword] = useState("")
+  const [loginErr, setLoginErr] = useState("")
+  const [loggingIn, setLoggingIn] = useState(false)
 
   useEffect(() => { if (window.Razorpay) setReady(true) }, [])
+  useEffect(() => {
+    fetch("/api/razorpay-demo/login", { cache: "no-store" }).then(r => r.json()).then(j => setSignedIn(!!j.signedIn)).catch(() => setSignedIn(false))
+  }, [])
+
+  const signIn = async (e: React.FormEvent) => {
+    e.preventDefault(); setLoginErr(""); setLoggingIn(true)
+    try {
+      const r = await fetch("/api/razorpay-demo/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: loginEmail, password: loginPassword }) })
+      const j = await r.json().catch(() => ({}))
+      if (!r.ok) { setLoginErr(j.error || "Could not sign in. Please try again."); return }
+      setSignedIn(true); setLoginPassword("")
+    } catch { setLoginErr("Could not reach the server. Check your internet connection.") }
+    finally { setLoggingIn(false) }
+  }
+  const signOut = async () => {
+    await fetch("/api/razorpay-demo/login", { method: "DELETE" }).catch(() => {})
+    setSignedIn(false); setDone(null); setErr("")
+  }
 
   const pay = async () => {
     setErr(""); setDone(null)
@@ -37,6 +61,7 @@ export default function PayPage() {
     try {
       const res = await fetch("/api/razorpay-demo/order", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amount: amt, strategy, name, email }) })
       const o = await res.json()
+      if (res.status === 401) { setSignedIn(false); throw new Error(o.error || "Please sign in again.") }
       if (!res.ok) throw new Error(o.error || "Could not start the payment.")
       setMode(o.environment)
       const rz = new window.Razorpay({
@@ -72,7 +97,9 @@ export default function PayPage() {
             <div className="font-serif text-2xl" style={{ fontFamily: "var(--font-playfair)" }}>myQode</div>
             <div className="text-xs opacity-70">Qode Advisors LLP · SEBI Registered Portfolio Manager</div>
           </div>
-          <a href="/login" className="text-sm underline underline-offset-4 opacity-90">Client sign in</a>
+          {signedIn
+            ? <button onClick={signOut} className="text-sm underline underline-offset-4 opacity-90">Sign out</button>
+            : <a href="/login" className="text-sm underline underline-offset-4 opacity-90">Client sign in</a>}
         </div>
       </header>
 
@@ -88,7 +115,25 @@ export default function PayPage() {
           client account.{mode === "test" ? " (Test mode: no real money moves.)" : ""}
         </div>
 
-        {done ? (
+        {signedIn === null ? (
+          <div className="mt-6 rounded-lg bg-white p-5 text-sm text-[#37584F] shadow-sm">Loading…</div>
+        ) : !signedIn ? (
+          <form onSubmit={signIn} className="mt-6 rounded-lg bg-white p-5 shadow-sm">
+            <div className="text-lg font-semibold">Sign in to the demonstration</div>
+            <div className="mt-1 text-sm leading-6 text-[#37584F]">Use the demonstration login shared with you. Clients sign in to the myQode app with their own account.</div>
+            <label className="mt-5 block text-xs font-bold tracking-wider text-[#37584F]">EMAIL</label>
+            <input value={loginEmail} onChange={e => setLoginEmail(e.target.value)} type="email" autoComplete="username" required
+              className="mt-2 w-full rounded-md border border-[#37584F]/30 px-3 py-2" />
+            <label className="mt-4 block text-xs font-bold tracking-wider text-[#37584F]">PASSWORD</label>
+            <input value={loginPassword} onChange={e => setLoginPassword(e.target.value)} type="password" autoComplete="current-password" required
+              className="mt-2 w-full rounded-md border border-[#37584F]/30 px-3 py-2" />
+            {!!loginErr && <div className="mt-4 text-sm text-red-700">{loginErr}</div>}
+            <button type="submit" disabled={loggingIn}
+              className="mt-5 w-full rounded-md bg-[#02422B] px-4 py-3 font-semibold text-[#EFECD3] disabled:opacity-60">
+              {loggingIn ? "Signing in…" : "Sign in"}
+            </button>
+          </form>
+        ) : done ? (
           <div className={`mt-6 rounded-lg border p-5 ${done.ok ? "border-green-700 bg-green-50" : "border-red-700 bg-red-50"}`}>
             <div className="text-lg font-semibold">{done.ok ? "Payment received" : "Payment not completed"}</div>
             <div className="mt-1 text-sm leading-6">
