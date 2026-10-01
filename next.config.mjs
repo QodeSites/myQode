@@ -11,6 +11,14 @@ const nextConfig = {
       { source: '/app/:path((?!_expo|assets).*)', destination: '/app/index.html' },
     ]
   },
+  // The revamped myQode (the app's web build at /app) is the site: the homepage and the old sign-in page open it.
+  // The old portal's other pages (and /admin) are left as they are. Temporary (307) so it can be undone any time.
+  async redirects() {
+    return [
+      { source: '/', destination: '/app', permanent: false },
+      { source: '/login', destination: '/app', permanent: false },
+    ]
+  },
   async headers() {
     return [
       {
