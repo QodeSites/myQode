@@ -21,24 +21,30 @@ export async function transactionsReport(accountId: string, params: URLSearchPar
   const from = isoDate(params.get('from')), to = isoDate(params.get('to'))
   const { limit, offset } = page(params, 50, params.get('export') === '1' ? 5000 : 200)   // export=1: the whole list for a PDF
 
-  // Shared WHERE for the list: account + dates + group.
+  // Shared WHERE for the list: account + dates + group. Securities transferred in ('OPI', Security in) are dated by
+  // the day they reached the account (settlement date), as Nuvama's statement does; their trade date is the
+  // original purchase elsewhere.
+  const D = `(CASE WHEN tran_type = 'OPI' THEN COALESCE(set_date, trandate) ELSE trandate END)`
   const where = ['ws_account_code = $1'], args: any[] = [accountId]
-  if (from) { args.push(from); where.push(`trandate >= $${args.length}`) }
-  if (to) { args.push(to); where.push(`trandate <= $${args.length}`) }
+  if (from) { args.push(from); where.push(`${D} >= $${args.length}`) }
+  if (to) { args.push(to); where.push(`${D} <= $${args.length}`) }
   const dateWhere = [...where], dateArgs = [...args]
-  if (group === 'all') { args.push(HIDDEN_FROM_ALL); where.push(`NOT (tran_type = ANY($${args.length}))`) }
+  // The PDF export (export=1) lists Initial Margin too, as Nuvama's transaction statement does; the screen hides it.
+  const exporting = params.get('export') === '1'
+  if (group === 'all') { args.push(exporting ? HIDDEN_FROM_ALL.filter(c => c !== 'IML') : HIDDEN_FROM_ALL); where.push(`NOT (tran_type = ANY($${args.length}))`) }
   else if (group === 'other') { args.push(Object.values(TXN_GROUPS).flatMap(g => g.codes)); where.push(`NOT (tran_type = ANY($${args.length}))`) }
   else { args.push(TXN_GROUPS[group].codes); where.push(`tran_type = ANY($${args.length})`) }
 
   try {
     const [list, sums, latest] = await Promise.all([
       query(
-        `SELECT id, trandate, set_date, tran_type, tran_desc, security_name, qty, rate, net_amount,
+        `SELECT id, ${D} AS trandate, set_date, tran_type, tran_desc, security_name, qty, rate, net_amount, exchg, brokerage, stt,
+                security_type_description, detailtypename,
                 COALESCE(brokerage,0) + COALESCE(servicetax,0) + COALESCE(stt,0) + COALESCE(total_trxnfee,0) + COALESCE(total_trxnfee_stax,0) AS charges,
                 txn_ref_no, descmemo
            FROM pms_clients_tracker.pms_transactions
           WHERE ${where.join(' AND ')}
-          ORDER BY trandate DESC, id DESC
+          ORDER BY ${D} DESC, id DESC
           LIMIT ${limit + 1} OFFSET ${offset}`, args),
       query(
         `SELECT tran_type, count(*)::int AS c, COALESCE(sum(net_amount),0) AS amt
@@ -64,6 +70,12 @@ export async function transactionsReport(accountId: string, params: URLSearchPar
         group: groupOf(r.tran_type), direction: directionOf(r.tran_type),
         security: r.security_name || null, qty: n(r.qty), rate: n(r.rate), amount: n(r.net_amount), charges: n(r.charges),
         ref: r.txn_ref_no || null, notes: r.descmemo || null,
+        // for the statement PDF (Nuvama's layout): exchange (blank for off-market entries), brokerage and STT apart,
+        // and the asset class it is grouped under ("Shares - Listed", "Options - Index", …)
+        exchange: r.exchg && r.exchg !== 'DIR' ? r.exchg : null, brokerage: n(r.brokerage), stt: n(r.stt),
+        assetClass: [r.security_type_description, r.detailtypename].filter(Boolean).join(' - ') || null,
+        // Nuvama's "Settlement Amount": STT added to a purchase and taken off a sale (it is not in net_amount)
+        settlement: n(Number(r.net_amount || 0) + (directionOf(r.tran_type) === 'out' ? 1 : directionOf(r.tran_type) === 'in' ? -1 : 0) * Number(r.stt || 0)),
       })),
       hasMore: list.rows.length > limit,
     })
