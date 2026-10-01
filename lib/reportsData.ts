@@ -202,7 +202,9 @@ export async function factsheetReport(accountId: string, params: URLSearchParams
         date ? [accountId, date] : [accountId]),
     ])
     const dates = datesRes.rows.map(x => day(x.as_of_date))
-    const r = stored.rows[0]
+    // "Latest" is the newest day with data: Nuvama's stored fact sheet only when it is that day, otherwise computed
+    // (an upload from a few days ago must not hide the days since).
+    const r = !date && coverage.to && dates[0] && coverage.to > dates[0] ? null : stored.rows[0]
     if (r) {
       const holder = await accountHolder(accountId)
       return R({
