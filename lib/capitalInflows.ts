@@ -30,12 +30,14 @@ function receivedAt(r: any): Date | null {
 // The strategies the money goes into. The account on the form isn't always the destination (a QTF entry can be
 // invested in QAW), so the Execution Order decides. One order can cover several inflows, so its amounts are shown
 // only when they add up to this inflow; otherwise just the strategy names.
+// "A, B and C"
+const andList = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}` : xs[0] || '')
 // "Your ₹5 lakh is going into Qode Growth Fund" / "It will be invested by Tue 6 Oct. Nothing more to do."
 // A split across strategies lists the parts in the body.
 function allocationNote(amount: number, s: { label: string; parts: { code: string; amount: number }[] }, timeline: string) {
   const multi = s.parts.length > 1 && s.parts.every(p => p.amount > 0)
   return multi
-    ? { title: `Your ${lakh(amount)} is going into ${s.parts.length} strategies`, body: `${s.parts.map(p => `${lakh(p.amount)} into ${NAMES[p.code]}`).join(' + ')}. ${timeline} Nothing more to do.` }
+    ? { title: `Your ${lakh(amount)} is going into ${s.parts.length} strategies`, body: `${andList(s.parts.map(p => `${lakh(p.amount)} into ${NAMES[p.code]}`))}. ${timeline} Nothing more to do.` }
     : { title: `Your ${lakh(amount)} is going into ${s.label}`, body: `${timeline} Nothing more to do.` }
 }
 
@@ -45,8 +47,9 @@ function split(eo: any, amount: number): { label: string; parts: { code: string;
   if (!parts.length) return null
   const total = parts.reduce((t, p) => t + p.amount, 0)
   const matches = Math.abs(total - amount) <= Math.max(1, amount * 0.01)
+  // read as a sentence: "Qode All Weather (₹3 lakh) and Qode Growth Fund (₹2 lakh)"; amounts only when they add up
   const label = parts.length === 1 ? NAMES[parts[0].code]
-    : matches ? parts.map(p => `${NAMES[p.code]} ${lakh(p.amount)}`).join(' · ') : parts.map(p => NAMES[p.code]).join(' + ')
+    : andList(parts.map(p => (matches ? `${NAMES[p.code]} (${lakh(p.amount)})` : NAMES[p.code])))
   return { parts: matches ? parts : parts.map(p => ({ code: p.code, amount: 0 })), label }
 }
 
