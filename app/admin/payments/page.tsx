@@ -151,7 +151,7 @@ export default function AdminPaymentsPage() {
                 <Input value={reference} onChange={(e) => setReference(e.target.value)} className="bg-white" maxLength={60} /></label>
             </div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={notify} onChange={(e) => setNotify(e.target.checked)} className="h-4 w-4 accent-[#02422B]" />
-              Notify the client in the app now ("Payment received", with the dates)</label>
+              Notify the client in the app now ("We’ve received your …", with the dates)</label>
             <div className="flex flex-wrap items-center gap-3 border-t border-[#02422B]/10 pt-4">
               <Button onClick={() => setConfirm("record")} disabled={!!problem || busy}><Banknote className="h-4 w-4" />Record payment…</Button>
               {problem ? <span className="text-xs text-muted-foreground">{problem}</span> : null}

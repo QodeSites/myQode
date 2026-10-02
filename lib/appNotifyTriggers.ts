@@ -11,12 +11,12 @@ import { ListObjectsV2Command } from '@aws-sdk/client-s3'
 import { s3 } from '@/lib/s3'
 import { query } from '@/lib/db'
 import { notifyAccounts, notifyEmails, appAudience, getState, setState } from '@/lib/appNotify'
-import { investTimeline, shortDate, timelineText } from '@/lib/investTimeline'
+import { investTimeline, shortDate, timelineText, receivedNote } from '@/lib/investTimeline'
 
 const inr = (n: number) => {
   const a = Math.abs(n)
-  if (a >= 1e7) return `₹${(a / 1e7).toFixed(a >= 1e8 ? 1 : 2).replace(/\.?0+$/, '')} Cr`
-  if (a >= 1e5) return `₹${(a / 1e5).toFixed(2).replace(/\.?0+$/, '')} L`
+  if (a >= 1e7) return `₹${(a / 1e7).toFixed(a >= 1e8 ? 1 : 2).replace(/\.?0+$/, '')} crore`
+  if (a >= 1e5) return `₹${(a / 1e5).toFixed(2).replace(/\.?0+$/, '')} lakh`
   return '₹' + Math.round(a).toLocaleString('en-IN')
 }
 const pct = (x: number) => `${x >= 0 ? '+' : '−'}${Math.abs(x).toFixed(1)}%`
@@ -52,9 +52,7 @@ export async function scanMoney(): Promise<number> {
     if (['PAYMENT_SUCCESS', 'SETTLED', 'DEPLOYED'].includes(st)) {
       const t = await investTimeline(p.payment_time || p.created_at, p.settled_at).catch(() => null)
       n += await notifyAccounts([p.nuvama_code], { category: 'money', dedupeKey: `pay:${p.order_id}:received`, link: 'tab:home',
-        title: 'Payment received', body: t
-          ? `${amt} for ${strat}. ${timelineText(t)}`
-          : `${amt} for ${strat}. Deployment by the next working day` })
+        ...receivedNote(amt, strat, t ? timelineText(t) : 'It will be invested by the next working day.') })
     }
     // "Invested" comes from Nuvama's data (the cash_in_out scan below), for app payments and bank transfers alike.
     if (st === 'PAYMENT_FAILED') {
@@ -75,8 +73,8 @@ export async function scanMoney(): Promise<number> {
     const t = await investTimeline(r.received_at, r.received_at).catch(() => null)
     if (!t) continue
     const where = r.label && r.label !== 'Allocation being confirmed' ? r.label : 'your Qode portfolio'
-    const note = { category: 'money' as const, dedupeKey: `pay:${r.order_id}:received`, link: 'tab:home', title: 'Payment received',
-      body: `${inr(Number(r.amount))} for ${where}. ${timelineText(t)}` }
+    const note = { category: 'money' as const, dedupeKey: `pay:${r.order_id}:received`, link: 'tab:home',
+      ...receivedNote(inr(Number(r.amount)), where, timelineText(t)) }
     const w = await notifyAccounts([r.account_id], note)
     n += w
     // Zoho inflows and cheques / transfers: the team gets the exact copy the client got (lib/capitalInflows.ts)

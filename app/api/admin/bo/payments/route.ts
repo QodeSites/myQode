@@ -12,14 +12,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'crypto'
 import { requireAdmin, audit } from '@/lib/adminAuth'
 import { query } from '@/lib/db'
-import { investTimeline, shortDate, timelineText } from '@/lib/investTimeline'
+import { investTimeline, shortDate, timelineText, receivedNote } from '@/lib/investTimeline'
 import { inPortfolio } from '@/lib/paymentProgress'
 import { notifyEmails, recipientsForAccounts } from '@/lib/appNotify'
 
 export const dynamic = 'force-dynamic'
 const CHANNELS = ['cheque', 'neft', 'rtgs', 'imps', 'upi']
 const strategy = (s: unknown) => String(s || '').replace(/^QODE ADVISORS LLP\s*-\s*/i, '').toLowerCase().replace(/\b\w/g, c => c.toUpperCase()).trim()
-const inr = (n: number) => { const a = Math.abs(n); return a >= 1e7 ? `₹${(a / 1e7).toFixed(2).replace(/\.?0+$/, '')} Cr` : a >= 1e5 ? `₹${(a / 1e5).toFixed(2).replace(/\.?0+$/, '')} L` : '₹' + Math.round(a).toLocaleString('en-IN') }
+const inr = (n: number) => { const a = Math.abs(n); return a >= 1e7 ? `₹${(a / 1e7).toFixed(2).replace(/\.?0+$/, '')} crore` : a >= 1e5 ? `₹${(a / 1e5).toFixed(2).replace(/\.?0+$/, '')} lakh` : '₹' + Math.round(a).toLocaleString('en-IN') }
 
 export async function GET(req: NextRequest) {
   const { error } = await requireAdmin(req, 'staff')
@@ -99,8 +99,8 @@ export async function POST(req: NextRequest) {
     if (b?.notify !== false) {
       const strat = strategy(acct.schemename) || 'your'
       notified = await notifyEmails(await recipientsForAccounts([accountId]), {
-        category: 'money', dedupeKey: `pay:${orderId}:received`, link: 'tab:home', title: 'Payment received',
-        body: `${inr(amount)} for ${strat}. ${timelineText(timeline)}`,
+        category: 'money', dedupeKey: `pay:${orderId}:received`, link: 'tab:home',
+        ...receivedNote(inr(amount), strat, timelineText(timeline)),
       }, { force: true })
     }
     await audit(req, admin!, 'payments.record', accountId, { orderId, amount, channel, reference, receivedAt: receivedAt.toISOString(), notified })

@@ -66,6 +66,11 @@ export const shortDate = (d: string) => { const x = new Date(d + 'T00:00:00Z'); 
 
 /** "30 Sep" */
 export const dayMonth = (d: string) => { const x = new Date(d + 'T00:00:00Z'); return `${x.getUTCDate()} ${MO[x.getUTCMonth()]}` }
-/** Notification wording: "Deployment by 30 Sep · Reflects in your portfolio by 1 Oct" */
+/** Notification wording, in plain words: "It will be invested by Tue 6 Oct and show in your portfolio from Wed 7 Oct." */
 export const timelineText = (t: { deployOn: string; visibleOn: string }) =>
-  `Deployment by ${dayMonth(t.deployOn)} · Reflects in your portfolio by ${dayMonth(t.visibleOn)}`
+  `It will be invested by ${shortDate(t.deployOn)} and show in your portfolio from ${shortDate(t.visibleOn)}.`
+/** The same once the dates have passed: "It was invested on Tue 6 Oct and is in your portfolio." */
+export const timelineDoneText = (t: { deployOn: string }) => `It was invested on ${shortDate(t.deployOn)} and is in your portfolio.`
+/** "We've received your ₹5 lakh" / "For Qode Growth Fund. It will be invested by …" (every money-received path) */
+export const receivedNote = (amount: string, where: string, timeline: string) =>
+  ({ title: `We’ve received your ${amount}`, body: `For ${where}. ${timeline}` })

@@ -13,11 +13,11 @@ import { query } from '@/lib/db'
 import { investTimeline } from '@/lib/investTimeline'
 import { inPortfolio } from '@/lib/paymentProgress'
 import { notifyAccounts, notifyEmails } from '@/lib/appNotify'
-import { dayMonth, timelineText } from '@/lib/investTimeline'
+import { dayMonth, shortDate, timelineText, timelineDoneText, receivedNote } from '@/lib/investTimeline'
 
 const NAMES: Record<string, string> = { QAW: 'Qode All Weather', QGF: 'Qode Growth Fund', QTF: 'Qode Tactical Fund', QLF: 'Qode Liquid Fund' }
 const n = (v: unknown) => Number(v) || 0
-const lakh = (v: number) => (v >= 1e7 ? `₹${(v / 1e7).toFixed(2).replace(/\.?0+$/, '')} Cr` : v >= 1e5 ? `₹${(v / 1e5).toFixed(2).replace(/\.?0+$/, '')} L` : '₹' + Math.round(v).toLocaleString('en-IN'))
+const lakh = (v: number) => (v >= 1e7 ? `₹${(v / 1e7).toFixed(2).replace(/\.?0+$/, '')} crore` : v >= 1e5 ? `₹${(v / 1e5).toFixed(2).replace(/\.?0+$/, '')} lakh` : '₹' + Math.round(v).toLocaleString('en-IN'))
 
 function receivedAt(r: any): Date | null {
   const day = String(r.Date_of_Receipt || '').slice(0, 10)
@@ -30,6 +30,15 @@ function receivedAt(r: any): Date | null {
 // The strategies the money goes into. The account on the form isn't always the destination (a QTF entry can be
 // invested in QAW), so the Execution Order decides. One order can cover several inflows, so its amounts are shown
 // only when they add up to this inflow; otherwise just the strategy names.
+// "Your ₹5 lakh is going into Qode Growth Fund" / "It will be invested by Tue 6 Oct. Nothing more to do."
+// A split across strategies lists the parts in the body.
+function allocationNote(amount: number, s: { label: string; parts: { code: string; amount: number }[] }, timeline: string) {
+  const multi = s.parts.length > 1 && s.parts.every(p => p.amount > 0)
+  return multi
+    ? { title: `Your ${lakh(amount)} is going into ${s.parts.length} strategies`, body: `${s.parts.map(p => `${lakh(p.amount)} into ${NAMES[p.code]}`).join(' + ')}. ${timeline} Nothing more to do.` }
+    : { title: `Your ${lakh(amount)} is going into ${s.label}`, body: `${timeline} Nothing more to do.` }
+}
+
 function split(eo: any, amount: number): { label: string; parts: { code: string; amount: number }[] } | null {
   if (!eo) return null
   const parts = ['QAW', 'QGF', 'QTF', 'QLF'].map(code => ({ code, amount: n(eo[`${code}_Amount`]) })).filter(p => p.amount > 0)
@@ -130,11 +139,14 @@ export async function notifyAllocations(ids: string[]): Promise<number> {
       if (t.visibleOn < today) continue                    // old entry: already in (or due in) the portfolio
       const s = split(sc, amount)
       if (!s) continue
-      const where = s.parts.every(p => p.amount > 0) && s.parts.length > 1
-        ? s.parts.map(p => `${lakh(p.amount)} into ${NAMES[p.code]}`).join(' + ')
-        : `${lakh(amount)} into ${s.label}`
-      const note = { category: 'money' as const, dedupeKey: `zoho-sc:${id}`, link: 'tab:home', title: 'Allocation confirmed',
-        body: `${where}. Deployment by ${dayMonth(t.deployOn)}` }
+      // One message, not two: when the client's "We've received your …" for this inflow already names the strategy
+      // (sent, or about to be sent from a payment row that carries it), this note would only repeat it.
+      const ciId = String(sc.Capital_Inflow.id)
+      const got = (await query(`SELECT body FROM app_notifications WHERE dedupe_key = $1 LIMIT 1`, [`pay:zoho_${ciId}:received`])).rows[0]
+      const row = got ? null : (await query(`SELECT label FROM received_payments WHERE order_id = $1`, [`zoho_${ciId}`])).rows[0]
+      if (got ? String(got.body || '').includes(`For ${s.label}.`) : row?.label === s.label) continue
+      const note = { category: 'money' as const, dedupeKey: `zoho-sc:${id}`, link: 'tab:home',
+        ...allocationNote(amount, s, `It will be invested by ${shortDate(t.deployOn)}.`) }
       const w = await notifyAccounts([account], note)
       sent += w
       await copyToAdmins(account, note, w)
@@ -151,9 +163,7 @@ export async function notifyAllocations(ids: string[]): Promise<number> {
 export async function backfillInbox(days = 7): Promise<{ received: number; allocations: number; razorpay: number }> {
   const out = { received: 0, allocations: 0, razorpay: 0 }
   const today = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10)
-  const tense = (t: { deployOn: string; visibleOn: string }) => today >= t.visibleOn
-    ? `Deployed ${dayMonth(t.deployOn)} · Reflects in your portfolio`
-    : timelineText(t)
+  const tense = (t: { deployOn: string; visibleOn: string }) => (today >= t.visibleOn ? timelineDoneText(t) : timelineText(t))
 
   const inflows = (await query(`SELECT id, data FROM zoho_mirror WHERE module = 'Capital_Inflows' AND NOT deleted AND data->>'Verification_Status' = 'Verified'
                                   AND (data->>'Date_of_Receipt')::date >= CURRENT_DATE - $1::int`, [days])).rows
@@ -171,13 +181,12 @@ export async function backfillInbox(days = 7): Promise<{ received: number; alloc
     const s = split(sc || eo, amount)
     const where = s?.label || 'your Qode portfolio'
     out.received += await notifyAccounts([account], { category: 'money', dedupeKey: `pay:zoho_${id}:received`, link: 'tab:home', at,
-      title: 'Payment received', body: `${lakh(amount)} for ${where}. ${tense(t)}` })
+      ...receivedNote(lakh(amount), where, tense(t)) })
     if (sc && s) {
       const scAt = sc.Created_Time ? new Date(sc.Created_Time) : at
-      const w = s.parts.every(p => p.amount > 0) && s.parts.length > 1 ? s.parts.map(p => `${lakh(p.amount)} into ${NAMES[p.code]}`).join(' + ') : `${lakh(amount)} into ${s.label}`
       const scId = (await query(`SELECT id FROM zoho_mirror WHERE module = 'Scheme_Clarifications' AND data->'Capital_Inflow'->>'id' = $1 LIMIT 1`, [id])).rows[0]?.id
-      if (scId) out.allocations += await notifyAccounts([account], { category: 'money', dedupeKey: `zoho-sc:${scId}`, link: 'tab:home', at: scAt,
-        title: 'Allocation confirmed', body: `${w}. ${tense(t)}` })
+      if (scId && where !== s.label) out.allocations += await notifyAccounts([account], { category: 'money', dedupeKey: `zoho-sc:${scId}`, link: 'tab:home', at: scAt,
+        ...allocationNote(amount, s, tense(t)) })
     }
   }
   // Razorpay payments of the same week
@@ -189,7 +198,7 @@ export async function backfillInbox(days = 7): Promise<{ received: number; alloc
     const t = await investTimeline(p.paid, p.settled_at)
     const strat = String(p.schemename || '').replace(/^QODE ADVISORS LLP\s*-\s*/i, '').toLowerCase().replace(/\b\w/g, (c: string) => c.toUpperCase()) || 'your Qode portfolio'
     out.razorpay += await notifyAccounts([p.nuvama_code], { category: 'money', dedupeKey: `pay:${p.order_id}:received`, link: 'tab:home', at: p.paid,
-      title: 'Payment received', body: `${lakh(n(p.amount))} for ${strat}. ${tense(t)}` })
+      ...receivedNote(lakh(n(p.amount)), strat, tense(t)) })
   }
   return out
 }
@@ -200,7 +209,14 @@ export async function backfillInbox(days = 7): Promise<{ received: number; alloc
 // makes it one alert per record.
 const adminAlertEmails = () => String(process.env.APP_ADMIN_EMAILS || '').split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
 const nameOf = (v: any) => String((v && typeof v === 'object' ? v.name : v) || '').replace(/\s+/g, ' ').trim()
-const shortDay = (d: string) => { const m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? dayMonth(`${m[1]}-${m[2]}-${m[3]}`) : '' }
+const shortDay = (d: string) => { const m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? shortDate(`${m[1]}-${m[2]}-${m[3]}`) : '' }
+// "Kusum Rajendra Dalal" → "Kusum Dalal" (first and last name, no title), so the client fits on the first line
+const shortName = (v: string) => {
+  const w = String(v || '').replace(/\s+/g, ' ').trim().replace(/^(mr|mrs|ms|miss|dr|shri|smt)\.?\s+/i, '').split(' ').filter(Boolean)
+  return w.length > 2 ? `${w[0]} ${w[w.length - 1]}` : w.join(' ')
+}
+const whoText = (name: string, account: string) => [shortName(name), account ? `(${account})` : ''].filter(Boolean).join(' ') || 'Unknown client'
+const zohoStatus = (v: any) => { const st = String(v || '').trim(); return !st ? '' : /^verified$/i.test(st) ? 'verified in Zoho' : `${st.toLowerCase()} in Zoho` }
 
 export async function notifyAdminsOfNewRecords(changed: { Capital_Inflows?: any[]; Scheme_Clarifications?: any[] }): Promise<number> {
   const to = adminAlertEmails()
@@ -210,9 +226,9 @@ export async function notifyAdminsOfNewRecords(changed: { Capital_Inflows?: any[
   for (const r of (changed.Capital_Inflows || []).filter(fresh)) {
     try {
       const account = String(r.Nuvama_ID_Entry || '').trim().toUpperCase()
-      const who = [nameOf(r.Investor_Name), account ? `(${account})` : ''].filter(Boolean).join(' ') || 'Unknown client'
-      const bits = [lakh(n(r.Amount_Received)), who, r.Date_of_Receipt ? `received ${shortDay(r.Date_of_Receipt)}` : '', r.Verification_Status || '']
-      sent += await notifyEmails(to, { category: 'money', dedupeKey: `admin-zoho-ci:${r.id}`, link: 'tab:home', title: 'New Capital Inflow',
+      const who = whoText(nameOf(r.Investor_Name), account)
+      const bits = [`${lakh(n(r.Amount_Received))}${r.Date_of_Receipt ? ` on ${shortDay(r.Date_of_Receipt)}` : ''}`, zohoStatus(r.Verification_Status)]
+      sent += await notifyEmails(to, { category: 'money', dedupeKey: `admin-zoho-ci:${r.id}`, link: 'tab:home', title: `Money received: ${who}`,
         body: bits.filter(Boolean).join(' · ') }, { force: true })
     } catch (e) { console.error('[capitalInflows] admin alert CI', r?.id, (e as Error).message) }
   }
@@ -221,19 +237,21 @@ export async function notifyAdminsOfNewRecords(changed: { Capital_Inflows?: any[
       const ci = r.Capital_Inflow?.id
         ? (await query(`SELECT data FROM zoho_mirror WHERE module = 'Capital_Inflows' AND id = $1`, [String(r.Capital_Inflow.id)])).rows[0]?.data : null
       const account = String(ci?.Nuvama_ID_Entry || '').trim().toUpperCase()
-      const who = [nameOf(r.Investor_Name) || nameOf(ci?.Investor_Name), account ? `(${account})` : ''].filter(Boolean).join(' ') || 'Unknown client'
+      const who = whoText(nameOf(r.Investor_Name) || nameOf(ci?.Investor_Name), account)
       const parts = ['QAW', 'QGF', 'QTF', 'QLF'].map(c => ({ c, a: n(r[`${c}_Amount`]) })).filter(p => p.a > 0)
-      const alloc = parts.length ? parts.map(p => `${lakh(p.a)} ${NAMES[p.c]}`).join(' + ') : lakh(n(r.Amount_Received))
-      sent += await notifyEmails(to, { category: 'money', dedupeKey: `admin-zoho-sc:${r.id}`, link: 'tab:home', title: 'New Scheme Clarification',
-        body: [who, alloc, r.Verification_Status || ''].filter(Boolean).join(' · ') }, { force: true })
+      const alloc = parts.length ? parts.map(p => `${lakh(p.a)} → ${NAMES[p.c]}`).join(' + ') : lakh(n(r.Amount_Received))
+      const verified = /^verified$/i.test(String(r.Verification_Status || '').trim())
+      sent += await notifyEmails(to, { category: 'money', dedupeKey: `admin-zoho-sc:${r.id}`, link: 'tab:home',
+        title: `${verified ? 'Strategy confirmed' : 'Strategy split received'}: ${who}`,
+        body: [alloc, zohoStatus(r.Verification_Status)].filter(Boolean).join(' · ') }, { force: true })
     } catch (e) { console.error('[capitalInflows] admin alert SC', r?.id, (e as Error).message) }
   }
   return sent
 }
 
 /**
- * The client's own notification, copied to the admin list so the team sees exactly what the client saw: same title
- * and text, with the client's name and account added at the end. Only when the client's copy was just written
+ * The client's own notification, copied to the admin list so the team sees exactly what the client saw: the client's
+ * name and account first ("Kusum Dalal (QAW00162) · We've received your ₹5 lakh"), then the same text. Only when the client's copy was just written
  * (written > 0), so a repeat scan never sends it again.
  */
 export async function copyToAdmins(account: string, note: Parameters<typeof notifyEmails>[1], written: number): Promise<number> {
@@ -241,7 +259,6 @@ export async function copyToAdmins(account: string, note: Parameters<typeof noti
   if (!written || !to.length) return 0
   try {
     const who = (await query(`SELECT trim(clientname) AS name FROM pms_clients_master WHERE clientcode = $1 LIMIT 1`, [account])).rows[0]?.name
-    const tag = [who ? String(who).replace(/\s+/g, ' ') : '', `(${account})`].filter(Boolean).join(' ')
-    return await notifyEmails(to, { ...note, dedupeKey: `admin-copy:${note.dedupeKey}`, body: `${note.body}\n— sent to ${tag}` }, { force: true })
+    return await notifyEmails(to, { ...note, dedupeKey: `admin-copy:${note.dedupeKey}`, title: `${whoText(who || '', account)} · ${note.title}` }, { force: true })
   } catch (e) { console.error('[capitalInflows] copyToAdmins', account, (e as Error).message); return 0 }
 }
