@@ -1,0 +1,20 @@
+{
+  "app/(protected)/dashboard/page.tsx": 2,
+  "app/(protected)/experience/account-services/page.tsx": 133,
+  "app/(protected)/experience/family-account/page.tsx": 1,
+  "app/(protected)/experience/investor-portal-guide/page.tsx": 5,
+  "app/(protected)/payment/success/page.tsx": 10,
+  "app/(protected)/portfolio/performance-demo/performance-demo-component.tsx": 6,
+  "app/api/auth/admin/send-bulk-setup-emails/route.ts": 1,
+  "app/api/auth/microsoft/callback/route.ts": 1,
+  "app/api/auth/setup-password/route.ts": 1,
+  "app/api/cancel-sip/route.ts": 1,
+  "app/api/cashfree/setup-sip/route.tsx": 18,
+  "app/api/sync-client-orders/route.tsx": 1,
+  "app/api/test/cookie/route.ts": 1,
+  "app/api/ticket/route.ts": 2,
+  "lib/db.ts": 2,
+  "lib/db1.ts": 2,
+  "lib/db2.ts": 2,
+  "lib/investmentStatusCron.ts": 1
+}

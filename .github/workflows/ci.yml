@@ -1,0 +1,27 @@
+# Runs on every push and pull request. No secrets needed.
+# Type check: a ratchet (scripts/check-types.mjs) — existing errors are tolerated, new ones fail the run.
+name: CI
+on:
+  push:
+    branches: [main, feat/web-app]
+  pull_request:
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22          # same as server 220
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: No new TypeScript errors
+        run: node scripts/check-types.mjs
+      - name: Smoke test script parses
+        run: node --check scripts/smoke-test.mjs
+      - name: Dependency audit (report only)
+        run: npm audit --omit=dev --audit-level=critical || true
