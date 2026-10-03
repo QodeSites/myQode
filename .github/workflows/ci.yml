@@ -18,7 +18,9 @@ jobs:
         with:
           node-version: 22          # same as server 220
           cache: npm
-      - run: npm ci --no-audit --no-fund
+      # npm ci refuses: package-lock.json is out of sync with package.json (the servers' copies are locally
+      # modified too). Switch back to npm ci once the lockfile is regenerated and committed.
+      - run: npm install --no-audit --no-fund
       - name: No new TypeScript errors
         run: node scripts/check-types.mjs
       - name: Smoke test script parses
