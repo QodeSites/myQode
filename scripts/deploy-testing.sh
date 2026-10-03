@@ -31,6 +31,7 @@ git clean -q -fd -e node_modules -e .next -e '.env*'
 # same dependencies and settings as the running copy, so the build matches what will run it
 ln -sfn "$LIVE/node_modules" node_modules
 for f in "$LIVE"/.env*; do [ -f "$f" ] && ln -sfn "$f" "$(basename "$f")"; done
+git -C "$LIVE" fetch -q origin feat/web-app
 OLD=$(git -C "$LIVE" rev-parse HEAD)
 if ! git -C "$LIVE" diff --quiet "$OLD" "$SHA" -- package.json package-lock.json 2>/dev/null; then
   echo "! package.json or package-lock.json changed since the running build: run npm ci in $LIVE first if a dependency was added"
@@ -43,7 +44,6 @@ if ! nice -n 15 ionice -c2 -n7 env NODE_OPTIONS=--max-old-space-size=6144 npx ne
   exit 1
 fi
 echo "✓ Built"
-git -C "$LIVE" fetch -q origin feat/web-app
 git -C "$LIVE" reset -q --keep "$SHA"
 echo "$OLD" > "$LIVE/.deploy-previous-sha"
 rm -rf "$LIVE/.next-prev"
