@@ -8,11 +8,13 @@
 // partner the mobile JWT was verified for (requireMobileDistributor) — the app never supplies it, so it cannot
 // be forged from the phone. Never forwards admin flags (includeQodeShare).
 import { NextResponse } from 'next/server'
+import { signWebSession, WEB_SESSION_COOKIE } from '@/lib/webSession'
 
 const base = () => (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL?.trim() || 'http://localhost:2069').replace(/\/$/, '')
 
 export async function callWebDistributorRoute(email: string, path: string, init: { method?: string; body?: unknown } = {}) {
-  const cookie = 'qode-auth=1; qode-user-context=' + encodeURIComponent(JSON.stringify({ email }))
+  const cookie = 'qode-auth=1; qode-user-context=' + encodeURIComponent(JSON.stringify({ email })) +
+    `; ${WEB_SESSION_COOKIE}=${signWebSession([], { email })}`   // the web routes trust only the signed session
   const res = await fetch(`${base()}/api/distributor/${path}`, {
     method: init.method || 'GET',
     headers: { Cookie: cookie, 'Content-Type': 'application/json' },

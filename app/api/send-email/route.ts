@@ -2,6 +2,8 @@
 import { graphMailer as resend } from '@/lib/graphEmail';
 import { NextRequest, NextResponse } from 'next/server';
 import pool from '@/lib/db1';
+import { requireWebUser } from '@/lib/webGuard';
+import { requireAdmin } from '@/lib/adminAuth';
 
 export async function POST(request: NextRequest) {
   const client = await pool.connect();
@@ -37,6 +39,14 @@ export async function POST(request: NextRequest) {
     });
 
     // Validate required fields
+    // Signed-in portal users (or admins / the server's own calls with a signed session) may write to Qode's own
+    // mailboxes only — this endpoint must never send arbitrary mail from investor.relations@.
+    { const { error } = await requireWebUser(request); if (error) return error; }
+    const internal = (v: unknown) => ([] as unknown[]).concat(v ?? []).every(a => /^[^@\s<>]+@qodeinvest\.com$/i.test(String(a).trim()));
+    if (!internal(to) || !internal(cc)) {
+      return NextResponse.json({ error: 'Recipients must be Qode addresses.' }, { status: 403 });
+    }
+
     if (!to || !subject || !html) {
       return NextResponse.json(
         { error: 'Missing required email fields: to, subject, html' },
@@ -179,6 +189,7 @@ export async function POST(request: NextRequest) {
 
 // GET endpoint for analytics
 export async function GET(request: NextRequest) {
+  { const { error } = await requireAdmin(request, 'staff'); if (error) return error; }   // the inquiry log is admin data
   const { searchParams } = new URL(request.url);
   const type = searchParams.get('type');
   const status = searchParams.get('status');

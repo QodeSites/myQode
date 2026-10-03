@@ -1,7 +1,9 @@
+import { requireAdmin } from '@/lib/adminAuth';
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db1'; // Assuming you have a query function for database access
 
 export async function GET(request: NextRequest) {
+  { const { error } = await requireAdmin(request as any, 'staff'); if (error) return error; }   // admin-only (was open to anyone)
   try {
     // Parse query parameters
     const { searchParams } = new URL(request.url);

@@ -1,4 +1,5 @@
 import pool from "@/lib/db";
+import { guardAccounts, guardPayment } from '@/lib/webGuard';
 import { normaliseAccountCode } from "@/lib/utils";
 import { NextRequest, NextResponse } from "next/server";
 
@@ -6,6 +7,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const account_code = searchParams.get("account_code");
+    { const denied = await guardAccounts(request, [account_code]); if (denied) return denied; }
 
     if (!account_code || !account_code.trim()) {
       return NextResponse.json(

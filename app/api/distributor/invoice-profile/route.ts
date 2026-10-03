@@ -4,6 +4,7 @@
 // which is the field least tolerant of a typo. Scoped entirely to the caller's
 // own session email: a distributor can read and write their own profile and
 // nothing else.
+import { signedUserContext } from '@/lib/webSession';
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { query } from '@/lib/db'
@@ -16,7 +17,7 @@ interface UserContext {
 /** Resolves the caller from their session cookie. Null means not signed in. */
 async function callerEmail(): Promise<string | null> {
   const cookieStore = await cookies()
-  const raw = cookieStore.get('qode-user-context')?.value
+  const raw = (await signedUserContext())?.value
   if (!raw) return null
   try {
     const ctx = JSON.parse(raw) as UserContext

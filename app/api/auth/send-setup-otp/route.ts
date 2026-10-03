@@ -1,3 +1,4 @@
+import { randomInt } from 'crypto';
 // app/api/auth/send-setup-otp/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
@@ -36,7 +37,7 @@ export async function POST(request: NextRequest) {
     const client = result.rows[0];
 
     // Generate 6-digit OTP
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otp = randomInt(100000, 1000000).toString();   // CSPRNG, not Math.random
     const otpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
 
     // Store OTP in database

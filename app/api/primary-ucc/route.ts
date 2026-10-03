@@ -7,6 +7,7 @@
 // The caller sends no identifiers: groups are derived from the session cookie,
 // so an investor cannot request another family's primary code.
 // ----------------------------------------------------------------------------
+import { signedUserContext } from '@/lib/webSession';
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { query } from "@/lib/db";
@@ -19,11 +20,11 @@ import {
 export async function GET() {
   try {
     const cookieStore = await cookies();
-    if (cookieStore.get("qode-auth")?.value !== "1") {
+    if (!(await signedUserContext())) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const raw = cookieStore.get("qode-user-context")?.value;
+    const raw = (await signedUserContext())?.value;
     if (!raw) {
       return NextResponse.json({ success: true, primaries: [] });
     }

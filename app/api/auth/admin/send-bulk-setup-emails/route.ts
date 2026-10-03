@@ -1,3 +1,4 @@
+import { requireAdmin } from '@/lib/adminAuth';
 // app/api/admin/send-bulk-setup-emails/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
@@ -5,6 +6,7 @@ import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 
 export async function POST(request: NextRequest) {
+  { const { error } = await requireAdmin(request as any, 'super'); if (error) return error; }   // admin-only (was open to anyone)
   try {
     const { clientCodes } = await request.json();
 

@@ -1,5 +1,6 @@
 // app/api/cashfree/manage-sip/route.ts
 import { NextRequest, NextResponse } from 'next/server';
+import { guardAccounts, guardPayment } from '@/lib/webGuard';
 import pool from '@/lib/db';
 
 interface ManageSipRequest {
@@ -76,6 +77,7 @@ export async function POST(request: NextRequest) {
     console.log('Request Body:', JSON.stringify(body, null, 2));
 
     const { subscription_id, action, reason } = body;
+    { const denied = await guardPayment(request, subscription_id); if (denied) return denied; }
 
     // Validate required fields
     if (!subscription_id || !action) {
@@ -251,6 +253,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const nuvamaCode = searchParams.get('nuvama_code');
     const subscriptionId = searchParams.get('subscription_id');
+    { const denied = await guardPayment(request, subscriptionId, [nuvamaCode]); if (denied) return denied; }
 
     if (subscriptionId) {
       // Get specific SIP details

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import { logAuthEvent } from '@/lib/authEvents';
+import { recordWrongOtp, clearWrongOtp, TOO_MANY_OTP } from '@/lib/mobileOtpAttempts';
 
 export async function POST(request: NextRequest) {
   try {
@@ -54,6 +55,7 @@ export async function POST(request: NextRequest) {
 
     if (otpResult.rows.length === 0) {
       void logAuthEvent(request, { email, event: 'otp_failed', reason: 'wrong_code', platform: 'web', meta: { flow: 'setup', step: 'complete' } });
+      if (await recordWrongOtp(String(email).trim().toLowerCase())) return NextResponse.json(TOO_MANY_OTP, { status: 429 })  // 5 wrong codes → code expires
       return NextResponse.json(
         { error: 'Invalid or expired OTP' },
         { status: 400 }

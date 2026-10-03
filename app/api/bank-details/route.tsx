@@ -2,25 +2,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import pool from '@/lib/db1';
+import { guardAccounts } from '@/lib/webGuard';
 
 export async function GET(request: NextRequest) {
   const client = await pool.connect();
 
   try {
     // Check authentication
-    const cookieStore = await cookies();
-    const authCookie = cookieStore.get('qode-auth');
-
-    if (authCookie?.value !== '1') {
-      return NextResponse.json(
-        { error: 'Not authenticated' },
-        { status: 401 }
-      );
-    }
-
     // Get nuvama_code from query parameters
     const { searchParams } = new URL(request.url);
     const nuvama_code = searchParams.get('nuvama_code');
+    const denied = await guardAccounts(request, [nuvama_code]);
+    if (denied) return denied;
 
     if (!nuvama_code) {
       return NextResponse.json(

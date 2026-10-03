@@ -1,3 +1,4 @@
+import { signedUserContext } from '@/lib/webSession';
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { resolveDistributorByEmail } from "@/lib/distributorIdentity";
@@ -20,7 +21,7 @@ import { findSoaForInvestor, downloadSoa } from "@/lib/zohoInvestorSoa";
 export async function GET(request: NextRequest) {
   try {
     const cookieStore = await cookies();
-    const raw = cookieStore.get("qode-user-context")?.value;
+    const raw = (await signedUserContext())?.value;
     if (!raw) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }

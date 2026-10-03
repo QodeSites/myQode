@@ -1,5 +1,6 @@
 // app/api/pause-resume-sip/route.ts
 import { NextRequest, NextResponse } from 'next/server';
+import { guardAccounts, guardPayment } from '@/lib/webGuard';
 import pool from '@/lib/db';
 
 // Make direct Cashfree API v2 request for subscription operations
@@ -116,6 +117,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { subscription_id, nuvama_code, action } = body;
+    { const denied = await guardPayment(request, subscription_id, [nuvama_code]); if (denied) return denied; }
 
     // Validate required fields
     if (!subscription_id) {

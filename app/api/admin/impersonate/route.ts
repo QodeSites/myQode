@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
     cookieStore.set('qode-auth', '1', cookieOpts);
     cookieStore.set(
       WEB_SESSION_COOKIE,
-      signWebSession(tokenData.clientData.map(c => c.clientcode).filter((c): c is string => !!c)),
+      signWebSession(tokenData.clientData.map(c => c.clientcode).filter((c): c is string => !!c), tokenData.userContext),
       webSessionCookieOptions
     );
     cookieStore.set('qode-clients', JSON.stringify(tokenData.clientData), cookieOpts);

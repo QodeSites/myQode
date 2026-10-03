@@ -4,6 +4,7 @@
 // Tickets land in the same queue as investor queries
 // (pms_clients_tracker.qode_microsite_inquiries, surfaced at /admin/queries)
 // so the team works one list rather than remembering a second inbox.
+import { signedUserContext } from '@/lib/webSession';
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { resolveDistributorByEmail } from "@/lib/distributorIdentity";
@@ -36,7 +37,7 @@ function esc(v: string): string {
 export async function POST(request: NextRequest) {
   try {
     const cookieStore = await cookies();
-    const raw = cookieStore.get("qode-user-context")?.value;
+    const raw = (await signedUserContext())?.value;
     if (!raw) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }

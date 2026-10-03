@@ -7,6 +7,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { s3 } from "@/lib/s3";
+import { guardAccounts, requireWebUser } from "@/lib/webGuard";
 
 const BUCKET = "qode-static-assets";
 
@@ -36,6 +37,20 @@ export async function GET(request: NextRequest) {
         },
         { status: 400 }
       );
+    }
+
+    // Only the portal's own folders; a client's document folder only for that client (or an admin).
+    const PUBLIC_PREFIXES = ['videos/reports-tutorial/', 'images/reports-snapshot/', 'docs/newsletters', 'docs/prespectives']
+    const clientDoc = path.match(/^docs\/client-documents\/([^/]+)\/$/)
+    if (path.includes('..') || (!clientDoc && !PUBLIC_PREFIXES.some(p => path.startsWith(p)))) {
+      return NextResponse.json({ success: false, error: 'Folder not available.', error_code: 'FORBIDDEN_PATH' }, { status: 403 })
+    }
+    if (clientDoc) {
+      const denied = await guardAccounts(request, [clientDoc[1]])
+      if (denied) return denied
+    } else {
+      const { error } = await requireWebUser(request)
+      if (error) return error
     }
 
     // List objects in the specified folder (S3 prefix)

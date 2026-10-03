@@ -1,3 +1,4 @@
+import { signedUserContext } from '@/lib/webSession';
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
@@ -104,7 +105,7 @@ function parseCustomDateLabel(dateStr: string): Date {
 
 export async function GET() {
   const cookieStore = await cookies();
-  const userContextCookie = cookieStore.get("qode-user-context");
+  const userContextCookie = (await signedUserContext());
 
   if (!userContextCookie?.value) {
     return NextResponse.json({ error: "No user context" }, { status: 401 });
@@ -214,7 +215,7 @@ export async function GET() {
 export async function POST(req: Request) {
   try {
     const cookieStore = await cookies();
-    const userContextCookie = cookieStore.get('qode-user-context');
+    const userContextCookie = (await signedUserContext());
 
     let userContext: UserContext | null = null;
     let email: string | null = null;

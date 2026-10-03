@@ -61,12 +61,17 @@ export async function POST(request: NextRequest) {
     const client = result.rows[0];
 
     // Verify current password again
-    let currentPasswordValid = false;
-    if (client.password === 'Qode@123') {
-      currentPasswordValid = currentPassword === 'Qode@123';
-    } else {
-      currentPasswordValid = await bcrypt.compare(currentPassword, client.password);
+    // An account still on the shared default password (or none) must set its password through the emailed
+    // code (login → verify-setup-otp). Accepting the default here let anyone who knew a client's email take the
+    // account over.
+    if (!client.password || client.password === 'Qode@123') {
+      void logAuthEvent(request, { email: identifier, event: 'login_failed', reason: 'default_password_setup_refused', platform: 'web' });
+      return NextResponse.json(
+        { error: 'Please set your password with the code we email you.', code: 'PASSWORD_SETUP_REQUIRED' },
+        { status: 403 }
+      );
     }
+    const currentPasswordValid = await bcrypt.compare(currentPassword, client.password);
 
     if (!currentPasswordValid) {
       void logAuthEvent(request, { email: identifier, event: 'login_failed', reason: 'wrong_password', platform: 'web', meta: { during: 'password_setup' } });

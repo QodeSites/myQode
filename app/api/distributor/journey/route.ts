@@ -1,3 +1,4 @@
+import { signedUserContext } from '@/lib/webSession';
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import {
@@ -43,7 +44,7 @@ function buildReferralLinks(
 export async function GET() {
   try {
     const cookieStore = await cookies();
-    const raw = cookieStore.get("qode-user-context")?.value;
+    const raw = (await signedUserContext())?.value;
     if (!raw) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }

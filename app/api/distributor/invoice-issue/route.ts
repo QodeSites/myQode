@@ -8,6 +8,7 @@
 // writing this at all: a duplicated number in a tax invoice series is a
 // compliance defect, and the database refusing it is a stronger guarantee than
 // the UI trying not to offer it.
+import { signedUserContext } from '@/lib/webSession';
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { query } from '@/lib/db'
@@ -18,7 +19,7 @@ interface UserContext {
 
 async function callerEmail(): Promise<string | null> {
   const cookieStore = await cookies()
-  const raw = cookieStore.get('qode-user-context')?.value
+  const raw = (await signedUserContext())?.value
   if (!raw) return null
   try {
     const ctx = JSON.parse(raw) as UserContext

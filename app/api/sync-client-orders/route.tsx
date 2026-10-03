@@ -1,5 +1,6 @@
 // app/api/sync-client-orders/route.ts
 import { NextRequest, NextResponse } from 'next/server';
+import { guardAccounts, guardPayment } from '@/lib/webGuard';
 import pool from '@/lib/db';
 import { Cashfree, CFEnvironment } from 'cashfree-pg';
 
@@ -224,6 +225,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const nuvamaCode = searchParams.get('nuvama_code');
+    { const denied = await guardAccounts(request, [nuvamaCode]); if (denied) return denied; }
     const status = searchParams.get('status');
 
     if (!nuvamaCode) {

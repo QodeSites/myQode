@@ -1,3 +1,4 @@
+import { signedUserContext } from '@/lib/webSession';
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 import { query } from '@/lib/db';
@@ -13,11 +14,10 @@ interface UserContext {
 export async function GET() {
   try {
     const cookieStore = await cookies();
-    const authCookie = cookieStore.get('qode-auth');
-    const userContextCookie = cookieStore.get('qode-user-context');
-    const headOfFamilyCookie = cookieStore.get('qode-head-of-family');
+    // Identity from the signed session only (lib/webSession.ts); the plain qode-* cookies can be forged.
+    const userContextCookie = (await signedUserContext());
 
-    if (authCookie?.value !== '1') {
+    if (!userContextCookie) {
       return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
     }
 
@@ -36,10 +36,6 @@ export async function GET() {
       }
     }
 
-    // Fallback to head of family cookie if context is not available
-    if (!userContext && headOfFamilyCookie?.value) {
-      isHeadOfFamily = headOfFamilyCookie.value === 'true';
-    }
 
     if (!email) {
       return NextResponse.json({ error: 'No email found in session' }, { status: 400 });
@@ -59,7 +55,7 @@ export async function GET() {
       console.log(email,"==================email1")
       return NextResponse.json({
         success: true,
-        clients: clientCodesResult.rows,
+        clients: clientCodesResult.rows.map(({ password, password_setup_token, password_setup_expires, ...r }: any) => r),
         family: [],
         message: '',
         isHeadOfFamily: false,
@@ -87,7 +83,7 @@ export async function GET() {
               inceptiondate, mobile, email, address1, address2, city, pincode, state, pannumber, 
               ownerid, ownername, groupid, groupname, schemeid, schemename, advisorname, username, 
               salutation, firstname, middlename, lastname, first_holder_gender, created_at, 
-              updated_at, password, head_of_family 
+              updated_at, head_of_family 
        FROM pms_clients_master 
        WHERE clientcode = ANY($1::text[])`,
       [clientCodes]
@@ -202,7 +198,7 @@ export async function GET() {
                 inceptiondate, mobile, email, address1, address2, city, pincode, state, pannumber, 
                 ownerid, ownername, groupid, groupname, schemeid, schemename, advisorname, username, 
                 salutation, firstname, middlename, lastname, first_holder_gender, created_at, 
-                updated_at, password, head_of_family 
+                updated_at, head_of_family 
          FROM pms_clients_master 
          WHERE clientcode = ANY($1::text[])`,
         [familyClientCodes]

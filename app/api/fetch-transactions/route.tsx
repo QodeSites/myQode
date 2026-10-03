@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { guardAccounts, guardPayment } from '@/lib/webGuard';
 import pool from '@/lib/db'; // Adjust path to your db.ts file
 
 interface Transaction {
@@ -30,6 +31,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const nuvama_code = searchParams.get('nuvama_code');
+    { const denied = await guardAccounts(request, [nuvama_code]); if (denied) return denied; }
     const limit = parseInt(searchParams.get('limit') || '50', 10);
     const offset = parseInt(searchParams.get('offset') || '0', 10);
     const sort = searchParams.get('sort')?.toLowerCase() === 'asc' ? 'ASC' : 'DESC';

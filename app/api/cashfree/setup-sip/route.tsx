@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { guardAccounts, guardPayment } from '@/lib/webGuard';
 import crypto from 'crypto';
 import pool from '@/lib/db';
 
@@ -112,6 +113,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body: CreateSipOrderRequest = await request.json();
+    { const denied = await guardAccounts(request, [body?.nuvama_code]); if (denied) return denied; }
     console.log('Request Body:', JSON.stringify(body, null, 2));
 
     const {
@@ -427,6 +429,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const subscriptionId = searchParams.get('subscription_id');
+    { const denied = await guardPayment(request, subscriptionId); if (denied) return denied; }
     const action = searchParams.get('action');
 
     if (!subscriptionId) {

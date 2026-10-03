@@ -1,3 +1,4 @@
+import { signedUserContext } from '@/lib/webSession';
 import { NextRequest, NextResponse } from "next/server";
 import { query } from "@/lib/db";
 
@@ -32,8 +33,7 @@ function upstreamBase(): string {
 
 /** True when the request carries a portal session for a known partner. */
 async function isPortalPartner(request: NextRequest): Promise<boolean> {
-  if (request.cookies.get("qode-auth")?.value !== "1") return false;
-  const raw = request.cookies.get("qode-user-context")?.value;
+  const raw = (await signedUserContext())?.value;   // signed session only (lib/webSession.ts)
   if (!raw) return false;
 
   let email: string | undefined;

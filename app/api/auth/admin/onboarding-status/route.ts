@@ -1,8 +1,10 @@
+import { requireAdmin } from '@/lib/adminAuth';
 // app/api/admin/onboarding-status/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
+  { const { error } = await requireAdmin(request as any, 'super'); if (error) return error; }   // admin-only (was open to anyone)
   try {
     const result = await query(
       `SELECT 

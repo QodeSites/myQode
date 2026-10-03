@@ -1,3 +1,4 @@
+import { signWebSession, WEB_SESSION_COOKIE } from '@/lib/webSession'
 // Investor Relations email for the mobile API: one place that decides WHO receives the IR notifications
 // (withdrawal, switch, strategy question, discussion, account request, payment completed, SIP set up).
 //
@@ -59,7 +60,8 @@ export async function notifyIrPayment(p: {
     const base = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL?.trim() || 'http://localhost:2069'
     const res = await fetch(`${base}/api/send-email`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      // a signed session so /api/send-email accepts this server-side call (lib/webSession.ts)
+      headers: { 'Content-Type': 'application/json', Cookie: `${WEB_SESSION_COOKIE}=${signWebSession([], { email: p.userEmail || IR_EMAIL })}` },
       body: JSON.stringify({
         to: irRecipient(),
         subject,

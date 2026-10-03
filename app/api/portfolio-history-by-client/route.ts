@@ -1,7 +1,9 @@
+import { requireAdmin } from '@/lib/adminAuth';
 import pool from "@/lib/db";
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
+  { const { error } = await requireAdmin(request as any, 'staff'); if (error) return error; }   // admin-only (was open to anyone)
   try {
     const { searchParams } = new URL(request.url);
     const client_name = searchParams.get("client_name");

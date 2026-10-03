@@ -1,3 +1,4 @@
+import { signedUserContext } from '@/lib/webSession';
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { query } from "@/lib/db";
@@ -47,7 +48,7 @@ function formatDate(value: any): string | null {
 export async function GET() {
   try {
     const cookieStore = await cookies();
-    const userContextCookie = cookieStore.get("qode-user-context");
+    const userContextCookie = (await signedUserContext());
 
     if (!userContextCookie?.value) {
       return NextResponse.json({ error: "No user context" }, { status: 401 });

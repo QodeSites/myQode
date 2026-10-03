@@ -4,6 +4,7 @@ import { query } from '@/lib/db'
 import { cookies } from 'next/headers'
 import bcrypt from 'bcryptjs'
 import { logAuthEvent } from '@/lib/authEvents'
+import { recordWrongOtp, clearWrongOtp, TOO_MANY_OTP } from '@/lib/mobileOtpAttempts';
 
 interface ClientData {
   clientid: string;
@@ -251,7 +252,7 @@ async function handleDevPasswordlessLogin(username: string) {
     ]
 
     // Set client data cookie
-    cookieStore.set(WEB_SESSION_COOKIE, signWebSession(clientData.map(c => c.clientcode)), webSessionCookieOptions)
+    cookieStore.set(WEB_SESSION_COOKIE, signWebSession(clientData.map(c => c.clientcode), { clientid: user.clientid, clientcode: user.clientcode, email: user.email, groupid: user.groupid, head_of_family: user.head_of_family }), webSessionCookieOptions)
     cookieStore.set('qode-clients', JSON.stringify(clientData), {
       httpOnly: true,
       sameSite: 'lax',
@@ -363,7 +364,7 @@ async function handleDevBypassLogin(email: string) {
     ]
 
     // Set client data cookie
-    cookieStore.set(WEB_SESSION_COOKIE, signWebSession(clientData.map(c => c.clientcode)), webSessionCookieOptions)
+    cookieStore.set(WEB_SESSION_COOKIE, signWebSession(clientData.map(c => c.clientcode), { clientid: user.clientid, clientcode: user.clientcode, email: user.email, groupid: user.groupid, head_of_family: user.head_of_family }), webSessionCookieOptions)
     cookieStore.set('qode-clients', JSON.stringify(clientData), {
       httpOnly: true,
       sameSite: 'lax',
@@ -457,7 +458,7 @@ async function setSessionCookies(user: ExtendedClientData) {
   })
 
   // Set client data cookie
-  cookieStore.set(WEB_SESSION_COOKIE, signWebSession(clientData.map(c => c.clientcode)), webSessionCookieOptions)
+  cookieStore.set(WEB_SESSION_COOKIE, signWebSession(clientData.map(c => c.clientcode), { clientid: user.clientid, clientcode: user.clientcode, email: user.email, groupid: user.groupid, head_of_family: user.head_of_family }), webSessionCookieOptions)
   cookieStore.set('qode-clients', JSON.stringify(clientData), {
     httpOnly: true,
     sameSite: 'lax',
@@ -534,6 +535,7 @@ async function handleVerifySetupOtp(email: string, otp: string) {
 
     if (result.rows.length === 0) {
       void logAuthEvent(null, { email, event: 'otp_failed', reason: 'wrong_code', platform: 'web', meta: { flow: 'setup', step: 'verify' } })
+      if (await recordWrongOtp(String(email).trim().toLowerCase())) return NextResponse.json(TOO_MANY_OTP, { status: 429 })  // 5 wrong codes → code expires
       return NextResponse.json(
         { error: 'Invalid or expired verification code' },
         { status: 400 }
@@ -615,6 +617,7 @@ async function handleCompletePasswordSetup(email: string, otp: string, newPasswo
 
     if (otpResult.rows.length === 0) {
       void logAuthEvent(null, { email, event: 'otp_failed', reason: 'wrong_code', platform: 'web', meta: { flow: 'setup', step: 'complete' } })
+      if (await recordWrongOtp(String(email).trim().toLowerCase())) return NextResponse.json(TOO_MANY_OTP, { status: 429 })  // 5 wrong codes → code expires
       return NextResponse.json(
         { error: 'Invalid or expired verification code' },
         { status: 400 }

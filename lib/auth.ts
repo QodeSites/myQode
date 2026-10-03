@@ -1,5 +1,7 @@
 // lib/auth.ts
 import { cookies } from "next/headers"
+import { webSession } from "@/lib/webSession"
+import { query } from "@/lib/db"
 
 export interface ClientData {
   clientid: string;
@@ -7,27 +9,18 @@ export interface ClientData {
 }
 
 // Check if user is authenticated
+// Signed session only (lib/webSession.ts): the plain qode-auth / qode-clients cookies can be forged.
 export async function isAuthenticated(): Promise<boolean> {
-  const cookieStore = await cookies()
-  const authCookie = cookieStore.get("qode-auth")
-  return authCookie?.value === "1"
+  return !!(await webSession())
 }
 
 // Get all client data from cookies
+// Client codes come from the signed session; client ids from the database for those codes.
 export async function getClientData(): Promise<ClientData[]> {
-  const cookieStore = await cookies()
-  const clientsCookie = cookieStore.get("qode-clients")
-  
-  if (!clientsCookie?.value) {
-    return []
-  }
-  
-  try {
-    return JSON.parse(clientsCookie.value)
-  } catch (error) {
-    console.error("Error parsing clients cookie:", error)
-    return []
-  }
+  const s = await webSession()
+  if (!s?.codes.length) return []
+  const r = await query<ClientData>(`SELECT clientid, clientcode FROM pms_clients_master WHERE clientcode = ANY($1::text[])`, [s.codes])
+  return r.rows
 }
 
 // Get all client IDs for current user

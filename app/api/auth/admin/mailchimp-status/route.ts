@@ -1,8 +1,10 @@
+import { requireAdmin } from '@/lib/adminAuth';
 // app/api/admin/mailchimp-status/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 
 export async function GET(request: NextRequest) {
+  { const { error } = await requireAdmin(request as any, 'super'); if (error) return error; }   // admin-only (was open to anyone)
   try {
     // Get client statistics for mailchimp campaign planning
     const stats = await query(
@@ -42,6 +44,7 @@ export async function GET(request: NextRequest) {
 
 // Mark clients as campaign sent (optional tracking)
 export async function POST(request: NextRequest) {
+  { const { error } = await requireAdmin(request as any, 'super'); if (error) return error; }   // admin-only (was open to anyone)
   try {
     const { clientCodes, campaignId } = await request.json();
 

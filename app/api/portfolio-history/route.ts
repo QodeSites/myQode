@@ -1,5 +1,6 @@
 // app/api/portfolio-history/route.ts
 import pool from "@/lib/db";
+import { guardAccounts, guardPayment } from '@/lib/webGuard';
 import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
@@ -7,6 +8,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const nuvama_code = searchParams.get('nuvama_code');
     const nuvama_codes = searchParams.get('nuvama_codes'); // Support multiple codes
+    { const denied = await guardAccounts(request, [nuvama_code, nuvama_codes]); if (denied) return denied; }
 
     if (!nuvama_code && !nuvama_codes) {
       return NextResponse.json(

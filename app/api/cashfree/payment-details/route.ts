@@ -3,6 +3,7 @@
 // Auth: session cookie (web users only — not mobile JWT).
 // Security: never expose other clients' data in error responses.
 import { NextRequest, NextResponse } from 'next/server'
+import { guardAccounts, guardPayment } from '@/lib/webGuard';
 import { query } from '@/lib/db'
 
 // Fields safe to return — excludes raw payment_session_id and sensitive bank details
@@ -56,6 +57,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const orderId = searchParams.get('order_id')?.trim()
+    { const denied = await guardPayment(request, orderId); if (denied) return denied; }
 
     if (!orderId) {
       return NextResponse.json(

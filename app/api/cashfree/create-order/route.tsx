@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { guardAccounts, guardPayment } from '@/lib/webGuard';
 import { Cashfree, CFEnvironment } from 'cashfree-pg';
 import pool from '@/lib/db';
 
@@ -92,6 +93,7 @@ async function cfFetchOrder(orderId: string) {
 export async function POST(request: NextRequest) {
   try {
     const body: CreateOrderRequest = await request.json();
+    { const denied = await guardAccounts(request, [body?.nuvama_code]); if (denied) return denied; }
     console.log('Received payload:', body);
     const {
       amount,
@@ -255,6 +257,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const orderId = searchParams.get('order_id');
+    { const denied = await guardPayment(request, orderId); if (denied) return denied; }
     if (!orderId) {
       return NextResponse.json({ error: 'Order ID is required' }, { status: 400 });
     }

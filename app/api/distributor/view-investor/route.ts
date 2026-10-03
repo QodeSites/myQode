@@ -3,6 +3,7 @@
 // httpOnly portal session (qode-user-context email + resolveDistributorByEmail), never from the request body,
 // and the account must sit in their book (intermediaryname = distributor.clientname). Returns the same kind of
 // signed one-time link the backoffice uses (lib/impersonation.ts), recorded against the distributor's email.
+import { signedUserContext } from '@/lib/webSession';
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { query } from "@/lib/db";
@@ -11,7 +12,7 @@ import { investorPortalImpersonation } from "@/lib/impersonation";
 
 export async function POST(request: NextRequest) {
   try {
-    const raw = (await cookies()).get("qode-user-context")?.value;
+    const raw = (await signedUserContext())?.value;
     if (!raw) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
