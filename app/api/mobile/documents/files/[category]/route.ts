@@ -53,16 +53,17 @@ export async function GET(
   }
   const clientId = clientRes.rows[0].clientid
 
-  const prefix = `docs/client-documents/${clientId}/${folderName}/`
+  // clientid is stored as "12345678.0" but most folders are "12345678" (184 of 189 on 4 Oct 2026):
+  // look in the plain folder first, then the ".0" one.
+  const plainId = String(clientId).replace(/\.0+$/, '')
+  const list = async (id: string) => {
+    const r = await s3.send(new ListObjectsV2Command({ Bucket: BUCKET, Prefix: `docs/client-documents/${id}/${folderName}/` }))
+    return (r.Contents || []).filter((o) => o.Key && !o.Key.endsWith('/'))
+  }
 
   try {
-    const listRes = await s3.send(
-      new ListObjectsV2Command({ Bucket: BUCKET, Prefix: prefix })
-    )
-
-    const objects = (listRes.Contents || []).filter(
-      (o) => o.Key && !o.Key.endsWith('/')
-    )
+    let objects = await list(plainId)
+    if (!objects.length && plainId !== String(clientId)) objects = await list(String(clientId))
 
     const files = await Promise.all(
       objects.map(async (obj) => {

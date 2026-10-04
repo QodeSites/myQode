@@ -92,10 +92,17 @@ export default function AccountDocumentsPage() {
       setHadFetchError(false);
 
       try {
-        const apiUrl = `/api/list-folder?path=docs/client-documents/${clientId}/`;
-        const response = await fetch(apiUrl);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const responseData = await response.json();
+        // Client ids arrive as "12345678.0" but most document folders are "12345678" (184 of 189 on 4 Oct 2026):
+        // ask for the plain folder first and fall back to the ".0" one.
+        const plain = String(clientId).replace(/\.0+$/, "");
+        const list = async (id: string) => {
+          const r = await fetch(`/api/list-folder?path=docs/client-documents/${encodeURIComponent(id)}/`);
+          if (!r.ok) throw new Error(`HTTP ${r.status}`);
+          return r.json();
+        };
+        const count = (d: any) => (Array.isArray(d?.data) ? d.data.length : Array.isArray(d?.data?.data) ? d.data.data.length : 0);
+        let responseData = await list(plain);
+        if (count(responseData) === 0 && plain !== String(clientId)) responseData = await list(String(clientId));
 
         // Defensive: response.data?.data (response.data.data)
         const files: DocFile[] =
