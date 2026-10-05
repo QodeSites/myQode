@@ -17,7 +17,7 @@ import {
   MessageSquareHeart,
   ScrollText,
   ShieldCheck,
-  Users, FileText } from "lucide-react"
+  Users, FileText, Receipt } from "lucide-react"
 import { AdminSessionProvider, type BackofficeAdmin } from "@/components/admin-kit"
 import { cn } from "@/lib/utils"
 
@@ -54,6 +54,7 @@ const NAV: NavItem[] = [
   { label: "Queries", href: "/admin/queries", icon: MessageSquare, isActive: (p) => p.startsWith("/admin/queries") },
   { label: "Feedback", href: "/admin/feedback", icon: MessageSquareHeart, isActive: (p) => p.startsWith("/admin/feedback") },
   { label: "Payments", href: "/admin/payments", icon: Banknote, isActive: (p) => p.startsWith("/admin/payments") },
+  { label: "Distributor invoices", href: "/admin/partner-invoices", icon: Receipt, isActive: (p) => p.startsWith("/admin/partner-invoices") },
   { label: "Documents", href: "/admin/documents", icon: FileText, isActive: (p) => p.startsWith("/admin/documents") },
   { label: "Notifications", href: "/admin/notifications", icon: Bell, isActive: (p) => p.startsWith("/admin/notifications") },
   { label: "Audit log", href: "/admin/audit", icon: ScrollText, isActive: (p) => p.startsWith("/admin/audit") },

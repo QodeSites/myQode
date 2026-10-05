@@ -13,6 +13,7 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { query } from '@/lib/db'
 import { sendPartnerInvoiceMails } from '@/lib/partnerInvoiceMail'
+import { ensureInvoiceStatus, putInvoiceFile } from '@/lib/partnerInvoices'
 
 interface UserContext {
   email?: string
@@ -36,9 +37,11 @@ export async function GET() {
   if (!email) return NextResponse.json({ error: 'Not signed in' }, { status: 401 })
 
   try {
+    await ensureInvoiceStatus()
     const res = await query(
       `SELECT invoice_number, invoice_date, period_label,
-              amount_before_tax, tax_amount, total_amount
+              amount_before_tax, tax_amount, total_amount,
+              status, paid_on, paid_amount, payment_ref, payment_note
          FROM distributor_invoice_issued
         WHERE distributor_email = $1
         ORDER BY invoice_date DESC, id DESC
@@ -54,6 +57,12 @@ export async function GET() {
           amountBeforeTax: Number(r.amount_before_tax),
           taxAmount: Number(r.tax_amount),
           totalAmount: Number(r.total_amount),
+          // payment status, set by Qode in the backoffice (Admin → Distributor invoices)
+          status: r.status || 'unpaid',
+          paidOn: r.paid_on ? (r.paid_on instanceof Date ? r.paid_on.toISOString() : String(r.paid_on)).slice(0, 10) : null,
+          paidAmount: r.paid_amount == null ? null : Number(r.paid_amount),
+          paymentRef: r.payment_ref || null,
+          paymentNote: r.payment_note || null,
         })),
       },
       { status: 200 },
@@ -88,11 +97,12 @@ export async function POST(req: Request) {
   }
 
   try {
-    await query(
+    await ensureInvoiceStatus()
+    const ins = await query(
       `INSERT INTO distributor_invoice_issued (
          distributor_email, invoice_number, invoice_date, period_label,
          period_start, period_end, amount_before_tax, tax_amount, total_amount
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
       [
         email,
         invoiceNumber,
@@ -118,6 +128,15 @@ export async function POST(req: Request) {
           WHERE distributor_email = $1`,
         [email, parseInt(trailing[1], 10)],
       )
+    }
+
+    // Keep the invoice document with the record, for the backoffice (Admin → Distributor invoices). Best effort.
+    if (typeof body.invoiceHtml === 'string' && body.invoiceHtml.length < 1_500_000) {
+      try {
+        const id = Number(ins.rows[0]?.id)
+        const key = await putInvoiceFile(id, `invoice-${invoiceNumber}.html`, body.invoiceHtml, 'text/html; charset=utf-8')
+        await query(`UPDATE distributor_invoice_issued SET invoice_doc_key = $2 WHERE id = $1`, [id, key])
+      } catch (e) { console.warn('[distributor/invoice-issue] document not saved:', (e as any)?.message) }
     }
 
     // The invoice goes to partnerships@ and the partner gets a receipt (lib/partnerInvoiceMail). Best effort: the

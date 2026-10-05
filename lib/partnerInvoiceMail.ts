@@ -92,3 +92,49 @@ export async function sendPartnerInvoiceMails(inv: IssuedInvoice, profile: Profi
     next: 'Our partnerships team will review it against your fee statement and process the payment. If anything needs correcting, we’ll write to you. You don’t need to send the invoice again.',
   })
 }
+
+// ── "Your invoice has been paid" (Admin → Distributor invoices, status → Paid) ──────────────────────────────────
+// To the partner, partnerships@ in copy, the payment proof attached when one was uploaded. Same recipient rules as
+// above; `testTo` sends only to that address (subject marked TEST) — the backoffice "send a test" button.
+export type PaidInvoice = {
+  partnerEmail: string; partnerName: string | null
+  invoiceNumber: string; invoiceDate: string | null; periodLabel: string; totalAmount: number
+  paidOn: string; paidAmount: number; paymentRef: string; note?: string | null
+  proof?: { name: string; contentType: string; content: Buffer } | null
+}
+export async function sendInvoicePaidMail(p: PaidInvoice, testTo?: string | null): Promise<{ sent: boolean; to: string[]; error?: string }> {
+  const override = (process.env.PARTNER_INVOICE_EMAIL_OVERRIDE || process.env.MOBILE_AUTH_EMAIL_OVERRIDE || '').split(',').map((s) => s.trim()).filter(Boolean)
+  const plan = testTo ? { to: [testTo], cc: [] as string[], prefix: `[TEST · for ${p.partnerEmail}] ` }
+    : override.length ? { to: override, cc: [] as string[], prefix: `[TEST · for ${p.partnerEmail}] ` }
+    : IS_PROD ? { to: [p.partnerEmail], cc: [PARTNERSHIPS_EMAIL], prefix: '' } : null
+  if (!plan) { console.log(`[partner-invoice] paid mail not sent (dev server): ${p.invoiceNumber} → ${p.partnerEmail}`); return { sent: false, to: [] } }
+  if (!isGraphEmailConfigured()) return { sent: false, to: plan.to, error: 'Email is not configured on this server' }
+  const name = p.partnerName || 'Partner'
+  const rows: Array<[string, unknown]> = [
+    ['Invoice no.', p.invoiceNumber], ['Invoice date', p.invoiceDate], ['Period', p.periodLabel], ['Invoice total', inr(p.totalAmount)],
+    ['Amount paid', inr(p.paidAmount)], ['Paid on', p.paidOn], ['UTR / reference', p.paymentRef], ['Note', p.note],
+  ]
+  const table = rows.filter(([, v]) => v != null && String(v).trim() !== '')
+    .map(([k, v]) => `<tr><td style="padding:6px 16px 6px 0;color:#37584F;font-size:13px">${esc(k)}</td><td style="padding:6px 0;font-size:14px"><b>${esc(v)}</b></td></tr>`).join('')
+  const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#EFECD3">
+    <div style="background:#02422B;padding:16px;border-radius:8px;margin-bottom:16px;text-align:center">
+      <h1 style="margin:0;color:#DABD38;font-family:Georgia,serif;font-size:22px">Invoice paid</h1>
+    </div>
+    <div style="background:#fff;padding:20px;border:1px solid #37584F;border-radius:8px">
+      <p style="margin-top:0">Dear ${esc(name)},</p>
+      <p>We have paid your invoice <b>${esc(p.invoiceNumber)}</b> for ${esc(p.periodLabel)}. The details are below${p.proof ? ', and the payment confirmation is attached' : ''}.</p>
+      <table style="border-collapse:collapse">${table}</table>
+      <p style="font-size:13px;color:#555">The amount should reach your account within one working day of the date above. You can also see this in the myQode partner portal under Earnings → Invoice. For any question, reply to this email.</p>
+      <p style="margin-bottom:0">Warm regards,<br/>Qode Partnerships<br/><a href="mailto:${PARTNERSHIPS_EMAIL}">${PARTNERSHIPS_EMAIL}</a></p>
+    </div>
+  </div>`
+  try {
+    const res = await graphMailer.emails.send({
+      from: `Qode Partnerships <${PARTNERSHIPS_EMAIL}>`, to: plan.to, cc: plan.cc, replyTo: PARTNERSHIPS_EMAIL,
+      subject: `${plan.prefix}Invoice ${p.invoiceNumber} paid · ${inr(p.paidAmount)}`, html,
+      ...(p.proof ? { attachments: [{ name: p.proof.name, contentType: p.proof.contentType, content: p.proof.content }] } : {}),
+    })
+    if (res?.error) return { sent: false, to: plan.to, error: res.error.message }
+    return { sent: true, to: [...plan.to, ...plan.cc] }
+  } catch (e: any) { return { sent: false, to: plan.to, error: e?.message || 'send failed' } }
+}
