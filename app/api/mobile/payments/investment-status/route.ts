@@ -131,7 +131,7 @@ const STATUS_META: Record<string, {
   // Pause is not — Razorpay only pauses a subscription that has charged at least once (SIP_ACTIVE).
   SIP_AUTHORISED: {
     label:      'Mandate Registered',
-    message:    'Your mandate is registered. The first instalment will be debited on the start date; Pause becomes available after that. You can cancel at any time.',
+    message:    'Your mandate is registered. The first instalment is debited once your bank confirms the mandate (for a later start date, on that date) and usually shows in your account within 1–2 working days. Pause becomes available after the first debit. You can cancel at any time.',
     color:      '#3B82F6',
     isTerminal: false,
   },
