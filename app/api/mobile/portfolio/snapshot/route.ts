@@ -5,7 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
-import { getStrategyName, getStrategyColor, getPrefix } from '@/lib/strategyConfig'
+import { getStrategyName, getStrategyColor, getPrefix, STRATEGY_NAMES } from '@/lib/strategyConfig'
 import { REVIEWER_MOCK_SNAPSHOT } from '@/lib/reviewerMock'
 import { closures } from '@/lib/accountClosure'
 
@@ -205,8 +205,19 @@ export async function GET(request: NextRequest) {
     const effectiveIsHoF = hasMultipleOwners
     const effectiveGroupId = hasMultipleOwners ? (headOwner?.groupId ?? null) : null
 
+    // Closed accounts of these owners (matured). Not in the portfolio, but the reports cover them: Nuvama's group
+    // statements include them (Pallavi Kalyani: QFH00051, closed 7 May 2026, ₹54,140 of expenses).
+    const closedRes = await pool.query(
+      `SELECT clientcode, ownerid, maturity_date::text AS closed FROM pms_clients_master
+        WHERE ownerid = ANY($1) AND clientcode IS NOT NULL AND maturity_date IS NOT NULL AND maturity_date <= NOW()
+        ORDER BY clientcode`, [Array.from(ownerMap.keys())])
+    const closedAccounts = closedRes.rows.map((r: any) => ({
+      id: r.clientcode, ownerId: r.ownerid, strategyPrefix: getPrefix(r.clientcode), strategyName: STRATEGY_NAMES[getPrefix(r.clientcode)] ?? null, closedOn: r.closed,
+    }))
+
     return NextResponse.json({
       owners,
+      closedAccounts,
       totalPortfolioValue: +totalPortfolioValue.toFixed(2),
       formattedTotal: formatINR(totalPortfolioValue),
       activeAccountCount,
