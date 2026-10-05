@@ -374,7 +374,7 @@ export async function computePlbs(codes: string[], from: string, to: string): Pr
   // ── holdings, value and the balance sheet, per account then summed ──
   const ms = new Map(msRes.rows.map(r => [r.account_code, r]))
   let eqEnd = 0, eqBegin = 0, optEnd = 0, optBegin = 0, invCost = 0, optCost = 0, omargin = 0, fmargin = 0
-  let bank = 0, outstanding = 0, outstandingBeg = 0, pvEnd: number | null = null, pvBeg = 0, derivedBank = false
+  let bank = 0, outstanding = 0, outstandingBeg = 0, pvEnd: number | null = null, pvBeg = 0, derivedBank = false, reservesFix = 0
   const payables: Record<string, number> = { custodianPayable: 0, managementPayable: 0, otherPayable: 0 }
   const feesOf: Record<string, number> = {}
   for (const r of payRes.rows) { payables[r.k] += Number(r.amt); feesOf[r.a] = (feesOf[r.a] || 0) + Number(r.amt) }
@@ -386,10 +386,21 @@ export async function computePlbs(codes: string[], from: string, to: string): Pr
     if (m) {
       firstDate = !firstDate || m.f < firstDate ? m.f : firstDate
       lastDate = !lastDate || m.l > lastDate ? m.l : lastDate
-      if (m.pv1 != null) pvEnd = (pvEnd || 0) + m.pv1
       if (m.pv0 != null) pvBeg += m.pv0
+      // Value series that ended before the period began (account closed) while money still moved in it afterwards
+      // (QAW00017: closed 30 Mar 2026 with value 0 on 31 Mar, yet ₹14,657.75 stayed in until a switch out on 23 Apr).
+      // The value then misstates the reserves at the start; the computed surplus from inception to that day doesn't.
+      if (m.pv0 != null && m.l <= beg) {
+        const pre = await computePlbs([code], '2000-01-01', beg)
+        if (pre.reconciliation.expected != null) reservesFix += pre.pnl.surplus - pre.reconciliation.expected
+      }
     }
     const E = h?.end, B = h?.beg
+    // The value on `to`: the master sheet's, unless the holdings carry newer cash rows (value series ended, account
+    // still holding cash or owing charges): then what those rows hold.
+    const fromRows = !!(E && E.date && E.cash && (!m || m.pv1 == null || m.d1 < E.date))
+    if (fromRows) pvEnd = (pvEnd || 0) + E!.inv[1] + E!.opt[1] + E!.omargin + E!.fmargin + E!.bank + E!.recpay
+    else if (m && m.pv1 != null) pvEnd = (pvEnd || 0) + m.pv1
     if (B && B.date) { eqBegin += B.inv[1] - B.inv[0]; optBegin += B.opt[1] - B.opt[0] }
     if (!E || !E.date) continue
     eqEnd += E.inv[1] - E.inv[0]; optEnd += E.opt[1] - E.opt[0]
@@ -431,7 +442,7 @@ export async function computePlbs(codes: string[], from: string, to: string): Pr
   lines.eqEnd = eqEnd; lines.eqBegin = eqBegin; lines.optEnd = optEnd; lines.optBegin = optBegin
   lines.capital = capitalTo; lines.withdrawals = withdrawTo
   // Reserves at the start: value − unrealised − net capital on the day before `from` (0 before the account began).
-  const reservesBeg = pvBeg - (eqBegin + optBegin) - netCapBeg
+  const reservesBeg = pvBeg - (eqBegin + optBegin) - netCapBeg + reservesFix
   lines.reservesBegin = reservesBeg
   lines.payablePurchases = payPurch
   Object.assign(lines, payables)
