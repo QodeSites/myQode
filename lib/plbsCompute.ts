@@ -397,9 +397,14 @@ export async function computePlbs(codes: string[], from: string, to: string): Pr
   const div = divRes.rows[0] || {}
   const loadedTo: string | null = div.loaded_to || null
   lines.dividend = Number(div.div || 0) + tx(['RD0'])
-  if (loadedTo && to > loadedTo) lines.dividend += outstanding
-  if (loadedTo && beg > loadedTo) lines.dividend -= outstandingBeg
-  if (loadedTo && to > loadedTo) notes.dividend = `By ex-date; dividends after ${dmy(loadedTo)} are the amount outstanding on ${dmy(to)}`
+  // The outstanding amount stands in for dividends the feed hasn't loaded yet, but it also contains every dividend
+  // the feed DOES have whose payment hasn't arrived (ex-date passed, money weeks away). So it is only added when the
+  // feed is genuinely behind (latest ex-date more than 3 days before the date); a current feed already holds them —
+  // adding it then counted them twice (Nuvama P&L QGF00050 to 01/10/2026: +₹11,401 dividend, checked 5 Oct 2026).
+  const lag = (d: string) => (loadedTo ? (Date.parse(d) - Date.parse(loadedTo)) / 86400000 : 0)
+  if (loadedTo && lag(to) > 3) lines.dividend += outstanding
+  if (loadedTo && lag(beg) > 3) lines.dividend -= outstandingBeg
+  if (loadedTo && lag(to) > 3) notes.dividend = `By ex-date; dividends after ${dmy(loadedTo)} are the amount outstanding on ${dmy(to)}`
 
   lines.eqEnd = eqEnd; lines.eqBegin = eqBegin; lines.optEnd = optEnd; lines.optBegin = optBegin
   lines.capital = capitalTo; lines.withdrawals = withdrawTo
