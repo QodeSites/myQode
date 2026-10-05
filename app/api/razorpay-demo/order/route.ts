@@ -30,12 +30,12 @@ export async function POST(req: NextRequest) {
   const strategy = STRATEGIES.includes(b?.strategy) ? b.strategy : STRATEGIES[0]
   if (!(amount >= MIN && amount <= MAX)) return NextResponse.json({ error: `Enter an amount between ₹${MIN} and ₹${MAX.toLocaleString('en-IN')}` }, { status: 400 })
   try {
-    const cfg = razorpayConfig()
+    const cfg = razorpayConfig('demo')
     const receipt = `qode_web_demo_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     const order: any = await createRazorpayOrder(amount, receipt, {
       source: 'myqode_web_demo', demo: 'true', strategy,
       payer_name: String(b?.name || '').slice(0, 60), payer_email: String(b?.email || '').slice(0, 80),
-    })
+    }, 'demo')
     return NextResponse.json({ orderId: order.id, amount, currency: 'INR', keyId: cfg.keyId, environment: cfg.isTest ? 'test' : 'live' })
   } catch (e) {
     console.error('[razorpay-demo/order]', (e as Error).message)

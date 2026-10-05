@@ -12,10 +12,10 @@ export async function POST(req: NextRequest) {
   const orderId = String(b?.orderId || ''), paymentId = String(b?.paymentId || ''), signature = String(b?.signature || '')
   if (!orderId || !paymentId || !signature) return NextResponse.json({ error: 'Missing payment details' }, { status: 400 })
   try {
-    const order: any = await fetchRazorpayOrder(orderId)
+    const order: any = await fetchRazorpayOrder(orderId, 'demo')
     if (order?.notes?.demo !== 'true') return NextResponse.json({ error: 'Order not found' }, { status: 404 })
-    if (!verifyPaymentSignature(orderId, paymentId, signature)) return NextResponse.json({ ok: false, error: 'Payment signature mismatch' }, { status: 400 })
-    const list: any = await fetchRazorpayOrderPayments(orderId).catch(() => null)
+    if (!verifyPaymentSignature(orderId, paymentId, signature, 'demo')) return NextResponse.json({ ok: false, error: 'Payment signature mismatch' }, { status: 400 })
+    const list: any = await fetchRazorpayOrderPayments(orderId, 'demo').catch(() => null)
     const p = (list?.items || []).find((x: any) => x.id === paymentId) || null
     const status: string = p?.status || 'authorized'
     return NextResponse.json({ ok: status === 'captured' || status === 'authorized', status, amount: (Number(order.amount) || 0) / 100, method: p?.method || null })

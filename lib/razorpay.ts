@@ -8,7 +8,22 @@ import crypto from 'crypto'
 
 const API = 'https://api.razorpay.com/v1'
 
-export function razorpayConfig() {
+// mode 'demo' = the public /pay demonstration for the gateway's website review. It uses its own TEST keys
+// (RAZORPAY_DEMO_KEY_ID / RAZORPAY_DEMO_KEY_SECRET) so it stays a dummy flow when the app runs on live keys; without
+// them it refuses rather than take real money with no client record.
+export type RazorpayMode = 'main' | 'demo'
+export type RazorpayConfig = { keyId: string; keySecret: string; isTest: boolean; webhookSecret: string }
+export function razorpayConfig(mode: RazorpayMode = 'main'): RazorpayConfig {
+  if (mode === 'demo') {
+    const keyId = process.env.RAZORPAY_DEMO_KEY_ID || '', keySecret = process.env.RAZORPAY_DEMO_KEY_SECRET || ''
+    if (!keyId || !keySecret) {
+      const main: RazorpayConfig = razorpayConfig()
+      if (main.isTest) return main          // main keys are test keys anyway: safe to reuse
+      throw new Error('The /pay demonstration needs test keys (RAZORPAY_DEMO_KEY_ID / RAZORPAY_DEMO_KEY_SECRET) on a live server')
+    }
+    if (!keyId.startsWith('rzp_test_')) throw new Error('RAZORPAY_DEMO_KEY_ID must be a test key (rzp_test_…)')
+    return { keyId, keySecret, isTest: true, webhookSecret: '' }
+  }
   const keyId = process.env.RAZORPAY_KEY_ID || ''
   const keySecret = process.env.RAZORPAY_KEY_SECRET || ''
   if (!keyId || !keySecret) throw new Error('Razorpay is not configured (RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET)')
@@ -16,8 +31,8 @@ export function razorpayConfig() {
   return { keyId, keySecret, isTest, webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET || '' }
 }
 
-async function rz(path: string, init?: RequestInit) {
-  const { keyId, keySecret } = razorpayConfig()
+async function rz(path: string, init?: RequestInit, mode: RazorpayMode = 'main') {
+  const { keyId, keySecret } = razorpayConfig(mode)
   const res = await fetch(API + path, {
     ...init,
     headers: {
@@ -33,8 +48,8 @@ async function rz(path: string, init?: RequestInit) {
 }
 
 // amount in rupees → Razorpay wants paise
-export function createRazorpayOrder(amountRupees: number, receipt: string, notes: Record<string, string>) {
-  return rz('/orders', { method: 'POST', body: JSON.stringify({ amount: Math.round(amountRupees * 100), currency: 'INR', receipt, notes }) })
+export function createRazorpayOrder(amountRupees: number, receipt: string, notes: Record<string, string>, mode: RazorpayMode = 'main') {
+  return rz('/orders', { method: 'POST', body: JSON.stringify({ amount: Math.round(amountRupees * 100), currency: 'INR', receipt, notes }) }, mode)
 }
 
 // ── SIP (Razorpay Subscriptions) ─────────────────────────────────────────────
@@ -147,12 +162,12 @@ export async function fetchRazorpaySettlementRecon(year: number, month: number) 
   return items
 }
 
-export function fetchRazorpayOrder(orderId: string) {
-  return rz('/orders/' + encodeURIComponent(orderId))
+export function fetchRazorpayOrder(orderId: string, mode: RazorpayMode = 'main') {
+  return rz('/orders/' + encodeURIComponent(orderId), undefined, mode)
 }
 
-export function fetchRazorpayOrderPayments(orderId: string) {
-  return rz('/orders/' + encodeURIComponent(orderId) + '/payments')
+export function fetchRazorpayOrderPayments(orderId: string, mode: RazorpayMode = 'main') {
+  return rz('/orders/' + encodeURIComponent(orderId) + '/payments', undefined, mode)
 }
 
 const hmac = (secret: string, data: string) => crypto.createHmac('sha256', secret).update(data).digest('hex')
@@ -162,8 +177,8 @@ const safeEq = (a: string, b: string) => {
 }
 
 // Checkout success: signature = HMAC_SHA256(order_id + "|" + payment_id, key_secret)
-export function verifyPaymentSignature(orderId: string, paymentId: string, signature: string) {
-  return safeEq(hmac(razorpayConfig().keySecret, `${orderId}|${paymentId}`), String(signature || ''))
+export function verifyPaymentSignature(orderId: string, paymentId: string, signature: string, mode: RazorpayMode = 'main') {
+  return safeEq(hmac(razorpayConfig(mode).keySecret, `${orderId}|${paymentId}`), String(signature || ''))
 }
 
 // Subscription checkout success uses a DIFFERENT formula: payment_id + "|" + subscription_id (order swapped).
