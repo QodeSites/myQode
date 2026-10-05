@@ -3,7 +3,7 @@
 //
 //   GET  /api/mobile/services/switch-request
 //        → every Investor record on the login email (family logins have one per member): legal name,
-//          QAW/QTF/QGF invested, and that investor's Pending requests (date, type, from → to)
+//          QAW/QTF/QGF/QLF invested, and that investor's Pending requests (date, type, from → to)
 //   POST /api/mobile/services/switch-request
 //        investorId (one of the GET list; optional when there is only one), plus
 //        Full:    { switchType: 'Full Switch',    from: ['QAW', …], to: ['QTF', …] }
@@ -27,7 +27,7 @@ import { sendClientAck, clientName } from '@/lib/mobileAckMail'
 import { hasZohoWriteToken, zohoApiDomain, zohoFetch } from '@/lib/zoho'
 import { irRecipient, irSubject, IR_EMAIL } from '@/lib/mobileIrMail'
 
-const STRATS = ['QAW', 'QTF', 'QGF'] as const
+const STRATS = ['QAW', 'QTF', 'QGF', 'QLF'] as const   // Qode Liquid Fund: switched like every strategy (Zoho has QLF_* fields)
 type Strat = typeof STRATS[number]
 const n = (v: unknown) => { const x = Number(String(v ?? '').replace(/[^\d.-]/g, '')); return isFinite(x) ? x : 0 }
 const rs = (v: number) => 'Rs.' + v.toLocaleString('en-IN', { maximumFractionDigits: 2 })
@@ -52,7 +52,7 @@ async function zoho(path: string, init?: RequestInit) {
 async function findInvestors(email: string): Promise<any[]> {
   const key = email.trim().toLowerCase()
   if (!key) return []
-  const body = await zoho(`Investors/search?email=${encodeURIComponent(key)}&fields=Name,Legal_Name,Email,Mobile_No,QAW_Invested,QTF_Invested,QGF_Invested,Owner&per_page=50`)
+  const body = await zoho(`Investors/search?email=${encodeURIComponent(key)}&fields=Name,Legal_Name,Email,Mobile_No,QAW_Invested,QTF_Invested,QGF_Invested,QLF_Invested,Owner&per_page=50`)
   return body?.data || []
 }
 
@@ -124,7 +124,7 @@ async function emailIrSwitch(user: any, view: any, isFull: boolean, fromList: st
 
 const investorView = (inv: any) => ({
   id: String(inv.id), legalName: String(inv.Legal_Name || inv.Name || ''),
-  invested: { QAW: n(inv.QAW_Invested), QTF: n(inv.QTF_Invested), QGF: n(inv.QGF_Invested) },
+  invested: { QAW: n(inv.QAW_Invested), QTF: n(inv.QTF_Invested), QGF: n(inv.QGF_Invested), QLF: n(inv.QLF_Invested) },
 })
 
 export async function GET(request: NextRequest) {
