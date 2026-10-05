@@ -36,8 +36,16 @@ export async function GET(req: NextRequest) {
   // ── accounts and the activation funnel (lifetime) ─────────────────────────────────────────────────────────────
   const accounts = await safe(async () => (await query(
     `WITH p AS (
-       SELECT lower(trim(email)) AS email, bool_or(password_set_at IS NOT NULL) AS pw, bool_or(first_login_at IS NOT NULL OR last_login_at IS NOT NULL) AS any_login,
-              bool_or(first_app_login_at IS NOT NULL) AS app, bool_or(first_web_login_at IS NOT NULL) AS web,
+       -- Funnel steps are nested: a password exists for anyone who has ever signed in (password_set_at is only
+       -- recorded by the newer setup flow, so older passwords count from the password column itself), and every
+       -- app user has signed in.
+       SELECT lower(trim(email)) AS email,
+              bool_or(password_set_at IS NOT NULL OR coalesce(password, '') NOT IN ('', 'Qode@123')
+                      OR first_login_at IS NOT NULL OR last_login_at IS NOT NULL OR first_app_login_at IS NOT NULL OR first_web_login_at IS NOT NULL) AS pw,
+              bool_or(first_login_at IS NOT NULL OR last_login_at IS NOT NULL OR first_app_login_at IS NOT NULL OR last_app_login_at IS NOT NULL
+                      OR first_web_login_at IS NOT NULL OR last_web_login_at IS NOT NULL) AS any_login,
+              bool_or(first_app_login_at IS NOT NULL OR last_app_login_at IS NOT NULL) AS app, bool_or(first_web_login_at IS NOT NULL OR last_web_login_at IS NOT NULL) AS web,
+              bool_or(last_app_login_at > NOW() - interval '30 days') AS app_30d,
               bool_or(last_ios_login_at IS NOT NULL) AS ios, bool_or(last_android_login_at IS NOT NULL) AS android,
               max(greatest(coalesce(last_app_login_at, 'epoch'), coalesce(last_web_login_at, 'epoch'), coalesce(last_login_at::timestamptz, 'epoch'))) AS last_seen,
               bool_or(locked_until > NOW()) AS locked,
@@ -48,7 +56,8 @@ export async function GET(req: NextRequest) {
      SELECT count(*)::int AS investors, count(*) FILTER (WHERE pw)::int AS password_set, count(*) FILTER (WHERE any_login)::int AS ever_signed_in,
             count(*) FILTER (WHERE app)::int AS app_users, count(*) FILTER (WHERE web)::int AS web_users,
             count(*) FILTER (WHERE ios)::int AS ios_users, count(*) FILTER (WHERE android)::int AS android_users,
-            count(*) FILTER (WHERE last_seen > NOW() - interval '30 days')::int AS active_30d, count(*) FILTER (WHERE locked)::int AS locked_now,
+            count(*) FILTER (WHERE last_seen > NOW() - interval '30 days')::int AS active_30d, count(*) FILTER (WHERE app_30d)::int AS app_active_30d,
+            count(*) FILTER (WHERE locked)::int AS locked_now,
             count(*) FILTER (WHERE ${IN('pw_at')})::int AS new_password_setups, count(*) FILTER (WHERE ${IN('app_at')})::int AS new_app_users
        FROM p`, P)).rows[0], null)
 
@@ -100,22 +109,34 @@ export async function GET(req: NextRequest) {
                     count(*) FILTER (WHERE event = 'lockout')::int AS lockouts FROM auth_events WHERE ${IN('occurred_at')} GROUP BY 1 ORDER BY 1`, P),
       query(`SELECT to_char(min(occurred_at) AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') AS since FROM auth_events`),
     ])
+    const resets = await query(`SELECT count(*)::int AS requested, count(*) FILTER (WHERE used)::int AS completed,
+                                       count(*) FILTER (WHERE NOT used AND expires_at < NOW())::int AS expired
+                                  FROM password_reset_tokens WHERE ${IN('created_at')}`, P).then(r => r.rows[0]).catch(() => null)
     const ev = Object.fromEntries(byEvent.rows.map((r: any) => [r.event, r]))
     const ok = n(ev.login_success?.n), failed = n(ev.login_failed?.n)
     return { since: since.rows[0]?.since || null, byEvent: byEvent.rows, failedByReason: byReason.rows, daily: daily.rows,
       successRate: ok + failed ? Math.round((ok / (ok + failed)) * 1000) / 10 : null,
       otp: { sent: n(ev.otp_sent?.n), verified: n(ev.otp_verified?.n), failed: n(ev.otp_failed?.n) },
-      passwords: { set: n(ev.password_set?.n), resetRequested: n(ev.password_reset_requested?.n), resetCompleted: n(ev.password_reset_completed?.n), changed: n(ev.password_changed?.n) } }
+      // resets: from password_reset_tokens (a used link = a completed reset), not from auth_events, which only logs
+      // requests since 29 Sep 2026 and never sees resets finished on the old site
+      passwords: { set: n(ev.password_set?.n), resetRequested: resets ? n(resets.requested) : n(ev.password_reset_requested?.n),
+                   resetCompleted: resets ? n(resets.completed) : n(ev.password_reset_completed?.n), resetExpired: resets ? n(resets.expired) : null,
+                   changed: n(ev.password_changed?.n) } }
   }, null)
 
   // ── app usage (db1 analytics events) ───────────────────────────────────────────────────────────────────────────
   const usage = await safe(async () => {
     const [sessions, sessionDaily, screens, screenTime, features, errors, dailyUsers] = await Promise.all([
-      query1(`WITH s AS (SELECT session_id, min(platform) AS platform, count(*) FILTER (WHERE event_type = 'screen')::int AS screens,
+      // Length is only measurable when a session has 2+ events: a one-screen visit (common on the web portal, which
+      // records page views only) has no end time, so it is counted separately instead of as "0 seconds".
+      query1(`WITH s AS (SELECT session_id, min(platform) AS platform, count(*) FILTER (WHERE event_type = 'screen')::int AS screens, count(*)::int AS events,
                                 least(extract(epoch FROM max(occurred_at) - min(occurred_at)), 7200) AS secs
                            FROM ${A} WHERE coalesce(user_id, '') NOT LIKE 'a:%' AND ${IN('occurred_at')} AND session_id IS NOT NULL GROUP BY session_id)
-              SELECT platform, count(*)::int AS sessions, round(avg(secs))::int AS avg_secs,
-                     round(percentile_cont(0.5) WITHIN GROUP (ORDER BY secs))::int AS median_secs, round(avg(screens), 1)::float AS screens_per_session
+              SELECT platform, count(*)::int AS sessions,
+                     count(*) FILTER (WHERE events = 1)::int AS single_event,
+                     round(avg(secs) FILTER (WHERE events > 1))::int AS avg_secs,
+                     round(percentile_cont(0.5) WITHIN GROUP (ORDER BY secs) FILTER (WHERE events > 1))::int AS median_secs,
+                     round(avg(screens), 1)::float AS screens_per_session
                 FROM s GROUP BY platform ORDER BY 2 DESC`, P),
       query1(`SELECT ${DAY('occurred_at')} AS d, platform, count(DISTINCT user_id)::int AS users, count(DISTINCT session_id)::int AS sessions
                 FROM ${A} WHERE coalesce(user_id, '') NOT LIKE 'a:%' AND ${IN('occurred_at')} GROUP BY 1, 2 ORDER BY 1`, P),

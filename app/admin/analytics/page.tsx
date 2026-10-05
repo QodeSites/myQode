@@ -47,6 +47,40 @@ const Note = ({ children }: { children: ReactNode }) => <p className="mt-3 text-
 const Chart = ({ children, h = 240 }: { children: ReactNode; h?: number }) => <div style={{ height: h }}><ResponsiveContainer width="100%" height="100%">{children as any}</ResponsiveContainer></div>
 const axis = { tick: { fontSize: 11, fill: "#6b7280" }, tickLine: false, axisLine: false }
 
+// Asks the store endpoint for installs over the period and shows the number, or exactly why there isn't one.
+function StoreDownloads({ store, endpoint, from, to }: { store: "apple" | "google"; endpoint: string; from: string; to: string }) {
+  const [st, setSt] = useState<{ ok: boolean; installs?: number; latest?: string | null; note?: string } | null>(null)
+  useEffect(() => {
+    let alive = true
+    const days = Math.max(1, Math.min(store === "apple" ? 30 : 90, Math.round((Date.parse(to) - Date.parse(from)) / 86400000) + 1))
+    const url = store === "apple" ? `${endpoint}?action=sales&days=${days}` : `${endpoint}?days=${days}`
+    fetch(url, { credentials: "same-origin", cache: "no-store" }).then(r => r.json().then(j => ({ r, j }))).then(({ r, j }) => {
+      if (!alive) return
+      if (!r.ok) return setSt({ ok: false, note: j?.error || `HTTP ${r.status}` })
+      if (store === "apple") {
+        const log = j?.diagnostics?.fetchLog || [], errs = log.filter((x: any) => x.status === "error")
+        if (log.length && errs.length === log.length) {
+          const msg = String(errs[0].error || "")
+          return setSt({ ok: false, note: /403|does not allow|forbidden/i.test(msg) ? "Apple refused the key: it needs the Sales role (App Store Connect → Users and Access → Integrations)." : msg.slice(0, 160) })
+        }
+        const installs = (j?.summary || []).reduce((t: number, x: any) => t + (x.installs || 0), 0)
+        return setSt({ ok: true, installs, latest: j?.latestDate, note: (j?.diagnostics?.datesWithData ?? 0) === 0 ? "No downloads reported by Apple for these days yet (reports arrive the next day)." : undefined })
+      }
+      const log = j?.diagnostics?.fetchLog || [], listErr = j?.diagnostics?.installsListing?.error
+      const denied = log.some((x: any) => x.status === 403) || /403|permission|access/i.test(String(listErr || ""))
+      if (denied) return setSt({ ok: false, note: "Google refused the key: the service account needs “View app information and download bulk reports” (Play Console → Users and permissions)." })
+      if (!(j?.summary || []).length) return setSt({ ok: true, installs: 0, note: "No Play install report for these months yet (Google publishes them with a delay of a few days)." })
+      return setSt({ ok: true, installs: j?.totals?.newInstalls ?? 0, latest: j?.summary?.[0]?.date ?? null, note: j?.totals?.activeInstalls ? `${fmtNum(j.totals.activeInstalls)} active installs on the latest day.` : undefined })
+    }).catch(e => alive && setSt({ ok: false, note: String(e?.message || e) }))
+    return () => { alive = false }
+  }, [store, endpoint, from, to])
+  if (!st) return <p className="mt-2 text-xs text-muted-foreground">Checking the store…</p>
+  if (!st.ok) return <><Pill tone="red">Not working</Pill><p className="mt-2 text-xs text-muted-foreground">{st.note}</p></>
+  return <><p className="mt-1 text-2xl font-semibold tabular-nums">{fmtNum(st.installs)}</p>
+    <p className="text-xs text-muted-foreground">new installs in this period{st.latest ? ` · latest report ${st.latest}` : ""}</p>
+    {st.note ? <p className="mt-1 text-xs text-muted-foreground">{st.note}</p> : null}</>
+}
+
 function Funnel({ steps }: { steps: { label: string; value: number; hint?: string }[] }) {
   const top = steps[0]?.value || 1
   return (
@@ -126,7 +160,7 @@ export default function AdminAppAnalyticsPage() {
           <KpiCard accent label="Monthly active users" value={fmtNum(l?.mau)} hint={`${fmtNum(l?.wau)} this week · ${fmtNum(l?.dau)} on ${to}`} icon={<Users className="h-4 w-4" />} />
           <KpiCard label="Unique people signed in" value={fmtNum(l?.users)} hint={`${fmtNum(l?.logins)} sign-ins · avg ${l?.avgDailyUsers ?? 0} people a day`} icon={<LogIn className="h-4 w-4" />} />
           <KpiCard label="App users (ever)" value={fmtNum(a?.app_users)} hint={`${pct(a?.app_users, a?.investors)} of ${fmtNum(a?.investors)} investors · ${fmtNum(a?.new_app_users)} new in period`} icon={<Smartphone className="h-4 w-4" />} />
-          <KpiCard label="Average app session" value={secs(Math.round(((u?.sessions || []).filter((s: any) => s.platform !== "web").reduce((t: number, s: any) => t + s.avg_secs * s.sessions, 0)) / Math.max(1, (u?.sessions || []).filter((s: any) => s.platform !== "web").reduce((t: number, s: any) => t + s.sessions, 0))))}
+          <KpiCard label="Average app session" value={secs(Math.round(((u?.sessions || []).filter((s: any) => s.platform !== "web").reduce((t: number, s: any) => t + (s.avg_secs || 0) * (s.sessions - (s.single_event || 0)), 0)) / Math.max(1, (u?.sessions || []).filter((s: any) => s.platform !== "web").reduce((t: number, s: any) => t + s.sessions - (s.single_event || 0), 0))))}
             hint={`${fmtNum(allSessions)} sessions in period, all platforms`} icon={<Timer className="h-4 w-4" />} />
         </div>
 
@@ -137,11 +171,11 @@ export default function AdminAppAnalyticsPage() {
               <div key={name} className="rounded-lg border border-[#02422B]/10 bg-white/60 p-3 text-sm">
                 <p className="font-medium">{name}</p>
                 {s.missing.length ? <><Pill tone="amber">Not connected</Pill><p className="mt-2 text-xs text-muted-foreground">Needs these server settings: {s.missing.join(", ")}.</p></>
-                  : <><Pill tone="green">Connected</Pill><p className="mt-2 text-xs text-muted-foreground">Daily downloads are read from the store reports.</p></>}
+                  : <StoreDownloads store={name.startsWith("App") ? "apple" : "google"} endpoint={s.endpoint} from={from} to={to} />}
               </div>
             ))}
           </div>
-          <Note>Meanwhile, the closest measure of installs is people signing in to the app for the first time: {fmtNum(a?.new_app_users)} in this period ({fmtNum(a?.ios_users)} iPhone and {fmtNum(a?.android_users)} Android users in total).</Note>
+          <Note>From our own records: {fmtNum(a?.new_app_users)} people signed in to the app for the first time in this period; {fmtNum(a?.app_users)} have used the app in total ({fmtNum(a?.ios_users)} on iPhone and {fmtNum(a?.android_users)} on Android where the phone type is known; older app builds didn't report it).</Note>
         </Section>
 
         {/* Activation */}
@@ -150,9 +184,9 @@ export default function AdminAppAnalyticsPage() {
             {a ? <Funnel steps={[
               { label: "Investor logins (accounts)", value: a.investors },
               { label: "Password set up", value: a.password_set, hint: `${fmtNum(a.new_password_setups)} set up in this period` },
-              { label: "Signed in at least once", value: a.ever_signed_in },
-              { label: "Used the app", value: a.app_users, hint: `${fmtNum(a.web_users)} have used the web portal` },
-              { label: "Active in the last 30 days", value: a.active_30d },
+              { label: "Signed in at least once", value: a.ever_signed_in, hint: `${fmtNum(a.web_users)} have used the web portal` },
+              { label: "Used the app", value: a.app_users },
+              { label: "Used the app in the last 30 days", value: a.app_active_30d ?? 0, hint: `${fmtNum(a.active_30d)} active anywhere (app or web) in the last 30 days` },
             ]} /> : <EmptyState title="No account data" />}
           </Section>
           <Section title="Sign-in health" description={au ? `Every sign-in attempt and setup step, since ${au.since ?? "today"}.` : "Starts recording once the sign-in log is switched on."}
@@ -162,7 +196,7 @@ export default function AdminAppAnalyticsPage() {
                 <KpiCard label="Sign-in success rate" value={au.successRate == null ? "–" : `${au.successRate}%`} icon={<KeyRound className="h-4 w-4" />} />
                 <KpiCard label="Failed sign-ins" value={fmtNum(au.byEvent.find((x: any) => x.event === "login_failed")?.n)} />
                 <KpiCard label="Setup codes verified" value={`${fmtNum(au.otp.verified)} / ${fmtNum(au.otp.sent)}`} hint={`${fmtNum(au.otp.failed)} rejected`} />
-                <KpiCard label="Password resets" value={`${fmtNum(au.passwords.resetCompleted)} / ${fmtNum(au.passwords.resetRequested)}`} hint="completed / requested" />
+                <KpiCard label="Password resets" value={`${fmtNum(au.passwords.resetCompleted)} / ${fmtNum(au.passwords.resetRequested)}`} hint={`completed / requested in period${au.passwords.resetExpired ? ` · ${fmtNum(au.passwords.resetExpired)} links expired unused` : ""}`} />
               </div>
               <p className="mb-1 mt-4 text-xs font-medium">Why sign-ins failed</p>
               <Bars rows={(au.failedByReason || []).map((r: any) => ({ k: `${label(r.reason)} (${r.platform})`, n: r.n }))} v="n" unit="times" />
@@ -208,11 +242,12 @@ export default function AdminAppAnalyticsPage() {
           </Section>
         </div>
 
-        <Section title="Sessions" description="A session is one continuous visit; a new one starts after 30 minutes away. Length is capped at 2 hours." csv={<CsvButton name="sessions" rows={u?.sessions} />}>
-          <Table><TableHeader><TableRow><TableHead>Platform</TableHead><TableHead className="text-right">Sessions</TableHead><TableHead className="text-right">Average length</TableHead><TableHead className="text-right">Median length</TableHead><TableHead className="text-right">Screens per session</TableHead></TableRow></TableHeader>
+        <Section title="Sessions" description="A session is one continuous visit; a new one starts after 30 minutes away. Length is capped at 2 hours. A visit with a single screen has no measurable length, so it is counted on its own and left out of the lengths." csv={<CsvButton name="sessions" rows={u?.sessions} />}>
+          <Table><TableHeader><TableRow><TableHead>Platform</TableHead><TableHead className="text-right">Sessions</TableHead><TableHead className="text-right">One-screen visits</TableHead><TableHead className="text-right">Average length</TableHead><TableHead className="text-right">Median length</TableHead><TableHead className="text-right">Screens per session</TableHead></TableRow></TableHeader>
             <TableBody>{(u?.sessions || []).map((s: any) => (
               <TableRow key={s.platform}><TableCell className="capitalize">{s.platform === "ios" ? "iPhone" : s.platform}</TableCell><TableCell className="text-right tabular-nums">{fmtNum(s.sessions)}</TableCell>
-                <TableCell className="text-right tabular-nums">{secs(s.avg_secs)}</TableCell><TableCell className="text-right tabular-nums">{secs(s.median_secs)}</TableCell><TableCell className="text-right tabular-nums">{s.screens_per_session}</TableCell></TableRow>))}
+                <TableCell className="text-right tabular-nums">{fmtNum(s.single_event)} <span className="text-xs text-muted-foreground">{pct(s.single_event, s.sessions)}</span></TableCell>
+                <TableCell className="text-right tabular-nums">{s.avg_secs == null ? "–" : secs(s.avg_secs)}</TableCell><TableCell className="text-right tabular-nums">{s.median_secs == null ? "–" : secs(s.median_secs)}</TableCell><TableCell className="text-right tabular-nums">{s.screens_per_session}</TableCell></TableRow>))}
             </TableBody></Table>
         </Section>
 
