@@ -6,6 +6,7 @@ export const STRATEGY_NAMES: Record<string, string> = {
   QTF: 'Qode Tactical Fund',
   QGF: 'Qode Growth Fund',
   QLF: 'Qode Liquid Fund',
+  QFH: 'Qode Future Horizons',
 }
 
 export const STRATEGY_BENCHMARKS: Record<string, string> = {

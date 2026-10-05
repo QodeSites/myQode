@@ -204,7 +204,7 @@ const SCHEME_NAME: Record<string, string> = {
   QAW: "Qode All Weather",
   QGF: "Qode Growth Fund",
   QTF: "Qode Tactical Fund",
-  QFH: "Qode Fund of Holdings",
+  QFH: "Qode Future Horizons",
   QLF: "Qode Liquid Fund",
 };
 
