@@ -148,11 +148,12 @@ function mapClient(r: any): JourneyClient {
       r.Current_Portfolio_Value != null ? Number(r.Current_Portfolio_Value) : null,
     // Zoho returns a multiselect as an array, but a single value can arrive
     // as a bare string — normalise so callers never have to check.
-    strategies: Array.isArray(r.Strategy_Invested)
+    // Qode Future Horizons is not shown anywhere (all its accounts are closed).
+    strategies: (Array.isArray(r.Strategy_Invested)
       ? r.Strategy_Invested.filter(Boolean).map(String)
       : r.Strategy_Invested
         ? [String(r.Strategy_Invested)]
-        : [],
+        : []).filter((s: string) => !/future horizons|^QFH$/i.test(s.trim())),
 
     relationshipManager: rm || null,
     mobile: r.Mobile_No ?? null,
