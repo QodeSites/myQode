@@ -260,7 +260,7 @@ async function holdingBuckets(codes: string[], beg: string, end: string) {
  */
 export async function computePlbs(codes: string[], from: string, to: string): Promise<PlbsStatement> {
   const beg = addDays(from, -1)
-  const [txRes, divRes, cgRes, tradeRes, payRes, msRes, holds, opoRes] = await Promise.all([
+  const [txRes, divRes, cgRes, tradeRes, payRes, msRes, holds, opoRes, swRes] = await Promise.all([
     // Transactions by type: in the period, before it, and up to `to`. OPI is dated by its settlement date (the day
     // the securities came in; trandate is the original purchase date of a migrated lot).
     q1(
@@ -311,6 +311,11 @@ export async function computePlbs(codes: string[], from: string, to: string): Pr
     q1(
       `SELECT id, ws_account_code AS a, security_code AS sc, trandate::text AS d, qty::float8 AS qty, net_amount::float8 AS amt FROM ${TX}
         WHERE ws_account_code = ANY($1) AND tran_type = 'OPO' AND trandate >= $2 AND trandate <= $3 AND NOT (${CONV})`, [codes, from, to]),
+    // Switches, to pair the ones between two accounts of this set (several accounts only).
+    codes.length > 1
+      ? q1(`SELECT ws_account_code AS a, tran_type AS t, trandate::text AS d, net_amount::float8 AS amt FROM ${TX}
+             WHERE ws_account_code = ANY($1) AND tran_type IN ('PSI', 'SII', 'PSO', 'SOO') AND trandate <= $2`, [codes, to])
+      : Promise.resolve({ rows: [] as Row[] }),
   ])
 
   // ── transactions → income, expenses, capital ──
@@ -326,8 +331,23 @@ export async function computePlbs(codes: string[], from: string, to: string): Pr
   // 'TDO' (tax deducted at source moved to the capital account, e.g. capital gains tax of a PIS / NRI account) is a
   // withdrawal too; its amount is negative. Its 'TDI' twin is the internal leg and is ignored.
   const out = (col: 'pre' | 'upto') => tx(CAPITAL_OUT, col) - tx(['TDO'], col)
-  const capitalTo = tx(CAPITAL_IN, 'upto'), withdrawTo = out('upto')
-  const netCapBeg = tx(CAPITAL_IN, 'pre') - out('pre'), netCapEnd = capitalTo - withdrawTo
+  // A switch from one account of this set to another is money moving inside the set, not capital in or out: Nuvama's
+  // group report leaves both legs out (group 14410077 to 01/10/2026: QGF00014 ⇄ QLF149, ₹1.65 Cr each way, checked
+  // 5 Oct 2026). Legs are paired by amount, out-leg in one account and in-leg in another, at most 3 days apart.
+  const internal = { pre: [0, 0], upto: [0, 0] }   // [in, out]
+  const ins = swRes.rows.filter(r => r.t === 'PSI' || r.t === 'SII'), used = new Set<Row>()
+  for (const o of swRes.rows.filter(r => r.t === 'PSO' || r.t === 'SOO')) {
+    const i = ins.find(x => !used.has(x) && x.a !== o.a && Math.abs(x.amt - o.amt) < 0.01 && Math.abs(toMs(x.d) - toMs(o.d)) <= 3 * 86400000)
+    if (!i) continue
+    used.add(i)
+    for (const k of ['pre', 'upto'] as const) {
+      const inside = (d: string) => (k === 'pre' ? d < from : d <= to)
+      if (inside(i.d)) internal[k][0] += i.amt
+      if (inside(o.d)) internal[k][1] += o.amt
+    }
+  }
+  const capitalTo = tx(CAPITAL_IN, 'upto') - internal.upto[0], withdrawTo = out('upto') - internal.upto[1]
+  const netCapBeg = tx(CAPITAL_IN, 'pre') - internal.pre[0] - (out('pre') - internal.pre[1]), netCapEnd = capitalTo - withdrawTo
 
   // ── realised: capital gains statement + securities transferred out ──
   const cg = cgRes.rows[0] || {}
@@ -375,7 +395,9 @@ export async function computePlbs(codes: string[], from: string, to: string): Pr
     eqEnd += E.inv[1] - E.inv[0]; optEnd += E.opt[1] - E.opt[0]
     invCost += E.inv[0]; optCost += E.opt[0]; omargin += E.omargin; fmargin += E.fmargin
     const held = E.inv[1] + E.opt[1] + E.omargin + E.fmargin
-    if (E.cash) {
+    // Cash rows older than the value do not count. An account closed after its last holding rows
+    // (value 0 since, no rows sent) would otherwise keep its old bank balance (QLF149: ₹1,182 on 15 Sep, closed 16 Sep).
+    if (E.cash && !(m && m.pv1 != null && m.d1 > E.date)) {
       bank += E.bank
       // Outstanding dividend: the value not in any holding row, when the value and the holdings are the same day.
       const gap = m && m.pv1 != null && m.d1 === E.date ? m.pv1 - held - E.bank - E.recpay : 0
