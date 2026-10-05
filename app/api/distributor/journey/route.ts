@@ -1,4 +1,5 @@
 import { signedUserContext } from '@/lib/webSession';
+import { partnerClientCodes } from '@/lib/partnerClientCodes';
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import {
@@ -109,29 +110,9 @@ export async function GET() {
     // Scoped to THIS distributor's own book: intermediaryname must match their
     // clientname, so a Zoho email that belongs to another partner's client
     // cannot pick up a code it should not have.
-    const codeByEmail = new Map<string, string>();
-    // Fallback by name, for an investor whose CRM email isn't the one on the account (the CRM contact is often the
-    // husband, the account in the wife's name: Zoho's Legal_Name). Same book only.
-    const nameKey = (n: unknown) => String(n ?? '').toLowerCase().replace(/\b(mr|mrs|ms|miss|dr|shri|smt)\.?\s+/g, '').replace(/[^a-z]+/g, ' ').trim();
-    const codeByName = new Map<string, string>();
+    let codeFor: (c: any) => string | null = () => null;
     try {
-      const codes = await query(
-        `SELECT lower(email) AS email, clientcode, clientname
-           FROM pms_clients_master
-          WHERE intermediaryname = $1
-            AND clientcode IS NOT NULL
-            AND email IS NOT NULL`,
-        [distributor.clientname],
-      );
-      for (const row of codes.rows ?? []) {
-        // One investor can hold several strategy accounts; the first is enough
-        // to open their portal view.
-        if (row.email && !codeByEmail.has(String(row.email))) {
-          codeByEmail.set(String(row.email), String(row.clientcode));
-        }
-        const k = nameKey(row.clientname);
-        if (k && !codeByName.has(k)) codeByName.set(k, String(row.clientcode));   // several accounts of one person: the first opens their view
-      }
+      codeFor = await partnerClientCodes(distributor.clientname);
     } catch (err) {
       console.error("[distributor/journey] client code lookup failed:", err);
     }
@@ -139,9 +120,7 @@ export async function GET() {
     if (journey) {
       journey.clients = journey.clients.map((c) => ({
         ...c,
-        clientCode:
-          codeByEmail.get(String(c.email ?? "").trim().toLowerCase())
-          ?? codeByName.get(nameKey((c as any).legalName)) ?? codeByName.get(nameKey(c.name)) ?? null,
+        clientCode: codeFor(c),
         onboardingStage:
           onboardingStages.get(String(c.email ?? "").trim().toLowerCase()) ?? null,
       })) as typeof journey.clients;

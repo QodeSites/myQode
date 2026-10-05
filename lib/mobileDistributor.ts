@@ -10,6 +10,7 @@
 // The web routes read the unsigned qode-user-context cookie; here the identity comes from the signed
 // mobile JWT instead. Nothing the client sends selects a distributor or an account.
 import { NextRequest, NextResponse } from 'next/server'
+import { partnerClientCodes } from '@/lib/partnerClientCodes'
 import { verifyMobileAuth, type MobileAuthUser } from '@/lib/mobileAuth'
 import {
   resolveDistributorByEmail,
@@ -77,30 +78,17 @@ export async function distributorJourney(distributor: DistributorIdentity) {
     console.error('[mobile/distributor/journey] onboarding stage lookup failed:', err)
   }
 
-  // Portal client code per investor email, scoped to THIS distributor's own book (intermediaryname).
-  const codeByEmail = new Map<string, string>()
-  try {
-    const codes = await query(
-      `SELECT lower(email) AS email, clientcode
-         FROM pms_clients_master
-        WHERE intermediaryname = $1
-          AND clientcode IS NOT NULL
-          AND email IS NOT NULL`,
-      [distributor.clientname],
-    )
-    for (const row of codes.rows ?? []) {
-      if (row.email && !codeByEmail.has(String(row.email))) codeByEmail.set(String(row.email), String(row.clientcode))
-    }
-  } catch (err) {
-    console.error('[mobile/distributor/journey] client code lookup failed:', err)
-  }
+  // Portal client code per investor (email, then Zoho Legal Name, then name), this partner's own book only.
+  let codeFor: (c: any) => string | null = () => null
+  try { codeFor = await partnerClientCodes(distributor.clientname) }
+  catch (err) { console.error('[mobile/distributor/journey] client code lookup failed:', err) }
 
   if (journey) {
     // lastConversation is an internal CRM note: the web hides it on screen but still sends it; the app never
     // receives it at all.
     journey.clients = journey.clients.map(({ lastConversation, ...c }: any) => ({
       ...c,
-      clientCode: codeByEmail.get(String(c.email ?? '').trim().toLowerCase()) ?? null,
+      clientCode: codeFor(c),
       onboardingStage: onboardingStages.get(String(c.email ?? '').trim().toLowerCase()) ?? null,
     })) as typeof journey.clients
   }
