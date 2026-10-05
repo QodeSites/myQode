@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
 
     const receipt = `qode_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     const rzOrder: any = await createRazorpayOrder(amount, receipt, {
-      nuvama_code: accountId, client_id: String(client.clientid), order_type: 'one_time', source: 'qode_mobile_app',
+      nuvama_code: accountId, client_id: String(client.clientid ?? '').replace(/\.0+$/, ''),   // the db stores '14410854.0'; Razorpay shows it as typed order_type: 'one_time', source: 'qode_mobile_app',
     })
 
     await pool.query(

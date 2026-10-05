@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
     // date read as the previous day in UTC-based displays).
     const startAtSeconds = startsNow ? undefined : Math.floor(new Date(`${startDate}T10:00:00+05:30`).getTime() / 1000)
     const subscription: any = await createRazorpaySubscription(plan.id, totalCount, {
-      nuvama_code: accountId, client_id: String(client.clientid), source: 'qode_mobile_app', frequency,
+      nuvama_code: accountId, client_id: String(client.clientid ?? '').replace(/\.0+$/, ''), source: 'qode_mobile_app', frequency,
     }, startAtSeconds)
 
     // The client's registered bank account (third-party validation): stored on the row so the checkout
