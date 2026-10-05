@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import { REVIEWER_ACCOUNT_CODES } from '@/lib/reviewerMock'
 import { traceDistributorReport } from '@/lib/mobileReports'
+import { query } from '@/lib/db'
 
 export async function plbsRequest(request: NextRequest): Promise<
   { codes: string[]; omitted: string[]; params: URLSearchParams; reviewer: boolean; error?: undefined } | { error: NextResponse }
@@ -19,6 +20,16 @@ export async function plbsRequest(request: NextRequest): Promise<
   if (reviewer) return { codes: asked, omitted: [], params, reviewer }
   const codes = asked.filter(c => user!.accountCodes?.includes(c))
   if (!codes.length) return { error: NextResponse.json({ error: 'Forbidden', available: user!.accountCodes }, { status: 403 }) }
+  // "All accounts" (several codes) covers every account of the owners on the token, including the ones the app does
+  // not list: Liquid Fund (QLF) accounts are left off the token. Switches between them and the strategy accounts
+  // are internal to the owner, and Nuvama's group report includes them (group 14410077: QGF00014 ⇄ QLF149).
+  if (codes.length > 1) {
+    const owners = (user!.accountCodes || []).filter(c => /^\d+(\.0)?$/.test(c))
+    if (owners.length) {
+      const more = await query(`SELECT DISTINCT clientcode FROM pms_clients_master WHERE ownerid = ANY($1) AND clientcode IS NOT NULL`, [owners])
+      for (const r of more.rows) if (!codes.includes(r.clientcode)) codes.push(r.clientcode)
+    }
+  }
   traceDistributorReport(request, user!, codes, params)
   return { codes, omitted: asked.filter(c => !codes.includes(c)), params, reviewer }
 }

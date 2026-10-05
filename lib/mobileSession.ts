@@ -139,12 +139,11 @@ export async function allAccountsClosed(email: string, tag = '[login]'): Promise
   return allMatured
 }
 
-/** accountCodes for the JWT: individual codes (QLF excluded) plus owner and group consolidated codes. */
+/** accountCodes for the JWT: individual codes (Qode Liquid Fund included, like every strategy) plus owner and group consolidated codes. */
 export function investorAccountCodes(user: LoginRow, accounts: any[], tag = '[login]'): string[] {
-  // Exclude QLF (Qode Liquid Fund) accounts — not offered through the mobile app.
   const individualCodes: string[] = accounts
     .map((a: any) => a.clientcode)
-    .filter((code: string) => Boolean(code) && !code.toUpperCase().startsWith('QLF'))
+    .filter((code: string) => Boolean(code))
 
   // Include group-level and owner-level consolidated account codes so the
   // portfolio APIs (which check accountCodes) allow GROUP/OWNER aggregated views.

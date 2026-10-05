@@ -1,5 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
 import jwt from 'jsonwebtoken'
+import { query } from '@/lib/db'
+
+// Qode Liquid Fund (QLF) accounts are shown like every other strategy. Logins issued before that (tokens last 30
+// days) were signed without them, so each request adds the QLF accounts of the owners on the token. Cached briefly.
+const qlfCache = new Map<string, { at: number; codes: string[] }>()
+async function qlfAccountsOf(owners: string[]): Promise<string[]> {
+  if (!owners.length) return []
+  const key = owners.slice().sort().join(',')
+  const hit = qlfCache.get(key)
+  if (hit && Date.now() - hit.at < 10 * 60 * 1000) return hit.codes
+  try {
+    const r = await query(`SELECT DISTINCT clientcode FROM pms_clients_master WHERE ownerid = ANY($1) AND clientcode ~* '^QLF'`, [owners])
+    const codes = r.rows.map((x: any) => x.clientcode)
+    if (qlfCache.size > 5000) qlfCache.clear()
+    qlfCache.set(key, { at: Date.now(), codes })
+    return codes
+  } catch { return [] }
+}
 
 // Validate JWT_SECRET at module load time — fail loudly rather than silently
 // issuing or accepting tokens with an undefined secret.
@@ -60,6 +78,11 @@ export async function verifyMobileAuth(request: NextRequest): Promise<{
           { status: 403 }
         ),
       }
+    }
+    const codes = decoded.accountCodes || []
+    if (codes.length && !decoded.isReviewer && !decoded.isDistributor) {
+      const extra = (await qlfAccountsOf(codes.filter(c => /^\d+(\.0)?$/.test(c)))).filter(c => !codes.includes(c))
+      if (extra.length) decoded.accountCodes = [...codes, ...extra]
     }
     return { user: decoded, error: null }
   } catch {
