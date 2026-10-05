@@ -36,6 +36,8 @@ export interface SendEmailPayload {
   subject: string
   html: string
   text?: string
+  /** Files sent with the message (small ones: Graph sendMail takes up to ~3 MB inline). */
+  attachments?: Array<{ name: string; contentType: string; content: string | Buffer }>
 }
 
 export interface SendEmailResult {
@@ -140,6 +142,14 @@ export async function sendGraphEmail(
     if (bcc.length) message.bccRecipients = bcc
     const replyTo = toRecipients(payload.replyTo)
     if (replyTo.length) message.replyTo = replyTo
+    if (payload.attachments?.length) {
+      message.attachments = payload.attachments.map((a) => ({
+        '@odata.type': '#microsoft.graph.fileAttachment',
+        name: a.name,
+        contentType: a.contentType,
+        contentBytes: Buffer.from(a.content).toString('base64'),
+      }))
+    }
 
     const res = await fetch(
       `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(

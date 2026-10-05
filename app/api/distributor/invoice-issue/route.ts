@@ -12,6 +12,7 @@ import { signedUserContext } from '@/lib/webSession';
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { query } from '@/lib/db'
+import { sendPartnerInvoiceMails } from '@/lib/partnerInvoiceMail'
 
 interface UserContext {
   email?: string
@@ -118,6 +119,18 @@ export async function POST(req: Request) {
         [email, parseInt(trailing[1], 10)],
       )
     }
+
+    // The invoice goes to partnerships@ and the partner gets a receipt (lib/partnerInvoiceMail). Best effort: the
+    // invoice is recorded either way.
+    try {
+      const prof = (await query(`SELECT * FROM distributor_invoice_profile WHERE distributor_email = $1`, [email])).rows[0] || null
+      const nm = (await query(`SELECT clientname FROM pms_clients_master WHERE lower(btrim(email)) = $1 AND clientcode IS NULL LIMIT 1`, [email])).rows[0]?.clientname || null
+      await sendPartnerInvoiceMails({
+        partnerEmail: email, invoiceNumber, invoiceDate, periodLabel,
+        amountBeforeTax: num(body.amountBeforeTax), taxAmount: num(body.taxAmount), totalAmount: num(body.totalAmount),
+        html: typeof body.invoiceHtml === 'string' ? body.invoiceHtml : null,
+      }, prof, nm)
+    } catch (e) { console.warn('[distributor/invoice-issue] mail failed:', (e as any)?.message) }
 
     return NextResponse.json({ ok: true }, { status: 200 })
   } catch (err: any) {
