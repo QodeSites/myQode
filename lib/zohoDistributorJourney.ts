@@ -43,6 +43,8 @@ export type InvestorJourneyStage = (typeof STAGE_ORDER)[number];
 
 export type JourneyClient = {
   name: string | null;
+  /** Legal_Name: the account holder when the CRM contact is someone else (e.g. a spouse's account). */
+  legalName: string | null;
   email: string | null;
   stage: string | null;
   stageEntryDate: string | null;
@@ -133,6 +135,7 @@ function mapClient(r: any): JourneyClient {
 
   return {
     name: r.Name ?? null,
+    legalName: r.Legal_Name ?? null,
     email: r.Email ?? null,
     stage: r.Investor_Stage ?? null,
     stageEntryDate: r.Stage_Entry_Date ?? null,
@@ -170,7 +173,7 @@ function mapClient(r: any): JourneyClient {
  * Owner must be selected as dotted sub-fields: COQL returns an empty object
  * for a bare `Owner`, unlike the REST API.
  */
-const INVESTOR_COLUMNS = `Name, Email, Investor_Stage, Stage_Entry_Date,
+const INVESTOR_COLUMNS = `Name, Legal_Name, Email, Investor_Stage, Stage_Entry_Date,
        Activation_Date, Date_Of_1st_Investment, First_Top_Up_Date,
        Invested_Amount, Current_Portfolio_Value, Strategy_Invested,
        Owner.first_name, Owner.last_name, Mobile_No, City, Occupation,

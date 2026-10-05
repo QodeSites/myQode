@@ -110,9 +110,13 @@ export async function GET() {
     // clientname, so a Zoho email that belongs to another partner's client
     // cannot pick up a code it should not have.
     const codeByEmail = new Map<string, string>();
+    // Fallback by name, for an investor whose CRM email isn't the one on the account (the CRM contact is often the
+    // husband, the account in the wife's name: Zoho's Legal_Name). Same book only.
+    const nameKey = (n: unknown) => String(n ?? '').toLowerCase().replace(/\b(mr|mrs|ms|miss|dr|shri|smt)\.?\s+/g, '').replace(/[^a-z]+/g, ' ').trim();
+    const codeByName = new Map<string, string>();
     try {
       const codes = await query(
-        `SELECT lower(email) AS email, clientcode
+        `SELECT lower(email) AS email, clientcode, clientname
            FROM pms_clients_master
           WHERE intermediaryname = $1
             AND clientcode IS NOT NULL
@@ -125,6 +129,8 @@ export async function GET() {
         if (row.email && !codeByEmail.has(String(row.email))) {
           codeByEmail.set(String(row.email), String(row.clientcode));
         }
+        const k = nameKey(row.clientname);
+        if (k && !codeByName.has(k)) codeByName.set(k, String(row.clientcode));   // several accounts of one person: the first opens their view
       }
     } catch (err) {
       console.error("[distributor/journey] client code lookup failed:", err);
@@ -134,7 +140,8 @@ export async function GET() {
       journey.clients = journey.clients.map((c) => ({
         ...c,
         clientCode:
-          codeByEmail.get(String(c.email ?? "").trim().toLowerCase()) ?? null,
+          codeByEmail.get(String(c.email ?? "").trim().toLowerCase())
+          ?? codeByName.get(nameKey((c as any).legalName)) ?? codeByName.get(nameKey(c.name)) ?? null,
         onboardingStage:
           onboardingStages.get(String(c.email ?? "").trim().toLowerCase()) ?? null,
       })) as typeof journey.clients;
