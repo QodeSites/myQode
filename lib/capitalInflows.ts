@@ -218,7 +218,7 @@ const shortName = (v: string) => {
   const w = String(v || '').replace(/\s+/g, ' ').trim().replace(/^(mr|mrs|ms|miss|dr|shri|smt)\.?\s+/i, '').split(' ').filter(Boolean)
   return w.length > 2 ? `${w[0]} ${w[w.length - 1]}` : w.join(' ')
 }
-const whoText = (name: string, account: string) => [shortName(name), account ? `(${account})` : ''].filter(Boolean).join(' ') || 'Unknown client'
+const whoText = (name: string, account: string) => [shortName(name), account ? `(${account})` : ''].filter(Boolean).join(' ') || 'Unknown investor'
 const zohoStatus = (v: any) => { const st = String(v || '').trim(); return !st ? '' : /^verified$/i.test(st) ? 'verified in Zoho' : `${st.toLowerCase()} in Zoho` }
 
 export async function notifyAdminsOfNewRecords(changed: { Capital_Inflows?: any[]; Scheme_Clarifications?: any[] }): Promise<number> {

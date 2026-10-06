@@ -47,7 +47,7 @@ export async function notifyIrPayment(p: {
         <p><strong>Date:</strong> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</p>
         <div style="background:#EFECD3;padding:12px;border-left:4px solid #DABD38;margin:12px 0">
           <p><strong>Account Code:</strong> ${p.accountId}</p>
-          <p><strong>Client ID:</strong> ${p.clientId ? String(p.clientId).replace(/\.0+$/, '') : '—'}</p>
+          <p><strong>Investor ID:</strong> ${p.clientId ? String(p.clientId).replace(/\.0+$/, '') : '—'}</p>
           <p><strong>User Email:</strong> ${p.userEmail ?? '—'}</p>
           <p><strong>Amount:</strong> ${inr}${p.kind === 'sip' && p.frequency ? ' · ' + p.frequency : ''}</p>
           ${p.method ? `<p><strong>Method:</strong> ${p.method}</p>` : ''}

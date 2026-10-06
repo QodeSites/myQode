@@ -195,6 +195,11 @@ export async function POST(request: NextRequest) {
     if (!isDevelopment) {
       // Reject default/unset password
       if (!user.password || user.password === 'Qode@123') {
+        // Same as the web: the default password is the only one that moves on to first-time setup.
+        if (password !== 'Qode@123') {
+          logApp('login_failed', user.email, 'wrong_password')
+          return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
+        }
         console.log('[login] blocked — PASSWORD_SETUP_REQUIRED for', user.clientcode)
         logApp('login_failed', user.email, 'no_password_set')
         return NextResponse.json(
@@ -221,7 +226,7 @@ export async function POST(request: NextRequest) {
       if (distributor) {
         if (wantRole === 'client') {
           logApp('login_failed', user.email, 'role_mismatch', 'app', { role: 'distributor' })
-          return NextResponse.json({ error: 'This email is a distributor login. Switch to Distributor to sign in.', code: 'ROLE_MISMATCH', role: 'distributor' }, { status: 403 })
+          return NextResponse.json({ error: 'This email is a partner login. Switch to Partner to sign in.', code: 'ROLE_MISMATCH', role: 'distributor' }, { status: 403 })
         }
         await query(
           `UPDATE pms_clients_master
@@ -250,7 +255,7 @@ export async function POST(request: NextRequest) {
 
     if (wantRole === 'distributor') {
       logApp('login_failed', user.email, 'role_mismatch', 'app', { role: 'investor' })
-      return NextResponse.json({ error: 'This email is an investor login, not a distributor login. Switch to Client to sign in.', code: 'ROLE_MISMATCH', role: 'client' }, { status: 403 })
+      return NextResponse.json({ error: 'This email is an investor login, not a partner login. Switch to Investor to sign in.', code: 'ROLE_MISMATCH', role: 'client' }, { status: 403 })
     }
 
     // Fetch all account codes for this owner — exclude matured/closed accounts

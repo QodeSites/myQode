@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, distributor: { id: r.rows[0].id, name: r.rows[0].clientname, email: r.rows[0].email } })
   } catch (e) {
     console.error('[admin/bo/distributors POST]', e)
-    return NextResponse.json({ error: 'Could not create the distributor' }, { status: 500 })
+    return NextResponse.json({ error: 'Could not create the partner' }, { status: 500 })
   }
 }
 
@@ -59,11 +59,11 @@ export async function DELETE(req: NextRequest) {
       `DELETE FROM public.pms_clients_master WHERE lower(trim(email)) = $1 AND clientcode IS NULL RETURNING id, clientname`,
       [email],
     )
-    if (!r.rowCount) return NextResponse.json({ error: 'Distributor not found' }, { status: 404 })
+    if (!r.rowCount) return NextResponse.json({ error: 'Partner not found' }, { status: 404 })
     await audit(req, admin!, 'distributor.delete', email, { name: r.rows[0].clientname, rows: r.rowCount })
     return NextResponse.json({ ok: true })
   } catch (e) {
     console.error('[admin/bo/distributors DELETE]', e)
-    return NextResponse.json({ error: 'Could not delete the distributor' }, { status: 500 })
+    return NextResponse.json({ error: 'Could not delete the partner' }, { status: 500 })
   }
 }

@@ -41,12 +41,12 @@ export async function POST(request: NextRequest) {
         <p><strong>Date:</strong> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</p>
         <div style="background:#EFECD3;padding:15px;border-left:4px solid #DABD38;margin:15px 0">
           <p><strong>Account Code:</strong> ${esc(accountId)}</p>
-          <p><strong>Client ID:</strong> ${esc(user!.clientId || '—')}</p>
+          <p><strong>Investor ID:</strong> ${esc(user!.clientId || '—')}</p>
           <p><strong>User Email:</strong> ${esc(user!.email)}</p>
           <p><strong>Document:</strong> ${esc(label)}</p>
           ${message ? `<p><strong>Note:</strong> ${esc(message).replace(/\n/g, '<br/>')}</p>` : ''}
         </div>
-        <p style="color:#37584F;font-size:13px">The investor's Documents tab shows no file in this section for this account. Please upload it to the client's S3 folder or reply to the investor directly.</p>
+        <p style="color:#37584F;font-size:13px">The investor's Documents tab shows no file in this section for this account. Please upload it to the investor's S3 folder or reply to the investor directly.</p>
       </div>
     </div>`
   try {

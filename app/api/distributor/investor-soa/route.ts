@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
 
     const distributor = await resolveDistributorByEmail(sessionEmail);
     if (!distributor) {
-      return NextResponse.json({ error: "Not a distributor" }, { status: 403 });
+      return NextResponse.json({ error: "Not a partner" }, { status: 403 });
     }
 
     const target = request.nextUrl.searchParams.get("email")?.trim().toLowerCase();

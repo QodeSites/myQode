@@ -5,6 +5,7 @@ import { query } from '@/lib/db';
 import { graphMailer as resend } from '@/lib/graphEmail';
 import crypto from 'crypto';
 import { logAuthEvent } from '@/lib/authEvents';
+import { clearWrongOtp } from '@/lib/mobileOtpAttempts';
 
 export async function POST(request: NextRequest) {
   try {
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
        WHERE email = $3`,
       [otp, otpExpires, email]
     );
+    clearWrongOtp(String(email).trim().toLowerCase());
 
     // Send OTP via Microsoft Graph
     const emailHtml = `

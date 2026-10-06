@@ -74,7 +74,7 @@ export async function POST(request: NextRequest) {
         <p><strong>Submitted via:</strong> myQode Mobile App${platform ? ' (' + esc(platform) + (appVersion ? ' ' + esc(appVersion) : '') + ')' : ''}</p>
         <p><strong>Date:</strong> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</p>
         <div style="background:#EFECD3;padding:12px;border-left:4px solid #DABD38;margin:12px 0">
-          <p><strong>Client:</strong> ${esc(String(clientCode ?? '—'))}</p>
+          <p><strong>Investor:</strong> ${esc(String(clientCode ?? '—'))}</p>
           <p><strong>Email:</strong> ${esc(u.email || '—')}</p>
           <p><strong>Accounts:</strong> ${esc(accounts.join(', ') || '—')}</p>
           ${rows}

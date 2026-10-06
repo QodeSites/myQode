@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
 
     if (!Array.isArray(clientCodes) || clientCodes.length === 0) {
       return NextResponse.json(
-        { error: 'Client codes array is required' },
+        { error: 'Account codes array is required' },
         { status: 400 }
       );
     }
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
 
     if (clientsResult.rows.length === 0) {
       return NextResponse.json(
-        { error: 'No eligible clients found' },
+        { error: 'No eligible investors found' },
         { status: 400 }
       );
     }
@@ -608,7 +608,7 @@ async function sendSetupEmail(email: string, clientName: string, setupLink: stri
                     
                     <div class="access-content">
                         <div class="access-step">
-                            <strong>Step 1:</strong> Click <a href="https://myqode.qodeinvest.com/login" class="client-login-link">[Client Login]</a>
+                            <strong>Step 1:</strong> Click <a href="https://myqode.qodeinvest.com/login" class="client-login-link">[Investor Login]</a>
                         </div>
                         
                         <div class="access-step">

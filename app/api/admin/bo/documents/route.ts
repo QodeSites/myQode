@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
   const section = String(form.get('section') || '')
   const file = form.get('file')
   const overwrite = form.get('overwrite') === '1'
-  if (!clientId || !(await clientExists(clientId))) return NextResponse.json({ error: 'Unknown client' }, { status: 400 })
+  if (!clientId || !(await clientExists(clientId))) return NextResponse.json({ error: 'Unknown investor' }, { status: 400 })
   if (!SECTIONS.includes(section)) return NextResponse.json({ error: 'Choose one of: ' + SECTIONS.join(', ') }, { status: 400 })
   if (!(file instanceof File)) return NextResponse.json({ error: 'No file' }, { status: 400 })
   const filename = file.name.replace(/[\\/]/g, '_').replace(/[^\w .()&,+-]/g, '_').trim()

@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     const data = await request.json();
     
     if (!data.id && !data.email) {
-      return NextResponse.json({ success: false, error: 'Distributor ID or Email is required for deletion' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Partner ID or Email is required for deletion' }, { status: 400 });
     }
 
     // Usually we only allow deleting distributors (based on clienttype) just to be safe
@@ -25,19 +25,19 @@ export async function POST(request: NextRequest) {
     const result = await query(text, values);
     
     if (result.rowCount === 0) {
-      return NextResponse.json({ success: false, error: 'Distributor not found or could not be deleted' }, { status: 404 });
+      return NextResponse.json({ success: false, error: 'Partner not found or could not be deleted' }, { status: 404 });
     }
     await audit(request, admin!, 'distributor.delete', data.email || String(data.id), { from: 'legacy' });
     
     return NextResponse.json({
       success: true,
-      message: 'Distributor deleted successfully'
+      message: 'Partner deleted successfully'
     });
 
   } catch (error: any) {
     console.error('Error deleting distributor:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to delete distributor', details: error.message },
+      { success: false, error: 'Failed to delete partner', details: error.message },
       { status: 500 }
     );
   }

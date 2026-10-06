@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { logAuthEvent } from '@/lib/authEvents';
-import { recordWrongOtp, clearWrongOtp, TOO_MANY_OTP } from '@/lib/mobileOtpAttempts';
+import { otpMiss, clearWrongOtp } from '@/lib/mobileOtpAttempts';
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,12 +26,9 @@ export async function POST(request: NextRequest) {
     );
 
     if (result.rows.length === 0) {
-      void logAuthEvent(request, { email, event: 'otp_failed', reason: 'wrong_code', platform: 'web', meta: { flow: 'setup', step: 'verify' } });
-      if (await recordWrongOtp(String(email).trim().toLowerCase())) return NextResponse.json(TOO_MANY_OTP, { status: 429 })  // 5 wrong codes → code expires
-      return NextResponse.json(
-        { error: 'Invalid or expired OTP' },
-        { status: 400 }
-      );
+      const miss = await otpMiss(String(email).trim().toLowerCase());   // 5 wrong codes → locked until a new code is sent
+      void logAuthEvent(request, { email, event: 'otp_failed', reason: miss.body.code === 'OTP_LOCKED' ? 'too_many' : miss.body.code === 'OTP_EXPIRED' ? 'expired' : 'wrong_code', platform: 'web', meta: { flow: 'setup', step: 'verify' } });
+      return NextResponse.json(miss.body, { status: miss.status });
     }
 
     void logAuthEvent(request, { email, event: 'otp_verified', platform: 'web', meta: { flow: 'setup' } });

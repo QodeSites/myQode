@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
 
     if (!clientcode) {
       return NextResponse.json(
-        { error: 'Client code is required' },
+        { error: 'Account code is required' },
         { status: 400 }
       );
     }
@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
 
     if (result.rows.length === 0) {
       return NextResponse.json(
-        { error: 'Client not found' },
+        { error: 'Investor not found' },
         { status: 404 }
       );
     }
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     
     if (!client.email) {
       return NextResponse.json(
-        { error: 'No email address found for this client' },
+        { error: 'No email address found for this investor' },
         { status: 400 }
       );
     }

@@ -44,7 +44,7 @@ export async function GET() {
 
     const distributor = await resolveDistributorByEmail(sessionEmail);
     if (!distributor) {
-      return NextResponse.json({ error: "Not a distributor" }, { status: 403 });
+      return NextResponse.json({ error: "Not a partner" }, { status: 403 });
     }
 
     // One row per day: the partner's accounts summed into a single book.

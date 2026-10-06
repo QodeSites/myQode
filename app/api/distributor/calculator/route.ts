@@ -127,7 +127,7 @@ export async function GET() {
   );
 
   if (!distributorResult.rows.length) {
-    return NextResponse.json({ error: "Distributor not found" }, { status: 404 });
+    return NextResponse.json({ error: "Partner not found" }, { status: 404 });
   }
 
   const intermediaryName = distributorResult.rows[0].clientname;
@@ -248,7 +248,7 @@ export async function POST(req: Request) {
       [email]
     );
     if (!distributorResult.rows.length) {
-      return NextResponse.json({ error: 'Distributor not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Partner not found' }, { status: 404 });
     }
     const distributor = distributorResult.rows[0];
     const intermediaryName = distributor.clientname;

@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
     )
 
     if (clientResult.rows.length === 0) {
-      return NextResponse.json({ error: 'Client not found' }, { status: 404 })
+      return NextResponse.json({ error: 'Investor not found' }, { status: 404 })
     }
 
     const target = clientResult.rows[0]

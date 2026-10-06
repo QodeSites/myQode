@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     // the body — a partner cannot raise a ticket as somebody else.
     const distributor = await resolveDistributorByEmail(email);
     if (!distributor) {
-      return NextResponse.json({ error: "Not a distributor" }, { status: 403 });
+      return NextResponse.json({ error: "Not a partner" }, { status: 403 });
     }
 
     const body = await request.json().catch(() => null);

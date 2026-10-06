@@ -10,7 +10,7 @@ export async function POST(request: NextRequest) {
 
     // Validate required fields
     if (!data.clientname || !data.email) {
-      return NextResponse.json({ success: false, error: 'Client Name and Email are required' }, { status: 400 });
+      return NextResponse.json({ success: false, error: 'Investor Name and Email are required' }, { status: 400 });
     }
 
     const {
@@ -56,14 +56,14 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'Distributor user created successfully',
+      message: 'Partner user created successfully',
       data: result.rows[0]
     });
 
   } catch (error: any) {
     console.error('Error creating distributor:', error);
     return NextResponse.json(
-      { success: false, error: 'Failed to create distributor', details: error.message },
+      { success: false, error: 'Failed to create partner', details: error.message },
       { status: 500 }
     );
   }

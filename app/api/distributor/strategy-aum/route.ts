@@ -56,7 +56,7 @@ export async function GET() {
 
     const distributor = await resolveDistributorByEmail(sessionEmail);
     if (!distributor) {
-      return NextResponse.json({ error: "Not a distributor" }, { status: 403 });
+      return NextResponse.json({ error: "Not a partner" }, { status: 403 });
     }
 
     // The investors Zoho attributes to this partner, matched by EMAIL.

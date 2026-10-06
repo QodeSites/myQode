@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
   const channel = String(b?.channel || '').toLowerCase()
   const reference = String(b?.reference || '').trim().slice(0, 60) || null
   const receivedAt = new Date(String(b?.receivedAt || ''))
-  if (!accountId) return NextResponse.json({ error: 'Choose the client account' }, { status: 400 })
+  if (!accountId) return NextResponse.json({ error: 'Choose the investor account' }, { status: 400 })
   if (!(amount >= 1000) || amount > 1e10) return NextResponse.json({ error: 'Enter the amount received (at least ₹1,000)' }, { status: 400 })
   if (!CHANNELS.includes(channel)) return NextResponse.json({ error: 'Choose how the money came in' }, { status: 400 })
   if (isNaN(receivedAt.getTime())) return NextResponse.json({ error: 'Enter when the money was received' }, { status: 400 })

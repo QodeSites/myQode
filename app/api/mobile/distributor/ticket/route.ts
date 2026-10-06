@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
           <h1 style="margin:0;color:#DABD38;font-family:Georgia,serif">Partner Ticket</h1>
         </div>
         <div style="background:#fff;padding:16px;border:1px solid #37584F;border-radius:8px">
-          <p><strong>Submitted via:</strong> myQode Distributor Portal</p>
+          <p><strong>Submitted via:</strong> myQode Partner Portal</p>
           <p><strong>Date:</strong> ${new Date().toLocaleDateString('en-IN')}</p>
           <div style="background:#EFECD3;padding:12px;border-left:4px solid #DABD38;margin:12px 0">
             <p><strong>Partner:</strong> ${esc(d.clientname)}</p>
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
   await sendClientAck({
     to: d.email, name: d.clientname, reference: inquiryId, from: 'partnerships',
     subject: 'We’ve received your ticket', title: 'Ticket received',
-    intro: 'We’ve received the ticket you raised from the myQode Distributor Portal.',
+    intro: 'We’ve received the ticket you raised from the myQode Partner Portal.',
     details: [['Topic', topicLabel], ['About investor', aboutInvestor], ['Message', message]],
     next: 'The partnerships team will reply to you by email. You do not need to send this again.',
   })

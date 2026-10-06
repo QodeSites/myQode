@@ -581,7 +581,7 @@ async function sendSetupEmail(email: string, clientName: string, setupLink: stri
                     
                     <div class="access-content">
                         <div class="access-step">
-                            <strong>Step 1:</strong> Click <a href="https://myqode.qodeinvest.com/login" class="client-login-link">[Client Login]</a>
+                            <strong>Step 1:</strong> Click <a href="https://myqode.qodeinvest.com/login" class="client-login-link">[Investor Login]</a>
                         </div>
                         
                         <div class="access-step">

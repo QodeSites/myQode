@@ -36,14 +36,14 @@ export async function requireMobileDistributor(request: NextRequest): Promise<{
   // or invoices are not made in the distributor's name.
   const adminView = !!user!.isImpersonated && !!user!.isDistributor && isBackofficeAdmin(user!.impersonatedBy)
   if (user!.isReviewer || (user!.isImpersonated && !adminView)) {
-    return { user, distributor: null, error: NextResponse.json({ error: 'Not a distributor' }, { status: 403 }) }
+    return { user, distributor: null, error: NextResponse.json({ error: 'Not a partner' }, { status: 403 }) }
   }
   if (adminView && request.method !== 'GET' && request.method !== 'HEAD' && !READ_ONLY_POSTS.some(p => request.nextUrl.pathname.endsWith(p))) {
-    return { user, distributor: null, error: NextResponse.json({ error: 'You are viewing this distributor from admin. Changes are not available.', code: 'VIEW_ONLY' }, { status: 403 }) }
+    return { user, distributor: null, error: NextResponse.json({ error: 'You are viewing this partner from admin. Changes are not available.', code: 'VIEW_ONLY' }, { status: 403 }) }
   }
   const distributor = await resolveDistributorByEmail(user!.email)
   if (!distributor) {
-    return { user, distributor: null, error: NextResponse.json({ error: 'Not a distributor', code: 'NOT_DISTRIBUTOR' }, { status: 403 }) }
+    return { user, distributor: null, error: NextResponse.json({ error: 'Not a partner', code: 'NOT_DISTRIBUTOR' }, { status: 403 }) }
   }
   return { user, distributor, error: null }
 }

@@ -349,13 +349,13 @@ export async function POST(request: NextRequest) {
         if (action === 'impersonate') {
             if (!clientCode) {
                 return NextResponse.json(
-                    { error: 'Client code is required for impersonation' },
+                    { error: 'Account code is required for impersonation' },
                     { status: 400 }
                 );
             }
             const imp = await investorPortalImpersonation(clientCode, admin!.email);
             if (!imp) {
-                return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+                return NextResponse.json({ error: 'Investor not found' }, { status: 404 });
             }
             await audit(request, admin!, 'user.impersonate', imp.targetEmail || clientCode, { target: 'portal', clientCode, from: 'portfolio-performance' });
             return NextResponse.json({

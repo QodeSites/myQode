@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
   // removed is told so, and the app signs them out on isDistributor=false.
   if (user!.isDistributor) {
     const distributor = await resolveDistributorByEmail(user!.email).catch(() => null)
-    if (!distributor) return NextResponse.json({ error: 'This distributor login is no longer active.', code: 'NOT_DISTRIBUTOR' }, { status: 401 })
+    if (!distributor) return NextResponse.json({ error: 'This partner login is no longer active.', code: 'NOT_DISTRIBUTOR' }, { status: 401 })
     return NextResponse.json({
       ...imp,
       clientId: '', clientCode: '', name: distributor.clientname, email: user!.email,

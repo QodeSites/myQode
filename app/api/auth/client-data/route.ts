@@ -72,7 +72,7 @@ export async function GET() {
         success: true,
         clients: [],
         family: [],
-        message: 'No client data available',
+        message: 'No investor data available',
         isHeadOfFamily: false,
       });
     }
@@ -96,7 +96,7 @@ export async function GET() {
         success: true,
         clients: [],
         family: [],
-        message: 'No client data available',
+        message: 'No investor data available',
         isHeadOfFamily: false,
       });
     }
@@ -341,6 +341,6 @@ export async function GET() {
 
   } catch (error) {
     console.error('Client data fetch error:', error);
-    return NextResponse.json({ error: 'Failed to fetch client data' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch investor data' }, { status: 500 });
   }
 }

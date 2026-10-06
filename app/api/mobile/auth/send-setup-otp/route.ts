@@ -7,6 +7,7 @@ import { randomInt } from 'crypto';
 import { query } from '@/lib/db';
 import { graphMailer, isGraphEmailConfigured } from '@/lib/graphEmail';
 import { mailPlan } from '@/lib/authMailRedirect';
+import { clearWrongOtp } from '@/lib/mobileOtpAttempts';
 import { logAuthEvent, osFrom } from '@/lib/authEvents';
 
 const resend = isGraphEmailConfigured() ? graphMailer : null;
@@ -59,6 +60,7 @@ export async function POST(request: NextRequest) {
        WHERE LOWER(email) = $3`,
       [otp, otpExpires, email]
     );
+    clearWrongOtp(email);
 
     const emailHtml = `
       <!DOCTYPE html>

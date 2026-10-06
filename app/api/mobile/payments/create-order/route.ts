@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
         return_url: `${baseUrl}/payment/success?order_id=${orderId}&source=mobile`,
         notify_url: `${baseUrl}/api/cashfree/webhook`,
       },
-      order_note: `Investment – Account: ${accountId}, Client: ${customerName}, Amount: ₹${amount.toFixed(2)}`,
+      order_note: `Investment – Account: ${accountId}, Investor: ${customerName}, Amount: ₹${amount.toFixed(2)}`,
       order_tags: {
         nuvama_code: accountId,
         client_id: client.clientid,

@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
     
     if (verifyResult.rows.length === 0) {
       return NextResponse.json(
-        { error: 'SIP subscription not found or does not belong to this client' },
+        { error: 'SIP subscription not found or does not belong to this investor' },
         { status: 404 }
       );
     }

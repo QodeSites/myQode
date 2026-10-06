@@ -17,7 +17,7 @@ export function mailPlan(clientEmail: string, testRedirect: unknown): { to: stri
     return {
       to: [],
       subjectPrefix: '',
-      refuse: 'Test mode: this server has no MOBILE_AUTH_EMAIL_OVERRIDE, so the email was not sent (it would have reached the real client).',
+      refuse: 'Test mode: this server has no MOBILE_AUTH_EMAIL_OVERRIDE, so the email was not sent (it would have reached the real investor).',
     }
   }
   return { to: [clientEmail], subjectPrefix: '', refuse: null }

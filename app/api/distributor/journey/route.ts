@@ -62,7 +62,7 @@ export async function GET() {
     // lookup IS the role check.
     const distributor = await resolveDistributorByEmail(email);
     if (!distributor) {
-      return NextResponse.json({ error: "Not a distributor" }, { status: 403 });
+      return NextResponse.json({ error: "Not a partner" }, { status: 403 });
     }
 
     const portalClientCount = await getDistributorClientCount(distributor.clientname);

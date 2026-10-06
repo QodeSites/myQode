@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
 
     if (!Array.isArray(clientCodes)) {
       return NextResponse.json(
-        { error: 'Client codes array is required' },
+        { error: 'Account codes array is required' },
         { status: 400 }
       );
     }
@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       updated: result.rowCount,
-      message: `Marked ${result.rowCount} clients as campaign sent`
+      message: `Marked ${result.rowCount} investors as campaign sent`
     });
 
   } catch (error) {

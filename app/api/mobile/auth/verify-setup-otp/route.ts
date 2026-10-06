@@ -3,7 +3,7 @@
 // Mirrors the web /api/auth/verify-setup-otp route under the mobile API namespace.
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
-import { recordWrongOtp, clearWrongOtp, TOO_MANY_OTP } from '@/lib/mobileOtpAttempts';
+import { otpMiss, isOtpLocked, clearWrongOtp, TOO_MANY_OTP } from '@/lib/mobileOtpAttempts';
 import { logAuthEvent, osFrom } from '@/lib/authEvents';
 
 export async function POST(request: NextRequest) {
@@ -23,6 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     const email = rawEmail.trim().toLowerCase();
+    if (isOtpLocked(email)) return NextResponse.json(TOO_MANY_OTP, { status: 429 });
 
     const result = await query(
       `SELECT clientid, clientcode, email, clientname
@@ -35,11 +36,9 @@ export async function POST(request: NextRequest) {
     );
 
     if (result.rows.length === 0) {
-      const tooMany = await recordWrongOtp(email);
-      // 'wrong_code' covers an expired code too: the lookup can't tell them apart.
-      void logAuthEvent(request, { email, event: 'otp_failed', reason: tooMany ? 'too_many' : 'wrong_code', platform: 'app', os: osFrom(body), meta: { flow: 'setup', step: 'verify' } });
-      if (tooMany) return NextResponse.json(TOO_MANY_OTP, { status: 429 });
-      return NextResponse.json({ error: 'Invalid or expired OTP' }, { status: 400 });
+      const miss = await otpMiss(email);
+      void logAuthEvent(request, { email, event: 'otp_failed', reason: miss.body.code === 'OTP_LOCKED' ? 'too_many' : miss.body.code === 'OTP_EXPIRED' ? 'expired' : 'wrong_code', platform: 'app', os: osFrom(body), meta: { flow: 'setup', step: 'verify' } });
+      return NextResponse.json(miss.body, { status: miss.status });
     }
     void logAuthEvent(request, { email, event: 'otp_verified', platform: 'app', os: osFrom(body), meta: { flow: 'setup' } });
 

@@ -414,7 +414,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Sync completed for client ${nuvamaCode}`,
+      message: `Sync completed for investor ${nuvamaCode}`,
       client_code: nuvamaCode,
       results: syncResults,
       timestamp: new Date().toISOString()

@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
           <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
           <div style="background:#EFECD3;padding:12px;border-left:4px solid #DABD38;margin:12px 0">
             <p><strong>Account ID:</strong> ${accountId}</p>
-            <p><strong>Client ID:</strong> ${user!.clientId}</p>
+            <p><strong>Investor ID:</strong> ${user!.clientId}</p>
             <p><strong>Email:</strong> ${user!.email}</p>
             <p><strong>Topic / Query:</strong></p>
             <p>${String(topic).replace(/\n/g, '<br/>')}</p>

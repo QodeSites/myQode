@@ -70,7 +70,7 @@ export async function GET() {
     );
 
     if (!distributorResult.rows.length) {
-      return NextResponse.json({ error: "Distributor not found" }, { status: 404 });
+      return NextResponse.json({ error: "Partner not found" }, { status: 404 });
     }
 
     const distributor = distributorResult.rows[0];

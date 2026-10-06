@@ -68,7 +68,7 @@ async function sendQueryEmail(query: QueryMessage, action: 'resolved' | 'updated
         <div style="background: white; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
           <p><strong>Query ID:</strong> ${query.id}</p>
           <p><strong>Subject:</strong> ${query.subject}</p>
-          <p><strong>Client Code:</strong> ${query.nuvama_code}</p>
+          <p><strong>Account Code:</strong> ${query.nuvama_code}</p>
           <p><strong>Status:</strong> ${query.status}</p>
           
           ${note ? `
@@ -179,7 +179,7 @@ export async function GET(request: NextRequest) {
     // Enrich queries with client information
     const enrichedQueries = queries.map(q => ({
       ...q,
-      client_name: clientMap.get(q.nuvama_code)?.name || 'Unknown Client',
+      client_name: clientMap.get(q.nuvama_code)?.name || 'Unknown Investor',
       owner_name: clientMap.get(q.nuvama_code)?.name || null,
     }));
 
@@ -270,7 +270,7 @@ export async function POST(request: NextRequest) {
               
               <div style="background: white; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
                 <p><strong>Subject:</strong> ${emailData.subject}</p>
-                <p><strong>Client Code:</strong> ${originalQuery.nuvama_code}</p>
+                <p><strong>Account Code:</strong> ${originalQuery.nuvama_code}</p>
                 
                 <div style="margin-top: 20px; padding: 15px; background: #f1f3f4; border-radius: 5px;">
                   ${emailData.message.replace(/\n/g, '<br>')}

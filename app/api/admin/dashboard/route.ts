@@ -336,13 +336,13 @@ export async function POST(request: NextRequest) {
     if (action === 'impersonate-distributor') {
       if (!distributorEmail) {
         return NextResponse.json(
-          { error: 'Distributor email is required for impersonation' },
+          { error: 'Partner email is required for impersonation' },
           { status: 400 }
         );
       }
       const imp = await distributorPortalImpersonation(distributorEmail, admin!.email);
       if (!imp) {
-        return NextResponse.json({ error: 'Distributor not found' }, { status: 404 });
+        return NextResponse.json({ error: 'Partner not found' }, { status: 404 });
       }
       await audit(request, admin!, 'user.impersonate', imp.targetEmail || distributorEmail, { target: 'portal', role: 'distributor', from: 'dashboard' });
       return NextResponse.json({
@@ -358,13 +358,13 @@ export async function POST(request: NextRequest) {
     if (action === 'impersonate') {
       if (!clientCode) {
         return NextResponse.json(
-          { error: 'Client code is required for impersonation' },
+          { error: 'Account code is required for impersonation' },
           { status: 400 }
         );
       }
       const imp = await investorPortalImpersonation(clientCode, admin!.email);
       if (!imp) {
-        return NextResponse.json({ error: 'Client not found' }, { status: 404 });
+        return NextResponse.json({ error: 'Investor not found' }, { status: 404 });
       }
       await audit(request, admin!, 'user.impersonate', imp.targetEmail || clientCode, { target: 'portal', clientCode, from: 'dashboard' });
       return NextResponse.json({

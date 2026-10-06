@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'This link has expired. Please tap Download again in the app.' }, { status: 403 })
   }
   try {
-    if (!(await resolveDistributorByEmail(d))) return NextResponse.json({ error: 'Not a distributor' }, { status: 403 })
+    if (!(await resolveDistributorByEmail(d))) return NextResponse.json({ error: 'Not a partner' }, { status: 403 })
     if (kind === 'deck') {
       const doc = documentBySlug(key)
       if (!doc) return NextResponse.json({ error: 'No such document' }, { status: 404 })

@@ -87,6 +87,12 @@ export async function POST(request: NextRequest) {
     const currentPassword = passwordCheck.rows[0].password
     const isDefaultPassword = currentPassword === 'Qode@123' || !currentPassword
 
+    // First-time account: only the default password moves on to first-time setup; anything else is a wrong password.
+    if (isDefaultPassword && password !== 'Qode@123') {
+      void logAuthEvent(request, { email: /@/.test(String(username)) ? username : null, event: 'login_failed', reason: 'wrong_password', platform: 'web', meta: /@/.test(String(username)) ? undefined : { clientcode: username } })
+      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
+    }
+
     if (isDefaultPassword) {
       void logAuthEvent(request, { email: /@/.test(String(username)) ? username : null, event: 'login_failed', reason: 'no_password_set', platform: 'web', meta: /@/.test(String(username)) ? undefined : { clientcode: username } })
       return NextResponse.json(

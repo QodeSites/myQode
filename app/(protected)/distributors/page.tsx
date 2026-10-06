@@ -782,8 +782,8 @@ export default function DistributorOverviewPage() {
                               headcounts. */}
                           <span className="text-[12px] tabular-nums text-muted-foreground">
                             <span className="font-bold text-foreground">
-                              {strategyTotal > 0
-                                ? `${((d.value / strategyTotal) * 100).toFixed(1)}%`
+                              {rawStrategyTotal > 0
+                                ? `${((d.value / rawStrategyTotal) * 100).toFixed(2)}%`
                                 : "—"}
                             </span>{" "}
                             · {money(d.value * strategyScale)}

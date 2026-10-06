@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
 
     if (result.rows.length === 0) {
       return NextResponse.json(
-        { error: 'No client data found' },
+        { error: 'No investor data found' },
         { status: 404 }
       )
     }

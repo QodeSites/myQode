@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
     await sendClientAck({
       to: user!.email, name: isPartner ? user!.distributorName || null : await clientName(email), from: isPartner ? 'partnerships' : 'ir',
       subject: 'Your myQode password was changed', title: 'Password changed',
-      intro: `Your myQode ${isPartner ? 'Distributor Portal' : 'app'} password was changed just now from the app.`,
+      intro: `Your myQode ${isPartner ? 'Partner Portal' : 'app'} password was changed just now from the app.`,
       details: [['When', new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })]],
       next: 'If this was you, there is nothing more to do. Your other devices will need the new password the next time they sign in.',
     })
