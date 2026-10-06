@@ -30,6 +30,7 @@ export type AdminUserItem = {
   appLogins: number
   intermediary: string | null
   clientCount: number
+  referredCount?: number
 }
 
 export const normEmail = (e: unknown) => String(e ?? '').trim().toLowerCase()
@@ -110,6 +111,29 @@ function toItem(r: any): AdminUserItem {
   }
 }
 
+// Investors per partner, counted as the partner portal counts them: Zoho investors in "First Fund Initiated" or
+// "Regular Investor" (money invested). Nuvama's intermediary name lags (Enso Finserve: 0 there, 3 in Zoho), so
+// it's only the fallback for a partner with no Zoho record. One cached Zoho read for all partners.
+const INVESTED_STAGES = new Set(['First Fund Initiated', 'Regular Investor'])
+async function withPortalInvestorCounts(items: AdminUserItem[]): Promise<AdminUserItem[]> {
+  if (!items.some(i => i.type === 'distributor')) return items
+  try {
+    const { getAllDistributorJourneys } = await import('@/lib/zohoDistributorJourney')
+    const byEmail = new Map<string, { invested: number; referred: number }>()
+    for (const j of (await getAllDistributorJourneys()).values()) {
+      const n = { invested: j.clients.filter(c => INVESTED_STAGES.has(String(c.stage))).length, referred: j.clients.length }
+      for (const e of j.emails || []) byEmail.set(e, n)
+    }
+    return items.map(i => {
+      const z = i.type === 'distributor' ? byEmail.get(i.email.toLowerCase()) : null
+      return z ? { ...i, clientCount: z.invested, referredCount: z.referred } : i
+    })
+  } catch (e) {
+    console.warn('[adminUsers] Zoho investor counts unavailable:', (e as any)?.message)
+    return items
+  }
+}
+
 export async function listUsers(opts: { q?: string; type?: string; status?: string; page?: number; limit?: number }) {
   const page = Math.max(1, Math.floor(Number(opts.page) || 1))
   const limit = Math.min(200, Math.max(1, Math.floor(Number(opts.limit) || 50)))
@@ -138,7 +162,7 @@ export async function listUsers(opts: { q?: string; type?: string; status?: stri
     params,
   )
   const total = r.rows[0]?.total ?? (page > 1 ? (await countUsers(where, params.slice(0, -2))) : 0)
-  return { items: r.rows.map(toItem), total, page, limit }
+  return { items: await withPortalInvestorCounts(r.rows.map(toItem)), total, page, limit }
 }
 
 async function countUsers(where: string[], params: any[]): Promise<number> {
@@ -148,7 +172,7 @@ async function countUsers(where: string[], params: any[]): Promise<number> {
 
 export async function getUser(email: string): Promise<AdminUserItem | null> {
   const r = await query(`${USERS_CTE} SELECT u.* FROM u WHERE u.email = $1`, [normEmail(email)])
-  return r.rows[0] ? toItem(r.rows[0]) : null
+  return r.rows[0] ? (await withPortalInvestorCounts([toItem(r.rows[0])]))[0] : null
 }
 
 /** Counts for the overview. */

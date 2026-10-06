@@ -89,6 +89,8 @@ export type DistributorJourney = {
   zohoName: string | null;
   clients: JourneyClient[];
   stageCounts: Record<string, number>;
+  /** The distributor record's Email / Secondary_Email (all-journeys only; for matching to portal logins). */
+  emails?: string[];
 };
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -300,6 +302,8 @@ export async function getAllDistributorJourneys(): Promise<Map<string, Distribut
       zohoName: names.get(id) ?? null,
       clients,
       stageCounts: tallyStages(clients),
+      emails: [emails.get(id)?.primary, emails.get(id)?.secondary]
+        .filter((e): e is string => !!e).map((e) => e.trim().toLowerCase()),
     });
   }
 
