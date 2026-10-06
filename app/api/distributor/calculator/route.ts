@@ -573,9 +573,13 @@ export async function POST(req: Request) {
       // share by 18% and left the page extracting GST from a figure that had
       // none. Callers wanting the exclusive number have `netDistributorPayout`.
       const withGst = (n: number) => n * (1 + GST_RATE / 100);
-      const distributorShareFixed = withGst(fee.rackFixedFee * (sharePct / 100));
-      const distributorSharePerf = withGst(fee.rackPerfFee * (sharePct / 100));
-      const distributorShare = fee.netInvoiceAmount;
+      // No fee billed in the period → no share in it. The engine still prices the account at the rack rate on its
+      // assets, and the apps fall back to this figure when the share is ₹0: four One Battalion accounts with no
+      // fee billed in FY 2027 added ₹8.75 L to a ₹3.27 L share (reported 6 Oct 2026).
+      const billed = totalFeesBeforeGst > 0.005;
+      const distributorShareFixed = billed ? withGst(fee.rackFixedFee * (sharePct / 100)) : 0;
+      const distributorSharePerf = billed ? withGst(fee.rackPerfFee * (sharePct / 100)) : 0;
+      const distributorShare = billed ? fee.netInvoiceAmount : 0;
 
       return {
         id: idx + 1,
