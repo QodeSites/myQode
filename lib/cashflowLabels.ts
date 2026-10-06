@@ -100,3 +100,13 @@ export async function labelFlows<T extends Flow>(codes: string[], flows: T[]): P
     return flows
   }
 }
+
+/**
+ * Leaves out small movements the app shouldn't list: tax deducted at source (TDS on interest income, ₹100s each
+ * quarter) and anything under ₹1,000. Done here so every app version gets it without a build. They also drop out of the
+ * app's "Total contributions / withdrawals" (it adds up this same list), which is right for TDS — tax, not a withdrawal.
+ * Statements, reports, NAV and returns don't use this list.
+ */
+export const MINOR_FLOW_LIMIT = 1000
+export const withoutMinorFlows = <T extends { amount: number; label?: string }>(flows: T[]): T[] =>
+  flows.filter((f) => !/^tax (deducted|withheld)/i.test(String(f.label || '')) && Math.abs(Number(f.amount) || 0) >= MINOR_FLOW_LIMIT)

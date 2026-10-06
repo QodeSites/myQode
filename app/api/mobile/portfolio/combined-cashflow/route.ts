@@ -7,7 +7,7 @@ import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
 import { normaliseAccountCode } from '@/lib/utils'
 import { REVIEWER_MOCK_COMBINED_CASHFLOW } from '@/lib/reviewerMock'
-import { labelFlows, accountsBehind } from '@/lib/cashflowLabels'
+import { labelFlows, accountsBehind, withoutMinorFlows } from '@/lib/cashflowLabels'
 
 function formatINR(amount: number): string {
   const abs = Math.abs(amount)
@@ -83,7 +83,8 @@ export async function GET(request: NextRequest) {
     })
 
     // What each flow was (top-up, switch, TDS, …) from Nuvama's transactions — lib/cashflowLabels
-    const labelled = await labelFlows(await accountsBehind(dbAccountId), transactions)
+    // …and without the small ones (TDS, under ₹1,000), which the app shouldn't list
+    const labelled = withoutMinorFlows(await labelFlows(await accountsBehind(dbAccountId), transactions))
     const total = transactions.reduce((sum: number, t: any) => sum + t.amount, 0)
 
     return NextResponse.json({
