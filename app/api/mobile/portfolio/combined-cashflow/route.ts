@@ -7,6 +7,7 @@ import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
 import { normaliseAccountCode } from '@/lib/utils'
 import { REVIEWER_MOCK_COMBINED_CASHFLOW } from '@/lib/reviewerMock'
+import { labelFlows, accountsBehind } from '@/lib/cashflowLabels'
 
 function formatINR(amount: number): string {
   const abs = Math.abs(amount)
@@ -81,12 +82,14 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    // What each flow was (top-up, switch, TDS, …) from Nuvama's transactions — lib/cashflowLabels
+    const labelled = await labelFlows(await accountsBehind(dbAccountId), transactions)
     const total = transactions.reduce((sum: number, t: any) => sum + t.amount, 0)
 
     return NextResponse.json({
       isClosed,
       closedAt,
-      transactions,
+      transactions: labelled,
       total: +total.toFixed(2),
       formattedTotal: `₹${Math.abs(total).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
     })
