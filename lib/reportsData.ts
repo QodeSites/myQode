@@ -53,17 +53,30 @@ export async function transactionsReport(accountId: string, params: URLSearchPar
     ])
 
     const summary = Object.keys(TXN_GROUPS).map(g => ({ group: g, label: TXN_GROUPS[g].label, count: 0, amount: 0 }))
-    let moneyIn = 0, moneyOut = 0
+    // Money in / out is the client's own money: top-ups and withdrawals, plus securities transferred in / out
+    // (not the MF-to-shares re-typing pairs). Switches between strategies are reported apart (switchIn / switchOut):
+    // counted as money in and out they doubled a family's figures (Mittle family: ₹15.71 Cr switched on 2 Mar 2026
+    // showed as ₹17.96 Cr "taken out" against ₹2.24 Cr of real withdrawals). Across all accounts the two legs of an
+    // internal switch cancel.
+    let moneyIn = 0, moneyOut = 0, switchIn = 0, switchOut = 0
     for (const r of sums.rows) {
       const s = summary.find(x => x.group === groupOf(r.tran_type))
       if (s) { s.count += r.c; s.amount += Number(r.amt) }
-      if (TXN_GROUPS.money.codes.includes(r.tran_type)) directionOf(r.tran_type) === 'in' ? (moneyIn += Number(r.amt)) : (moneyOut += Number(r.amt))
+      const a = Math.abs(Number(r.amt))
+      if (r.tran_type === 'CS+') moneyIn += a
+      else if (r.tran_type === 'CS-') moneyOut += a
+      else if (r.tran_type === 'PSI' || r.tran_type === 'SII') switchIn += a
+      else if (r.tran_type === 'PSO' || r.tran_type === 'SOO') switchOut += a
     }
+    const moved = await query(
+      `SELECT COALESCE(sum(abs(net_amount)) FILTER (WHERE tran_type = 'OPI'), 0)::float8 AS sin, COALESCE(sum(abs(net_amount)) FILTER (WHERE tran_type = 'OPO'), 0)::float8 AS sout
+         FROM pms_clients_tracker.pms_transactions WHERE ${dateWhere.join(' AND ')} AND tran_type IN ('OPI', 'OPO') AND COALESCE(descmemo, '') NOT ILIKE 'Change in Asset type%'`, dateArgs)
+    moneyIn += Number(moved.rows[0]?.sin || 0); moneyOut += Number(moved.rows[0]?.sout || 0)
 
     const rows = list.rows.slice(0, limit)
     const holder = await accountHolder(accountId)
     return R({
-      holder, accountId, asOf: day(latest.rows[0]?.d), group, from, to, summary, moneyIn, moneyOut,
+      holder, accountId, asOf: day(latest.rows[0]?.d), group, from, to, summary, moneyIn, moneyOut, switchIn, switchOut,
       coverage: { from: day(latest.rows[0]?.f), to: day(latest.rows[0]?.d) },   // earliest and latest dates on record
       items: rows.map(r => ({
         id: r.id, date: day(r.trandate), settleDate: day(r.set_date), code: r.tran_type, type: r.tran_desc,

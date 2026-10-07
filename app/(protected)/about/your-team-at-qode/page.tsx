@@ -440,7 +440,7 @@ export default function YourTeamAtQodePage() {
             </div>
 
             <p className="mt-1 text-xs text-muted-foreground">
-              We will get back to you promptly.
+              We will get back to you in 24 hrs.
             </p>
           </Section>
         </div>

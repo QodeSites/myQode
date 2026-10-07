@@ -1209,154 +1209,81 @@ function AdminDashboardContent() {
                   const headOfFamily = owner.accounts.find(acc => acc.headOfFamily);
 
                   return (
-                    <Card key={owner.ownerId} className="hover:shadow-md transition-shadow">
-                      <CardContent className="p-4">
-                        <div className="space-y-3">
-                          {/* Header */}
-                          <div className="flex items-start justify-between">
-                            <div className="flex items-center space-x-2">
-                              {headOfFamily ? (
-                                <Crown className="h-4 w-4 text-blue-600" />
-                              ) : (
-                                <User className="h-4 w-4 text-gray-600" />
-                              )}
-                              <div>
-                                <h3 className="font-semibold text-sm">{sanitizeName(owner.ownerName)}</h3>
-                                <p className="text-xs text-muted-foreground">{owner.ownerEmail}</p>
-                              </div>
-                            </div>
-                            {getStatusBadge(owner.onboardingStatus)}
+                    // A light card: no shadcn Card (its own padding and border doubled the spacing), IDs without ".0".
+                    <div key={owner.ownerId} className="flex flex-col rounded-xl border border-[#02422B]/15 bg-[#FBF9EF] transition-shadow hover:shadow-md">
+                      <div className="flex items-start gap-3 p-4 pb-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#02422B] text-sm font-semibold text-[#DABD38]">
+                          {sanitizeName(owner.ownerName).replace(/^(mr|mrs|ms|dr)\.?\s+/i, '').split(/\s+/).filter(Boolean).slice(0, 2).map((w: string) => w[0]).join('').toUpperCase()}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="truncate text-[15px] font-semibold text-[#002017]">{sanitizeName(owner.ownerName)}</h3>
+                            {headOfFamily && <span className="rounded-full border border-[#DABD38]/50 bg-[#DABD38]/15 px-2 py-0.5 text-[11px] font-medium text-[#6b5a07]">Head of family</span>}
                           </div>
+                          <p className="truncate text-xs text-muted-foreground">{owner.ownerEmail}</p>
+                        </div>
+                        {getStatusBadge(owner.onboardingStatus)}
+                      </div>
 
-                          {/* Stats Row */}
-                          <div className="grid grid-cols-4 gap-2 text-center">
-                            <div className="bg-muted/50 rounded p-2">
-                              <div className="text-lg font-bold">{owner.totalAccounts}</div>
-                              <div className="text-xs text-muted-foreground">Accounts</div>
-                            </div>
-                            <div className="bg-muted/50 rounded p-2">
-                              <div className="text-lg font-bold">{owner.totalLogins}</div>
-                              <div className="text-xs text-muted-foreground">Logins</div>
-                            </div>
-                            <div className="bg-muted/50 rounded p-2">
-                              <div className="text-lg font-bold">{ownerQueries.length}</div>
-                              <div className="text-xs text-muted-foreground">Queries</div>
-                            </div>
-                            <div className="bg-muted/50 rounded p-2">
-                              <div className="text-lg font-bold">
-                                {ownerQueries.filter(q => q.status === 'pending').length}
-                              </div>
-                              <div className="text-xs text-muted-foreground">Pending</div>
-                            </div>
+                      <div className="mx-4 grid grid-cols-4 divide-x divide-[#02422B]/10 rounded-lg border border-[#02422B]/10 bg-white/60 text-center">
+                        {[
+                          ['Accounts', owner.totalAccounts],
+                          ['Logins', owner.totalLogins],
+                          ['Queries', ownerQueries.length],
+                          ['Pending', ownerQueries.filter(q => q.status === 'pending').length],
+                        ].map(([label, n]) => (
+                          <div key={label as string} className="py-2">
+                            <div className="text-base font-semibold tabular-nums text-[#002017]">{n as number}</div>
+                            <div className="text-[11px] text-muted-foreground">{label as string}</div>
                           </div>
+                        ))}
+                      </div>
 
-                          {/* Account Status Breakdown */}
-                          <div className="space-y-1 text-xs">
-                            <div className="flex justify-between items-center">
-                              <span className="font-medium">Account Status:</span>
-                              <div className="flex space-x-1">
-                                {owner.accounts.filter(acc => acc.onboardingStatus === 'completed').length > 0 && (
-                                  <Badge variant="outline" className="text-xs bg-green-50 text-green-700">
-                                    {owner.accounts.filter(acc => acc.onboardingStatus === 'completed').length} Complete
-                                  </Badge>
-                                )}
-                                {owner.accounts.filter(acc => acc.onboardingStatus === 'pending').length > 0 && (
-                                  <Badge variant="outline" className="text-xs bg-orange-50 text-orange-700">
-                                    {owner.accounts.filter(acc => acc.onboardingStatus === 'pending').length} Pending
-                                  </Badge>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Details */}
-                          <div className="space-y-1 text-xs text-muted-foreground">
-                            <div className="flex justify-between">
-                              <span>Owner ID:</span>
-                              <span className="font-mono">{owner.ownerId}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>Group:</span>
-                              <span className="truncate ml-2">{sanitizeName(owner.groupName)}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>Group ID:</span>
-                              <span className="font-mono">{owner.groupId}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>Primary Code:</span>
-                              <span className="font-mono">{owner.primaryClientCode}</span>
-                            </div>
-                            {owner.lastActivity && (
-                              <div className="flex justify-between">
-                                <span>Last Activity:</span>
-                                <span>{new Date(owner.lastActivity).toLocaleDateString()}</span>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* Recent Queries Preview */}
-                          {ownerQueries.length > 0 && (
-                            <div className="border-t pt-2">
-                              <p className="text-xs font-medium mb-1">Recent Queries:</p>
-                              <div className="space-y-1">
-                                {ownerQueries.slice(0, 2).map((query) => (
-                                  <div key={query.id} className="flex items-center justify-between text-xs">
-                                    <span className="truncate">{query.subject}</span>
-                                    {getQueryTypeBadge(query.type)}
-                                  </div>
-                                ))}
-                                {ownerQueries.length > 2 && (
-                                  <p className="text-xs text-muted-foreground">
-                                    +{ownerQueries.length - 2} more queries
-                                  </p>
-                                )}
-                              </div>
-                            </div>
+                      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 px-4 pt-3 text-xs">
+                        <dt className="text-muted-foreground">Account status</dt>
+                        <dd className="flex justify-end gap-1">
+                          {owner.accounts.filter(acc => acc.onboardingStatus === 'completed').length > 0 && (
+                            <span className="rounded-full bg-green-50 px-2 py-0.5 text-[11px] font-medium text-green-700">{owner.accounts.filter(acc => acc.onboardingStatus === 'completed').length} complete</span>
                           )}
+                          {owner.accounts.filter(acc => acc.onboardingStatus === 'pending').length > 0 && (
+                            <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-700">{owner.accounts.filter(acc => acc.onboardingStatus === 'pending').length} pending</span>
+                          )}
+                        </dd>
+                        <dt className="text-muted-foreground">Owner ID</dt><dd className="text-right font-mono text-[#002017]">{String(owner.ownerId ?? '').replace(/\.0+$/, '')}</dd>
+                        <dt className="text-muted-foreground">Group</dt><dd className="truncate text-right text-[#002017]">{sanitizeName(owner.groupName)}</dd>
+                        <dt className="text-muted-foreground">Group ID</dt><dd className="text-right font-mono text-[#002017]">{String(owner.groupId ?? '').replace(/\.0+$/, '')}</dd>
+                        <dt className="text-muted-foreground">Primary code</dt><dd className="text-right font-mono text-[#002017]">{owner.primaryClientCode}</dd>
+                        {owner.lastActivity && (<><dt className="text-muted-foreground">Last activity</dt><dd className="text-right text-[#002017]">{new Date(owner.lastActivity).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}</dd></>)}
+                      </dl>
 
-                          {/* Actions */}
-                          <div className="flex space-x-1 pt-2 border-t">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setSelectedClient(owner);
-                                setShowAccountsDialog(true);
-                              }}
-                              className="flex-1 text-xs"
-                            >
-                              <Hash className="h-3 w-3 mr-1" />
-                              Accounts
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setSelectedClient(owner);
-                                setShowImpersonateDialog(true);
-                              }}
-                              className="flex-1 text-xs"
-                            >
-                              <UserCog className="h-3 w-3 mr-1" />
-                              Login
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => {
-                                setSelectedClient(owner);
-                                setShowQueriesDialog(true);
-                              }}
-                              className="flex-1 text-xs"
-                            >
-                              <FileText className="h-3 w-3 mr-1" />
-                              Queries
-                            </Button>
+                      {ownerQueries.length > 0 && (
+                        <div className="mx-4 mt-3 border-t border-[#02422B]/10 pt-2">
+                          <p className="mb-1 text-xs font-medium">Recent queries</p>
+                          <div className="space-y-1">
+                            {ownerQueries.slice(0, 2).map((query) => (
+                              <div key={query.id} className="flex items-center justify-between gap-2 text-xs">
+                                <span className="truncate">{query.subject}</span>
+                                {getQueryTypeBadge(query.type)}
+                              </div>
+                            ))}
+                            {ownerQueries.length > 2 && <p className="text-xs text-muted-foreground">+{ownerQueries.length - 2} more queries</p>}
                           </div>
                         </div>
-                      </CardContent>
-                    </Card>
+                      )}
+
+                      <div className="mt-auto flex divide-x divide-[#02422B]/10 border-t border-[#02422B]/10 mt-4">
+                        {[
+                          ['Accounts', <Hash key="i" className="h-3.5 w-3.5" />, () => { setSelectedClient(owner); setShowAccountsDialog(true) }],
+                          ['Login', <UserCog key="i" className="h-3.5 w-3.5" />, () => { setSelectedClient(owner); setShowImpersonateDialog(true) }],
+                          ['Queries', <FileText key="i" className="h-3.5 w-3.5" />, () => { setSelectedClient(owner); setShowQueriesDialog(true) }],
+                        ].map(([label, icon, onClick]) => (
+                          <button key={label as string} type="button" onClick={onClick as () => void}
+                            className="flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs font-medium text-[#02422B] transition-colors hover:bg-[#02422B]/5 first:rounded-bl-xl last:rounded-br-xl">
+                            {icon as React.ReactNode}{label as string}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   );
                 })}
               </div>
