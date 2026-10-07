@@ -103,9 +103,12 @@ export async function GET(request: NextRequest) {
       lastNonZeroIdx--
     }
     const zeroTail = lastNonZeroIdx < rows.length - 1
-    const activeRows = zeroTail && lastNonZeroIdx >= 0 ? rows.slice(0, lastNonZeroIdx + 1) : rows
-    // Closed also covers a full withdrawal that left a few rupees (under ₹100) — lib/accountClosure.ts
+    // Closed also covers a full withdrawal that left a few rupees (under ₹100) — lib/accountClosure.ts. Its figures
+    // run to the day before it closed (T − 1): the closing day's NAV collapses toward 0.
     const closure = closureFromRows(rows)
+    const cutoff = closure.closed ? closure.cutoff : null
+    const upTo = cutoff ? rows.filter((x: any) => String(x.report_date).slice(0, 10) <= cutoff) : []
+    const activeRows = cutoff && upTo.length ? upTo : zeroTail && lastNonZeroIdx >= 0 ? rows.slice(0, lastNonZeroIdx + 1) : rows
     const isClosed = zeroTail || closure.closed
     const closedAtRaw: string | null = closure.closedOn || (zeroTail && lastNonZeroIdx >= 0 ? rows[lastNonZeroIdx].report_date : null)
 

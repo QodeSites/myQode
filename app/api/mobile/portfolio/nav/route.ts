@@ -6,6 +6,7 @@
 //   • the benchmark anchor is the index value ON the inception date (the web fetches the index from
 //     inception onwards); with no index row that day the web shows no benchmark line, so neither do we
 import { NextRequest, NextResponse } from 'next/server'
+import { closedCutoff } from '@/lib/accountClosure'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
 import db2 from '@/lib/db2'
@@ -55,26 +56,8 @@ export async function GET(request: NextRequest) {
   const benchmarkIndex = getStrategyBenchmark(accountId)
 
   try {
-    // ── 0. Detect closed account ─────────────────────────────────────────────
-    const closedCheckRes = await pool.query(
-      `SELECT report_date, portfolio_value FROM public.pms_master_sheet
-       WHERE account_code = $1 ORDER BY report_date DESC LIMIT 2`,
-      [dbAccountId]
-    )
-    const last2 = closedCheckRes.rows
-    const isClosed = last2.length >= 2 &&
-      parseFloat(last2[0].portfolio_value || 0) === 0 &&
-      parseFloat(last2[1].portfolio_value || 0) === 0
-    let closedAt: string | null = null
-    if (isClosed) {
-      const caRes = await pool.query(
-        `SELECT report_date FROM public.pms_master_sheet
-         WHERE account_code = $1 AND portfolio_value > 0
-         ORDER BY report_date DESC LIMIT 1`,
-        [dbAccountId]
-      )
-      closedAt = caRes.rows[0]?.report_date ?? null
-    }
+    // ── 0. Closed account: everything up to the day before it closed (lib/accountClosure.ts closedCutoff) ──
+    const { isClosed, closedAt } = await closedCutoff(dbAccountId)
 
     // ── 1. Portfolio rows (ASC) ──────────────────────────────────────────────
     // Use parameterized cutoff date instead of INTERVAL string interpolation

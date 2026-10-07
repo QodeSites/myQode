@@ -4,6 +4,7 @@
 //   % = (endQuarterNAV / startQuarterNAV − 1) × 100
 //   ₹ = endQuarterPortfolioValue − startQuarterPortfolioValue − netCashFlowsDuringQuarter
 import { NextRequest, NextResponse } from 'next/server'
+import { closedCutoff } from '@/lib/accountClosure'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
 import { normaliseAccountCode } from '@/lib/utils'
@@ -53,9 +54,11 @@ export async function GET(request: NextRequest) {
     while (lastNonZeroIdx >= 0 && parseFloat(rows[lastNonZeroIdx].portfolio_value || 0) === 0) {
       lastNonZeroIdx--
     }
-    const isClosed = lastNonZeroIdx < rows.length - 1
-    const closedAt: string | null = isClosed && lastNonZeroIdx >= 0 ? rows[lastNonZeroIdx].report_date : null
-    if (isClosed && lastNonZeroIdx >= 0) rows = rows.slice(0, lastNonZeroIdx + 1)
+    const cut = await closedCutoff(dbAccountId)   // a closed account: to the day before it closed
+    const isClosed = cut.isClosed || lastNonZeroIdx < rows.length - 1
+    const closedAt: string | null = cut.closedAt || (isClosed && lastNonZeroIdx >= 0 ? rows[lastNonZeroIdx].report_date : null)
+    if (cut.closedAt) rows = rows.filter((x: any) => String(x.report_date).slice(0, 10) <= cut.closedAt!)
+    else if (isClosed && lastNonZeroIdx >= 0) rows = rows.slice(0, lastNonZeroIdx + 1)
 
     // ── Computation matching web version ─────────────────────────────────────
     // qtrData[year][quarter1-4] = { pct, cash }

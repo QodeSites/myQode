@@ -1,5 +1,5 @@
 // GET /api/mobile/reports/transactions?accountId=QAW00012&group=all|trades|money|income|charges|other
-//     &from=YYYY-MM-DD&to=YYYY-MM-DD&limit=50&offset=0
+//     &from=YYYY-MM-DD&to=YYYY-MM-DD&q=search&limit=50&offset=0
 // The account's transaction statement from pms_clients_tracker.pms_transactions (Nuvama WealthSpectrum sync),
 // newest first, with per-group totals for the same date range. See lib/mobileReports.ts for the groups.
 import { NextRequest, NextResponse } from 'next/server'

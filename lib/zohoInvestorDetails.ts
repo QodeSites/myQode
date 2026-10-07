@@ -110,3 +110,35 @@ export async function getInvestorCrmDetails(): Promise<Map<string, InvestorCrmDe
 export function clearInvestorCrmCache(): void {
   cache = null
 }
+
+// One investor's Relationship Manager, for the investor's own profile (app/api/mobile/experience/relationship-manager):
+// the owner of their Investors record, by email, whatever the investor's source: the name and the phone on the
+// owner's Zoho user (phone, else mobile). RM_PHONES fixes a number where Qode has given one. Cached per email for the
+// same five minutes; name null when there is no record or no owner, phone null when none is on record.
+export type InvestorRm = { name: string | null; phone: string | null; email: string | null }
+const RM_PHONES: Record<string, string> = {
+  'aditya mehta': '9920023488',   // Investor Relations
+  'krish ahuja': '9920023454',
+}
+// "9920023488" → "+91 99200 23488" (Indian mobiles); anything else as stored.
+const fmtPhone = (p: unknown) => {
+  const d = String(p ?? '').replace(/\D/g, '')
+  const ten = d.length === 12 && d.startsWith('91') ? d.slice(2) : d.length === 11 && d.startsWith('0') ? d.slice(1) : d
+  return ten.length === 10 ? `+91 ${ten.slice(0, 5)} ${ten.slice(5)}` : (String(p ?? '').trim() || null)
+}
+const rmCache = new Map<string, { rm: InvestorRm; expiresAt: number }>()
+export async function getInvestorRm(email: string): Promise<InvestorRm> {
+  const key = String(email || '').trim().toLowerCase()
+  if (!key) return { name: null, phone: null, email: null }
+  const hit = rmCache.get(key)
+  if (hit && hit.expiresAt > Date.now()) return hit.rm
+  const safe = key.replace(/\\/g, '\\\\').replace(/'/g, "\\'")   // COQL string literal
+  const rows = await coql(`select Owner.first_name, Owner.last_name, Owner.phone, Owner.mobile, Owner.email from Investors where Email = '${safe}' limit 0, 5`)
+  const r = rows.find(x => x['Owner.first_name'] || x['Owner.last_name'])
+  const name = r ? [r['Owner.first_name'], r['Owner.last_name']].filter(Boolean).join(' ').trim() || null : null
+  const phone = name ? fmtPhone(RM_PHONES[name.toLowerCase()] || r['Owner.phone'] || r['Owner.mobile']) : null
+  const mail = name ? String(r['Owner.email'] || '').trim().toLowerCase() || null : null
+  const rm = { name, phone, email: mail }
+  rmCache.set(key, { rm, expiresAt: Date.now() + CACHE_TTL_MS })
+  return rm
+}

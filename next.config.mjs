@@ -3,6 +3,9 @@ import { withSentryConfig } from '@sentry/nextjs';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // NEXT_DIST_DIR: build into another folder (e.g. .next-build) so a local production build can run while
+  // `next dev` is using .next; the two writing the same folder breaks both. Unset everywhere else: .next as before.
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   // The myQode app's web build (myqode-native → npm run build:web → public/app). It is a single-page app:
   // files under /app/_expo are served as they are; every other /app path gets its index.html.
   async rewrites() {

@@ -6,15 +6,37 @@ import { page, isoDate, n, day, fyRange, TXN_GROUPS, HIDDEN_FROM_ALL, groupOf, d
 import { computeFactsheet, factsheetCoverage } from '@/lib/factsheetCompute'
 import { computePlbs, fyStart, storedPlbs, storedPlbsPeriods, statementFromLines, PLBS_NOTE } from '@/lib/plbsCompute'
 import { query as queryMain } from '@/lib/db'
+import { closures } from '@/lib/accountClosure'
 
 export type ReportResult = { status: number; body: any }
+
+// A closed account's reports run to the day before it closed (T − 1, T = closedOn in lib/accountClosure.ts: the last
+// withdrawal), in every report, on the app and the website alike. For several accounts (P&L "All accounts") only when
+// every one is closed, to the day before the last of them closed. null: not closed, no cap.
+export async function closedCap(codes: string[]): Promise<string | null> {
+  if (!codes.length) return null
+  const m = await closures(codes)
+  const on = codes.map(c => m.get(c))
+  if (on.some(x => !x || !x.closed || !(x.cutoff || x.closedOn))) return null
+  return on.map(x => x!.cutoff || x!.closedOn!).sort().pop()!   // lib/accountClosure.ts: the day before the money left
+}
+const minDate = (a: string | null, b: string | null) => (a && b ? (a < b ? a : b) : a || b)
+// The request's date (key) no later than the cap; set to the cap when absent.
+function capped(params: URLSearchParams, key: string, cap: string | null) {
+  if (!cap) return params
+  const p = new URLSearchParams(params)
+  p.set(key, minDate(isoDate(p.get(key)), cap)!)
+  return p
+}
 const R = (body: any, init?: { status?: number }): ReportResult => ({ status: init?.status ?? 200, body })
 const CG = 'pms_clients_tracker.pms_capital_gains'
 const EX = 'pms_clients_tracker.pms_expense_statement'
 // Financial year (Apr–Mar) of sale_date, in SQL.
 const FY = `(CASE WHEN extract(month FROM sale_date) >= 4 THEN extract(year FROM sale_date) ELSE extract(year FROM sale_date) - 1 END)::int`
 
-export async function transactionsReport(accountId: string, params: URLSearchParams): Promise<ReportResult> {
+export async function transactionsReport(accountId: string, params0: URLSearchParams): Promise<ReportResult> {
+  const cap = await closedCap([accountId])
+  const params = capped(params0, 'to', cap)
 
   const group = params.get('group') || 'all'
   if (group !== 'all' && group !== 'other' && !TXN_GROUPS[group]) return R({ error: 'Unknown group' }, { status: 400 })
@@ -34,6 +56,14 @@ export async function transactionsReport(accountId: string, params: URLSearchPar
   if (group === 'all') { args.push(exporting ? HIDDEN_FROM_ALL.filter(c => c !== 'IML') : HIDDEN_FROM_ALL); where.push(`NOT (tran_type = ANY($${args.length}))`) }
   else if (group === 'other') { args.push(Object.values(TXN_GROUPS).flatMap(g => g.codes)); where.push(`NOT (tran_type = ANY($${args.length}))`) }
   else { args.push(TXN_GROUPS[group].codes); where.push(`tran_type = ANY($${args.length})`) }
+  // q: a search over the list (not the totals): transaction type, security or details, e.g. 'custody charges'.
+  // LIKE's own characters (% _ \) in the text are matched literally.
+  const q = String(params.get('q') || '').trim().slice(0, 100)
+  if (q) {
+    args.push('%' + q.replace(/[\\%_]/g, c => '\\' + c) + '%')
+    const k = `$${args.length}`
+    where.push(`(tran_desc ILIKE ${k} OR security_name ILIKE ${k} OR descmemo ILIKE ${k})`)
+  }
 
   try {
     const [list, sums, latest] = await Promise.all([
@@ -75,9 +105,11 @@ export async function transactionsReport(accountId: string, params: URLSearchPar
 
     const rows = list.rows.slice(0, limit)
     const holder = await accountHolder(accountId)
+    const lastDay = minDate(day(latest.rows[0]?.d), cap)
     return R({
-      holder, accountId, asOf: day(latest.rows[0]?.d), group, from, to, summary, moneyIn, moneyOut, switchIn, switchOut,
-      coverage: { from: day(latest.rows[0]?.f), to: day(latest.rows[0]?.d) },   // earliest and latest dates on record
+      holder, accountId, asOf: lastDay, group, from: isoDate(params0.get('from')), to: isoDate(params0.get('to')), summary, moneyIn, moneyOut, switchIn, switchOut,
+      closedCap: cap,
+      coverage: { from: day(latest.rows[0]?.f), to: lastDay },   // earliest and latest dates on record (a closed account: to T − 1)
       items: rows.map(r => ({
         id: r.id, date: day(r.trandate), settleDate: day(r.set_date), code: r.tran_type, type: r.tran_desc,
         group: groupOf(r.tran_type), direction: directionOf(r.tran_type),
@@ -121,7 +153,9 @@ export async function capitalGainsReport(accountId: string, params: URLSearchPar
     const reqFy = params.get('fy')
     const fy = from || to ? null : years.find(y => y.fy === reqFy)?.fy ?? years[0]?.fy ?? null
     if (!fy && !from && !to) return R({ accountId, asOf: day(asOf), fy: null, years, coverage, summary: null, items: [], hasMore: false })
-    const [start, end] = fy ? fyRange(fy) : [from || '1900-01-01', to || '2999-12-31']
+    const [start, end0] = fy ? fyRange(fy) : [from || '1900-01-01', to || '2999-12-31']
+    const cap = await closedCap([accountId])
+    const end = minDate(end0, cap)!
 
     const base = [accountId, asOf, start, end]
     const termSql = term ? ` AND term = $5` : ''
@@ -145,7 +179,7 @@ export async function capitalGainsReport(accountId: string, params: URLSearchPar
 
     const holder = await accountHolder(accountId)
     return R({
-      holder, accountId, asOf: day(asOf), fy, from, to, coverage, term, years,
+      holder, accountId, asOf: day(asOf), fy, from, to, coverage, term, years, closedCap: cap,
       summary: { st, lt, ltTaxable, total: st + lt, byCategory },
       items: lots.rows.slice(0, limit).map(r => ({
         saleDate: day(r.sale_date), purchaseDate: day(r.purchase_date), security: r.security_name, securityType: r.security_type,
@@ -161,7 +195,8 @@ export async function capitalGainsReport(accountId: string, params: URLSearchPar
   }
 }
 
-export async function expensesReport(accountId: string, params: URLSearchParams): Promise<ReportResult> {
+export async function expensesReport(accountId: string, params0: URLSearchParams): Promise<ReportResult> {
+  const params = capped(params0, 'to', await closedCap([accountId]))
   const { limit, offset } = page(params, 50, params.get('export') === '1' ? 5000 : 200)   // export=1: the whole list for a PDF
   const type = params.get('type')
 
@@ -215,7 +250,9 @@ export async function expensesReport(accountId: string, params: URLSearchParams)
 // fact sheet can be computed for (the account's first to latest NAV date).
 export const COMPUTED_FACTSHEET_NOTE =
   "Computed by Qode from Nuvama transaction and holdings data. Benchmark returns use the price index; Nuvama's fact sheet uses the total-return index."
-export async function factsheetReport(accountId: string, params: URLSearchParams): Promise<ReportResult> {
+export async function factsheetReport(accountId: string, params0: URLSearchParams): Promise<ReportResult> {
+  const cap = await closedCap([accountId])
+  const params = capped(params0, 'date', cap)
 
   try {
     const date = isoDate(params.get('date'))
@@ -226,7 +263,8 @@ export async function factsheetReport(accountId: string, params: URLSearchParams
         `SELECT * FROM pms_clients_tracker.pms_factsheet WHERE account_code = $1${date ? ' AND as_of_date = $2' : ''} ORDER BY as_of_date DESC LIMIT 1`,
         date ? [accountId, date] : [accountId]),
     ])
-    const dates = datesRes.rows.map(x => day(x.as_of_date))
+    const dates = datesRes.rows.map(x => day(x.as_of_date)).filter(d => !cap || (d && d <= cap))
+    if (cap) coverage.to = minDate(coverage.to, cap)
     // "Latest" is the newest day with data: Nuvama's stored fact sheet only when it is that day, otherwise computed
     // (an upload from a few days ago must not hide the days since).
     const r = !date && coverage.to && dates[0] && coverage.to > dates[0] ? null : stored.rows[0]
@@ -301,11 +339,14 @@ async function plbsReport(codes: string[], from: string | null, to: string | nul
   }
 }
 const codesOf = (accountId: string) => [...new Set(accountId.split(',').map(s => s.trim()).filter(Boolean))]
-export const pnlReport = (accountId: string, params: URLSearchParams) =>
-  plbsReport(codesOf(accountId), isoDate(params.get('from')), isoDate(params.get('to')))
+export const pnlReport = async (accountId: string, params: URLSearchParams) => {
+  const codes = codesOf(accountId), cap = await closedCap(codes)
+  return plbsReport(codes, isoDate(params.get('from')), minDate(isoDate(params.get('to')), cap))
+}
 /** Balance sheet as of ?date= (default the latest value date); its P&L runs from the start of that financial year. */
-export const balanceSheetReport = (accountId: string, params: URLSearchParams) => {
-  const date = isoDate(params.get('date'))
-  return plbsReport(codesOf(accountId), date ? fyStart(date) : null, date)
+export const balanceSheetReport = async (accountId: string, params: URLSearchParams) => {
+  const codes = codesOf(accountId)
+  const date = minDate(isoDate(params.get('date')), await closedCap(codes))
+  return plbsReport(codes, date ? fyStart(date) : null, date)
 }
 export { PLBS_NOTE }
