@@ -7,6 +7,14 @@
 //
 // Nothing else: no TDS on payout, partial switches, fees, charges, interest, trades — and nothing within these six left out either.
 // Amounts are as the custodian booked them.
+//
+// own: whether the investor made it himself (Recent Activity shows only these; totals and the Transactions page keep
+// everything). Decided 8 Oct 2026: only money in and out of the investor's bank —
+//   own      Corpus Deposit (CS+), its first per account labelled First Investment and "Top Up" memos Top-up;
+//            Corpus Withdrawal (CS-)
+//   not own  Security In / Out (OPI / OPO: shares moved in, corporate actions, MF→share changes), Full Switch In / Out,
+//            a dividend booked as corpus in, and a CS± that the custodian paired with a same-day OPI / OPO of the
+//            same amount (e.g. 7 Aug 2026, City Union Bank shares "switched in" against a ₹215.96 "Corpus Out").
 // (Until 8 Oct this list was built from pms_master_sheet's daily net cash_in_out, labelled by matching it to these
 // rows; a re-valued or unmatched day then went unexplained or missing.)
 import { query as q1 } from '@/lib/db1'
@@ -32,6 +40,7 @@ export type LedgerFlow = {
   code: string              // strategy account
   kind: string              // tran_type
   memo: string              // custodian's note
+  own: boolean              // made by the investor (see above)
   formattedAmount: string
 }
 
@@ -56,11 +65,27 @@ export async function ledgerFlows(codes: string[], upTo?: string | null): Promis
        FROM pms_clients_tracker.pms_transactions
       WHERE ws_account_code = ANY($1) AND tran_type = ANY($2) ${upTo ? 'AND trandate <= $3' : ''}
       ORDER BY trandate, id`, upTo ? [codes, Object.keys(KINDS), upTo] : [codes, Object.keys(KINDS)])
-  return r.rows
+  const rows = r.rows.map((x: any) => ({ ...x, abs: Math.round(Math.abs(Number(x.amt) || 0) * 100) }))
+  // a corpus entry the custodian booked against a security moving in / out on the same day, for the same amount
+  const sec = new Set(rows.filter((x: any) => x.kind === 'OPI' || x.kind === 'OPO').map((x: any) => `${x.code}|${x.date}|${x.abs}`))
+  const firstIn = new Map<string, string>()   // account → date of its first corpus deposit
+  for (const x of rows) if (x.kind === 'CS+' && !/dividend/i.test(x.memo) && !firstIn.has(x.code)) firstIn.set(x.code, x.date)
+  const seenFirst = new Set<string>()
+  return rows
     .map((x: any) => {
       const k = KINDS[x.kind], amount = k.sign * Math.abs(Number(x.amt) || 0)
-      return { date: x.date, amount, type: amount >= 0 ? 'inflow' : 'outflow', label: k.label, detail: strat(x.code),
-        code: x.code, kind: x.kind, memo: x.memo, formattedAmount: formatINR(amount) } as LedgerFlow
+      const cash = x.kind === 'CS+' || x.kind === 'CS-'
+      const paired = cash && sec.has(`${x.code}|${x.date}|${x.abs}`)
+      const dividend = x.kind === 'CS+' && /dividend/i.test(x.memo)
+      const own = cash && !paired && !dividend
+      let label = k.label
+      if (own && x.kind === 'CS+') {
+        if (firstIn.get(x.code) === x.date && !seenFirst.has(x.code)) { label = 'First Investment'; seenFirst.add(x.code) }
+        else if (/top\s*-?\s*up/i.test(x.memo)) label = 'Top-up'
+      }
+      if (dividend) label = 'Dividend'
+      return { date: x.date, amount, type: amount >= 0 ? 'inflow' : 'outflow', label, detail: strat(x.code),
+        code: x.code, kind: x.kind, memo: x.memo, own, formattedAmount: formatINR(amount) } as LedgerFlow
     })
     .filter(f => Math.abs(f.amount) >= 0.005)
 }
