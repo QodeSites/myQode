@@ -15,6 +15,8 @@
 //   not own  Security In / Out (OPI / OPO: shares moved in, corporate actions, MF→share changes), Full Switch In / Out,
 //            a dividend booked as corpus in, and a CS± that the custodian paired with a same-day OPI / OPO of the
 //            same amount (e.g. 7 Aug 2026, City Union Bank shares "switched in" against a ₹215.96 "Corpus Out").
+//   The investor's same-day, same-account deposits (or withdrawals) are one line (the custodian splits some, e.g.
+//   ₹100 + ₹3,74,900 for a ₹3,75,000 withdrawal), and one still under ₹1,000 after that is not shown as his (OWN_MIN).
 // (Until 8 Oct this list was built from pms_master_sheet's daily net cash_in_out, labelled by matching it to these
 // rows; a re-valued or unmatched day then went unexplained or missing.)
 import { query as q1 } from '@/lib/db1'
@@ -29,6 +31,7 @@ const KINDS: Record<string, { label: string; sign: 1 | -1 }> = {
   OPO: { label: 'Security Out', sign: -1 },
   SOO: { label: 'Full Switch Out', sign: -1 },
 }
+const OWN_MIN = 1000   // ₹: smaller investor entries are left out of Recent Activity (totals keep them)
 const strat = (code: string) => { const n = getStrategyName(code); return n === 'Unknown Strategy' ? code : n }
 
 export type LedgerFlow = {
@@ -88,4 +91,13 @@ export async function ledgerFlows(codes: string[], upTo?: string | null): Promis
         code: x.code, kind: x.kind, memo: x.memo, own, formattedAmount: formatINR(amount) } as LedgerFlow
     })
     .filter(f => Math.abs(f.amount) >= 0.005)
+    .reduce((out: LedgerFlow[], f) => {   // merge the investor's same-day entries of one kind on one account
+      const prev = out.find(o => o.own && f.own && o.code === f.code && o.date === f.date && o.kind === f.kind)
+      if (prev) {
+        prev.amount += f.amount; prev.formattedAmount = formatINR(prev.amount)
+        if (f.label === 'First Investment') prev.label = f.label
+      } else out.push({ ...f })
+      return out
+    }, [])
+    .map(f => (f.own && Math.abs(f.amount) < OWN_MIN ? { ...f, own: false } : f))
 }
