@@ -15,10 +15,15 @@
 //   Sortino       (CAGR − 6.5%) ÷ downside deviation: daily returns below 0, squared, over ALL days (n), √, × √252
 //                 (Portfolio Visualizer's convention, as qodeinvest.com).
 //   Information ratio  mean ÷ standard deviation of the monthly active return (portfolio − benchmark month), × √12.
-//                 Needs 12 months.
+//                 Needs IR_MIN_MONTHS months.
 //   Upside / downside capture  over the days the benchmark rose (fell): the portfolio's geometric mean daily return ÷
 //                 the benchmark's, × 100. Needs 3 such days each.
 //   bench.volatility / sharpe / sortino: the same measures for the benchmark over the same days.
+//
+//   Under a year: `cagr` / `benchCagr` stay null (no annualised headline return), but alpha, Sharpe and Sortino use the
+//   absolute return since inception annualised the same way, (NAV_end / NAV_start)^(365.25 / days) − 1, from
+//   ANNUALISE_MIN_DAYS on (`annReturn` / `benchAnnReturn`, `annualised: true`). The information ratio needs
+//   IR_MIN_MONTHS months. Decided 8 Oct 2026.
 //
 // Decided 6 Oct 2026: risk-free 6.5%, alpha as CAGR − benchmark CAGR.
 import pool from '@/lib/db'
@@ -27,6 +32,8 @@ import { getStrategyBenchmark } from '@/lib/strategyConfig'
 import { closedCutoff } from '@/lib/accountClosure'
 
 export const RISK_FREE = 0.065
+export const ANNUALISE_MIN_DAYS = 90   // ratios for a younger account: from about 3 months of history
+export const IR_MIN_MONTHS = 3
 const COMBINED_BENCHMARK = 'NIFTY 50'   // owner / group views, as combined-nav
 const DAY = 86400000
 const iso = (d: any) => (d instanceof Date ? d.toISOString() : String(d)).slice(0, 10)
@@ -35,6 +42,7 @@ const r4 = (x: number | null) => (x == null || !isFinite(x) ? null : Math.round(
 export type PortfolioMetrics = {
   accountId: string; benchmark: string; from: string; to: string; years: number
   cagr: number | null; benchCagr: number | null; alpha: number | null
+  annReturn: number | null; benchAnnReturn: number | null; annualised: boolean
   volatility: number | null; sharpe: number | null; beta: number | null; maxDrawdown: number | null
   bestMonth: { month: string; ret: number } | null; worstMonth: { month: string; ret: number } | null
   positiveMonths: { up: number; total: number } | null; months: MonthRet[]
@@ -84,7 +92,9 @@ export async function portfolioMetrics(accountId: string): Promise<PortfolioMetr
   const days = (Date.parse(to) - Date.parse(from)) / DAY + (startNav === 10 && navs[0].v !== 10 ? 1 : 0)
   const years = days / 365.25   // as performance/route.ts's since-inception return, so the two never differ by a rounding
   const endNav = navs[navs.length - 1].v
-  const cagr = years >= 1 ? Math.pow(endNav / startNav, 1 / years) - 1 : null
+  const canAnn = years >= 1 || days >= ANNUALISE_MIN_DAYS
+  const annReturn = canAnn ? Math.pow(endNav / startNav, 1 / years) - 1 : null   // the return since inception, a year
+  const cagr = years >= 1 ? annReturn : null
 
   // benchmark: anchor on or before the first day, then the window
   const b = (await db2.query(
@@ -92,7 +102,8 @@ export async function portfolioMetrics(accountId: string): Promise<PortfolioMetr
      UNION ALL
      (SELECT date, nav::float8 AS nav FROM public.tblresearch_new WHERE indices = $1 AND date > $2 AND date <= $3 ORDER BY date)`,
     [benchmark, from, to])).rows.map((r: any) => ({ d: iso(r.date), v: Number(r.nav) })).sort((x: any, y: any) => x.d.localeCompare(y.d))
-  const benchCagr = years >= 1 && b.length > 1 ? Math.pow(b[b.length - 1].v / b[0].v, 1 / years) - 1 : null
+  const benchAnnReturn = canAnn && b.length > 1 ? Math.pow(b[b.length - 1].v / b[0].v, 1 / years) - 1 : null
+  const benchCagr = years >= 1 ? benchAnnReturn : null
 
   // daily returns on the benchmark's trading days (portfolio NAV taken on the same days)
   const navOn = new Map(navs.map(x => [x.d, x.v]))
@@ -112,10 +123,10 @@ export async function portfolioMetrics(accountId: string): Promise<PortfolioMetr
     volatility = Math.sqrt(varP) * Math.sqrt(252)
     beta = varB > 0 ? cov / varB : null
   }
-  const sharpe = cagr != null && volatility ? (cagr - RISK_FREE) / volatility : null
+  const sharpe = annReturn != null && volatility ? (annReturn - RISK_FREE) / volatility : null
   const sdOf = (a: number[]) => { const m = mean(a); return Math.sqrt(a.reduce((t, x) => t + (x - m) ** 2, 0) / (a.length - 1)) }
   const benchVol = rb.length > 20 ? sdOf(rb) * Math.sqrt(252) : null
-  const benchSharpe = benchCagr != null && benchVol ? (benchCagr - RISK_FREE) / benchVol : null
+  const benchSharpe = benchAnnReturn != null && benchVol ? (benchAnnReturn - RISK_FREE) / benchVol : null
   const sortinoOf = (r: number[], g: number | null) => {
     if (r.length <= 20 || g == null) return null
     const dn = r.filter(x => x < 0)
@@ -123,7 +134,7 @@ export async function portfolioMetrics(accountId: string): Promise<PortfolioMetr
     const dsd = Math.sqrt(dn.reduce((t, x) => t + x * x, 0) / r.length) * Math.sqrt(252)
     return dsd > 0 ? (g - RISK_FREE) / dsd : null
   }
-  const sortino = sortinoOf(rp, cagr), benchSortino = sortinoOf(rb, benchCagr)
+  const sortino = sortinoOf(rp, annReturn), benchSortino = sortinoOf(rb, benchAnnReturn)
   // capture: geometric mean daily return on the benchmark's up (down) days, portfolio ÷ benchmark
   const gm = (xs: number[]) => Math.pow(xs.reduce((t, x) => t * (1 + x), 1), 1 / xs.length) - 1
   const upI = rb.map((x, i) => (x > 0 ? i : -1)).filter(i => i >= 0), dnI = rb.map((x, i) => (x < 0 ? i : -1)).filter(i => i >= 0)
@@ -143,7 +154,7 @@ export async function portfolioMetrics(accountId: string): Promise<PortfolioMetr
   const bMon = new Map(bm.months.map(x => [x.month, x.ret]))
   const active = pm.months.filter(x => bMon.has(x.month)).map(x => x.ret - bMon.get(x.month)!)
   let informationRatio: number | null = null
-  if (active.length >= 12) {
+  if (canAnn && active.length >= IR_MIN_MONTHS) {   // same 90-day start as the other ratios
     const m = mean(active), sd = Math.sqrt(active.reduce((t, x) => t + x * x, 0) / active.length - m * m)
     informationRatio = sd > 0 ? (m / sd) * Math.sqrt(12) : null
   }
@@ -151,7 +162,8 @@ export async function portfolioMetrics(accountId: string): Promise<PortfolioMetr
 
   return {
     accountId, benchmark, from, to, years: Math.round(years * 100) / 100,
-    cagr: r4(cagr), benchCagr: r4(benchCagr), alpha: cagr != null && benchCagr != null ? r4(cagr - benchCagr) : null,
+    cagr: r4(cagr), benchCagr: r4(benchCagr), alpha: annReturn != null && benchAnnReturn != null ? r4(annReturn - benchAnnReturn) : null,
+    annReturn: r4(annReturn), benchAnnReturn: r4(benchAnnReturn), annualised: years < 1 && annReturn != null,
     volatility: r4(volatility), sharpe: sharpe == null ? null : Math.round(sharpe * 100) / 100, beta: beta == null ? null : Math.round(beta * 100) / 100,
     maxDrawdown: r4(maxDrawdown),
     bestMonth: pm.bestMonth, worstMonth: pm.worstMonth, positiveMonths: pm.positiveMonths, months: pm.months,
