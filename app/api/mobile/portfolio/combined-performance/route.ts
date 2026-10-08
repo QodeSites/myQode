@@ -116,6 +116,8 @@ export async function GET(request: NextRequest) {
     const amountInvested: number = activeRows.reduce((sum: number, r: any) => {
       return sum + parseFloat(r.cash_in_out || 0)
     }, 0)
+    // Gross: every day's money in from outside the family, before any withdrawal or tax.
+    const grossInvested: number = activeRows.reduce((sum: number, r: any) => sum + Math.max(0, parseFloat(r.cash_in_out || 0)), 0)
 
     const totalReturns = latestValue - amountInvested
     // Same anchor as the web: when the first NAV isn't 10, measure from a synthetic NAV of 10
@@ -149,6 +151,9 @@ export async function GET(request: NextRequest) {
       return i >= 0 ? parseFloat(activeRows[i].nav) : null
     }
     const dateKey = (d: Date | string) => new Date(d).toISOString().slice(0, 10)
+    // 1D: the previous row; replaced below by the benchmark's previous trading day when there is benchmark data
+    // (the portfolio series has a row for every calendar day, so one row back on a Monday is Sunday's unchanged NAV).
+    const nav1D = rowsBack(1)
     const nav1W = rowsBack(5)
     const nav10D = rowsBack(10)
     const nav1M  = navOnOrBefore(activeRows, getMonthTarget(1),  'report_date', 'nav')
@@ -164,6 +169,7 @@ export async function GET(request: NextRequest) {
     }, 0)
 
     const portfolioTrailing = {
+      d1:   simpleReturn(latestNav, nav1D),
       w1:   simpleReturn(latestNav, nav1W),
       d10:  simpleReturn(latestNav, nav10D),
       m1:   simpleReturn(latestNav, nav1M),
@@ -178,12 +184,12 @@ export async function GET(request: NextRequest) {
 
     // ── NIFTY 50 benchmark trailing returns ───────────────────────────────────
     type BenchTrailing = {
-      w1: number | null; d10: number | null; m1: number | null; m3: number | null;
+      d1: number | null; w1: number | null; d10: number | null; m1: number | null; m3: number | null;
       m6: number | null; y1: number | null; y3: number | null;
       currentDD: number | null; maxDD: number | null; sinceInception: number | null;
     }
     let benchmarkTrailing: BenchTrailing = {
-      w1: null, d10: null, m1: null, m3: null,
+      d1: null, w1: null, d10: null, m1: null, m3: null,
       m6: null, y1: null, y3: null,
       currentDD: null, maxDD: null, sinceInception: null,
     }
@@ -217,6 +223,12 @@ export async function GET(request: NextRequest) {
         }
 
         // bRows is DESC: index n = n trading rows back (web: 1W = 5 rows, 10D = 10 rows).
+        const b1D  = bRows.length > 1  ? parseFloat(bRows[1].nav)  : null
+        if (bRows.length > 1) {
+          const oneDKey = dateKey(bRows[1].date)
+          const prevRow = activeRows.find((r: any) => dateKey(r.report_date) === oneDKey)
+          if (prevRow) portfolioTrailing.d1 = simpleReturn(latestNav, parseFloat(prevRow.nav))
+        }
         const b1W  = bRows.length > 5  ? parseFloat(bRows[5].nav)  : null
         const b10D = bRows.length > 10 ? parseFloat(bRows[10].nav) : null
         if (bRows.length > 10) {
@@ -246,6 +258,7 @@ export async function GET(request: NextRequest) {
         }
 
         benchmarkTrailing = {
+          d1:   simpleReturn(latestBench, b1D),
           w1:   simpleReturn(latestBench, b1W),
           d10:  simpleReturn(latestBench, b10D),
           m1:   simpleReturn(latestBench, b1M),
@@ -270,6 +283,7 @@ export async function GET(request: NextRequest) {
         benchmark: COMBINED_BENCHMARK,
       },
       amountInvested: +amountInvested.toFixed(2),
+      grossInvested: +grossInvested.toFixed(2),
       currentValue: +latestValue.toFixed(2),
       totalReturns: +totalReturns.toFixed(2),
       returnsPercent,

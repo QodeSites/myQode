@@ -1,18 +1,12 @@
 // GET /api/mobile/portfolio/cashflow?accountId=QAW0009
-// Returns cash-in / cash-out transactions derived from pms_master_sheet.cash_in_out.
+// Recent Activity: the investor's deposits, withdrawals, full switches and securities in / out, straight
+// from the custodian ledger (lib/ledgerFlows.ts). Only the closed-account check still reads pms_master_sheet.
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
 import { normaliseAccountCode } from '@/lib/utils'
 import { reviewerMockCashflow } from '@/lib/reviewerMock'
-import { labelFlows, accountsBehind, withoutMinorFlows } from '@/lib/cashflowLabels'
-
-function formatINR(amount: number): string {
-  const abs = Math.abs(amount)
-  const formatted = abs.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  const sign = amount >= 0 ? '+' : '–'
-  return `${sign}₹${formatted}`
-}
+import { ledgerFlows } from '@/lib/ledgerFlows'
 
 export async function GET(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)
@@ -53,7 +47,7 @@ export async function GET(request: NextRequest) {
     let closedAt: string | null = null
     if (isClosed) {
       const caRes = await pool.query(
-        `SELECT report_date FROM public.pms_master_sheet
+        `SELECT report_date::text AS report_date FROM public.pms_master_sheet
          WHERE account_code = $1 AND portfolio_value > 0
          ORDER BY report_date DESC LIMIT 1`,
         [dbAccountId]
@@ -61,36 +55,13 @@ export async function GET(request: NextRequest) {
       closedAt = caRes.rows[0]?.report_date ?? null
     }
 
-    const result = await pool.query(
-      `SELECT report_date, cash_in_out
-       FROM public.pms_master_sheet
-       WHERE account_code = $1
-         AND cash_in_out IS NOT NULL
-         AND cash_in_out != 0
-         ${closedAt ? `AND report_date <= '${closedAt}'` : ''}
-       ORDER BY report_date ASC`,
-      [dbAccountId]
-    )
-
-    const transactions = result.rows.map((r: any) => {
-      const amount: number = parseFloat(r.cash_in_out)
-      return {
-        date: r.report_date,
-        amount,
-        type: amount >= 0 ? 'inflow' : 'outflow',
-        formattedAmount: formatINR(amount),
-      }
-    })
-
-    // What each flow was (top-up, switch, TDS, …) from Nuvama's transactions — lib/cashflowLabels
-    // …and without the small ones (TDS, under ₹1,000), which the app shouldn't list
-    const labelled = withoutMinorFlows(await labelFlows(await accountsBehind(dbAccountId), transactions))
-    const total = transactions.reduce((sum: number, t: any) => sum + t.amount, 0)
+    const transactions = await ledgerFlows([dbAccountId], closedAt)
+    const total = transactions.reduce((sum: number, t) => sum + t.amount, 0)
 
     return NextResponse.json({
       isClosed,
       closedAt,
-      transactions: labelled,
+      transactions,
       total: +total.toFixed(2),
       formattedTotal: `₹${Math.abs(total).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
     })

@@ -7,6 +7,7 @@ import { getStrategyName, getStrategyBenchmark, getStrategyColor, getPrefix } fr
 import { normaliseAccountCode } from '@/lib/utils'
 import { reviewerMockPerformance } from '@/lib/reviewerMock'
 import { closureFromRows } from '@/lib/accountClosure'
+import { switchAdjustments, switchAdjustTotal } from '@/lib/switchCost'
 
 function formatDate(d: Date | string | null): string {
   if (!d) return ''
@@ -120,10 +121,18 @@ export async function GET(request: NextRequest) {
     const inceptionDate: string = first.report_date
     const firstNav: number = parseFloat(first.nav)
 
-    // Amount invested = net of ALL cash flows (inflows positive, outflows negative) — matches web
-    const amountInvested: number = activeRows.reduce((sum: number, r: any) => {
+    // Amount invested = net of ALL cash flows (inflows positive, outflows negative) — matches web — with switches
+    // between the member's own accounts counted at what the money cost, not its value on the day (lib/switchCost.ts),
+    // so the account's figures add up to the member's combined ones.
+    const bookedInvested: number = activeRows.reduce((sum: number, r: any) => {
       return sum + parseFloat(r.cash_in_out || 0)
     }, 0)
+    const switchAdj = await switchAdjustments(dbAccountId)
+    const upToDate = String(latest.report_date).slice(0, 10)
+    const amountInvested: number = bookedInvested + switchAdjustTotal(switchAdj, upToDate)
+    // Gross: every day's money in (at cost, as above), before any withdrawal or tax — the round figure the investor remembers.
+    const adjOn = (d: any) => switchAdj.filter(a => a.date === String(d).slice(0, 10)).reduce((s, a) => s + a.adjust, 0)
+    const grossInvested: number = activeRows.reduce((sum: number, r: any) => sum + Math.max(0, parseFloat(r.cash_in_out || 0) + adjOn(r.report_date)), 0)
 
     const totalReturns = latestValue - amountInvested
 
@@ -164,6 +173,9 @@ export async function GET(request: NextRequest) {
       return i >= 0 ? parseFloat(activeRows[i].nav) : null
     }
     const dateKey = (d: Date | string) => new Date(d).toISOString().slice(0, 10)
+    // 1D: the previous row; replaced below by the benchmark's previous trading day when there is benchmark data
+    // (the portfolio series has a row for every calendar day, so one row back on a Monday is Sunday's unchanged NAV).
+    const nav1D = rowsBack(1)
     const nav1W = rowsBack(5)
     const nav10D = rowsBack(10)
     const nav1M  = navOnOrBefore(activeRows, getMonthTarget(1),  'report_date', 'nav')
@@ -179,6 +191,7 @@ export async function GET(request: NextRequest) {
     }, 0)
 
     const portfolioTrailing = {
+      d1:   simpleReturn(latestNav, nav1D),
       w1:   simpleReturn(latestNav, nav1W),
       d10:  simpleReturn(latestNav, nav10D),
       m1:   simpleReturn(latestNav, nav1M),
@@ -195,12 +208,12 @@ export async function GET(request: NextRequest) {
     const benchmarkIndex = getStrategyBenchmark(accountId)
 
     type BenchTrailing = {
-      w1: number | null; d10: number | null; m1: number | null; m3: number | null;
+      d1: number | null; w1: number | null; d10: number | null; m1: number | null; m3: number | null;
       m6: number | null; y1: number | null; y3: number | null;
       currentDD: number | null; maxDD: number | null; sinceInception: number | null;
     }
     let benchmarkTrailing: BenchTrailing = {
-      w1: null, d10: null, m1: null, m3: null,
+      d1: null, w1: null, d10: null, m1: null, m3: null,
       m6: null, y1: null, y3: null,
       currentDD: null, maxDD: null, sinceInception: null,
     }
@@ -235,6 +248,12 @@ export async function GET(request: NextRequest) {
         }
 
         // bRows is DESC: index n = n trading rows back (web: 1W = 5 rows, 10D = 10 rows).
+        const b1D  = bRows.length > 1  ? parseFloat(bRows[1].nav)  : null
+        if (bRows.length > 1) {
+          const oneDKey = dateKey(bRows[1].date)
+          const prevRow = activeRows.find((r: any) => dateKey(r.report_date) === oneDKey)
+          if (prevRow) portfolioTrailing.d1 = simpleReturn(latestNav, parseFloat(prevRow.nav))
+        }
         const b1W  = bRows.length > 5  ? parseFloat(bRows[5].nav)  : null
         const b10D = bRows.length > 10 ? parseFloat(bRows[10].nav) : null
         if (bRows.length > 10) {
@@ -264,6 +283,7 @@ export async function GET(request: NextRequest) {
         }
 
         benchmarkTrailing = {
+          d1:   simpleReturn(latestBench, b1D),
           w1:   simpleReturn(latestBench, b1W),
           d10:  simpleReturn(latestBench, b10D),
           m1:   simpleReturn(latestBench, b1M),
@@ -292,6 +312,7 @@ export async function GET(request: NextRequest) {
         color: getStrategyColor(accountId),
       },
       amountInvested: +amountInvested.toFixed(2),   // net cash deployed (inflows − outflows)
+      grossInvested: +grossInvested.toFixed(2),     // inflows only
       currentValue: +latestValue.toFixed(2),
       totalReturns: +totalReturns.toFixed(2),
       returnsPercent,                                // CAGR if ≥ 1Y since inception, else absolute
