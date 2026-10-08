@@ -32,7 +32,9 @@ export async function GET(request: NextRequest) {
   const strategy = {
     prefix: getPrefix(accountId),
     name: getStrategyName(accountId),
-    benchmark: getStrategyBenchmark(accountId),
+    // ?benchmark=NIFTY 50: a strategy account asked for as part of an owner's combined view (the app's local-owner
+    // scope), measured against NIFTY 50 like every combined view. Only NIFTY 50 is accepted. Added 8 Oct 2026.
+    benchmark: new URL(request.url).searchParams.get('benchmark') === 'NIFTY 50' ? 'NIFTY 50' : getStrategyBenchmark(accountId),
     color: getStrategyColor(accountId),
   }
 
