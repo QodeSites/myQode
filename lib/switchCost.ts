@@ -1,3 +1,6 @@
+// NOT USED since 8 Oct 2026: invested amounts count switches at their value on the day, as the custodian books them
+// (decided by Sanket for every account; see app/api/mobile/portfolio/performance/route.ts). Kept for reference.
+//
 // Switches between a member's own strategy accounts, at cost.
 //
 // A switch moves money from one of the member's accounts to another at its value on the day. Counted as the

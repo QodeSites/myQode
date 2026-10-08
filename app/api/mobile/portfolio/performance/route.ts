@@ -7,7 +7,6 @@ import { getStrategyName, getStrategyBenchmark, getStrategyColor, getPrefix } fr
 import { normaliseAccountCode } from '@/lib/utils'
 import { reviewerMockPerformance } from '@/lib/reviewerMock'
 import { closureFromRows } from '@/lib/accountClosure'
-import { switchAdjustments, switchAdjustTotal } from '@/lib/switchCost'
 
 function formatDate(d: Date | string | null): string {
   if (!d) return ''
@@ -121,18 +120,15 @@ export async function GET(request: NextRequest) {
     const inceptionDate: string = first.report_date
     const firstNav: number = parseFloat(first.nav)
 
-    // Amount invested = net of ALL cash flows (inflows positive, outflows negative) — matches web — with switches
-    // between the member's own accounts counted at what the money cost, not its value on the day (lib/switchCost.ts),
-    // so the account's figures add up to the member's combined ones.
-    const bookedInvested: number = activeRows.reduce((sum: number, r: any) => {
+    // Amount invested = net of ALL cash flows (inflows positive, outflows negative) — matches web — as the custodian
+    // books them: a switch from the member's other Qode account counts at its value on the day (QGF00133: ₹55,40,326,
+    // so ₹1,27,89,670.86 net, as Nuvama's statement). Decided 8 Oct 2026, for every account; this replaces the
+    // switch-at-cost adjustment (lib/switchCost.ts, no longer used).
+    const amountInvested: number = activeRows.reduce((sum: number, r: any) => {
       return sum + parseFloat(r.cash_in_out || 0)
     }, 0)
-    const switchAdj = await switchAdjustments(dbAccountId)
-    const upToDate = String(latest.report_date).slice(0, 10)
-    const amountInvested: number = bookedInvested + switchAdjustTotal(switchAdj, upToDate)
-    // Gross: every day's money in (at cost, as above), before any withdrawal or tax — the round figure the investor remembers.
-    const adjOn = (d: any) => switchAdj.filter(a => a.date === String(d).slice(0, 10)).reduce((s, a) => s + a.adjust, 0)
-    const grossInvested: number = activeRows.reduce((sum: number, r: any) => sum + Math.max(0, parseFloat(r.cash_in_out || 0) + adjOn(r.report_date)), 0)
+    // Gross: every day's money in, before any withdrawal or tax — the round figure the investor remembers.
+    const grossInvested: number = activeRows.reduce((sum: number, r: any) => sum + Math.max(0, parseFloat(r.cash_in_out || 0)), 0)
 
     const totalReturns = latestValue - amountInvested
 
