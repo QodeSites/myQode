@@ -141,6 +141,8 @@ export async function GET(request: NextRequest) {
       ? (() => { const d = new Date(inceptionDate); d.setDate(d.getDate() - 1); return d.toISOString() })()
       : inceptionDate
     const returnsPercent = inceptionReturn(latestNav, siBaseNav, siBaseDate, latestDate) ?? 0
+    // whether returnsPercent is a CAGR (a year or more since the base date, as inceptionReturn decides): the app labels it
+    const returnsAnnualised = (new Date(latestDate).getTime() - new Date(siBaseDate).getTime()) / 86400000 / 365.25 >= 1
 
     // ── Trailing return helpers (ASC) ─────────────────────────────────────────
     const latestDateObj = new Date(latestDate)
@@ -312,6 +314,7 @@ export async function GET(request: NextRequest) {
       currentValue: +latestValue.toFixed(2),
       totalReturns: +totalReturns.toFixed(2),
       returnsPercent,                                // CAGR if ≥ 1Y since inception, else absolute
+      returnsAnnualised,                             // true: returnsPercent is a CAGR (8 Oct 2026)
       isNegative: totalReturns < 0,
       inceptionDate: formatDate(inceptionDate),
       dataAsOf: formatDate(latestDate),
