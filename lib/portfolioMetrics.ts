@@ -20,10 +20,14 @@
 //                 the benchmark's, × 100. Needs 3 such days each.
 //   bench.volatility / sharpe / sortino: the same measures for the benchmark over the same days.
 //
-//   Under a year: `cagr` / `benchCagr` stay null (no annualised headline return), but alpha, Sharpe and Sortino use the
-//   absolute return since inception annualised the same way, (NAV_end / NAV_start)^(365.25 / days) − 1, from
-//   ANNUALISE_MIN_DAYS on (`annReturn` / `benchAnnReturn`, `annualised: true`). The information ratio needs
-//   IR_MIN_MONTHS months. Decided 8 Oct 2026.
+//   Under a year: `cagr` / `benchCagr` stay null (no annualised headline return) and so does `alpha`: the app shows
+//   alpha under a year as the period return on the investor's own money minus the benchmark's (/portfolio/irr), so
+//   it agrees with the "Return on your money" row. Sharpe and Sortino are annualised from ANNUALISE_MIN_DAYS on, with
+//   `annReturn` / `benchAnnReturn` = (NAV_end / NAV_start)^(365.25 / days) − 1 (`annualised: true`); the information
+//   ratio needs IR_MIN_MONTHS months. Decided 8 Oct 2026 (quant).
+//   Sharpe formula: SHARPE_METHOD (env METRICS_SHARPE), until the quant settles it:
+//     'cagr'  (default) (annualised return − 6.5%) ÷ volatility
+//     'daily' mean of daily excess returns (r − 6.5% ÷ 252) ÷ their std dev × √252
 //
 // Decided 6 Oct 2026: risk-free 6.5%, alpha as CAGR − benchmark CAGR.
 import pool from '@/lib/db'
@@ -34,6 +38,7 @@ import { closedCutoff } from '@/lib/accountClosure'
 export const RISK_FREE = 0.065
 export const ANNUALISE_MIN_DAYS = 90   // ratios for a younger account: from about 3 months of history
 export const IR_MIN_MONTHS = 3
+export const SHARPE_METHOD: 'cagr' | 'daily' = process.env.METRICS_SHARPE === 'daily' ? 'daily' : 'cagr'
 const COMBINED_BENCHMARK = 'NIFTY 50'   // owner / group views, as combined-nav
 const DAY = 86400000
 const iso = (d: any) => (d instanceof Date ? d.toISOString() : String(d)).slice(0, 10)
@@ -42,7 +47,7 @@ const r4 = (x: number | null) => (x == null || !isFinite(x) ? null : Math.round(
 export type PortfolioMetrics = {
   accountId: string; benchmark: string; from: string; to: string; years: number
   cagr: number | null; benchCagr: number | null; alpha: number | null
-  annReturn: number | null; benchAnnReturn: number | null; annualised: boolean
+  annReturn: number | null; benchAnnReturn: number | null; annualised: boolean; sharpeMethod: 'cagr' | 'daily'
   volatility: number | null; sharpe: number | null; beta: number | null; maxDrawdown: number | null
   bestMonth: { month: string; ret: number } | null; worstMonth: { month: string; ret: number } | null
   positiveMonths: { up: number; total: number } | null; months: MonthRet[]
@@ -123,10 +128,19 @@ export async function portfolioMetrics(accountId: string): Promise<PortfolioMetr
     volatility = Math.sqrt(varP) * Math.sqrt(252)
     beta = varB > 0 ? cov / varB : null
   }
-  const sharpe = annReturn != null && volatility ? (annReturn - RISK_FREE) / volatility : null
+  // Sharpe: the formula is a setting (SHARPE_METHOD); both need the same history (canAnn) and > 20 daily returns
+  const dailySharpe = (r: number[]) => {
+    if (r.length <= 20) return null
+    const ex = r.map(x => x - RISK_FREE / 252), m = mean(ex)
+    const sd = Math.sqrt(ex.reduce((t, x) => t + (x - m) ** 2, 0) / (ex.length - 1))
+    return sd > 0 ? (m / sd) * Math.sqrt(252) : null
+  }
+  const sharpeOf = (r: number[], ann: number | null, vol: number | null) =>
+    ann == null ? null : SHARPE_METHOD === 'daily' ? dailySharpe(r) : vol ? (ann - RISK_FREE) / vol : null
+  const sharpe = sharpeOf(rp, annReturn, volatility)
   const sdOf = (a: number[]) => { const m = mean(a); return Math.sqrt(a.reduce((t, x) => t + (x - m) ** 2, 0) / (a.length - 1)) }
   const benchVol = rb.length > 20 ? sdOf(rb) * Math.sqrt(252) : null
-  const benchSharpe = benchAnnReturn != null && benchVol ? (benchAnnReturn - RISK_FREE) / benchVol : null
+  const benchSharpe = sharpeOf(rb, benchAnnReturn, benchVol)
   const sortinoOf = (r: number[], g: number | null) => {
     if (r.length <= 20 || g == null) return null
     const dn = r.filter(x => x < 0)
@@ -162,8 +176,8 @@ export async function portfolioMetrics(accountId: string): Promise<PortfolioMetr
 
   return {
     accountId, benchmark, from, to, years: Math.round(years * 100) / 100,
-    cagr: r4(cagr), benchCagr: r4(benchCagr), alpha: annReturn != null && benchAnnReturn != null ? r4(annReturn - benchAnnReturn) : null,
-    annReturn: r4(annReturn), benchAnnReturn: r4(benchAnnReturn), annualised: years < 1 && annReturn != null,
+    cagr: r4(cagr), benchCagr: r4(benchCagr), alpha: cagr != null && benchCagr != null ? r4(cagr - benchCagr) : null,
+    annReturn: r4(annReturn), benchAnnReturn: r4(benchAnnReturn), annualised: years < 1 && annReturn != null, sharpeMethod: SHARPE_METHOD,
     volatility: r4(volatility), sharpe: sharpe == null ? null : Math.round(sharpe * 100) / 100, beta: beta == null ? null : Math.round(beta * 100) / 100,
     maxDrawdown: r4(maxDrawdown),
     bestMonth: pm.bestMonth, worstMonth: pm.worstMonth, positiveMonths: pm.positiveMonths, months: pm.months,
