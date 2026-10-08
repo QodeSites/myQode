@@ -76,20 +76,53 @@ function monthStats(series: { d: string; v: number }[], start: number) {
   return { bestMonth: r(best), worstMonth: r(worst), positiveMonths: total ? { up, total } : null, months }
 }
 
-export async function portfolioMetrics(accountId: string): Promise<PortfolioMetrics | null> {
-  const isStrategy = /^Q[A-Z]{2}\d/i.test(accountId)
-  const benchmark = isStrategy ? getStrategyBenchmark(accountId) : COMBINED_BENCHMARK
+// Several ids (an owner's open accounts, or a family's members, as the app combines them on the device): one daily
+// series the way the app's combineFamily() and the backend's group rows build it — value and cash summed per day up to
+// the earliest latest day, NAV chained from 10 as NAV_t = NAV_(t-1) × V_t / (V_(t-1) + CF_t) — against NIFTY 50.
+// Added 8 Oct 2026 (owner views of open accounts only had no metrics).
+async function combinedNavs(ids: string[]): Promise<{ d: string; v: number }[]> {
   const rows = (await pool.query(
+    `SELECT account_code, report_date, portfolio_value::float8 AS v, COALESCE(cash_in_out, 0)::float8 AS cf
+       FROM public.pms_master_sheet WHERE account_code = ANY($1) ORDER BY report_date`, [ids])).rows
+  const lastOf = new Map<string, string>()
+  for (const r of rows) lastOf.set(r.account_code, iso(r.report_date))
+  if (!lastOf.size) return []
+  const lastDay = [...lastOf.values()].sort()[0]
+  const days = new Map<string, { v: number; cf: number }>()
+  for (const r of rows) {
+    const d = iso(r.report_date)
+    if (d > lastDay) continue
+    const o = days.get(d) || { v: 0, cf: 0 }
+    o.v += Number(r.v) || 0; o.cf += Number(r.cf) || 0
+    days.set(d, o)
+  }
+  let nav = 10, prev = 0
+  return [...days.keys()].sort().map(d => {
+    const { v, cf } = days.get(d)!
+    if (prev + cf > 0 && prev > 0) nav *= v / (prev + cf)
+    prev = v
+    return { d, v: nav }
+  })
+}
+
+export async function portfolioMetrics(accountIds: string | string[]): Promise<PortfolioMetrics | null> {
+  const ids = (Array.isArray(accountIds) ? accountIds : [accountIds]).filter(Boolean)
+  const multi = ids.length > 1
+  const accountId = multi ? ids.join(',') : ids[0]
+  const isStrategy = !multi && /^Q[A-Z]{2}\d/i.test(accountId)
+  const benchmark = isStrategy ? getStrategyBenchmark(accountId) : COMBINED_BENCHMARK
+  const rows = multi ? [] : (await pool.query(
     `SELECT report_date, nav::float8 AS nav FROM public.pms_master_sheet
       WHERE account_code = $1 AND nav IS NOT NULL AND nav > 0 ORDER BY report_date`, [accountId])).rows
   // a closed account: stop at the last day it held money
-  const pv = (await pool.query(
+  const pv = multi ? null : (await pool.query(
     `SELECT max(report_date) AS last FROM public.pms_master_sheet WHERE account_code = $1 AND portfolio_value > 0`, [accountId])).rows[0]
   // …and a closed account (lib/accountClosure.ts): at the day before it closed
   const cut = isStrategy ? (await closedCutoff(accountId)).closedAt : null
   const last0 = pv?.last ? iso(pv.last) : null
   const last = cut && (!last0 || cut < last0) ? cut : last0
-  const navs = rows.map((r: any) => ({ d: iso(r.report_date), v: Number(r.nav) })).filter(x => !last || x.d <= last)
+  const navs = multi ? await combinedNavs(ids)
+    : rows.map((r: any) => ({ d: iso(r.report_date), v: Number(r.nav) })).filter(x => !last || x.d <= last)
   if (navs.length < 2) return null
 
   const from = navs[0].d, to = navs[navs.length - 1].d
