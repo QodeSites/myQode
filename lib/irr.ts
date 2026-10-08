@@ -162,6 +162,37 @@ export function windowIrr(series: DailyPoint[], start: string | null, end?: stri
     : { irr: Math.pow(1 + r, span / 365) - 1, annualised: false, from: w.from, to: w.to }
 }
 
+/**
+ * The benchmark's XIRR on the investor's own money: every rupee that went in buys the index at that day's level, every
+ * rupee that came out (withdrawals, TDS) sells it, and what is left is valued at the index level on the last day. The
+ * XIRR of the same dated flows with that closing value is what the investor would have earned in the index instead
+ * ("index-equivalent" / public-market-equivalent return). Same window, span and annualising rules as windowIrr.
+ * levelAt(d): the index level on or before d (null when the index has no level yet).
+ */
+export function benchmarkWindowIrr(series: DailyPoint[], levelAt: (d: string) => number | null, start: string | null, end?: string): IrrResult & { value: number | null } {
+  const w = windowFlows(series, start, end)
+  if (!w) return { irr: null, annualised: false, from: start, to: end || null, value: null }
+  const flows = w.flows.slice(0, -1).filter(f => f.amount)   // the last flow is the portfolio's own closing value
+  let units = 0
+  for (const f of flows) {
+    const lv = levelAt(f.date)
+    if (!lv) return { irr: null, annualised: false, from: w.from, to: w.to, value: null }
+    units += -f.amount / lv   // money in (negative) buys units; money out (positive) sells them
+  }
+  const endLevel = levelAt(w.to)
+  const value = endLevel ? units * endLevel : null
+  if (value == null || value <= 0) return { irr: null, annualised: false, from: w.from, to: w.to, value }
+  const all = [...flows, { date: w.to, amount: value }]
+  const firstFlow = all.reduce((m, f) => (f.date < m ? f.date : m), w.to)
+  const span = daysBetween(firstFlow, w.to)
+  if (span < 30) return { irr: null, annualised: false, from: w.from, to: w.to, value }
+  const r = xirr(all)
+  if (r == null) return { irr: null, annualised: span >= 365, from: w.from, to: w.to, value }
+  return span >= 365
+    ? { irr: r, annualised: true, from: w.from, to: w.to, value }
+    : { irr: Math.pow(1 + r, span / 365) - 1, annualised: false, from: w.from, to: w.to, value }
+}
+
 /** The worked examples in the header, for a quick check: every `got` should equal its `want` (percent, 2 dp). */
 export function irrExamples() {
   const pc = (x: number | null) => (x == null ? null : Math.round(x * 10000) / 100)
