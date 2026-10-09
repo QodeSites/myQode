@@ -58,11 +58,13 @@ export const TXN_GROUPS: Record<string, { label: string; codes: string[] }> = {
   trades:  { label: 'Trades',       codes: ['BY-', 'SL+', 'OBY', 'CSL'] },
   money:   { label: 'Money in/out', codes: ['CS+', 'CS-', 'PSI', 'PSO', 'SII', 'SOO'] },
   income:  { label: 'Income',       codes: ['RD0', 'IN1', 'CSI'] },
-  charges: { label: 'Charges',      codes: ['CUS', 'E01', 'E03', 'E09', 'E10', 'E12', 'E20', 'E21', 'STT', 'MGF', 'PRF', 'TDP'] },
+  // Fees and charges are not a group of their own (decided 9 Oct 2026): they list under Other, and the summary has no
+  // Fees entry. The codes stay here for the cash direction.
 }
+const CHARGE_CODES = ['CUS', 'E01', 'E03', 'E09', 'E10', 'E12', 'E20', 'E21', 'STT', 'MGF', 'PRF', 'TDP']
 export const HIDDEN_FROM_ALL = ['IML', 'TDI', 'TDO']
 const IN_CODES = new Set(['CS+', 'PSI', 'SII', 'RD0', 'IN1', 'CSI', 'SL+', 'CSL', 'OPI'])
-const OUT_CODES = new Set(['CS-', 'PSO', 'SOO', 'BY-', 'OBY', 'OPO', ...TXN_GROUPS.charges.codes])
+const OUT_CODES = new Set(['CS-', 'PSO', 'SOO', 'BY-', 'OBY', 'OPO', ...CHARGE_CODES])
 export const groupOf = (code: string) => Object.keys(TXN_GROUPS).find(g => TXN_GROUPS[g].codes.includes(code)) || 'other'
 /** Cash direction for the account: money in / out (null when neither, e.g. margin). */
 export const directionOf = (code: string) => (IN_CODES.has(code) ? 'in' : OUT_CODES.has(code) ? 'out' : null)
