@@ -7,11 +7,16 @@
 // broke from 9.89 to 2.81, then the last ₹6,030 on 23 Sep), so it is the day before the NAV collapsed (fell by half
 // in a day) when that happened within the month before the last withdrawal; else the day before the last
 // withdrawal; with no withdrawal (the value simply went to ₹0), the last day with a value.
+// Also (8 Oct 2026): the day before the BULK of the money left — a withdrawal of half the previous day's value or more —
+// when that was within the month before the last withdrawal. QAW00089 switched out 96% (₹20,05,014.63) on 18 Aug 2026
+// with the NAV barely moving; its leftover ₹76 K then fell 10% in fees and margin before the last ₹68 K left on 20 Aug,
+// so "the day before the last withdrawal" (19 Aug) showed −8.18% for an account that made +4.13% (to 17 Aug).
 import pool from '@/lib/db'
 
 export const CLOSED_BELOW = 100   // ₹
 const COLLAPSE = 0.5              // a day's NAV under half the day before's: the money left that day
 const COLLAPSE_WINDOW_DAYS = 31
+const BULK = 0.5                  // a withdrawal of at least half the previous day's value: the money left that day
 
 export type Closure = { closed: boolean; closedOn: string | null; cutoff: string | null }   // dates: YYYY-MM-DD
 
@@ -19,10 +24,13 @@ const iso = (d: any) => (d == null ? null : (d instanceof Date ? new Date(d.getT
 /** The day before a date (YYYY-MM-DD). */
 export const dayBeforeIso = (d: string) => new Date(Date.parse(d + 'T00:00:00Z') - 86400000).toISOString().slice(0, 10)
 
-function cutoffOf(lastOut: string | null, lastValue: string | null, lastDay: string | null, collapse: string | null) {
+function cutoffOf(lastOut: string | null, lastValue: string | null, lastDay: string | null, collapse: string | null, bulkOuts: (string | null)[] = []) {
   if (!lastOut) return lastValue || lastDay
-  const near = collapse && collapse <= lastOut && Date.parse(lastOut) - Date.parse(collapse) <= COLLAPSE_WINDOW_DAYS * 86400000
-  return dayBeforeIso(near ? collapse! : lastOut)
+  const near = (d: string | null) => !!d && d <= lastOut && Date.parse(lastOut) - Date.parse(d) <= COLLAPSE_WINDOW_DAYS * 86400000
+  // the earliest of the NAV collapse and the bulk withdrawals in the closing month (they mark the money leaving; the
+  // last ₹68 K leaving the next day is "bulk" too, so the earliest counts), else the last withdrawal
+  const marks = [collapse, ...bulkOuts].filter(near) as string[]
+  return dayBeforeIso(marks.length ? marks.sort()[0] : lastOut)
 }
 
 /** From an account's rows, oldest first: { report_date, portfolio_value, cash_in_out, nav? }. */
@@ -32,8 +40,10 @@ export function closureFromRows(rows: { report_date: any; portfolio_value: any; 
   const nav = (i: number) => Number(rows[i].nav) || 0
   const v1 = v(rows.length - 1), v2 = v(rows.length - 2)
   let lastOut = -1, lastValue = -1, collapse = -1
+  const bulkOuts: number[] = []
   rows.forEach((r, i) => {
     if ((Number(r.cash_in_out) || 0) < 0) lastOut = i
+    if (i > 0 && v(i - 1) > 0 && -(Number(r.cash_in_out) || 0) >= v(i - 1) * BULK) bulkOuts.push(i)
     if (v(i) >= CLOSED_BELOW) lastValue = i
     if (i > 0 && nav(i - 1) > 0 && rows[i].nav != null && nav(i) < nav(i - 1) * COLLAPSE) collapse = i
   })
@@ -41,7 +51,7 @@ export function closureFromRows(rows: { report_date: any; portfolio_value: any; 
   if (!closed) return { closed: false, closedOn: null, cutoff: null }
   const at = lastOut >= 0 ? lastOut : lastValue >= 0 ? lastValue : rows.length - 1
   const d = (i: number) => (i >= 0 ? iso(rows[i].report_date) : null)
-  return { closed: true, closedOn: d(at), cutoff: cutoffOf(d(lastOut), d(lastValue), d(rows.length - 1), d(collapse)) }
+  return { closed: true, closedOn: d(at), cutoff: cutoffOf(d(lastOut), d(lastValue), d(rows.length - 1), d(collapse), bulkOuts.map(d)) }
 }
 
 /** Closure for several account codes at once (pms_master_sheet codes, no ".0"). */
@@ -52,6 +62,7 @@ export async function closures(codes: string[]): Promise<Map<string, Closure>> {
     `WITH r AS (
        SELECT account_code, report_date, portfolio_value::float8 AS v, COALESCE(cash_in_out, 0)::float8 AS cf, nav::float8 AS nav,
               LAG(nav::float8) OVER (PARTITION BY account_code ORDER BY report_date) AS prev_nav,
+              LAG(portfolio_value::float8) OVER (PARTITION BY account_code ORDER BY report_date) AS prev_v,
               ROW_NUMBER() OVER (PARTITION BY account_code ORDER BY report_date DESC) AS rn
          FROM public.pms_master_sheet WHERE account_code = ANY($1))
      SELECT account_code,
@@ -59,13 +70,14 @@ export async function closures(codes: string[]): Promise<Map<string, Closure>> {
             max(report_date) FILTER (WHERE cf < 0) AS last_out,
             max(report_date) FILTER (WHERE v >= $2) AS last_value,
             max(report_date) FILTER (WHERE prev_nav > 0 AND nav < prev_nav * $3) AS collapse,
+            array_agg(report_date ORDER BY report_date) FILTER (WHERE prev_v > 0 AND -cf >= prev_v * $4) AS bulk_outs,
             max(report_date) AS last_day
-       FROM r GROUP BY 1`, [codes, CLOSED_BELOW, COLLAPSE])
+       FROM r GROUP BY 1`, [codes, CLOSED_BELOW, COLLAPSE, BULK])
   for (const x of r.rows) {
     const v1 = x.v1 == null ? null : Number(x.v1), v2 = x.v2 == null ? null : Number(x.v2)
     const closed = v1 != null && v2 != null && v1 < CLOSED_BELOW && v2 < CLOSED_BELOW && ((v1 === 0 && v2 === 0) || x.last_out != null)
     out.set(x.account_code, closed
-      ? { closed, closedOn: iso(x.last_out || x.last_value || x.last_day), cutoff: cutoffOf(iso(x.last_out), iso(x.last_value), iso(x.last_day), iso(x.collapse)) }
+      ? { closed, closedOn: iso(x.last_out || x.last_value || x.last_day), cutoff: cutoffOf(iso(x.last_out), iso(x.last_value), iso(x.last_day), iso(x.collapse), (x.bulk_outs || []).map(iso)) }
       : { closed, closedOn: null, cutoff: null })
   }
   return out

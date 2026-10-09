@@ -3,16 +3,17 @@
 //
 //   CAGR          (NAV_end / NAV_start)^(365.25 / days) − 1. NAV_start is 10, the PMS convention the charts use, when
 //                 the first NAV isn't already 10. Not annualised under a year (null, with `years`).
-//   Volatility    standard deviation of daily returns × √252, on the benchmark's trading days (no weekend zeros).
+//   Volatility    standard deviation of daily returns × √365, on EVERY calendar day (weekends and holidays at 0% when
+//                 the NAV doesn't move; the benchmark carries its last close). Decided 9 Oct 2026 (was trading days × √252).
 //   Sharpe        (CAGR − 6.5%) ÷ volatility. Risk-free rate 6.5% (Indian 91-day T-bill), as in PMS factsheets.
-//   Beta          cov(portfolio, benchmark) ÷ var(benchmark), daily returns on common trading days.
+//   Beta          cov(portfolio, benchmark) ÷ var(benchmark), daily returns on every calendar day (as volatility).
 //   Alpha         CAGR − benchmark CAGR over the same dates (simple excess return a year).
 //   Max drawdown  deepest fall of the NAV from its running peak.
 //   Best month    highest calendar-month return (month-end NAV to month-end NAV); worst month likewise.
 //   Positive months  calendar months with a return above zero, of all months (the partial current month included).
 //   The benchmark's best / worst / positive months come from its own month-end levels over the same dates.
 //   months / bench.months: every calendar month's return ({ month: 'YYYY-MM', ret }), so a client can show one year.
-//   Sortino       (CAGR − 6.5%) ÷ downside deviation: daily returns below 0, squared, over ALL days (n), √, × √252
+//   Sortino       (CAGR − 6.5%) ÷ downside deviation: daily returns below 0, squared, over ALL days (n), √, × √365
 //                 (Portfolio Visualizer's convention, as qodeinvest.com).
 //   Information ratio  mean ÷ standard deviation of the monthly active return (portfolio − benchmark month), × √12.
 //                 Needs IR_MIN_MONTHS months.
@@ -27,7 +28,7 @@
 //   ratio needs IR_MIN_MONTHS months. Decided 8 Oct 2026 (quant).
 //   Sharpe formula: SHARPE_METHOD (env METRICS_SHARPE), until the quant settles it:
 //     'cagr'  (default) (annualised return − 6.5%) ÷ volatility
-//     'daily' mean of daily excess returns (r − 6.5% ÷ 252) ÷ their std dev × √252
+//     'daily' mean of daily excess returns (r − 6.5% ÷ 365) ÷ their std dev × √365
 //
 // Decided 6 Oct 2026: risk-free 6.5%, alpha as CAGR − benchmark CAGR.
 import pool from '@/lib/db'
@@ -36,8 +37,9 @@ import { getStrategyBenchmark } from '@/lib/strategyConfig'
 import { closedCutoff } from '@/lib/accountClosure'
 
 export const RISK_FREE = 0.065
-export const ANNUALISE_MIN_DAYS = 90   // ratios for a younger account: from about 3 months of history
-export const IR_MIN_MONTHS = 3
+export const DAYS_A_YEAR = 365   // calendar-day annualisation (every calendar day's return), 9 Oct 2026
+export const ANNUALISE_MIN_DAYS = 30   // ratios for a younger account: from 1 month of history (was 90 days; Sanket, 9 Oct 2026)
+export const IR_MIN_MONTHS = 2          // two monthly returns at least (a spread needs two)
 export const SHARPE_METHOD: 'cagr' | 'daily' = process.env.METRICS_SHARPE === 'daily' ? 'daily' : 'cagr'
 const COMBINED_BENCHMARK = 'NIFTY 50'   // owner / group views, as combined-nav
 const DAY = 86400000
@@ -143,13 +145,13 @@ export async function portfolioMetrics(accountIds: string | string[]): Promise<P
   const benchAnnReturn = canAnn && b.length > 1 ? Math.pow(b[b.length - 1].v / b[0].v, 1 / years) - 1 : null
   const benchCagr = years >= 1 ? benchAnnReturn : null
 
-  // daily returns on the benchmark's trading days (portfolio NAV taken on the same days)
-  const navOn = new Map(navs.map(x => [x.d, x.v]))
-  const spine = b.filter((x: any) => navOn.has(x.d))
+  // daily returns on every calendar day the portfolio has a NAV (weekends included); the benchmark's level on a day it
+  // did not trade is its last close (so its return that day is 0, like the portfolio's)
+  const levelOn = (() => { let j = -1; return (d: string) => { while (j + 1 < b.length && b[j + 1].d <= d) j++; return j >= 0 ? b[j].v : null } })()
+  const spine = navs.map(x => ({ d: x.d, p: x.v, bv: levelOn(x.d) })).filter(x => x.bv != null) as { d: string; p: number; bv: number }[]
   const rp: number[] = [], rb: number[] = []
   for (let i = 1; i < spine.length; i++) {
-    const p0 = navOn.get(spine[i - 1].d)!, p1 = navOn.get(spine[i].d)!
-    rp.push(p1 / p0 - 1); rb.push(spine[i].v / spine[i - 1].v - 1)
+    rp.push(spine[i].p / spine[i - 1].p - 1); rb.push(spine[i].bv / spine[i - 1].bv - 1)
   }
   const mean = (a: number[]) => a.reduce((s, x) => s + x, 0) / a.length
   let volatility: number | null = null, beta: number | null = null
@@ -158,27 +160,27 @@ export async function portfolioMetrics(accountIds: string | string[]): Promise<P
     const varP = rp.reduce((s, x) => s + (x - mp) ** 2, 0) / (rp.length - 1)
     const varB = rb.reduce((s, x) => s + (x - mb) ** 2, 0) / (rb.length - 1)
     const cov = rp.reduce((s, x, i) => s + (x - mp) * (rb[i] - mb), 0) / (rp.length - 1)
-    volatility = Math.sqrt(varP) * Math.sqrt(252)
+    volatility = Math.sqrt(varP) * Math.sqrt(DAYS_A_YEAR)
     beta = varB > 0 ? cov / varB : null
   }
   // Sharpe: the formula is a setting (SHARPE_METHOD); both need the same history (canAnn) and > 20 daily returns
   const dailySharpe = (r: number[]) => {
     if (r.length <= 20) return null
-    const ex = r.map(x => x - RISK_FREE / 252), m = mean(ex)
+    const ex = r.map(x => x - RISK_FREE / DAYS_A_YEAR), m = mean(ex)
     const sd = Math.sqrt(ex.reduce((t, x) => t + (x - m) ** 2, 0) / (ex.length - 1))
-    return sd > 0 ? (m / sd) * Math.sqrt(252) : null
+    return sd > 0 ? (m / sd) * Math.sqrt(DAYS_A_YEAR) : null
   }
   const sharpeOf = (r: number[], ann: number | null, vol: number | null) =>
     ann == null ? null : SHARPE_METHOD === 'daily' ? dailySharpe(r) : vol ? (ann - RISK_FREE) / vol : null
   const sharpe = sharpeOf(rp, annReturn, volatility)
   const sdOf = (a: number[]) => { const m = mean(a); return Math.sqrt(a.reduce((t, x) => t + (x - m) ** 2, 0) / (a.length - 1)) }
-  const benchVol = rb.length > 20 ? sdOf(rb) * Math.sqrt(252) : null
+  const benchVol = rb.length > 20 ? sdOf(rb) * Math.sqrt(DAYS_A_YEAR) : null
   const benchSharpe = sharpeOf(rb, benchAnnReturn, benchVol)
   const sortinoOf = (r: number[], g: number | null) => {
     if (r.length <= 20 || g == null) return null
     const dn = r.filter(x => x < 0)
     if (dn.length < 2) return null
-    const dsd = Math.sqrt(dn.reduce((t, x) => t + x * x, 0) / r.length) * Math.sqrt(252)
+    const dsd = Math.sqrt(dn.reduce((t, x) => t + x * x, 0) / r.length) * Math.sqrt(DAYS_A_YEAR)
     return dsd > 0 ? (g - RISK_FREE) / dsd : null
   }
   const sortino = sortinoOf(rp, annReturn), benchSortino = sortinoOf(rb, benchAnnReturn)
@@ -201,7 +203,7 @@ export async function portfolioMetrics(accountIds: string | string[]): Promise<P
   const bMon = new Map(bm.months.map(x => [x.month, x.ret]))
   const active = pm.months.filter(x => bMon.has(x.month)).map(x => x.ret - bMon.get(x.month)!)
   let informationRatio: number | null = null
-  if (canAnn && active.length >= IR_MIN_MONTHS) {   // same 90-day start as the other ratios
+  if (canAnn && active.length >= IR_MIN_MONTHS) {   // same 1-month start as the other ratios
     const m = mean(active), sd = Math.sqrt(active.reduce((t, x) => t + x * x, 0) / active.length - m * m)
     informationRatio = sd > 0 ? (m / sd) * Math.sqrt(12) : null
   }

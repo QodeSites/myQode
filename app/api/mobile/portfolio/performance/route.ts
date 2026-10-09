@@ -7,6 +7,8 @@ import { getStrategyName, getStrategyBenchmark, getStrategyColor, getPrefix } fr
 import { normaliseAccountCode } from '@/lib/utils'
 import { reviewerMockPerformance } from '@/lib/reviewerMock'
 import { closureFromRows } from '@/lib/accountClosure'
+import { query as q1 } from '@/lib/db1'
+import { switchAdjustments, switchAdjustTotal } from '@/lib/switchCost'
 
 function formatDate(d: Date | string | null): string {
   if (!d) return ''
@@ -130,7 +132,33 @@ export async function GET(request: NextRequest) {
     // Gross: every day's money in, before any withdrawal or tax — the round figure the investor remembers.
     const grossInvested: number = activeRows.reduce((sum: number, r: any) => sum + Math.max(0, parseFloat(r.cash_in_out || 0)), 0)
 
-    const totalReturns = latestValue - amountInvested
+    // A closed account's Total Returns is its lifetime result: all the money that came out minus all that went in
+    // (the whole history, not just to the cut-off), as its fact sheet's Profit/Loss. QAW00089: +₹73,333.49.
+    const totalReturns = isClosed ? -rows.reduce((t: number, r: any) => t + (parseFloat(r.cash_in_out || 0) || 0), 0) : latestValue - amountInvested
+    // Switches with the member's other Qode accounts (partial PSI / PSO, full SII / SOO), up to the last day: part of
+    // amountInvested above, named on the account page ("Includes ₹55,40,326 moved in from your other Qode accounts").
+    let switchedIn = 0, switchedOut = 0
+    try {
+      const sw = (await q1(
+        `SELECT COALESCE(sum(abs(net_amount)) FILTER (WHERE tran_type IN ('PSI', 'SII')), 0)::float8 AS sin,
+                COALESCE(sum(abs(net_amount)) FILTER (WHERE tran_type IN ('PSO', 'SOO')), 0)::float8 AS sout
+           FROM pms_clients_tracker.pms_transactions WHERE ws_account_code = $1 AND trandate <= $2`,
+        [dbAccountId, (() => { const d: any = latest.report_date; return d instanceof Date ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : String(d).slice(0, 10) })()])).rows[0]
+      switchedIn = Number(sw?.sin) || 0; switchedOut = Number(sw?.sout) || 0
+    } catch (e) { console.error('[mobile/portfolio/performance] switches', e) }
+    // Net investment: the same with each switch from the member's other accounts counted at what that money originally
+    // cost there (lib/switchCost.ts), i.e. the member's own money in this account; switchGain = the profit earned in
+    // those accounts that came in with the switch (QGF00133: ₹1,27,89,670.86 deployed, ₹1,24,99,322.62 net, ₹2,90,348.24).
+    // amountInvested itself stays as the custodian books it. Added 8 Oct 2026 for the account page.
+    let netInvestment = amountInvested, switchGain = 0
+    if (switchedIn >= 0.5 || switchedOut >= 0.5) {
+      try {
+        const adj = await switchAdjustments(dbAccountId)
+        const upTo = (() => { const d: any = latest.report_date; return d instanceof Date ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` : String(d).slice(0, 10) })()
+        netInvestment = amountInvested + switchAdjustTotal(adj, upTo)
+        switchGain = amountInvested - netInvestment
+      } catch (e) { console.error('[mobile/portfolio/performance] switch cost', e) }
+    }
 
     // Returns % — NAV-based: CAGR if >= 1 year since inception, absolute otherwise — matches web
     // Same anchor as the web: when the first NAV isn't 10, measure from a synthetic NAV of 10
@@ -162,20 +190,20 @@ export async function GET(request: NextRequest) {
       return t
     }
 
-    // 1W / 10D count ROWS, exactly like the web page (calculateTrailingReturnsForData):
+    // (formerly: 1W / 10D counted ROWS, like the old web page's calculateTrailingReturnsForData)
     //   1W  = 5 rows back in the series
     //   10D = the benchmark's 10th trading date from its end, applied to the portfolio too;
     //         falls back to 10 rows back when there is no benchmark data.
-    const rowsBack = (n: number): number | null => {
-      const i = activeRows.length - 1 - n
-      return i >= 0 ? parseFloat(activeRows[i].nav) : null
-    }
     const dateKey = (d: Date | string) => new Date(d).toISOString().slice(0, 10)
     // 1D: the previous row; replaced below by the benchmark's previous trading day when there is benchmark data
     // (the portfolio series has a row for every calendar day, so one row back on a Monday is Sunday's unchanged NAV).
-    const nav1D = rowsBack(1)
-    const nav1W = rowsBack(5)
-    const nav10D = rowsBack(10)
+    // 1D / 1W / 10D on CALENDAR days (9 Oct 2026, every metric on calendar days): the NAV on or before 1, 7 and 10 days
+    // before the latest date, for the portfolio and its benchmark alike (they used to count rows: 5 calendar rows for
+    // the portfolio's 1W against 5 trading rows — 7 days — for the benchmark's)
+    const daysBack = (n: number) => { const t = new Date(latestDateObj); t.setDate(t.getDate() - n); return t }
+    const nav1D = navOnOrBefore(activeRows, daysBack(1), 'report_date', 'nav')
+    const nav1W = navOnOrBefore(activeRows, daysBack(7), 'report_date', 'nav')
+    const nav10D = navOnOrBefore(activeRows, daysBack(10), 'report_date', 'nav')
     const nav1M  = navOnOrBefore(activeRows, getMonthTarget(1),  'report_date', 'nav')
     const nav3M  = navOnOrBefore(activeRows, getMonthTarget(3),  'report_date', 'nav')
     const nav6M  = navOnOrBefore(activeRows, getMonthTarget(6),  'report_date', 'nav')
@@ -246,19 +274,10 @@ export async function GET(request: NextRequest) {
         }
 
         // bRows is DESC: index n = n trading rows back (web: 1W = 5 rows, 10D = 10 rows).
-        const b1D  = bRows.length > 1  ? parseFloat(bRows[1].nav)  : null
-        if (bRows.length > 1) {
-          const oneDKey = dateKey(bRows[1].date)
-          const prevRow = activeRows.find((r: any) => dateKey(r.report_date) === oneDKey)
-          if (prevRow) portfolioTrailing.d1 = simpleReturn(latestNav, parseFloat(prevRow.nav))
-        }
-        const b1W  = bRows.length > 5  ? parseFloat(bRows[5].nav)  : null
-        const b10D = bRows.length > 10 ? parseFloat(bRows[10].nav) : null
-        if (bRows.length > 10) {
-          const tenDKey = dateKey(bRows[10].date)
-          const startRow = activeRows.find((r: any) => dateKey(r.report_date) === tenDKey)
-          portfolioTrailing.d10 = startRow ? simpleReturn(latestNav, parseFloat(startRow.nav)) : null
-        }
+        // same calendar windows as the portfolio (its last close on or before each day)
+        const b1D  = benchNavOnOrBefore(bRows, daysBack(1))
+        const b1W  = benchNavOnOrBefore(bRows, daysBack(7))
+        const b10D = benchNavOnOrBefore(bRows, daysBack(10))
         const b1M  = benchNavOnOrBefore(bRows, getBMonthTarget(1))
         const b3M  = benchNavOnOrBefore(bRows, getBMonthTarget(3))
         const b6M  = benchNavOnOrBefore(bRows, getBMonthTarget(6))
@@ -311,6 +330,8 @@ export async function GET(request: NextRequest) {
       },
       amountInvested: +amountInvested.toFixed(2),   // net cash deployed (inflows − outflows)
       grossInvested: +grossInvested.toFixed(2),     // inflows only
+      switchedIn: +switchedIn.toFixed(2), switchedOut: +switchedOut.toFixed(2),   // from / to the member's other Qode accounts
+      netInvestment: +netInvestment.toFixed(2), switchGain: +switchGain.toFixed(2),   // switches at cost; the gain they carried
       currentValue: +latestValue.toFixed(2),
       totalReturns: +totalReturns.toFixed(2),
       returnsPercent,                                // CAGR if ≥ 1Y since inception, else absolute

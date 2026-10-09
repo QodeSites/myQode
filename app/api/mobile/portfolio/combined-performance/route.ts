@@ -144,20 +144,20 @@ export async function GET(request: NextRequest) {
       return t
     }
 
-    // 1W / 10D count ROWS, exactly like the web page (calculateTrailingReturnsForData):
+    // (formerly: 1W / 10D counted ROWS, like the old web page's calculateTrailingReturnsForData)
     //   1W  = 5 rows back in the series
     //   10D = the benchmark's 10th trading date from its end, applied to the portfolio too;
     //         falls back to 10 rows back when there is no benchmark data.
-    const rowsBack = (n: number): number | null => {
-      const i = activeRows.length - 1 - n
-      return i >= 0 ? parseFloat(activeRows[i].nav) : null
-    }
     const dateKey = (d: Date | string) => new Date(d).toISOString().slice(0, 10)
     // 1D: the previous row; replaced below by the benchmark's previous trading day when there is benchmark data
     // (the portfolio series has a row for every calendar day, so one row back on a Monday is Sunday's unchanged NAV).
-    const nav1D = rowsBack(1)
-    const nav1W = rowsBack(5)
-    const nav10D = rowsBack(10)
+    // 1D / 1W / 10D on CALENDAR days (9 Oct 2026, every metric on calendar days): the NAV on or before 1, 7 and 10 days
+    // before the latest date, for the portfolio and its benchmark alike (they used to count rows: 5 calendar rows for
+    // the portfolio's 1W against 5 trading rows — 7 days — for the benchmark's)
+    const daysBack = (n: number) => { const t = new Date(latestDateObj); t.setDate(t.getDate() - n); return t }
+    const nav1D = navOnOrBefore(activeRows, daysBack(1), 'report_date', 'nav')
+    const nav1W = navOnOrBefore(activeRows, daysBack(7), 'report_date', 'nav')
+    const nav10D = navOnOrBefore(activeRows, daysBack(10), 'report_date', 'nav')
     const nav1M  = navOnOrBefore(activeRows, getMonthTarget(1),  'report_date', 'nav')
     const nav3M  = navOnOrBefore(activeRows, getMonthTarget(3),  'report_date', 'nav')
     const nav6M  = navOnOrBefore(activeRows, getMonthTarget(6),  'report_date', 'nav')
@@ -225,19 +225,10 @@ export async function GET(request: NextRequest) {
         }
 
         // bRows is DESC: index n = n trading rows back (web: 1W = 5 rows, 10D = 10 rows).
-        const b1D  = bRows.length > 1  ? parseFloat(bRows[1].nav)  : null
-        if (bRows.length > 1) {
-          const oneDKey = dateKey(bRows[1].date)
-          const prevRow = activeRows.find((r: any) => dateKey(r.report_date) === oneDKey)
-          if (prevRow) portfolioTrailing.d1 = simpleReturn(latestNav, parseFloat(prevRow.nav))
-        }
-        const b1W  = bRows.length > 5  ? parseFloat(bRows[5].nav)  : null
-        const b10D = bRows.length > 10 ? parseFloat(bRows[10].nav) : null
-        if (bRows.length > 10) {
-          const tenDKey = dateKey(bRows[10].date)
-          const startRow = activeRows.find((r: any) => dateKey(r.report_date) === tenDKey)
-          portfolioTrailing.d10 = startRow ? simpleReturn(latestNav, parseFloat(startRow.nav)) : null
-        }
+        // same calendar windows as the portfolio (its last close on or before each day)
+        const b1D  = benchNavOnOrBefore(bRows, daysBack(1))
+        const b1W  = benchNavOnOrBefore(bRows, daysBack(7))
+        const b10D = benchNavOnOrBefore(bRows, daysBack(10))
         const b1M  = benchNavOnOrBefore(bRows, getBMonthTarget(1))
         const b3M  = benchNavOnOrBefore(bRows, getBMonthTarget(3))
         const b6M  = benchNavOnOrBefore(bRows, getBMonthTarget(6))

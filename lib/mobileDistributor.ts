@@ -9,6 +9,7 @@
 //                   Zoho investor emails AND intermediaryname)
 // The web routes read the unsigned qode-user-context cookie; here the identity comes from the signed
 // mobile JWT instead. Nothing the client sends selects a distributor or an account.
+import { CLOSED_BELOW } from '@/lib/accountClosure'
 import { NextRequest, NextResponse } from 'next/server'
 import { partnerClientCodes } from '@/lib/partnerClientCodes'
 import { verifyMobileAuth, type MobileAuthUser } from '@/lib/mobileAuth'
@@ -93,6 +94,36 @@ export async function distributorJourney(distributor: DistributorIdentity) {
     })) as typeof journey.clients
   }
 
+  // Invested and current value per investor from OUR portfolio data, the same figures the investor sees in his own app
+  // (decided 8 Oct 2026): Σ cash in / out of his accounts placed through this partner, closed ones included (switches as
+  // booked; equals the owner totals the investor's main page shows), and their latest values (₹0 once closed). Zoho's
+  // Invested_Amount / Current_Portfolio_Value stay only as the fallback for an investor with no account yet.
+  if (journey && journey.clients.length) {
+    try {
+      const emails = [...new Set(journey.clients.map((c: any) => String(c.email ?? '').trim().toLowerCase()).filter(Boolean))]
+      const r = await query(
+        `WITH acc AS (
+           SELECT clientcode, lower(btrim(email)) AS em FROM pms_clients_master
+            WHERE intermediaryname = $1 AND lower(btrim(email)) = ANY($2) AND clientcode IS NOT NULL),
+         latest AS (
+           SELECT DISTINCT ON (ms.account_code) ms.account_code, ms.portfolio_value
+             FROM public.pms_master_sheet ms JOIN acc ON acc.clientcode = ms.account_code
+            ORDER BY ms.account_code, ms.report_date DESC),
+         flows AS (
+           SELECT ms.account_code, SUM(ms.cash_in_out)::float8 AS net
+             FROM public.pms_master_sheet ms JOIN acc ON acc.clientcode = ms.account_code GROUP BY 1)
+         SELECT acc.em, SUM(flows.net)::float8 AS invested, SUM(latest.portfolio_value)::float8 AS value
+           FROM acc JOIN flows ON flows.account_code = acc.clientcode JOIN latest ON latest.account_code = acc.clientcode
+          GROUP BY 1`,
+        [distributor.clientname, emails])
+      const byEmail = new Map<string, { invested: number; value: number }>(r.rows.map((x: any) => [x.em, { invested: Number(x.invested) || 0, value: Number(x.value) || 0 }]))
+      journey.clients = journey.clients.map((c: any) => {
+        const db = byEmail.get(String(c.email ?? '').trim().toLowerCase())
+        return db ? { ...c, investedAmount: Math.round(db.invested * 100) / 100, currentValue: Math.round(db.value * 100) / 100, figuresFrom: 'portfolio' } : { ...c, figuresFrom: 'crm' }
+      }) as typeof journey.clients
+    } catch (err) { console.error('[mobile/distributor/journey] portfolio figures failed (CRM figures kept):', err) }
+  }
+
   // Nulls are skipped rather than counted as zero (unfilled CRM amounts show no total, not a false zero).
   const clients = journey?.clients ?? []
   const priced = clients.filter((c) => c.investedAmount != null).length
@@ -145,8 +176,9 @@ export async function distributorStrategyAum(distributor: DistributorIdentity) {
        JOIN pms_clients_master cm ON cm.clientcode = l.account_code
       WHERE cm.intermediaryname = $1
         AND lower(btrim(cm.email)) = ANY($2)
+        AND l.portfolio_value >= $3   -- closed accounts (under ₹100, lib/accountClosure.ts) are not counted (8 Oct 2026)
       GROUP BY 1`,
-    [distributor.clientname, ownEmails],
+    [distributor.clientname, ownEmails, CLOSED_BELOW],
   )
 
   let total = 0

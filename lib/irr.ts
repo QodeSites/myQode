@@ -147,6 +147,14 @@ export function windowFlows(series: DailyPoint[], start: string | null, end?: st
   return { flows, from, to }
 }
 
+// From day one (9 Oct 2026, so the app's alpha = this minus the benchmark's from the first day): a window under a year
+// is shown as the return over the period, so no 30-day minimum. Under a month the annual rate XIRR solves for can be
+// extreme; when it finds none, the period return is the simple gain on the money put in (same flows).
+const simplePeriod = (flows: Flow[]) => {
+  const putIn = flows.filter(f => f.amount < 0).reduce((t, f) => t - f.amount, 0)
+  return putIn > 0 ? flows.reduce((t, f) => t + f.amount, 0) / putIn : null
+}
+
 /** IRR of a window of `series` (see windowFlows), in the display form of periodIrr. */
 export function windowIrr(series: DailyPoint[], start: string | null, end?: string): IrrResult {
   const w = windowFlows(series, start, end)
@@ -154,9 +162,9 @@ export function windowIrr(series: DailyPoint[], start: string | null, end?: stri
   // Measured from the first money at work (the opening value, or the first investment) to the end.
   const firstFlow = w.flows.reduce((m, f) => (f.date < m ? f.date : m), w.to)
   const span = daysBetween(firstFlow, w.to)
-  if (span < 30) return { irr: null, annualised: false, from: w.from, to: w.to }
+  if (span < 1) return { irr: null, annualised: false, from: w.from, to: w.to }
   const r = xirr(w.flows)
-  if (r == null) return { irr: null, annualised: span >= 365, from: w.from, to: w.to }
+  if (r == null) return span >= 365 ? { irr: null, annualised: true, from: w.from, to: w.to } : { irr: simplePeriod(w.flows), annualised: false, from: w.from, to: w.to }
   return span >= 365
     ? { irr: r, annualised: true, from: w.from, to: w.to }
     : { irr: Math.pow(1 + r, span / 365) - 1, annualised: false, from: w.from, to: w.to }
@@ -185,9 +193,9 @@ export function benchmarkWindowIrr(series: DailyPoint[], levelAt: (d: string) =>
   const all = [...flows, { date: w.to, amount: value }]
   const firstFlow = all.reduce((m, f) => (f.date < m ? f.date : m), w.to)
   const span = daysBetween(firstFlow, w.to)
-  if (span < 30) return { irr: null, annualised: false, from: w.from, to: w.to, value }
+  if (span < 1) return { irr: null, annualised: false, from: w.from, to: w.to, value }
   const r = xirr(all)
-  if (r == null) return { irr: null, annualised: span >= 365, from: w.from, to: w.to, value }
+  if (r == null) return span >= 365 ? { irr: null, annualised: true, from: w.from, to: w.to, value } : { irr: simplePeriod(all), annualised: false, from: w.from, to: w.to, value }
   return span >= 365
     ? { irr: r, annualised: true, from: w.from, to: w.to, value }
     : { irr: Math.pow(1 + r, span / 365) - 1, annualised: false, from: w.from, to: w.to, value }

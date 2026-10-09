@@ -1,5 +1,5 @@
-// NOT USED since 8 Oct 2026: invested amounts count switches at their value on the day, as the custodian books them
-// (decided by Sanket for every account; see app/api/mobile/portfolio/performance/route.ts). Kept for reference.
+// Used since 8 Oct 2026 only for an account's "Net investment" line (performance API netInvestment / switchGain):
+// amountInvested itself counts switches at their value on the day, as the custodian books them.
 //
 // Switches between a member's own strategy accounts, at cost.
 //
@@ -55,14 +55,20 @@ export async function switchAdjustments(accountId: string): Promise<SwitchAdjust
   // Money switched into an account that is closed is not capital moved but money spent (it settles the closed
   // account's last charges, e.g. TDS): cost 0 on both sides, as the member's combined view treats it.
   const closedMap = await closures([accountId, ...siblings])
-  const isClosed = (code: string) => !!closedMap.get(code)?.closed
+  // closed ON THAT DAY (closed on or before it), not today: QLF149 took ₹82.4 L from QGF00014 on 10 Jul 2026 while
+  // open and closed a month later; judged by today it counted as "spent" and inflated QGF00014's cost by ₹82 L.
+  const isClosed = (code: string, onDay?: string) => {
+    const c = closedMap.get(code)
+    if (!c?.closed) return false
+    return !onDay || !c.closedOn || c.closedOn <= onDay
+  }
   const out: SwitchAdjustment[] = []
   for (const t of rows.filter(r => r.code === accountId)) {
     if (IN.includes(t.type)) {
       // the money came from the siblings that switched out the same day, at what it cost them
       const sources = rows.filter(r => r.code !== accountId && r.date === t.date && OUT.includes(r.type))
       let cost = 0
-      if (isClosed(accountId)) cost = 0
+      if (isClosed(accountId, t.date)) cost = 0
       else {
         for (const s of sources) cost += costShare(s.amt, await costBefore(s.code, s.date))
         const totalOut = sources.reduce((a, s) => a + s.amt, 0)
@@ -75,7 +81,7 @@ export async function switchAdjustments(accountId: string): Promise<SwitchAdjust
       // closed account, in which case the money was spent there and stays in this account's cost
       const receivers = rows.filter(r => r.code !== accountId && r.date === t.date && IN.includes(r.type)).map(r => r.code)
       if (!receivers.length) continue
-      const cost = receivers.every(isClosed) ? 0 : costShare(t.amt, await costBefore(accountId, t.date))
+      const cost = receivers.every(r => isClosed(r, t.date)) ? 0 : costShare(t.amt, await costBefore(accountId, t.date))
       out.push({ date: t.date, amount: -t.amt, cost: -cost, adjust: -cost + t.amt })
     }
   }

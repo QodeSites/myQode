@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     const target = clientResult.rows[0]
 
     // Same account set as the web's impersonate action and the mobile admin impersonation.
-    const accountsResult = target.head_of_family
+    const accountsResult: any = target.head_of_family
       ? await query(
           `SELECT clientid, clientcode, ownerid FROM pms_clients_master
             WHERE groupid = $1 AND (maturity_date IS NULL OR maturity_date > NOW())`,
@@ -64,6 +64,17 @@ export async function POST(request: NextRequest) {
             WHERE ownerid = $1 AND (maturity_date IS NULL OR maturity_date > NOW())`,
           [target.ownerid],
         )
+    // A head of family whose whole group has matured (moved to a new group): the investor's own login falls back to
+    // their email (lib/mobileSession.ts); here we fall back to their own accounts (owner id) instead, so a partner never
+    // sees accounts that came through someone else. Without it the partner saw no accounts at all. 8 Oct 2026.
+    if (target.head_of_family && accountsResult.rows.length === 0 && target.ownerid) {
+      const own = await query(
+        `SELECT clientid, clientcode, ownerid FROM pms_clients_master
+          WHERE ownerid = $1 AND (maturity_date IS NULL OR maturity_date > NOW())`,
+        [target.ownerid],
+      )
+      accountsResult.rows.push(...own.rows)
+    }
     const accounts = accountsResult.rows
     const individualCodes: string[] = accounts.map((r: any) => r.clientcode).filter(Boolean)
     const uniqueOwnerIds: string[] = [...new Set(accounts.map((r: any) => r.ownerid).filter(Boolean))] as string[]
