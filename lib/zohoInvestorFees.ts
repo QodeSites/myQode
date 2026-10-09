@@ -237,7 +237,20 @@ export function lookupInvestorTerms(
     if (byEmail) return byEmail
   }
   const nameKey = nameJoinKey(name)
-  return nameKey ? terms.get(nameKey) : undefined
+  const byName = nameKey ? terms.get(nameKey) : undefined
+  if (byName) return byName
+  // Same words in another order ("Kunda Rambabu" here, "Rambabu Kunda" in Zoho, with different emails — 9 Oct 2026),
+  // taken only when exactly one Zoho investor has those words, so it can never pick between two people.
+  const words = wordSet(name)
+  if (!words) return undefined
+  const hits = new Set<InvestorFeeTerms>()
+  for (const v of terms.values()) if (wordSet(v.name) === words) hits.add(v)
+  return hits.size === 1 ? [...hits][0] : undefined
+}
+
+function wordSet(name: unknown): string | null {
+  const w = String(name ?? '').trim().toLowerCase().split(/\s+/).filter(Boolean)
+  return w.length >= 2 ? w.sort().join(' ') : null
 }
 
 /** Clears the cache — for tests, or a manual refresh after editing Zoho. */
