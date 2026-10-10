@@ -5,10 +5,15 @@
 // 4 Oct 2026); the vault pages look in both. Uploads go into the folder that already exists for the client,
 // else the plain id. "Remove" moves a file to docs/client-documents-removed/ (recoverable), never deletes it.
 //
-// GET    (staff)                       → { sections, clients: [{ clientId, folder, name, email, codes, closed, counts }] }
-// GET    (staff)  ?clientId=…          → { folder, files: [{ key, section, filename, size, lastModified, url }] }
-// POST   (super)  multipart: clientId, section, file, [overwrite=1]
-//                                       → { key } — 409 when a file with that name is already there
+// One row per CLIENT (10 Oct 2026): a client's strategy accounts each have their own folder (the app reads the folder
+// of the account being viewed), so the same documents go into every folder of the client. Accounts are grouped by PAN,
+// else email, else the folder id; a joint or HUF account with its own PAN stays a client of its own.
+//
+// GET    (staff)                       → { sections, clients: [{ clientId (first folder), clientIds, name, email, codes,
+//                                          folders: [{ clientId, codes, counts }], closed, counts, missingIn, status }] }
+// GET    (staff)  ?clientId=…[&clientId=…] → { files: [{ key, clientId, section, filename, size, lastModified, url }] }
+// POST   (super)  multipart: clientId (one or more), section, file, [overwrite=1]
+//                                       → { keys, existed } — 409 only when the file is already in every folder
 // DELETE (super)  ?key=docs/client-documents/…   → moves the file out of the vault
 import { NextRequest, NextResponse } from 'next/server'
 import {
@@ -63,21 +68,23 @@ async function clientExists(clientId: string) {
 export async function GET(req: NextRequest) {
   const { error } = await requireAdmin(req, 'staff')
   if (error) return error
-  const clientId = req.nextUrl.searchParams.get('clientId')
   try {
-    if (clientId) {
-      const folder = await folderFor(clientId)
-      const objs = await listAll(`${ROOT}${folder}/`)
-      const files = await Promise.all(objs.map(async o => {
-        const key = o.Key!
-        const parts = key.slice(ROOT.length).split('/')
-        return {
-          key, section: parts.length > 2 ? parts[1] : '(no section)', filename: parts[parts.length - 1],
-          size: o.Size ?? 0, lastModified: o.LastModified ?? null,
-          url: await getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET, Key: key }), { expiresIn: 900 }),
-        }
-      }))
-      return NextResponse.json({ folder, files: files.sort((a, b) => a.section.localeCompare(b.section) || a.filename.localeCompare(b.filename)) })
+    const ids = req.nextUrl.searchParams.getAll('clientId').map(plain).filter(Boolean)
+    if (ids.length) {
+      const files = (await Promise.all([...new Set(ids)].map(async id => {
+        const folder = await folderFor(id)
+        const objs = await listAll(`${ROOT}${folder}/`)
+        return Promise.all(objs.map(async o => {
+          const key = o.Key!
+          const parts = key.slice(ROOT.length).split('/')
+          return {
+            key, clientId: id, section: parts.length > 2 ? parts[1] : '(no section)', filename: parts[parts.length - 1],
+            size: o.Size ?? 0, lastModified: o.LastModified ?? null,
+            url: await getSignedUrl(s3, new GetObjectCommand({ Bucket: BUCKET, Key: key }), { expiresIn: 900 }),
+          }
+        }))
+      }))).flat()
+      return NextResponse.json({ files: files.sort((a, b) => a.section.localeCompare(b.section) || a.filename.localeCompare(b.filename) || a.clientId.localeCompare(b.clientId)) })
     }
 
     // coverage: per client folder, files per section
@@ -88,25 +95,42 @@ export async function GET(req: NextRequest) {
       const c = counts.get(id) || {}; c[section] = (c[section] || 0) + 1; counts.set(id, c)
     }
     const r = await query(
-      `SELECT clientid, clientcode, trim(clientname) AS name, lower(trim(email)) AS email, schemename,
+      `SELECT clientid, clientcode, trim(clientname) AS name, lower(trim(email)) AS email, upper(trim(pannumber)) AS pan, schemename,
               (maturity_date IS NOT NULL AND maturity_date <= NOW()) AS closed
          FROM pms_clients_master
         WHERE clientid IS NOT NULL AND clientcode IS NOT NULL AND clientcode ~* '^Q' AND clientcode !~* '^QLF'
         ORDER BY clientname, clientcode`)
-    const byId = new Map<string, any>()
+    // folders first (one per client id), then folders grouped into clients
+    const folders = new Map<string, any>()
     for (const x of r.rows as any[]) {
       const id = plain(x.clientid)
-      const c = byId.get(id) || { clientId: id, name: x.name, email: x.email, codes: [] as { code: string; strategy: string; closed: boolean }[], closed: true }
-      c.codes.push({ code: x.clientcode, strategy: strategy(x.schemename), closed: !!x.closed })
-      c.closed = c.closed && !!x.closed
-      byId.set(id, c)
+      const f = folders.get(id) || { clientId: id, name: x.name, email: x.email, pan: x.pan, codes: [] as { code: string; strategy: string; closed: boolean }[], closed: true }
+      f.codes.push({ code: x.clientcode, strategy: strategy(x.schemename), closed: !!x.closed })
+      f.closed = f.closed && !!x.closed
+      folders.set(id, f)
     }
-    const clients = [...byId.values()].map(c => {
-      const cnt = counts.get(c.clientId) || {}
-      const have = REQUIRED.filter(s => (cnt[s] || 0) > 0).length
-      return { ...c, counts: cnt, total: Object.values(cnt).reduce((a: number, b) => a + (b as number), 0),
-               status: have === REQUIRED.length ? 'complete' : Object.keys(cnt).length ? 'partial' : 'none' }
-    })
+    const groups = new Map<string, any[]>()
+    for (const f of folders.values()) {
+      const k = /^[A-Z]{5}\d{4}[A-Z]$/.test(f.pan || '') ? 'pan:' + f.pan : f.email ? 'email:' + f.email : 'id:' + f.clientId
+      groups.set(k, [...(groups.get(k) || []), f])
+    }
+    const hasAll = (cnt: Record<string, number>) => REQUIRED.every(s => (cnt[s] || 0) > 0)
+    const clients = [...groups.values()].map(fs => {
+      fs.sort((a, b) => a.codes[0].code.localeCompare(b.codes[0].code))
+      const withCounts = fs.map(f => ({ clientId: f.clientId, codes: f.codes, closed: f.closed, counts: counts.get(f.clientId) || {} }))
+      const open = withCounts.filter(f => !f.closed)
+      const judged = open.length ? open : withCounts   // a closed account's folder doesn't hold an open client back
+      const cnt: Record<string, number> = {}
+      for (const f of withCounts) for (const [s, n] of Object.entries(f.counts)) cnt[s] = Math.max(cnt[s] || 0, n as number)
+      const missingIn = judged.filter(f => !hasAll(f.counts)).flatMap(f => f.codes.filter((c: any) => !c.closed || !open.length).map((c: any) => c.code))
+      const any = withCounts.some(f => Object.keys(f.counts).length)
+      return {
+        clientId: fs[0].clientId, clientIds: fs.map(f => f.clientId), name: fs[0].name, email: fs[0].email,
+        codes: fs.flatMap(f => f.codes), folders: withCounts, closed: fs.every(f => f.closed),
+        counts: cnt, total: Object.values(cnt).reduce((a, b) => a + b, 0), missingIn,
+        status: judged.every(f => hasAll(f.counts)) ? 'complete' : any ? 'partial' : 'none',
+      }
+    }).sort((a, b) => String(a.name).localeCompare(String(b.name)))
     return NextResponse.json({ sections: SECTIONS, required: REQUIRED, clients })
   } catch (e: any) {
     console.error('[admin/bo/documents] GET', e)
@@ -119,11 +143,12 @@ export async function POST(req: NextRequest) {
   if (error) return error
   let form: FormData
   try { form = await req.formData() } catch { return NextResponse.json({ error: 'Send the file as multipart form data' }, { status: 400 }) }
-  const clientId = plain(form.get('clientId'))
+  const clientIds = [...new Set(form.getAll('clientId').map(plain).filter(Boolean))]
   const section = String(form.get('section') || '')
   const file = form.get('file')
   const overwrite = form.get('overwrite') === '1'
-  if (!clientId || !(await clientExists(clientId))) return NextResponse.json({ error: 'Unknown investor' }, { status: 400 })
+  if (!clientIds.length) return NextResponse.json({ error: 'Unknown investor' }, { status: 400 })
+  for (const id of clientIds) if (!(await clientExists(id))) return NextResponse.json({ error: 'Unknown investor' }, { status: 400 })
   if (!SECTIONS.includes(section)) return NextResponse.json({ error: 'Choose one of: ' + SECTIONS.join(', ') }, { status: 400 })
   if (!(file instanceof File)) return NextResponse.json({ error: 'No file' }, { status: 400 })
   const filename = file.name.replace(/[\\/]/g, '_').replace(/[^\w .()&,+-]/g, '_').trim()
@@ -132,19 +157,23 @@ export async function POST(req: NextRequest) {
   if (file.size > MAX_BYTES) return NextResponse.json({ error: `Larger than ${MAX_BYTES / 1024 / 1024} MB` }, { status: 400 })
   if (!file.size) return NextResponse.json({ error: 'Empty file' }, { status: 400 })
 
-  const folder = await folderFor(clientId)
-  const key = `${ROOT}${folder}/${section}/${filename}`
+  // The same file into every folder of the client (each strategy account); a folder that already has it is left
+  // alone unless overwrite.
+  const body = Buffer.from(await file.arrayBuffer())
+  const keys: string[] = [], existed: string[] = []
   try {
-    if (!overwrite) {
-      const exists = await s3.send(new HeadObjectCommand({ Bucket: BUCKET, Key: key })).then(() => true, () => false)
-      if (exists) return NextResponse.json({ error: 'A file with this name is already there', code: 'EXISTS', key }, { status: 409 })
+    for (const id of clientIds) {
+      const key = `${ROOT}${await folderFor(id)}/${section}/${filename}`
+      if (!overwrite && await s3.send(new HeadObjectCommand({ Bucket: BUCKET, Key: key })).then(() => true, () => false)) { existed.push(key); continue }
+      await s3.send(new PutObjectCommand({ Bucket: BUCKET, Key: key, Body: body, ContentType: TYPES[ext] }))
+      await audit(req, admin!, 'documents.upload', id, { key, size: file.size, overwrite })
+      keys.push(key)
     }
-    await s3.send(new PutObjectCommand({ Bucket: BUCKET, Key: key, Body: Buffer.from(await file.arrayBuffer()), ContentType: TYPES[ext] }))
-    await audit(req, admin!, 'documents.upload', clientId, { key, size: file.size, overwrite })
-    return NextResponse.json({ key })
+    if (!keys.length) return NextResponse.json({ error: 'A file with this name is already there', code: 'EXISTS', existed }, { status: 409 })
+    return NextResponse.json({ keys, existed })
   } catch (e: any) {
     console.error('[admin/bo/documents] POST', e)
-    return NextResponse.json({ error: 'Upload failed: ' + (e?.message || 'unknown error') }, { status: 502 })
+    return NextResponse.json({ error: 'Upload failed: ' + (e?.message || 'unknown error'), keys }, { status: 502 })
   }
 }
 

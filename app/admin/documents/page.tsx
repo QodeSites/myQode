@@ -17,8 +17,12 @@ import {
 import { EmptyState, ErrorNote, KpiCard, PageHeader, Panel, Pill, boFetch, errorMessage, fmtDateTime, useBackofficeAdmin } from "@/components/admin-kit"
 
 type Code = { code: string; strategy: string; closed: boolean }
-type Client = { clientId: string; name: string; email: string; codes: Code[]; closed: boolean; counts: Record<string, number>; total: number; status: "complete" | "partial" | "none" }
-type VaultFile = { key: string; section: string; filename: string; size: number; lastModified: string | null; url: string }
+type Folder = { clientId: string; codes: Code[]; closed: boolean; counts: Record<string, number> }
+// One client = all their strategy accounts (grouped by PAN on the server); each account has its own vault folder.
+type Client = { clientId: string; clientIds: string[]; name: string; email: string; codes: Code[]; folders: Folder[]; closed: boolean; counts: Record<string, number>; total: number; missingIn: string[]; status: "complete" | "partial" | "none" }
+type VaultFile = { key: string; clientId: string; section: string; filename: string; size: number; lastModified: string | null; url: string }
+// The same document in several account folders, shown once.
+type Doc = { section: string; filename: string; size: number; lastModified: string | null; url: string; keys: string[]; clientIds: string[] }
 type Planned = { id: string; file: File; path: string; client: Client | null; section: string; state: "ready" | "uploading" | "done" | "exists" | "error" | "skip"; note?: string }
 
 const STATUS: Record<Client["status"], [string, "green" | "gold" | "red"]> = { complete: ["Complete", "green"], partial: ["Missing some", "gold"], none: ["No documents", "red"] }
@@ -38,16 +42,18 @@ function guessSection(text: string, sections: string[]): string | null {
   return null
 }
 
-async function uploadOne(clientId: string, section: string, file: File, overwrite: boolean) {
+// Uploads one file into every account folder of the client.
+async function uploadOne(clientIds: string[], section: string, file: File, overwrite: boolean) {
   const fd = new FormData()
-  fd.append("clientId", clientId); fd.append("section", section); fd.append("file", file)
+  for (const id of clientIds) fd.append("clientId", id)
+  fd.append("section", section); fd.append("file", file)
   if (overwrite) fd.append("overwrite", "1")
   const r = await fetch("/api/admin/bo/documents", { method: "POST", body: fd, credentials: "same-origin" })
   const j = await r.json().catch(() => ({}))
   if (r.status === 409) return { exists: true as const }
   if (r.status === 413) throw new Error("File too large for the server")
   if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`)
-  return { exists: false as const }
+  return { exists: false as const, partly: (j?.existed?.length || 0) > 0 }
 }
 
 export default function AdminDocumentsPage() {
@@ -73,7 +79,7 @@ export default function AdminDocumentsPage() {
   const rows = useMemo(() => {
     const s = q.trim().toLowerCase()
     return pool.filter(c => (filter === "all" || c.status === filter) &&
-      (!s || c.name?.toLowerCase().includes(s) || c.email?.includes(s) || c.clientId.includes(s) || c.codes.some(x => x.code.toLowerCase().includes(s))))
+      (!s || c.name?.toLowerCase().includes(s) || c.email?.includes(s) || c.clientIds.some(id => id.includes(s)) || c.codes.some(x => x.code.toLowerCase().includes(s))))
   }, [pool, filter, q])
 
   return (
@@ -91,7 +97,7 @@ export default function AdminDocumentsPage() {
         <button className="text-left" onClick={() => setFilter("none")}><KpiCard label="No documents" value={kpi.none} hint="The vault shows nothing" accent /></button>
       </div>
 
-      <Panel title={`Clients (${rows.length})`} description="One row per client folder (the client id the vault uses). Counts are files per section." bodyClassName="p-0"
+      <Panel title={`Clients (${rows.length})`} description="One row per client, with all their strategy accounts. Uploads go into every account, so the client sees them under each strategy. Counts are files per section." bodyClassName="p-0"
         action={<div className="flex flex-wrap items-center gap-2">
           <div className="relative"><Search className="absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
             <Input value={q} onChange={e => setQ(e.target.value)} placeholder="Name, email, account code" className="h-8 w-56 bg-white pl-8" /></div>
@@ -108,10 +114,10 @@ export default function AdminDocumentsPage() {
               <TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
               <TableBody>{rows.map(c => (
                 <TableRow key={c.clientId}>
-                  <TableCell><p className="text-sm font-medium">{c.name || "—"}</p><p className="text-xs text-muted-foreground">{c.email || "no email"} · id {c.clientId}</p></TableCell>
+                  <TableCell><p className="text-sm font-medium">{c.name || "—"}</p><p className="text-xs text-muted-foreground">{c.email || "no email"} · id {c.clientIds.join(", ")}</p></TableCell>
                   <TableCell className="text-xs">{c.codes.map(x => <span key={x.code} className={`mr-1.5 inline-block ${x.closed ? "text-muted-foreground line-through" : ""}`}>{x.code}</span>)}</TableCell>
                   {data.sections.map(s => <TableCell key={s} className="text-center text-sm tabular-nums">{c.counts[s] ? <span className="text-[#02422B]">✓ {c.counts[s]}</span> : <span className="text-muted-foreground">—</span>}</TableCell>)}
-                  <TableCell><Pill tone={STATUS[c.status][1]}>{STATUS[c.status][0]}</Pill></TableCell>
+                  <TableCell><Pill tone={STATUS[c.status][1]}>{STATUS[c.status][0]}</Pill>{c.status === "partial" && c.missingIn.length && c.missingIn.length < c.codes.length ? <span className="mt-1 block text-[11px] text-muted-foreground">Missing in {c.missingIn.join(", ")}</span> : null}</TableCell>
                   <TableCell><Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setOpen(c)}>{canEdit ? "Files / upload" : "Files"}</Button></TableCell>
                 </TableRow>))}
               </TableBody></Table>
@@ -132,19 +138,29 @@ function ClientDialog({ client, sections, canEdit, onClose, onChanged }: { clien
   const [picked, setPicked] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
   const [overwrite, setOverwrite] = useState(false)
-  const [remove, setRemove] = useState<VaultFile | null>(null)
+  const [remove, setRemove] = useState<Doc | null>(null)
   const input = useRef<HTMLInputElement>(null)
 
   const load = useCallback(async () => {
     setErr(null)
-    try { setFiles((await boFetch<{ files: VaultFile[] }>(`/api/admin/bo/documents?clientId=${encodeURIComponent(client.clientId)}`)).files) } catch (e) { setErr(errorMessage(e)) }
-  }, [client.clientId])
+    try { setFiles((await boFetch<{ files: VaultFile[] }>(`/api/admin/bo/documents?${client.clientIds.map(id => `clientId=${encodeURIComponent(id)}`).join("&")}`)).files) } catch (e) { setErr(errorMessage(e)) }
+  }, [client.clientIds.join(",")])   // eslint-disable-line react-hooks/exhaustive-deps
+  const codesOf = useMemo(() => new Map(client.folders.map(f => [f.clientId, f.codes.map(c => c.code).join(", ")])), [client])
+  const docs = useMemo(() => {
+    const m = new Map<string, Doc>()
+    for (const f of files || []) {
+      const k = f.section + "/" + f.filename
+      const d = m.get(k) || { section: f.section, filename: f.filename, size: f.size, lastModified: f.lastModified, url: f.url, keys: [], clientIds: [] }
+      d.keys.push(f.key); d.clientIds.push(f.clientId); m.set(k, d)
+    }
+    return [...m.values()]
+  }, [files])
   useEffect(() => { load() }, [load])
 
   async function upload() {
     setBusy(true); let ok = 0, exists = 0, failed = 0
     for (const f of picked) {
-      try { const r = await uploadOne(client.clientId, section, f, overwrite); r.exists ? exists++ : ok++ } catch (e) { failed++; toast.error(`${f.name}: ${errorMessage(e)}`) }
+      try { const r = await uploadOne(client.clientIds, section, f, overwrite); r.exists ? exists++ : ok++ } catch (e) { failed++; toast.error(`${f.name}: ${errorMessage(e)}`) }
     }
     setBusy(false); setPicked([]); if (input.current) input.current.value = ""
     toast[failed ? "error" : "success"](`${ok} uploaded${exists ? `, ${exists} skipped (already there; tick "replace" to overwrite)` : ""}${failed ? `, ${failed} failed` : ""}.`)
@@ -153,7 +169,7 @@ function ClientDialog({ client, sections, canEdit, onClose, onChanged }: { clien
 
   async function doRemove() {
     if (!remove) return
-    try { await boFetch(`/api/admin/bo/documents?key=${encodeURIComponent(remove.key)}`, { method: "DELETE" }); toast.success("Removed from the vault (kept in the removed-files area)."); load(); onChanged() }
+    try { for (const key of remove.keys) await boFetch(`/api/admin/bo/documents?key=${encodeURIComponent(key)}`, { method: "DELETE" }); toast.success(`Removed from ${remove.keys.length === 1 ? "the vault" : `all ${remove.keys.length} accounts`} (kept in the removed-files area).`); load(); onChanged() }
     catch (e) { toast.error(errorMessage(e)) } finally { setRemove(null) }
   }
 
@@ -162,15 +178,17 @@ function ClientDialog({ client, sections, canEdit, onClose, onChanged }: { clien
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>{client.name}</DialogTitle>
-          <DialogDescription>{client.codes.map(c => `${c.code} (${c.strategy})`).join(", ")} · folder id {client.clientId}</DialogDescription>
+          <DialogDescription>{client.codes.map(c => `${c.code} (${c.strategy})`).join(", ")}{client.folders.length > 1 ? ` · uploads go into all ${client.folders.length} accounts` : ` · folder id ${client.clientId}`}</DialogDescription>
         </DialogHeader>
         {err ? <ErrorNote message={err} onRetry={load} /> : null}
         <div className="max-h-72 overflow-auto rounded-md border">
-          {!files ? <p className="p-4 text-sm text-muted-foreground">Loading…</p> : files.length ? (
-            <Table><TableBody>{files.map(f => (
-              <TableRow key={f.key}>
+          {!files ? <p className="p-4 text-sm text-muted-foreground">Loading…</p> : docs.length ? (
+            <Table><TableBody>{docs.map(f => (
+              <TableRow key={f.section + "/" + f.filename}>
                 <TableCell className="text-xs text-muted-foreground">{f.section}</TableCell>
-                <TableCell><a href={f.url} target="_blank" rel="noreferrer" className="text-sm text-[#02422B] underline-offset-2 hover:underline">{f.filename}</a></TableCell>
+                <TableCell><a href={f.url} target="_blank" rel="noreferrer" className="text-sm text-[#02422B] underline-offset-2 hover:underline">{f.filename}</a>
+                  {client.folders.length > 1 ? <span className={`block text-[11px] ${f.clientIds.length < client.folders.length ? "text-amber-700" : "text-muted-foreground"}`}>
+                    {f.clientIds.length < client.folders.length ? `Only in ${f.clientIds.map(id => codesOf.get(id)).join(", ")}` : "In all accounts"}</span> : null}</TableCell>
                 <TableCell className="text-xs tabular-nums">{kb(f.size)}</TableCell>
                 <TableCell className="text-xs text-muted-foreground">{f.lastModified ? fmtDateTime(f.lastModified) : ""}</TableCell>
                 <TableCell>{canEdit ? <Button size="sm" variant="ghost" className="h-7" onClick={() => setRemove(f)} aria-label={`Remove ${f.filename}`}><Trash2 className="h-3.5 w-3.5" /></Button> : null}</TableCell>
@@ -194,7 +212,7 @@ function ClientDialog({ client, sections, canEdit, onClose, onChanged }: { clien
         <AlertDialog open={!!remove} onOpenChange={o => { if (!o) setRemove(null) }}>
           <AlertDialogContent>
             <AlertDialogHeader><AlertDialogTitle>Remove this document?</AlertDialogTitle>
-              <AlertDialogDescription>{remove ? `“${remove.filename}” (${remove.section}) disappears from ${client.name}'s vault. A copy is kept in the removed-files area and the action is in the audit log.` : ""}</AlertDialogDescription></AlertDialogHeader>
+              <AlertDialogDescription>{remove ? `“${remove.filename}” (${remove.section}) disappears from ${client.name}'s vault${remove.keys.length > 1 ? ` in all ${remove.keys.length} accounts` : ""}. A copy is kept in the removed-files area and the action is in the audit log.` : ""}</AlertDialogDescription></AlertDialogHeader>
             <AlertDialogFooter><AlertDialogCancel>Keep it</AlertDialogCancel><AlertDialogAction onClick={doRemove}>Remove</AlertDialogAction></AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
@@ -209,7 +227,7 @@ function BulkDialog({ clients, sections, onClose, onDone }: { clients: Client[];
   const [running, setRunning] = useState(false)
   const [overwrite, setOverwrite] = useState(false)
   const byCode = useMemo(() => { const m = new Map<string, Client>(); for (const c of clients) for (const x of c.codes) m.set(x.code.toUpperCase(), c); return m }, [clients])
-  const byId = useMemo(() => new Map(clients.map(c => [c.clientId, c])), [clients])
+  const byId = useMemo(() => { const m = new Map<string, Client>(); for (const c of clients) for (const id of c.clientIds) m.set(id, c); return m }, [clients])
 
   function add(list: FileList | null) {
     const next: Planned[] = []
@@ -245,7 +263,7 @@ function BulkDialog({ clients, sections, onClose, onDone }: { clients: Client[];
       while (i < queue.length) {
         const item = queue[i++]
         setRow(item.id, { state: "uploading" })
-        try { const r = await uploadOne(item.client!.clientId, item.section, item.file, overwrite)
+        try { const r = await uploadOne(item.client!.clientIds, item.section, item.file, overwrite)
           setPlan(p => p.map(x => x.id === item.id ? { ...x, state: r.exists ? "exists" : "done", note: r.exists ? "Already there (not replaced)" : undefined } : x))
         } catch (e) { setPlan(p => p.map(x => x.id === item.id ? { ...x, state: "error", note: errorMessage(e) } : x)) }
       }
@@ -264,7 +282,7 @@ function BulkDialog({ clients, sections, onClose, onDone }: { clients: Client[];
         <DialogHeader>
           <DialogTitle>Bulk upload to client vaults</DialogTitle>
           <DialogDescription>
-            Each file needs the client's account code in its name or folder (e.g. <code>QAW00162_PMS Agreement.pdf</code>, or a folder
+            Each file goes into every account of its client. It needs one of the client's account codes in its name or folder (e.g. <code>QAW00162_PMS Agreement.pdf</code>, or a folder
             <code> QAW00162/CML/…</code>). The section comes from the folder or file name (agreement, account opening/AOF/KYC, CML, disclosure), or the default below.
           </DialogDescription>
         </DialogHeader>
@@ -287,7 +305,7 @@ function BulkDialog({ clients, sections, onClose, onDone }: { clients: Client[];
                 <TableBody>{plan.map(x => (
                   <TableRow key={x.id}>
                     <TableCell className="max-w-[260px] truncate text-xs" title={x.path}>{x.path}<span className="block text-muted-foreground">{kb(x.file.size)}</span></TableCell>
-                    <TableCell className="text-xs">{x.client ? <>{x.client.name}<span className="block text-muted-foreground">{x.client.codes.map(c => c.code).join(", ")}</span></> : <span className="text-red-700">Not matched</span>}</TableCell>
+                    <TableCell className="text-xs">{x.client ? <>{x.client.name}<span className="block text-muted-foreground">{x.client.codes.map(c => c.code).join(", ")}{x.client.folders.length > 1 ? ` · into all ${x.client.folders.length} accounts` : ""}</span></> : <span className="text-red-700">Not matched</span>}</TableCell>
                     <TableCell><select value={x.section} disabled={running || !["ready", "skip"].includes(x.state)} onChange={e => setRow(x.id, { section: e.target.value })} className="h-7 rounded border bg-white px-1 text-xs">
                       <option value="">—</option>{sections.map(s => <option key={s}>{s}</option>)}</select></TableCell>
                     <TableCell><Pill tone={tone(x.state)}>{label[x.state]}</Pill>{x.note ? <span className="block text-[11px] text-muted-foreground">{x.note}</span> : null}</TableCell>
