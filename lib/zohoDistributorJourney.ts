@@ -130,10 +130,10 @@ function tallyStages(clients: JourneyClient[]): Record<string, number> {
 }
 
 function mapClient(r: any): JourneyClient {
-  const rm = [r["Owner.first_name"], r["Owner.last_name"]]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
+  // The investor's relationship manager is Zoho's RM_Name ("RM 1"), filled in by ops. Not the record Owner: that is
+  // the Qode team member who owns the CRM record (the same person on every partner investor). Empty → no name shown.
+  // (10 Oct 2026)
+  const rm = String(r["RM_Name.Name"] ?? "").trim();   // a lookup: COQL gives its name only as a dotted field
 
   return {
     name: r.Name ?? null,
@@ -173,13 +173,13 @@ function mapClient(r: any): JourneyClient {
  * per-distributor and all-distributor queries cannot drift apart — they
  * feed the same JourneyClient shape.
  *
- * Owner must be selected as dotted sub-fields: COQL returns an empty object
- * for a bare `Owner`, unlike the REST API.
+ * (A lookup such as Owner must be selected as dotted sub-fields: COQL returns an
+ * empty object for a bare lookup, unlike the REST API.)
  */
 const INVESTOR_COLUMNS = `Name, Legal_Name, Email, Investor_Stage, Stage_Entry_Date,
        Activation_Date, Date_Of_1st_Investment, First_Top_Up_Date,
        Invested_Amount, Current_Portfolio_Value, Strategy_Invested,
-       Owner.first_name, Owner.last_name, Mobile_No, City, Occupation,
+       RM_Name.Name, Mobile_No, City, Occupation,
        Last_Conversation, Next_Contact_Date, Annual_Review_Status,
        myQode_Walkthrough`;
 
