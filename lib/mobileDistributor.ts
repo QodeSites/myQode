@@ -20,7 +20,7 @@ import {
 } from '@/lib/distributorIdentity'
 import { getJourneyForDistributor, getOnboardingStages } from '@/lib/zohoDistributorJourney'
 import { query } from '@/lib/db'
-import { isBackofficeAdmin } from '@/lib/adminAuth'
+import { isAdminEmail } from '@/lib/adminAuth'
 
 // POSTs that only read: view-account issues a read-only token for one of their investors, fees runs the
 // calculator for a period, file-link signs a download link. They stay available when admin is viewing.
@@ -35,7 +35,7 @@ export async function requireMobileDistributor(request: NextRequest): Promise<{
   if (error) return { user: null, distributor: null, error }
   // A backoffice admin viewing a distributor (bo/impersonate, audited) may read their book; changes such as tickets
   // or invoices are not made in the distributor's name.
-  const adminView = !!user!.isImpersonated && !!user!.isDistributor && isBackofficeAdmin(user!.impersonatedBy)
+  const adminView = !!user!.isImpersonated && !!user!.isDistributor && (await isAdminEmail(user!.impersonatedBy))
   if (user!.isReviewer || (user!.isImpersonated && !adminView)) {
     return { user, distributor: null, error: NextResponse.json({ error: 'Not a partner' }, { status: 403 }) }
   }

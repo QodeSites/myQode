@@ -3,7 +3,7 @@ import { requireAdmin, audit } from '@/lib/adminAuth'
 import { query } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
-  const { admin, error: authError } = await requireAdmin(request, 'super')
+  const { admin, error: authError } = await requireAdmin(request, 'super', 'partners')
   if (authError) return authError
   try {
     const data = await request.json();

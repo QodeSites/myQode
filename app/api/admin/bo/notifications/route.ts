@@ -59,7 +59,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { admin, error } = await requireAdmin(req, 'super')
+  const { admin, error } = await requireAdmin(req, 'super', 'investors')
   if (error) return error
   if (!(await tablesReady())) return NextResponse.json({ error: 'Notification tables are not created yet' }, { status: 503 })
   let b: any = {}

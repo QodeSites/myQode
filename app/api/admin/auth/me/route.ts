@@ -5,5 +5,5 @@ import { currentAdmin } from '@/lib/adminAuth'
 export async function GET(req: NextRequest) {
   const admin = await currentAdmin(req)
   if (!admin) return NextResponse.json({ error: 'Admin sign-in required' }, { status: 401 })
-  return NextResponse.json({ admin: { email: admin.email, name: admin.name, level: admin.level, via: admin.via } })
+  return NextResponse.json({ admin: { email: admin.email, name: admin.name, level: admin.level, role: admin.role, via: admin.via } })
 }

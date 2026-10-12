@@ -2,6 +2,7 @@
 // Returns fresh user profile for the authenticated user.
 // Called by the mobile app on every startup (after restoring the stored JWT)
 // to refresh name, accountCodes, and admin flags without requiring re-login.
+import { adminRoleOf } from '@/lib/adminAuth'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import { query } from '@/lib/db'
@@ -40,6 +41,8 @@ export async function GET(request: NextRequest) {
       isHeadOfFamily: false,
       isSuperAdmin:  true,
       isAdmin:       !!(user as any).isAdmin,   // backoffice admin: the app opens its admin mode
+      // The admin's role now (Admins page): which side the admin mode shows. Gone / read-only = no admin mode.
+      ...((user as any).isAdmin ? await (async () => { const role = await adminRoleOf(user!.email); return { adminRole: role, isAdmin: !!role && role !== 'viewer' } })() : {}),
     })
   }
 

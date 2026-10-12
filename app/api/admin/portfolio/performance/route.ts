@@ -341,7 +341,7 @@ export async function GET(request: NextRequest) {
 
 // Admin impersonation endpoint (super admins). Returns a signed one-time link, see lib/impersonation.ts.
 export async function POST(request: NextRequest) {
-    const { admin, error } = await requireAdmin(request, 'super');
+    const { admin, error } = await requireAdmin(request, 'super', 'investors');
     if (error) return error;
     try {
         const { action, clientCode } = await request.json();

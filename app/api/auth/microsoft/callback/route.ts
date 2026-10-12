@@ -1,4 +1,5 @@
 // app/api/auth/microsoft/callback/route.ts
+import { isAdminEmail } from '@/lib/adminAuth'
 import { NextRequest, NextResponse } from 'next/server'
 import { microsoftAuthConfig } from '@/lib/auth-config'
 import { saveSession } from '@/lib/session-store'
@@ -119,16 +120,11 @@ export async function GET(request: NextRequest) {
 
     // Verify user is authorized admin (optional)
     const userEmail = profile.mail || profile.userPrincipalName
-    const authorizedEmails = process.env.ADMIN_AUTHORIZED_EMAILS?.split(',') || []
+    // Only people on the Admins page (admin_users.role) may sign in; an empty list no longer lets everyone in.
+    const authorized = await isAdminEmail(userEmail)
+    console.log('🔒 Authorization check:', { userEmail, isAuthorized: authorized })
 
-    console.log('🔒 Authorization check:', {
-      userEmail,
-      authorizedEmails,
-      hasAuthorizedEmails: authorizedEmails.length > 0,
-      isAuthorized: authorizedEmails.length === 0 || authorizedEmails.includes(userEmail)
-    })
-
-    if (authorizedEmails.length > 0 && !authorizedEmails.includes(userEmail)) {
+    if (!authorized) {
       console.error('❌ User not authorized:', userEmail)
       return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/admin/login?error=unauthorized&email=${encodeURIComponent(userEmail)}`)
     }

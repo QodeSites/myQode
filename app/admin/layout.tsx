@@ -28,7 +28,10 @@ type NavItem = {
   href: string
   icon: typeof Users
   isActive: (pathname: string, type: string | null) => boolean
+  /** Roles that see this item (none = every admin). One menu per role keeps each admin to their own side. */
+  roles?: string[]
 }
+const INV = ["super", "investors", "viewer"], PART = ["super", "partners", "viewer"], SUPER = ["super"]
 
 const NAV: NavItem[] = [
   { label: "Overview", href: "/admin", icon: LayoutDashboard, isActive: (p) => p === "/admin" },
@@ -37,28 +40,31 @@ const NAV: NavItem[] = [
     href: "/admin/users?type=investor",
     icon: Users,
     isActive: (p, t) => p === "/admin/users" && t === "investor",
+    roles: INV,
   },
   {
     label: "Distributors",
     href: "/admin/users?type=distributor",
     icon: Briefcase,
     isActive: (p, t) => p === "/admin/users" && t === "distributor",
+    roles: PART,
   },
   {
     label: "Analytics",
     href: "/admin/onboarding",
     icon: BarChart3,
     isActive: (p) => p.startsWith("/admin/onboarding"),
+    roles: INV,
   },
-  { label: "App analytics", href: "/admin/analytics", icon: Activity, isActive: (p) => p.startsWith("/admin/analytics") },
-  { label: "Queries", href: "/admin/queries", icon: MessageSquare, isActive: (p) => p.startsWith("/admin/queries") },
-  { label: "Feedback", href: "/admin/feedback", icon: MessageSquareHeart, isActive: (p) => p.startsWith("/admin/feedback") },
-  { label: "Payments", href: "/admin/payments", icon: Banknote, isActive: (p) => p.startsWith("/admin/payments") },
-  { label: "Distributor invoices", href: "/admin/partner-invoices", icon: Receipt, isActive: (p) => p.startsWith("/admin/partner-invoices") },
-  { label: "Documents", href: "/admin/documents", icon: FileText, isActive: (p) => p.startsWith("/admin/documents") },
-  { label: "Notifications", href: "/admin/notifications", icon: Bell, isActive: (p) => p.startsWith("/admin/notifications") },
-  { label: "Audit log", href: "/admin/audit", icon: ScrollText, isActive: (p) => p.startsWith("/admin/audit") },
-  { label: "Admins", href: "/admin/admins", icon: ShieldCheck, isActive: (p) => p.startsWith("/admin/admins") },
+  { label: "App analytics", href: "/admin/analytics", icon: Activity, isActive: (p) => p.startsWith("/admin/analytics"), roles: INV },
+  { label: "Queries", href: "/admin/queries", icon: MessageSquare, isActive: (p) => p.startsWith("/admin/queries"), roles: INV },
+  { label: "Feedback", href: "/admin/feedback", icon: MessageSquareHeart, isActive: (p) => p.startsWith("/admin/feedback"), roles: INV },
+  { label: "Payments", href: "/admin/payments", icon: Banknote, isActive: (p) => p.startsWith("/admin/payments"), roles: INV },
+  { label: "Distributor invoices", href: "/admin/partner-invoices", icon: Receipt, isActive: (p) => p.startsWith("/admin/partner-invoices"), roles: PART },
+  { label: "Documents", href: "/admin/documents", icon: FileText, isActive: (p) => p.startsWith("/admin/documents"), roles: INV },
+  { label: "Notifications", href: "/admin/notifications", icon: Bell, isActive: (p) => p.startsWith("/admin/notifications"), roles: INV },
+  { label: "Audit log", href: "/admin/audit", icon: ScrollText, isActive: (p) => p.startsWith("/admin/audit"), roles: SUPER },
+  { label: "Admins", href: "/admin/admins", icon: ShieldCheck, isActive: (p) => p.startsWith("/admin/admins"), roles: SUPER },
 ]
 
 export default function AdminRootLayout({ children }: { children: ReactNode }) {
@@ -173,7 +179,7 @@ function GuardedShell({ pathname, children }: { pathname: string; children: Reac
             </span>
           </Link>
           <nav className="flex-1 space-y-0.5 overflow-y-auto px-3">
-            {NAV.map((item) => {
+            {NAV.filter((item) => !item.roles || item.roles.includes(admin?.role || (admin?.level === "super" ? "super" : "viewer"))).map((item) => {
               const active = item.isActive(pathname, type)
               const Icon = item.icon
               return (
@@ -201,7 +207,7 @@ function GuardedShell({ pathname, children }: { pathname: string; children: Reac
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-[#EFECD3]">{admin.name || admin.email}</p>
                 <p className="truncate text-[11px] text-[#EFECD3]/60">
-                  {admin.level === "super" ? "Super admin" : "Staff"}
+                  {({ super: "Super admin", investors: "Investors admin", partners: "Partners admin", viewer: "Read-only" } as Record<string, string>)[admin.role || ""] || (admin.level === "super" ? "Super admin" : "Read-only")}
                   {admin.via === "microsoft" ? " (Microsoft)" : ""}
                 </p>
               </div>

@@ -101,10 +101,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // ── App admin (APP_ADMIN_EMAILS ⊂ BACKOFFICE_ADMINS, password in admin_users) ──
-    // Signs the app in to admin mode: a super-admin token that can impersonate anyone and use /api/admin/*.
+    // ── App admin (any admin who can act: role super / investors / partners on the Admins page; password in admin_users) ──
+    // Signs the app in to admin mode; what it may do is the admin's role, read by the server on every call.
     // Checked first, so an admin email never falls through to the client lookup.
-    if (isAppAdmin(username)) {
+    if (await isAppAdmin(username)) {
       const { admin, error } = await checkAdminPassword(username, password || '')
       if (!admin) {
         logApp('login_failed', username, /too many/i.test(String(error)) ? 'locked' : 'wrong_password', 'admin', { via: 'app' })
@@ -115,11 +115,12 @@ export async function POST(request: NextRequest) {
       const payload: MobileAuthUser & { isAdmin: boolean; name: string } = {
         userId: 'admin:' + admin.email, email: admin.email, clientCode: 'ADMIN', clientId: 'admin',
         accountCodes: [], ownerIds: [], groupId: null as any, isHeadOfFamily: false, isSuperAdmin: true, isAdmin: true, name: admin.name,
-      }
+        adminRole: admin.role,
+      } as any
       const token = jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: '12h' })
       return NextResponse.json({
         token, expiresIn: 60 * 60 * 12,
-        user: { clientId: 'admin', clientCode: 'ADMIN', name: admin.name, email: admin.email, accountCodes: [], isHeadOfFamily: false, isSuperAdmin: true, isAdmin: true },
+        user: { clientId: 'admin', clientCode: 'ADMIN', name: admin.name, email: admin.email, accountCodes: [], isHeadOfFamily: false, isSuperAdmin: true, isAdmin: true, adminRole: admin.role },
       })
     }
 

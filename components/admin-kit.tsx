@@ -38,6 +38,8 @@ export interface BackofficeAdmin {
   email: string
   name: string
   level: "super" | "staff" | string
+  /** super = everything · investors / partners = that side only · viewer = read-only (Admins page) */
+  role?: "super" | "investors" | "partners" | "viewer" | string
   via?: string
 }
 

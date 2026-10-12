@@ -1,15 +1,16 @@
 // POST /api/admin/bo/users/reset-link { email } (super): emails the standard password reset link.
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdmin, audit } from '@/lib/adminAuth'
-import { normEmail, readJson, storedEmail } from '@/lib/adminUsers'
+import { requireAdmin, audit, canAct, forbidden } from '@/lib/adminAuth'
+import { normEmail, readJson, storedEmail, userTypeOf, scopeOfType, typeForRole } from '@/lib/adminUsers'
 import { sendPasswordResetLink } from '@/lib/passwordReset'
 
 export async function POST(req: NextRequest) {
-  const { admin, error } = await requireAdmin(req, 'super')
+  const { admin, error } = await requireAdmin(req, 'super', ['investors', 'partners'])
   if (error) return error
   const { body, error: bodyError } = await readJson(req)
   if (bodyError) return bodyError
   const email = normEmail(body.email)
+  { const t = email ? await userTypeOf(email) : null; if (t && !canAct(admin, scopeOfType(t))) return forbidden() }   // investors admins act on investors, partners admins on partners
   if (!email) return NextResponse.json({ error: 'email is required' }, { status: 400 })
   try {
     const stored = await storedEmail(email)

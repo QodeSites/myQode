@@ -294,3 +294,15 @@ export async function storedEmail(email: string): Promise<string | null> {
   )
   return r.rows[0]?.email ?? null
 }
+
+/** Investor or partner (distributor) login for an email, as the login picks it (an investor row wins), or null.
+ *  Decides which admins may act on it: 'investors' admins act on investors, 'partners' admins on partners. */
+export async function userTypeOf(email: string): Promise<UserType | null> {
+  const { query } = await import('@/lib/db')
+  const r = await query(`SELECT bool_and(clientcode IS NULL) AS dist FROM pms_clients_master WHERE lower(trim(email)) = $1`, [String(email).trim().toLowerCase()])
+  const d = r.rows[0]?.dist
+  return d == null ? null : d ? 'distributor' : 'investor'
+}
+export const scopeOfType = (t: UserType) => (t === 'distributor' ? 'partners' : 'investors') as 'partners' | 'investors'
+/** The user type a scoped admin is limited to: investors admins see investors, partners admins see partners. */
+export const typeForRole = (role: string): UserType | null => (role === 'investors' ? 'investor' : role === 'partners' ? 'distributor' : null)

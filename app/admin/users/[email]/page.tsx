@@ -136,26 +136,6 @@ export default function AdminUserDetailPage() {
   }, [load])
 
   // Open the tab synchronously (before the await) so popup blockers allow it.
-  const openPortal = async () => {
-    const win = window.open("about:blank", "_blank")
-    setBusy("portal")
-    try {
-      const res = await boFetch<{ redirectUrl: string }>("/api/admin/bo/impersonate", {
-        method: "POST",
-        json: { email, target: "portal" },
-      })
-      if (win) win.location.href = res.redirectUrl
-      else window.open(res.redirectUrl, "_blank")
-      toast.success("Opened the web portal as this user")
-      load()
-    } catch (e) {
-      win?.close()
-      toast.error(errorMessage(e))
-    } finally {
-      setBusy(null)
-    }
-  }
-
   const openApp = async () => {
     const win = window.open("about:blank", "_blank")
     setBusy("app")
@@ -167,8 +147,8 @@ export default function AdminUserDetailPage() {
       localStorage.setItem("myqode.token", res.token)
       if (win) win.location.href = "/app"
       else window.open("/app", "_blank")
-      toast.success("Opened the web app as this user", {
-        description: "This browser's web app session now belongs to this user until it expires or you sign out there.",
+      toast.success("Opened the dashboard as this user", {
+        description: "The new tab shows exactly what they see, for 4 hours or until you sign out there.",
       })
       load()
     } catch (e) {
@@ -288,17 +268,9 @@ export default function AdminUserDetailPage() {
           </div>
 
           <div className="flex max-w-[520px] flex-wrap justify-end gap-2">
-            <Button
-              onClick={openPortal}
-              disabled={busy !== null || !isSuper}
-              className="bg-[#02422B] text-white hover:bg-[#02422B]/90"
-            >
-              {busy === "portal" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
-              Open web portal as user
-            </Button>
-            <Button onClick={openApp} disabled={busy !== null || !isSuper} variant="outline" className="bg-white">
-              {busy === "app" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Smartphone className="h-4 w-4" />}
-              Open web app as user
+            <Button onClick={openApp} disabled={busy !== null || !isSuper} className="bg-[#02422B] text-white hover:bg-[#02422B]/90">
+              {busy === "app" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+              Open dashboard as {u.type === "distributor" ? "partner" : "investor"}
             </Button>
             <Button onClick={() => setPwOpen(true)} disabled={busy !== null || !isSuper} variant="outline" className="bg-white">
               <KeyRound className="h-4 w-4" />
@@ -329,7 +301,7 @@ export default function AdminUserDetailPage() {
         </div>
         {!isSuper ? (
           <p className="mt-4 text-xs text-muted-foreground">
-            Your staff access is read-only here. A super admin can manage passwords and open the portal as this user.
+            Your access is read-only here. An admin for this side can manage passwords and open the dashboard as this user.
           </p>
         ) : null}
       </section>

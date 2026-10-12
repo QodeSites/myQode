@@ -6,7 +6,7 @@ import crypto from 'crypto';
 import { graphMailer as resend } from '@/lib/graphEmail';
 
 export async function POST(request: NextRequest) {
-  const { admin, error: authError } = await requireAdmin(request, 'super')
+  const { admin, error: authError } = await requireAdmin(request, 'super', 'investors')
   if (authError) return authError
   try {
     const { clientCodes } = await request.json();

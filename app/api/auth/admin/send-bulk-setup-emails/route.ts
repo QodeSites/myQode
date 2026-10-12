@@ -6,7 +6,7 @@ import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 
 export async function POST(request: NextRequest) {
-  { const { error } = await requireAdmin(request as any, 'super'); if (error) return error; }   // admin-only (was open to anyone)
+  { const { error } = await requireAdmin(request as any, 'super', 'investors'); if (error) return error; }   // admin-only (was open to anyone)
   try {
     const { clientCodes } = await request.json();
 

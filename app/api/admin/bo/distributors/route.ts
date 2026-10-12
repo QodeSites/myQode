@@ -8,7 +8,7 @@ import { normEmail, passwordError, readJson } from '@/lib/adminUsers'
 import { query } from '@/lib/db'
 
 export async function POST(req: NextRequest) {
-  const { admin, error } = await requireAdmin(req, 'super')
+  const { admin, error } = await requireAdmin(req, 'super', 'partners')
   if (error) return error
   const { body, error: bodyError } = await readJson(req)
   if (bodyError) return bodyError
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const { admin, error } = await requireAdmin(req, 'super')
+  const { admin, error } = await requireAdmin(req, 'super', 'partners')
   if (error) return error
   const email = normEmail(req.nextUrl.searchParams.get('email'))
   if (!email) return NextResponse.json({ error: 'email is required' }, { status: 400 })

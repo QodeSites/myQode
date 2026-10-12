@@ -139,7 +139,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { admin, error } = await requireAdmin(req, 'super')
+  const { admin, error } = await requireAdmin(req, 'super', 'investors')
   if (error) return error
   let form: FormData
   try { form = await req.formData() } catch { return NextResponse.json({ error: 'Send the file as multipart form data' }, { status: 400 }) }
@@ -178,7 +178,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const { admin, error } = await requireAdmin(req, 'super')
+  const { admin, error } = await requireAdmin(req, 'super', 'investors')
   if (error) return error
   const key = req.nextUrl.searchParams.get('key') || ''
   if (!key.startsWith(ROOT) || key.includes('..') || key.endsWith('/')) return NextResponse.json({ error: 'Not a vault file' }, { status: 400 })

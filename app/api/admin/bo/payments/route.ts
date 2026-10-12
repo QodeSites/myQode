@@ -56,7 +56,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { admin, error } = await requireAdmin(req, 'super')
+  const { admin, error } = await requireAdmin(req, 'super', 'investors')
   if (error) return error
   let b: any = {}
   try { b = await req.json() } catch {}
@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const { admin, error } = await requireAdmin(req, 'super')
+  const { admin, error } = await requireAdmin(req, 'super', 'investors')
   if (error) return error
   const orderId = req.nextUrl.searchParams.get('orderId') || ''
   if (!orderId.startsWith('manual_')) return NextResponse.json({ error: 'Only recorded cheques and transfers can be cancelled here' }, { status: 400 })

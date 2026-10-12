@@ -24,7 +24,7 @@ export async function POST(request: NextRequest) {
 
     // Virtual accounts — always exist (not in DB), never require setup
     const VIRTUAL_ACCOUNTS = ['admin@qodeinvest.com', 'reviewer@qodeinvest.com']
-    if (VIRTUAL_ACCOUNTS.includes(identifier.trim().toLowerCase()) || isAppAdmin(identifier)) {
+    if (VIRTUAL_ACCOUNTS.includes(identifier.trim().toLowerCase()) || (await isAppAdmin(identifier))) {
       return NextResponse.json({ exists: true, requiresSetup: false })
     }
 

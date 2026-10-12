@@ -1,6 +1,6 @@
-// POST /api/admin/bo/admins/password { email, password } (super): sets a backoffice admin's password.
+// POST /api/admin/bo/admins/password { email, password } (super): sets an admin's password.
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdmin, audit, isBackofficeAdmin, setAdminPassword } from '@/lib/adminAuth'
+import { requireAdmin, audit, isAdminEmail, setAdminPassword } from '@/lib/adminAuth'
 import { normEmail, passwordError, readJson } from '@/lib/adminUsers'
 
 export async function POST(req: NextRequest) {
@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
   if (bodyError) return bodyError
   const email = normEmail(body.email)
   if (!email) return NextResponse.json({ error: 'email is required' }, { status: 400 })
-  if (!isBackofficeAdmin(email)) return NextResponse.json({ error: 'This email is not a backoffice admin', code: 'NOT_ADMIN' }, { status: 400 })
+  if (!(await isAdminEmail(email))) return NextResponse.json({ error: 'This email is not an admin. Add it on the Admins page first.', code: 'NOT_ADMIN' }, { status: 400 })
   const bad = passwordError(body.password)
   if (bad) return NextResponse.json({ error: bad, code: 'WEAK_PASSWORD' }, { status: 400 })
   try {
