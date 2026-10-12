@@ -60,12 +60,10 @@ async function fetchAll(): Promise<Map<string, InvestorCrmDetail>> {
   let offset = 0
 
   for (let page = 0; page < 50; page++) {
-    // Owner must be selected as dotted sub-fields. Selecting `Owner` alone
-    // returns an empty object in COQL (unlike the REST API, which returns
-    // `{name, id}`), so the RM silently came back null.
+    // Lookups (RM_Name) must be selected as dotted sub-fields: selecting the
+    // field alone returns an empty object in COQL.
     const rows = await coql(
-      `select Email, Activation_Date, Annual_Review_Status,
-              Owner.first_name, Owner.last_name
+      `select Email, Activation_Date, Annual_Review_Status, RM_Name.Name
          from Investors
         where Investor_Source = 'Distributor'
         limit ${offset}, ${PAGE}`,
@@ -78,10 +76,8 @@ async function fetchAll(): Promise<Map<string, InvestorCrmDetail>> {
       // so the reported detail is stable across refreshes.
       if (out.has(email)) continue
 
-      const rm = [r['Owner.first_name'], r['Owner.last_name']]
-        .filter(Boolean)
-        .join(' ')
-        .trim()
+      // RM 1 (RM_Name), as on the partner portal: the record Owner is Qode's partners desk, not the RM (12 Oct 2026).
+      const rm = String(r['RM_Name.Name'] ?? '').trim()
 
       out.set(email, {
         email,
@@ -112,8 +108,8 @@ export function clearInvestorCrmCache(): void {
 }
 
 // One investor's Relationship Manager, for the investor's own profile (app/api/mobile/experience/relationship-manager):
-// the owner of their Investors record, by email, whatever the investor's source: the name and the phone on the
-// owner's Zoho user (phone, else mobile). RM_PHONES fixes a number where Qode has given one. Cached per email for the
+// RM 1 (RM_Name: its name, phone and email) on their Investors record, by email; when RM 1 is blank, the record's
+// owner (the name and the phone on the owner's Zoho user, phone else mobile). RM_PHONES fixes a number where Qode has given one. Cached per email for the
 // same five minutes; name null when there is no record or no owner, phone null when none is on record.
 export type InvestorRm = { name: string | null; phone: string | null; email: string | null }
 const RM_PHONES: Record<string, string> = {
@@ -133,12 +129,22 @@ export async function getInvestorRm(email: string): Promise<InvestorRm> {
   const hit = rmCache.get(key)
   if (hit && hit.expiresAt > Date.now()) return hit.rm
   const safe = key.replace(/\\/g, '\\\\').replace(/'/g, "\\'")   // COQL string literal
-  const rows = await coql(`select Owner.first_name, Owner.last_name, Owner.phone, Owner.mobile, Owner.email from Investors where Email = '${safe}' limit 0, 5`)
-  const r = rows.find(x => x['Owner.first_name'] || x['Owner.last_name'])
-  const name = r ? [r['Owner.first_name'], r['Owner.last_name']].filter(Boolean).join(' ').trim() || null : null
-  const phone = name ? fmtPhone(RM_PHONES[name.toLowerCase()] || r['Owner.phone'] || r['Owner.mobile']) : null
-  const mail = name ? String(r['Owner.email'] || '').trim().toLowerCase() || null : null
-  const rm = { name, phone, email: mail }
+  const rows = await coql(`select Owner.first_name, Owner.last_name, Owner.phone, Owner.mobile, Owner.email,
+                                  RM_Name.Name, RM_Name.Email, RM_Name.Phone from Investors where Email = '${safe}' limit 0, 5`)
+  // RM 1 (RM_Name), filled in by ops, wins: for investors who came through a partner the record Owner is Qode's
+  // partners desk (Krutika), not their RM (12 Oct 2026). The Owner stays the fallback for direct clients.
+  const rm1 = rows.find(x => String(x['RM_Name.Name'] ?? '').trim())
+  let rm: InvestorRm
+  if (rm1) {
+    const name = String(rm1['RM_Name.Name']).trim()
+    rm = { name, phone: fmtPhone(RM_PHONES[name.toLowerCase()] || rm1['RM_Name.Phone']), email: String(rm1['RM_Name.Email'] || '').trim().toLowerCase() || null }
+  } else {
+    const r = rows.find(x => x['Owner.first_name'] || x['Owner.last_name'])
+    const name = r ? [r['Owner.first_name'], r['Owner.last_name']].filter(Boolean).join(' ').trim() || null : null
+    const phone = name ? fmtPhone(RM_PHONES[name.toLowerCase()] || r['Owner.phone'] || r['Owner.mobile']) : null
+    const mail = name ? String(r['Owner.email'] || '').trim().toLowerCase() || null : null
+    rm = { name, phone, email: mail }
+  }
   rmCache.set(key, { rm, expiresAt: Date.now() + CACHE_TTL_MS })
   return rm
 }
