@@ -25,7 +25,8 @@ export async function GET(request: NextRequest) {
              salutation, firstname, middlename, lastname,
              ownerid, head_of_family, onboarding_status, created_at
       FROM pms_clients_master`
-    const ACTIVE_FILTER = `(maturity_date IS NULL OR maturity_date > NOW())`
+    // Partner rows have no client code and can share an investor's email: leave them out.
+    const ACTIVE_FILTER = `(maturity_date IS NULL OR maturity_date > NOW()) AND COALESCE(clientcode, '') <> ''`
 
     let accountsResult
 
