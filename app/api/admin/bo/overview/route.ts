@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
   if (error) return error
 
   const [users, logins, daily, appVersions, topScreens, errors7, recentErrors, recentLogins, openQueries] = await Promise.all([
-    safe('users', userCounts, { investors: 0, distributors: 0, passwordSet: 0, needsSetup: 0, neverLoggedIn: 0, locked: 0 }),
+    safe('users', userCounts, { investors: 0, distributors: 0, passwordSet: 0, needsSetup: 0, neverLoggedIn: 0, locked: 0, byType: { investor: { passwordSet: 0, needsSetup: 0, neverLoggedIn: 0 }, distributor: { passwordSet: 0, needsSetup: 0, neverLoggedIn: 0 } } }),
 
     safe('logins', async () => {
       const r = (await query(`

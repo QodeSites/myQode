@@ -64,7 +64,16 @@ const LIMIT = 50
 const TYPES = ["all", "investor", "distributor"] as const
 const STATUSES = ["all", "needs-setup", "locked", "never"] as const
 
+// Grid (cards) by default; List keeps the old table. Remembered per browser.
+const VIEW_KEY = "admin.users.view"
+function useView(): ["grid" | "list", (v: "grid" | "list") => void] {
+  const [v, setV] = useState<"grid" | "list">("grid")
+  useEffect(() => { try { const x = localStorage.getItem(VIEW_KEY); if (x === "list" || x === "grid") setV(x) } catch {} }, [])
+  return [v, (x) => { setV(x); try { localStorage.setItem(VIEW_KEY, x) } catch {} }]
+}
+
 function UsersPageInner() {
+  const [view, setView] = useView()
   const router = useRouter()
   const pathname = usePathname()
   const params = useSearchParams()
@@ -137,7 +146,7 @@ function UsersPageInner() {
     <div className="space-y-5">
       <PageHeader
         title={title}
-        description="Search by name, email or client code. Select a row to manage the user."
+        description="Search by name, email or client code. Select a person to manage them."
         actions={
           <Button onClick={() => setNewOpen(true)} className="bg-[#02422B] text-white hover:bg-[#02422B]/90">
             <Plus className="h-4 w-4" />
@@ -175,11 +184,51 @@ function UsersPageInner() {
           </SelectContent>
         </Select>
         {loading && data ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
+        <div className="ml-auto flex rounded-md border border-[#02422B]/15 bg-white p-0.5" role="group" aria-label="Layout">
+          {(["grid", "list"] as const).map((v) => (
+            <button key={v} type="button" onClick={() => setView(v)} aria-pressed={view === v}
+              className={`rounded px-3 py-1 text-sm ${view === v ? "bg-[#02422B] text-white" : "text-[#002017] hover:bg-[#EFECD3]"}`}>
+              {v === "grid" ? "Grid" : "List"}
+            </button>
+          ))}
+        </div>
       </div>
 
       {error ? <ErrorNote message={error} onRetry={load} /> : null}
 
       <div className="overflow-hidden rounded-xl border border-[#02422B]/10 bg-[#F9F7EC] shadow-sm">
+        {view === "grid" ? (
+          <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+            {loading && !data
+              ? Array.from({ length: 12 }).map((_, i) => <Skeleton key={i} className="h-[148px] rounded-xl" />)
+              : data?.items.map((u) => (
+                  <button key={u.email} type="button" onClick={() => openUser(u.email)}
+                    className="flex min-w-0 flex-col gap-3 rounded-xl border border-[#02422B]/10 bg-white p-4 text-left shadow-sm transition-colors hover:border-[#02422B]/30 hover:bg-[#EFECD3]/30 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#02422B]">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate font-medium text-[#002017]">{u.name || u.email}</p>
+                        <p className="truncate text-xs text-muted-foreground">{u.email}</p>
+                      </div>
+                      <TypePill type={u.type} />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <PasswordStatusPill passwordSet={u.passwordSet} needsSetup={u.needsSetup} locked={u.locked} />
+                      <span className="truncate text-xs text-muted-foreground">
+                        {u.type === "distributor"
+                          ? `${fmtNum(u.clientCount ?? 0)} ${u.clientCount === 1 ? "investor" : "investors"}`
+                          : u.clientCodes?.length
+                            ? `${u.clientCodes.slice(0, 3).join(", ")}${u.clientCodes.length > 3 ? ` +${u.clientCodes.length - 3}` : ""}`
+                            : "No accounts"}
+                      </span>
+                    </div>
+                    <div className="mt-auto flex items-end justify-between gap-2 border-t border-[#02422B]/10 pt-2 text-xs">
+                      <span className="text-muted-foreground">Last sign-in <span className="text-[#002017]">{fmtRelative(u.lastLoginAt)}</span></span>
+                      <span className="tabular-nums text-muted-foreground"><span className="font-semibold text-[#002017]">{fmtNum(u.loginCount)}</span> ({fmtNum(u.webLogins)} web, {fmtNum(u.appLogins)} app)</span>
+                    </div>
+                  </button>
+                ))}
+          </div>
+        ) : (
         <Table>
           <TableHeader>
             <TableRow className="bg-[#EFECD3]/60 hover:bg-[#EFECD3]/60">
@@ -252,6 +301,7 @@ function UsersPageInner() {
                 ))}
           </TableBody>
         </Table>
+        )}
         {!loading && data && data.items.length === 0 ? (
           <EmptyState
             icon={<Users className="h-5 w-5" />}

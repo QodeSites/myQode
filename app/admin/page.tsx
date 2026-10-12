@@ -42,6 +42,7 @@ import {
 
 interface Overview {
   users: {
+    byType?: Record<"investor" | "distributor", { passwordSet: number; needsSetup: number; neverLoggedIn: number }>
     investors: number
     distributors: number
     passwordSet: number
@@ -154,14 +155,14 @@ function OverviewBody({ data }: { data: Overview }) {
           <KpiCard
             label="Password set"
             value={fmtNum(u.passwordSet)}
-            hint={`${pct(u.passwordSet, totalUsers)} of all users`}
+            hint={u.byType ? `${fmtNum(u.byType.investor.passwordSet)} investors · ${fmtNum(u.byType.distributor.passwordSet)} distributors` : `${pct(u.passwordSet, totalUsers)} of all users`}
             icon={<KeyRound className="h-4 w-4" />}
           />
           <Link href="/admin/users?status=needs-setup" className="block">
-            <KpiCard label="Needs setup" value={fmtNum(u.needsSetup)} hint="No password yet" />
+            <KpiCard label="No password yet" value={fmtNum(u.needsSetup)} hint={u.byType ? `${fmtNum(u.byType.investor.needsSetup)} investors · ${fmtNum(u.byType.distributor.needsSetup)} distributors` : "No password yet"} />
           </Link>
           <Link href="/admin/users?status=never" className="block">
-            <KpiCard label="Never logged in" value={fmtNum(u.neverLoggedIn)} icon={<UserX className="h-4 w-4" />} />
+            <KpiCard label="Never logged in" value={fmtNum(u.neverLoggedIn)} hint={u.byType ? `${fmtNum(u.byType.investor.neverLoggedIn)} investors · ${fmtNum(u.byType.distributor.neverLoggedIn)} distributors` : undefined} icon={<UserX className="h-4 w-4" />} />
           </Link>
           <Link href="/admin/users?status=locked" className="block">
             <KpiCard label="Locked" value={fmtNum(u.locked)} icon={<Lock className="h-4 w-4" />} />

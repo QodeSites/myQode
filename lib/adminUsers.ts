@@ -183,12 +183,23 @@ export async function userCounts() {
            count(*) FILTER (WHERE password_set)::int AS password_set,
            count(*) FILTER (WHERE NOT password_set)::int AS needs_setup,
            count(*) FILTER (WHERE last_login_at IS NULL)::int AS never_logged_in,
-           count(*) FILTER (WHERE locked)::int AS locked
+           count(*) FILTER (WHERE locked)::int AS locked,
+           count(*) FILTER (WHERE password_set AND NOT is_distributor)::int AS password_set_inv,
+           count(*) FILTER (WHERE password_set AND is_distributor)::int AS password_set_dist,
+           count(*) FILTER (WHERE NOT password_set AND NOT is_distributor)::int AS needs_setup_inv,
+           count(*) FILTER (WHERE NOT password_set AND is_distributor)::int AS needs_setup_dist,
+           count(*) FILTER (WHERE last_login_at IS NULL AND NOT is_distributor)::int AS never_inv,
+           count(*) FILTER (WHERE last_login_at IS NULL AND is_distributor)::int AS never_dist
       FROM u`)
   const c = r.rows[0] || {}
   return {
     investors: c.investors ?? 0, distributors: c.distributors ?? 0, passwordSet: c.password_set ?? 0,
     needsSetup: c.needs_setup ?? 0, neverLoggedIn: c.never_logged_in ?? 0, locked: c.locked ?? 0,
+    // the same counts split investors / distributors (Overview shows both, 12 Oct 2026)
+    byType: {
+      investor: { passwordSet: c.password_set_inv ?? 0, needsSetup: c.needs_setup_inv ?? 0, neverLoggedIn: c.never_inv ?? 0 },
+      distributor: { passwordSet: c.password_set_dist ?? 0, needsSetup: c.needs_setup_dist ?? 0, neverLoggedIn: c.never_dist ?? 0 },
+    },
   }
 }
 
