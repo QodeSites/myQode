@@ -17,6 +17,8 @@ export interface InvestorFeeTerms {
   /** Lowercased email — the join key against pms_clients_master. */
   email: string
   name: string | null
+  /** Legal_Name: the account holder when the CRM contact is someone else. */
+  legalName?: string | null
 
   /** Contractual rack rate fixed fee %, per the signed agreement. */
   rackFixedFeePct: number | null
@@ -135,7 +137,7 @@ async function fetchAll(): Promise<Map<string, InvestorFeeTerms>> {
     // REST API, which returns `{name, id}`) — every row silently came back
     // with no distributor attached.
     const rows = await coql(
-      `select Email, Name,
+      `select Email, Name, Legal_Name,
               Rack_Rate_Fixed_Fee, Rack_Rate_Performance_Fee, Rack_Rate_Hurdle,
               Actual_Fee_Charged, Fee_Discount_Applied, Fees_Structure,
               Discounted_Fixed_Fee, Discounted_Performance_Fee,
@@ -161,6 +163,7 @@ async function fetchAll(): Promise<Map<string, InvestorFeeTerms>> {
       const terms: InvestorFeeTerms = {
         email,
         name: r.Name ?? null,
+        legalName: r.Legal_Name ?? null,
         rackFixedFeePct: toPct(r.Rack_Rate_Fixed_Fee),
         rackPerfFeePct: toPct(r.Rack_Rate_Performance_Fee),
         hurdlePct: toPct(r.Rack_Rate_Hurdle),
@@ -192,6 +195,10 @@ async function fetchAll(): Promise<Map<string, InvestorFeeTerms>> {
       // could never override a good email match.
       const nameKey = nameJoinKey(r.Name)
       if (nameKey && !out.has(nameKey)) out.set(nameKey, terms)
+      // And on the Legal Name: the account holder, when the CRM contact (Name, Email) is someone else in the family.
+      // Minakshi Dewan's record is Name "Sourabh Lohtia", Legal_Name "Minakshi Dewan", with his email (12 Oct 2026).
+      const legalKey = nameJoinKey(r.Legal_Name)
+      if (legalKey && !out.has(legalKey)) out.set(legalKey, terms)
     }
 
     if (rows.length < PAGE) break
@@ -244,7 +251,7 @@ export function lookupInvestorTerms(
   const words = wordSet(name)
   if (!words) return undefined
   const hits = new Set<InvestorFeeTerms>()
-  for (const v of terms.values()) if (wordSet(v.name) === words) hits.add(v)
+  for (const v of terms.values()) if (wordSet(v.name) === words || wordSet(v.legalName) === words) hits.add(v)
   return hits.size === 1 ? [...hits][0] : undefined
 }
 
