@@ -96,8 +96,35 @@ export async function POST(req: Request) {
     return Number.isFinite(n) ? n : 0
   }
 
+  // The period an invoice bills (12 Oct 2026). On 9 Oct a partner raised two invoices for the whole of FY 2027
+  // (Apr 2026 – Mar 2027): a year not yet over, including a quarter already invoiced and paid, twice in a minute.
+  // Now: the period must be given, must have ended, and must not overlap any invoice the partner already raised.
+  const isDay = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(Date.parse(v))
+  const periodStart = String(body.periodStart ?? ''), periodEnd = String(body.periodEnd ?? '')
+  if (!isDay(periodStart) || !isDay(periodEnd) || periodStart > periodEnd) {
+    return NextResponse.json({ error: 'Choose the period this invoice is for.' }, { status: 400 })
+  }
+  const todayIst = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)
+  if (periodEnd >= todayIst) {
+    return NextResponse.json({
+      error: `${periodLabel} is not over yet (it ends ${periodEnd}). Invoice a period once it has ended, for example the last completed quarter.`,
+      code: 'PERIOD_NOT_ENDED',
+    }, { status: 400 })
+  }
+
   try {
     await ensureInvoiceStatus()
+    const clash = (await query(
+      `SELECT invoice_number, period_label, period_start, period_end FROM distributor_invoice_issued
+        WHERE distributor_email = $1 AND period_start IS NOT NULL AND period_end IS NOT NULL
+          AND period_start <= $3::date AND period_end >= $2::date
+        ORDER BY period_start LIMIT 1`, [email, periodStart, periodEnd])).rows[0]
+    if (clash) {
+      return NextResponse.json({
+        error: `This period overlaps invoice ${clash.invoice_number} (${clash.period_label}), which you have already raised. Each period can be invoiced once; choose a period that has not been invoiced.`,
+        code: 'PERIOD_ALREADY_INVOICED',
+      }, { status: 409 })
+    }
     const ins = await query(
       `INSERT INTO distributor_invoice_issued (
          distributor_email, invoice_number, invoice_date, period_label,
@@ -108,8 +135,8 @@ export async function POST(req: Request) {
         invoiceNumber,
         invoiceDate,
         periodLabel,
-        body.periodStart || null,
-        body.periodEnd || null,
+        periodStart,
+        periodEnd,
         num(body.amountBeforeTax),
         num(body.taxAmount),
         num(body.totalAmount),
