@@ -4,6 +4,8 @@ import { internalMailHeaders } from '@/lib/webSession'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import { sendClientAck, clientName } from '@/lib/mobileAckMail'
+import { raiseDeskTicket } from '@/lib/zohoDesk'
+import { requestChannel } from '@/lib/requestChannel'
 import { irRecipient, irSubject } from '@/lib/mobileIrMail'
 
 export async function POST(request: NextRequest) {
@@ -59,6 +61,14 @@ export async function POST(request: NextRequest) {
         </div>
       </div>`
 
+    // Zoho Desk ticket (lib/zohoDesk.ts), with the referring client as its contact; null when Desk is not set up here
+    // or refused — the referral carries on by email.
+    const desk = await raiseDeskTicket({
+      channel: requestChannel(request),
+      kind: 'referral', subject: `Referral of ${String(name).trim()} from ${accountId}`, email: user!.email, name: await clientName(user!.email), accountId,
+      fields: [['Referred investor', String(name).trim()], ['Referred email', String(email).trim()], ['Referred mobile', String(phone).trim()], ['Note', description ? String(description).trim() : null]],
+    })
+
     const emailRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL?.trim() || 'http://localhost:2069'}/api/send-email`, {
       method: 'POST',
       headers: internalMailHeaders(user?.email),
@@ -69,6 +79,7 @@ export async function POST(request: NextRequest) {
         from: 'investor.relations@qodeinvest.com',
         fromName: 'Qode Investor Relations',
         inquiry_type: 'investor_referral',
+        desk_ticket: desk?.ticketNumber ?? null,
         nuvama_code: accountId,
         client_id: user!.clientId,
         user_email: user!.email,
@@ -87,13 +98,13 @@ export async function POST(request: NextRequest) {
 
     // Acknowledgement to the investor (IR got its own notification above).
     await sendClientAck({
-      to: user!.email, name: await clientName(user!.email), reference: emailData.inquiry_id,
+      to: user!.email, name: await clientName(user!.email), reference: desk ? `#${desk.ticketNumber}` : emailData.inquiry_id,
       subject: 'We’ve received your referral', title: 'Referral received',
       intro: `Thank you for referring ${String(name).trim()} to Qode. We’ve received the details below from the myQode app.`,
       details: [['Referred investor', name], ['Email', email], ['Mobile', phone], ['Note', description], ['Your account', accountId]],
       next: 'Our Investor Relations team will reach out to them and keep you posted. You do not need to send this again.',
     })
-    return NextResponse.json({ success: true, inquiry_id: emailData.inquiry_id })
+    return NextResponse.json({ success: true, inquiry_id: emailData.inquiry_id, ticket: desk?.ticketNumber ?? null })
   } catch (err) {
     console.error('[mobile/engagement/referral]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

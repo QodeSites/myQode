@@ -3,6 +3,7 @@
 // Creates a Razorpay order, records it in payment_transactions (gateway = 'razorpay') and returns what the
 // app needs to open Razorpay Checkout: a hosted checkout URL (for a WebView) plus the raw order details.
 import { NextRequest, NextResponse } from 'next/server'
+import { requestChannel } from '@/lib/requestChannel'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
 import { razorpayConfig, createRazorpayOrder, checkoutToken, checkoutContact } from '@/lib/razorpay'
@@ -58,6 +59,7 @@ export async function POST(request: NextRequest) {
 
     const receipt = `qode_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     const rzOrder: any = await createRazorpayOrder(amount, receipt, {
+      channel: requestChannel(request) || '',   // Web / App, read back for the Zoho Desk ticket (lib/mobileIrMail.ts)
       nuvama_code: accountId, client_id: String(client.clientid ?? '').replace(/\.0+$/, ''),   // the db stores '14410854.0'; Razorpay shows it as typed order_type: 'one_time', source: 'qode_mobile_app',
     })
 
