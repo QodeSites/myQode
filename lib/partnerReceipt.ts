@@ -24,6 +24,8 @@ export const receiptNumber = (inv: ReceiptInvoice) => {
 export function receiptHtml(inv: ReceiptInvoice): string {
   const E = QODE_ENTITY
   const payee = inv.legalName || inv.partnerName || inv.partnerEmail
+  // Account numbers masked to the last 4, as the bank's own advice prints them.
+  const bank = inv.bank ? inv.bank.replace(/A\/c\s*(\S+)/, (_, n: string) => 'A/c ' + 'X'.repeat(Math.max(0, n.length - 4)) + n.slice(-4)) : null
   const diff = inv.paidAmount != null ? Math.round((inv.totalAmount - inv.paidAmount) * 100) / 100 : 0
   const row = (k: string, v: string) => `<tr><td class="k">${k}</td><td class="v">${v}</td></tr>`
   return `<!doctype html><html><head><meta charset="utf-8"><title>Payment receipt ${esc(receiptNumber(inv))}</title>
@@ -55,7 +57,7 @@ export function receiptHtml(inv: ReceiptInvoice): string {
     ${esc(E.addressLine1)}<br>${esc(E.addressLine2)}<br>${esc(E.city)}, ${esc(E.state)} ${esc(E.pincode)}<br>
     GSTIN ${esc(E.gstin)} · PAN ${esc(E.pan)}<br>SEBI PMS ${esc(E.sebiRegistration)}</div>
   <div class="panel"><div class="lab">Paid to</div><div class="nm">${esc(payee)}</div>
-    ${inv.gstin ? `GSTIN ${esc(inv.gstin)}<br>` : ''}${inv.pan ? `PAN ${esc(inv.pan)}<br>` : ''}${esc(inv.partnerEmail)}${inv.bank ? `<br>${esc(inv.bank)}` : ''}</div>
+    ${inv.gstin ? `GSTIN ${esc(inv.gstin)}<br>` : ''}${inv.pan ? `PAN ${esc(inv.pan)}<br>` : ''}${esc(inv.partnerEmail)}${bank ? `<br>${esc(bank)}` : ''}</div>
 </div>
 <div class="amt"><div><div class="lab" style="margin:0">Amount paid</div>${inv.paymentRef ? `Reference / UTR: <b>${esc(inv.paymentRef)}</b>` : ''}</div><div class="big">${inr(inv.paidAmount)}</div></div>
 <h3>Against invoice</h3>
