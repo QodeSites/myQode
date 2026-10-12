@@ -98,6 +98,7 @@ export default function PartnerInvoicesPage() {
                       {r.status === "paid" ? <><div>{fmtDate(r.paidOn)} · {inr(r.paidAmount)}</div><div className="text-muted-foreground">UTR {r.paymentRef}</div></>
                         : r.paymentNote ? <span className="text-muted-foreground">{r.paymentNote}</span> : <span className="text-muted-foreground">–</span>}
                       {r.hasProof && <a className="mt-0.5 flex items-center gap-1 text-[#02422B] underline" href={fileLink(r.id, "proof")} target="_blank" rel="noreferrer"><Paperclip className="h-3 w-3" />Proof</a>}
+                      {r.status === "paid" && <a className="mt-0.5 flex items-center gap-1 text-[#02422B] underline" href={`/api/admin/bo/partner-invoices?receipt=${r.id}`} target="_blank" rel="noreferrer"><Paperclip className="h-3 w-3" />Receipt</a>}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-1.5">

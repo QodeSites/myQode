@@ -2,9 +2,11 @@
 //
 // GET  (staff)                     → { invoices: [...], totals }
 // GET  (staff)  ?file=<id>&kind=invoice|proof   → redirect to a short-lived link to the invoice document / payment proof
+// GET  (staff)  ?receipt=<id>                    → Qode's payment receipt for a paid invoice (HTML; save as PDF). No email.
 // POST (super)  multipart: id, status (unpaid | on_hold | paid), [paidOn, paidAmount, paymentRef, note, file, notify=1]
 //               Paid needs paidOn, paidAmount and paymentRef; the partner is emailed (lib/partnerInvoiceMail) unless
 //               notify=0. testTo=<email> sends that email to that address only and changes nothing.
+import { receiptHtml } from '@/lib/partnerReceipt'
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import { requireAdmin, audit } from '@/lib/adminAuth'
@@ -43,6 +45,14 @@ export async function GET(req: NextRequest) {
   if (error) return error
   try {
     await ensureInvoiceStatus()
+    const receiptId = Number(req.nextUrl.searchParams.get('receipt') || 0)
+    if (receiptId) {
+      const r = (await query(`${SELECT} WHERE i.id = $1`, [receiptId])).rows[0]
+      if (!r) return NextResponse.json({ error: 'Invoice not found' }, { status: 404 })
+      const v = view(r)
+      if (v.status !== 'paid') return NextResponse.json({ error: 'A receipt is only for a paid invoice' }, { status: 400 })
+      return new NextResponse(receiptHtml(v), { headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } })
+    }
     const fileId = req.nextUrl.searchParams.get('file')
     if (fileId) {
       const kind = req.nextUrl.searchParams.get('kind') === 'proof' ? 'proof' : 'invoice'
