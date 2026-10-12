@@ -31,6 +31,9 @@ const STRATS = ['QAW', 'QTF', 'QGF', 'QLF'] as const   // Qode Liquid Fund: swit
 type Strat = typeof STRATS[number]
 const n = (v: unknown) => { const x = Number(String(v ?? '').replace(/[^\d.-]/g, '')); return isFinite(x) ? x : 0 }
 const rs = (v: number) => 'Rs.' + v.toLocaleString('en-IN', { maximumFractionDigits: 2 })
+// Money to the paisa: Zoho's currency fields refuse more decimals ("invalid data"), and the app's split arithmetic
+// (total − the others) gives values like 1258837.8300000001 (12 Oct 2026: one strategy into two failed with 502).
+const r2 = (v: number) => Math.round(v * 100) / 100
 const IS_PROD = process.env.NODE_ENV === 'production'
 const LIVE = IS_PROD || process.env.SWITCH_REQUEST_LIVE === '1'   // create the CRM record?
 const DRY_RUN = !LIVE
@@ -44,7 +47,17 @@ async function zoho(path: string, init?: RequestInit) {
   }, { write: writes })
   if (res.status === 204) return null
   const body: any = await res.json().catch(() => null)
-  if (!res.ok) throw new Error(body?.message || body?.data?.[0]?.message || `Zoho ${path} failed (${res.status})`)
+  if (!res.ok) {
+    console.error('[switch-request] Zoho refused', path, JSON.stringify(body?.data?.[0] || body).slice(0, 500))
+    const d = body?.data?.[0]
+    throw new Error((d?.message || body?.message || `Zoho ${path} failed (${res.status})`) + (d?.details?.api_name ? ` (${d.details.api_name})` : ''))
+  }
+  // A create that Zoho accepts as a call but refuses for the record comes back 2xx with data[0].status 'error'.
+  const d0 = body?.data?.[0]
+  if (writes && d0 && d0.status === 'error') {
+    console.error('[switch-request] Zoho refused the record', JSON.stringify(d0).slice(0, 500))
+    throw new Error((d0.message || 'invalid data') + (d0.details?.api_name ? ` (${d0.details.api_name})` : ''))
+  }
   return body
 }
 
@@ -59,14 +72,14 @@ async function findInvestors(email: string): Promise<any[]> {
 // Pending requests per investor id — one Zoho call for the whole family (criteria OR), not one per member — each
 // with the strategies it moves out of and into (Full: the Full_Switch_From/To ticks; Partial: non-zero amounts).
 const PENDING_FIELDS = ['Investor_Name', 'Status', 'Request_Date', 'Switch_Type',
-  ...STRATS.flatMap((s) => [`Full_Switch_From_${s}`, `Full_Switch_To_${s}`, `${s}_From_Amount`, `${s}_To_Amount`])].join(',')
+  ...STRATS.flatMap((s) => [`Full_Switch_From_${s}`, `${s}_From_Amount`, `${s}_To_Amount`])].join(',')
 type Pending = { requestDate: string | null; switchType: string | null; from: Strat[]; to: Strat[] }
 const pendingView = (r: any): Pending => {
   const full = String(r.Switch_Type || '') === 'Full Switch'
   return {
     requestDate: r.Request_Date || null, switchType: r.Switch_Type || null,
     from: STRATS.filter((s) => (full ? r[`Full_Switch_From_${s}`] === true : n(r[`${s}_From_Amount`]) > 0)),
-    to: STRATS.filter((s) => (full ? r[`Full_Switch_To_${s}`] === true : n(r[`${s}_To_Amount`]) > 0)),
+    to: STRATS.filter((s) => n(r[`${s}_To_Amount`]) > 0),   // Zoho has no Full_Switch_To_* fields any more (12 Oct 2026)
   }
 }
 async function pendingRequests(investorIds: string[]): Promise<Record<string, Pending[]>> {
@@ -84,10 +97,10 @@ async function pendingRequests(investorIds: string[]): Promise<Record<string, Pe
 // Investor Relations email for a switch request — the web's account-services page sends this same
 // "New Switch/Reallocation Request" to IR (inquiry_type 'switch'). Sent in production, or on a dev server when
 // MOBILE_IR_EMAIL_OVERRIDE points it at the testers; never from a dev server to the real IR inbox.
-async function emailIrSwitch(user: any, view: any, isFull: boolean, fromList: string[], toList: string[], fromAmt: (s: any) => number, toAmt: (s: any) => number, requestId: string | null, dryRun: boolean) {
+async function emailIrSwitch(user: any, view: any, isFull: boolean, fromList: string[], toList: string[], fromAmt: (s: any) => number, toAmt: (s: any) => number, requestId: string | null, dryRun: boolean, splitNote = '') {
   if (!IS_PROD && !(process.env.MOBILE_IR_EMAIL_OVERRIDE || '').trim()) return
   const rows = isFull
-    ? `<p><strong>Switch From:</strong> ${fromList.join(', ')}</p><p><strong>Switch To:</strong> ${toList.join(', ')}</p>`
+    ? `<p><strong>Switch From:</strong> ${fromList.join(', ')} (everything)</p><p><strong>Switch To:</strong> ${toList.map((s) => `${s} ${rs(toAmt(s))}`).join(', ')}</p>${splitNote ? `<p><strong>Note:</strong> ${splitNote}</p>` : ''}`
     : `<p><strong>Moving out:</strong> ${fromList.map((s) => `${s} ${rs(fromAmt(s))}`).join(', ')}</p><p><strong>Moving in:</strong> ${toList.map((s) => `${s} ${rs(toAmt(s))}`).join(', ')}</p>`
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#EFECD3">
@@ -155,8 +168,10 @@ export async function POST(request: NextRequest) {
   const isFull = String(body?.switchType || '') === 'Full Switch'
   const fromList: Strat[] = STRATS.filter((s) => (isFull ? (body?.from || []).includes(s) : n(body?.fromAmounts?.[s]) > 0))
   const toList: Strat[] = STRATS.filter((s) => (isFull ? (body?.to || []).includes(s) : n(body?.toAmounts?.[s]) > 0))
-  const fromAmt = (s: Strat) => (isFull ? 0 : n(body?.fromAmounts?.[s]))
-  const toAmt = (s: Strat) => (isFull ? 0 : n(body?.toAmounts?.[s]))
+  const fromAmt = (s: Strat) => (isFull ? 0 : r2(n(body?.fromAmounts?.[s])))
+  // Full: the To amounts are set once the invested values are known (below); Partial: as sent, to the paisa.
+  let toAmt = (s: Strat) => (isFull ? 0 : r2(n(body?.toAmounts?.[s])))
+  let splitNote = ''
 
   // validate_no_overlap_from_to
   const overlap = STRATS.filter((s) => fromList.includes(s) && toList.includes(s))
@@ -166,8 +181,14 @@ export async function POST(request: NextRequest) {
 
   // validate_switch_amounts_balance (Partial only)
   if (!isFull) {
-    const totalFrom = fromList.reduce((t, s) => t + fromAmt(s), 0)
-    const totalTo = toList.reduce((t, s) => t + toAmt(s), 0)
+    const totalFrom = r2(fromList.reduce((t, s) => t + fromAmt(s), 0))
+    let totalTo = r2(toList.reduce((t, s) => t + toAmt(s), 0))
+    // Rounding to the paisa can leave a paisa or two between the sides: the last To amount takes it.
+    if (totalFrom !== totalTo && Math.abs(totalFrom - totalTo) <= 0.05 && toList.length) {
+      const last = toList[toList.length - 1], fixed = r2(totalFrom - toList.slice(0, -1).reduce((t, s) => t + toAmt(s), 0)), prev = toAmt
+      toAmt = (s: Strat) => (s === last ? fixed : prev(s))
+      totalTo = r2(toList.reduce((t, s) => t + toAmt(s), 0))
+    }
     if (Math.abs(totalFrom - totalTo) > 0.005) {
       return NextResponse.json({ error: `The total amount moving out (${rs(totalFrom)}) must equal the total amount moving in (${rs(totalTo)}).` }, { status: 400 })
     }
@@ -203,6 +224,27 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Full Switch (12 Oct 2026): Zoho now needs the To amounts on a full switch too — they must add up to everything
+    // moving out (the From strategies' invested values) or its workflow rejects the request. The investor's own split
+    // is used when the app sends one; one target takes it all; several targets with no split are shared equally,
+    // which IR is told to confirm with the investor.
+    if (isFull) {
+      const total = r2(fromList.reduce((t, s) => t + (view.invested[s] || 0), 0))
+      const sent = toList.map((s) => r2(n(body?.toAmounts?.[s])))
+      const amounts: Record<string, number> = {}
+      if (toList.length === 1) amounts[toList[0]] = total
+      else if (sent.every((x) => x > 0) && Math.abs(sent.reduce((a, b) => a + b, 0) - total) <= 1) {
+        toList.forEach((s, i) => { amounts[s] = sent[i] })
+        amounts[toList[toList.length - 1]] = r2(total - toList.slice(0, -1).reduce((t, s) => t + amounts[s], 0))
+      } else {
+        const each = r2(total / toList.length)
+        toList.forEach((s) => { amounts[s] = each })
+        amounts[toList[toList.length - 1]] = r2(total - each * (toList.length - 1))
+        splitNote = 'Split equally between the strategies moving in; please confirm the split with the investor.'
+      }
+      toAmt = (s: Strat) => amounts[s] || 0
+    }
+
     const record: Record<string, unknown> = {
       Investor_Name: { id: investorId },
       Request_Date: new Date().toISOString().slice(0, 10),
@@ -212,14 +254,14 @@ export async function POST(request: NextRequest) {
       ...(inv.Owner?.id ? { Owner: { id: String(inv.Owner.id) } } : {}),
     }
     if (isFull) {
-      STRATS.forEach((s) => { record[`Full_Switch_From_${s}`] = fromList.includes(s); record[`Full_Switch_To_${s}`] = toList.includes(s) })
+      STRATS.forEach((s) => { record[`Full_Switch_From_${s}`] = fromList.includes(s); record[`${s}_To_Amount`] = toAmt(s) })
     } else {
       STRATS.forEach((s) => { record[`${s}_From_Amount`] = fromAmt(s); record[`${s}_To_Amount`] = toAmt(s) })
     }
 
     if (DRY_RUN) {
       console.log('[mobile/services/switch-request] DRY RUN (not production) — would create:', JSON.stringify(record))
-      await emailIrSwitch(user, view, isFull, fromList, toList, fromAmt, toAmt, null, true)
+      await emailIrSwitch(user, view, isFull, fromList, toList, fromAmt, toAmt, null, true, splitNote)
     await sendClientAck({
       to: user!.email, name: view.legalName, reference: null,
       subject: 'We’ve received your switch request', title: 'Switch request received',
@@ -242,7 +284,7 @@ export async function POST(request: NextRequest) {
     const created = await zoho('Strategy_Switch_Requests', { method: 'POST', body: JSON.stringify({ data: [record], trigger }) })
     const id = created?.data?.[0]?.details?.id ?? null
     if (!id) throw new Error(created?.data?.[0]?.message || 'Zoho did not return a record id')
-    await emailIrSwitch(user, view, isFull, fromList, toList, fromAmt, toAmt, String(id), false)
+    await emailIrSwitch(user, view, isFull, fromList, toList, fromAmt, toAmt, String(id), false, splitNote)
     await sendClientAck({
       to: user!.email, name: view.legalName, reference: String(id),
       subject: 'We’ve received your switch request', title: 'Switch request received',
