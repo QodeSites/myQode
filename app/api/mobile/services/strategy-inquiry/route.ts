@@ -4,6 +4,8 @@ import { internalMailHeaders } from '@/lib/webSession'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import { sendClientAck, clientName } from '@/lib/mobileAckMail'
+import { raiseDeskTicket } from '@/lib/zohoDesk'
+import { requestChannel } from '@/lib/requestChannel'
 import { irRecipient, irSubject } from '@/lib/mobileIrMail'
 
 export async function POST(request: NextRequest) {
@@ -46,6 +48,13 @@ export async function POST(request: NextRequest) {
         </div>
       </div>`
 
+    // Zoho Desk ticket (lib/zohoDesk.ts); null when Desk is not set up here or refused — the request carries on by email.
+    const desk = await raiseDeskTicket({
+      channel: requestChannel(request),
+      kind: 'strategy', subject: `Strategy question from ${accountId}`, email: user!.email, name: await clientName(user!.email), accountId,
+      fields: [['Investor ID', user!.clientId], ['Question', String(question).trim()]],
+    })
+
     const emailRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL?.trim() || 'http://localhost:2069'}/api/send-email`, {
       method: 'POST',
       headers: internalMailHeaders(user?.email),
@@ -56,6 +65,7 @@ export async function POST(request: NextRequest) {
         from: 'investor.relations@qodeinvest.com',
         fromName: 'Qode Investor Relations',
         inquiry_type: 'strategy',
+        desk_ticket: desk?.ticketNumber ?? null,
         nuvama_code: accountId,
         client_id: user!.clientId,
         user_email: user!.email,
@@ -69,12 +79,12 @@ export async function POST(request: NextRequest) {
 
     // Acknowledgement to the investor (IR got its own notification above).
     await sendClientAck({
-      to: user!.email, name: await clientName(user!.email), reference: emailData.inquiry_id,
+      to: user!.email, name: await clientName(user!.email), reference: desk ? `#${desk.ticketNumber}` : emailData.inquiry_id,
       subject: 'We’ve received your question', title: 'Question received',
       intro: 'We’ve received your question for the investment team, raised from the myQode app.',
       details: [['Account', accountId], ['Your question', question]],
     })
-    return NextResponse.json({ success: true, inquiry_id: emailData.inquiry_id })
+    return NextResponse.json({ success: true, inquiry_id: emailData.inquiry_id, ticket: desk?.ticketNumber ?? null })
   } catch (err) {
     console.error('[mobile/services/strategy-inquiry]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

@@ -1,0 +1,138 @@
+// Zoho Desk tickets for requests raised in the myQode app and web (decided 12 Oct 2026):
+//   Add Funds (payment or SIP confirmed), Ask About a Strategy, Book a Discussion, Raise Family Request,
+//   Raise Account Request, Referral Program. (Strategy switches go to Zoho CRM Switch Plans: lib/switchPlan.ts.)
+//
+// One ticket per request, in the Desk department set below, with the client as the ticket's contact (Desk finds the
+// contact by email, or creates it). The Investor Relations email and the client's acknowledgement still go out as
+// before; the acknowledgement quotes the ticket number. A Desk failure never fails the request: it is logged and the
+// request carries on by email alone.
+//
+// Setup (once): node scripts/zoho-desk-token.js <Self Client grant code> (steps in the script), or, on a server whose
+// address is the registered Zoho redirect, /api/auth/zoho/authorize?desk=1&secret=<ADMIN_SETUP_SECRET> signed in as
+// a Desk agent with ticket-create rights; either gives ZOHO_DESK_REFRESH_TOKEN in .env. Then
+// /api/auth/zoho/desk-status?secret=… lists the Desk organisations and departments, to set:
+//   ZOHO_DESK_ORG_ID          the Desk organisation (default: the first one this login sees)
+//   ZOHO_DESK_DEPARTMENT_ID   the department tickets land in (or ZOHO_DESK_DEPARTMENT = its name; default: the first)
+// Tickets are created in production, and on another server only with ZOHO_DESK_LIVE=1.
+// The OAuth client: ZOHO_DESK_CLIENT_ID / ZOHO_DESK_CLIENT_SECRET when the Desk token was issued to its own client,
+// otherwise the CRM one (ZOHO_CRM_CLIENT_ID / SECRET, same Zoho account and data centre).
+
+const DC = process.env.ZOHO_DESK_DATA_CENTER || process.env.ZOHO_CRM_DATA_CENTER || process.env.ZOHO_DATA_CENTER || 'in'
+const DESK = `https://desk.zoho.${DC}/api/v1`
+export const DESK_SCOPES = ['Desk.tickets.CREATE', 'Desk.tickets.READ', 'Desk.contacts.READ', 'Desk.contacts.CREATE', 'Desk.basic.READ']
+
+export const deskConfigured = () => !!(process.env.ZOHO_DESK_REFRESH_TOKEN || '').trim()
+export const deskLive = () => deskConfigured() && (process.env.NODE_ENV === 'production' || process.env.ZOHO_DESK_LIVE === '1')
+
+type Tok = { token: string; expiresAt: number }
+const store: { tok: Tok | null; refresh: Promise<string> | null; org: string | null; dept: string | null } =
+  ((globalThis as any).__qodeZohoDesk ??= { tok: null, refresh: null, org: null, dept: null })
+
+async function accessToken(): Promise<string> {
+  if (store.tok && store.tok.expiresAt > Date.now() + 60_000) return store.tok.token
+  store.refresh ??= (async () => {
+    const params = new URLSearchParams({
+      refresh_token: String(process.env.ZOHO_DESK_REFRESH_TOKEN || '').trim(),
+      // the Desk token's own OAuth client when it has one, else the CRM client (same Zoho account)
+      client_id: String(process.env.ZOHO_DESK_CLIENT_ID || process.env.ZOHO_CRM_CLIENT_ID || ''),
+      client_secret: String(process.env.ZOHO_DESK_CLIENT_SECRET || process.env.ZOHO_CRM_CLIENT_SECRET || ''),
+      grant_type: 'refresh_token',
+    })
+    const res = await fetch(`https://accounts.zoho.${DC}/oauth/v2/token?${params}`, { method: 'POST', cache: 'no-store' })
+    const j: any = await res.json().catch(() => ({}))
+    if (!j.access_token) throw new Error('Zoho Desk token refresh failed: ' + (j.error || res.status))
+    store.tok = { token: j.access_token, expiresAt: Date.now() + (Number(j.expires_in) || 3600) * 1000 }
+    return j.access_token as string
+  })().finally(() => { store.refresh = null })
+  return store.refresh
+}
+
+async function desk(path: string, init: RequestInit = {}, withOrg = true): Promise<any> {
+  const headers: Record<string, string> = { Authorization: `Zoho-oauthtoken ${await accessToken()}`, 'Content-Type': 'application/json' }
+  if (withOrg) headers.orgId = await orgId()
+  const res = await fetch(`${DESK}${path}`, { ...init, cache: 'no-store', headers: { ...headers, ...((init.headers as any) || {}) } })
+  if (res.status === 204) return null
+  const body: any = await res.json().catch(() => null)
+  if (!res.ok) throw new Error(`Zoho Desk ${path} refused (${res.status}): ${body?.message || body?.errorCode || ''}${body?.errors ? ' ' + JSON.stringify(body.errors).slice(0, 300) : ''}`)
+  return body
+}
+
+/** The Desk organisations and departments this token sees (for setup: /api/auth/zoho/desk-status). */
+export async function deskDirectory() {
+  const orgs = (await desk('/organizations', {}, false))?.data || []
+  const org = await orgId()
+  const depts = (await desk('/departments?isEnabled=true&limit=100'))?.data || []
+  return {
+    organisations: orgs.map((o: any) => ({ id: String(o.id), name: o.companyName, portal: o.portalName, chosen: String(o.id) === org })),
+    departments: depts.map((d: any) => ({ id: String(d.id), name: d.name, chosen: String(d.id) === store.dept })),
+  }
+}
+
+async function orgId(): Promise<string> {
+  if (process.env.ZOHO_DESK_ORG_ID) return String(process.env.ZOHO_DESK_ORG_ID)
+  if (store.org) return store.org
+  const orgs = (await desk('/organizations', {}, false))?.data || []
+  if (!orgs.length) throw new Error('This Zoho Desk login sees no organisation')
+  return (store.org = String(orgs[0].id))
+}
+
+async function departmentId(): Promise<string> {
+  if (process.env.ZOHO_DESK_DEPARTMENT_ID) return String(process.env.ZOHO_DESK_DEPARTMENT_ID)
+  if (store.dept) return store.dept
+  const depts = (await desk('/departments?isEnabled=true&limit=100'))?.data || []
+  const want = String(process.env.ZOHO_DESK_DEPARTMENT || '').trim().toLowerCase()
+  const d = (want && depts.find((x: any) => String(x.name || '').toLowerCase() === want)) || depts[0]
+  if (!d) throw new Error('No enabled Zoho Desk department found')
+  return (store.dept = String(d.id))
+}
+
+export type DeskRequest = {
+  kind: 'add_funds' | 'sip' | 'strategy' | 'discussion' | 'family_request' | 'account_request' | 'referral'
+  subject: string
+  email: string                  // the client: the ticket's contact
+  name?: string | null
+  phone?: string | null
+  accountId?: string | null
+  fields: [string, string | number | null | undefined][]   // label / value rows for the description
+  priority?: 'High' | 'Medium' | 'Low'
+  channel?: 'Web' | 'App' | null   // where it was raised (lib/requestChannel.ts); unknown → "myQode"
+}
+export type DeskTicket = { id: string; ticketNumber: string; webUrl: string | null }
+
+const KIND_LABEL: Record<DeskRequest['kind'], string> = {
+  add_funds: 'Add Funds', sip: 'Add Funds (SIP)', strategy: 'Ask About a Strategy', discussion: 'Raise Any Query',
+  family_request: 'Family Request', account_request: 'Account Request', referral: 'Referral',
+}
+const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string))
+
+/**
+ * Raise a Desk ticket for an app request. Returns the ticket, or null when Desk is not set up on this server or
+ * refused (logged): the caller carries on either way.
+ */
+export async function raiseDeskTicket(r: DeskRequest): Promise<DeskTicket | null> {
+  if (!deskLive()) return null
+  try {
+    const name = String(r.name || '').trim()
+    const parts = name.replace(/^(mr|mrs|ms|dr)\.?\s+/i, '').split(/\s+/).filter(Boolean)
+    const rows = [['Request', KIND_LABEL[r.kind]], ['Raised from', r.channel || 'myQode'], ['Account', r.accountId], ['Client email', r.email], ...r.fields]
+      .filter(([, v]) => v != null && String(v).trim() !== '')
+      // investor ids are stored float-formatted ("14410854.0"); show them as the plain id
+      .map(([k, v]) => [k, k === 'Investor ID' ? String(v).replace(/\.0+$/, '') : v])
+      .map(([k, v]) => `<tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top"><b>${esc(k)}</b></td><td style="padding:4px 0">${esc(v).replace(/\n/g, '<br/>')}</td></tr>`).join('')
+    const body = {
+      subject: `${KIND_LABEL[r.kind]}: ${r.subject}`.slice(0, 250),
+      departmentId: await departmentId(),
+      contact: { email: r.email, lastName: parts.length > 1 ? parts.slice(1).join(' ') : (parts[0] || r.email), ...(parts.length > 1 ? { firstName: parts[0] } : {}), ...(r.phone ? { phone: r.phone } : {}) },
+      email: r.email,
+      ...(r.phone ? { phone: r.phone } : {}),
+      channel: 'Web',
+      priority: r.priority || 'Medium',
+      description: `<table>${rows}</table>`,
+    }
+    const t = await desk('/tickets', { method: 'POST', body: JSON.stringify(body) })
+    return { id: String(t.id), ticketNumber: String(t.ticketNumber), webUrl: t.webUrl || null }
+  } catch (e: any) {
+    console.error('[zohoDesk] ticket not raised for', r.kind, '-', e?.message)
+    return null
+  }
+}

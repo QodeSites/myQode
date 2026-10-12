@@ -12,6 +12,7 @@
 // Protected by ADMIN_SETUP_SECRET — anyone who can reach an unprotected
 // version of this route can begin an OAuth grant against your CRM.
 import { NextRequest, NextResponse } from 'next/server'
+import { DESK_SCOPES } from '@/lib/zohoDesk'
 
 export const dynamic = 'force-dynamic'
 
@@ -54,6 +55,11 @@ const WRITE_SCOPE = 'ZohoCRM.modules.ALL'
  */
 const SWITCH_WRITE_SCOPE = 'ZohoCRM.modules.custom.CREATE'
 
+/**
+ * `?desk=1` — the Zoho Desk token for tickets raised from app requests (lib/zohoDesk.ts): create tickets and their
+ * contacts, read organisations and departments. Desk scopes only. Stored as ZOHO_DESK_REFRESH_TOKEN.
+ */
+
 export async function GET(request: NextRequest) {
   const url = new URL(request.url)
 
@@ -93,7 +99,8 @@ export async function GET(request: NextRequest) {
   // Opt-in write scope for one-off backfills; read-only otherwise.
   const wantsWrite = url.searchParams.get('write') === '1'
   const wantsSwitch = url.searchParams.get('write') === 'switch'
-  const scopes = wantsSwitch ? [...READ_SCOPES, SWITCH_WRITE_SCOPE] : wantsWrite ? [...READ_SCOPES, WRITE_SCOPE] : READ_SCOPES
+  const wantsDesk = url.searchParams.get('desk') === '1'
+  const scopes = wantsDesk ? DESK_SCOPES : wantsSwitch ? [...READ_SCOPES, SWITCH_WRITE_SCOPE] : wantsWrite ? [...READ_SCOPES, WRITE_SCOPE] : READ_SCOPES
 
   const authUrl = new URL(`https://accounts.zoho.${dataCenter}/oauth/v2/auth`)
   authUrl.searchParams.set('scope', scopes.join(','))
@@ -103,7 +110,7 @@ export async function GET(request: NextRequest) {
   // That is the only way to carry `reveal` through the redirect, so someone
   // without server-log access can still retrieve the token from the callback.
   // state carries `reveal` and/or `switch` (which env variable the callback should name) through Zoho.
-  const state = [url.searchParams.get('reveal') === '1' ? 'reveal' : '', wantsSwitch ? 'switch' : ''].filter(Boolean).join('-')
+  const state = [url.searchParams.get('reveal') === '1' ? 'reveal' : '', wantsSwitch ? 'switch' : '', wantsDesk ? 'desk' : ''].filter(Boolean).join('-')
   if (state) authUrl.searchParams.set('state', state)
   // offline is what makes Zoho return a refresh_token rather than only an
   // access token — without it the callback succeeds but yields nothing durable.

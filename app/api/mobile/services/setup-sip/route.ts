@@ -11,6 +11,7 @@
 // Replaces the earlier Cashfree-backed version (that flow needed Cashfree's native SDK, which was never
 // wired into the app, so no SIP could ever actually be set up from mobile). Same request/response shape.
 import { NextRequest, NextResponse } from 'next/server'
+import { requestChannel } from '@/lib/requestChannel'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import pool from '@/lib/db'
 import { createRazorpayPlan, createRazorpaySubscription, checkoutToken } from '@/lib/razorpay'
@@ -98,6 +99,7 @@ export async function POST(request: NextRequest) {
     const startAtSeconds = startsNow ? undefined : Math.floor(new Date(`${startDate}T10:00:00+05:30`).getTime() / 1000)
     const subscription: any = await createRazorpaySubscription(plan.id, totalCount, {
       nuvama_code: accountId, client_id: String(client.clientid ?? '').replace(/\.0+$/, ''), source: 'qode_mobile_app', frequency,
+      channel: requestChannel(request) || '',   // Web / App, read back for the Zoho Desk ticket (lib/mobileIrMail.ts)
     }, startAtSeconds)
 
     // The client's registered bank account (third-party validation): stored on the row so the checkout

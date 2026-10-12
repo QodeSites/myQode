@@ -8,25 +8,30 @@
 //        investorId (one of the GET list; optional when there is only one), plus
 //        Full:    { switchType: 'Full Switch',    from: ['QAW', …], to: ['QTF', …] }
 //        Partial: { switchType: 'Partial Switch', fromAmounts: { QAW: n, … }, toAmounts: { QTF: n, … } }
-//        → creates a Strategy_Switch_Requests record (Status Pending, Filled_By_Investor true, Owner = investor's owner)
+//        → creates a Switch Plan in Zoho (module Liquid_Fund_Holdings, Plan Origin "myQode App", Verification Pending,
+//          Owner = the investor's RM; lib/switchPlan.ts). Investor Relations verifies it and Zoho's automation raises the
+//          switch request from it. Until 12 Oct 2026 the app created the Strategy_Switch_Requests record directly.
 //
 // Rules applied exactly as in Zoho: a strategy cannot be on both sides; Partial: total out = total in and each
 // From amount ≤ that strategy's invested value; Full: at least one From and one To.
-// Pending requests: a new request is refused only when a Pending one already switches OUT of the same strategy
-// (the same money can't be moved twice); a request out of a different strategy goes through.
+// In progress: Zoho's own rule (validation_rule.lfh_validate_confirmations, mirrored in lib/switchPlan.ts liveConflict,
+// 13 Oct 2026): against the investor's LIVE (Active) plans, a request is refused only when a full switch out of the same
+// strategy is live on either side, or a live plan already moves that strategy into one of its targets. A second partial
+// switch out of a strategy into a different target goes through, as it does in the CRM.
 // The investor is identified by the verified JWT email (same lookup the Zoho automation falls back to).
 // Notifications (WhatsApp to the RM) stay in Zoho — put them on a CRM workflow for record creation; this route
 // sends nothing. In development (NODE_ENV !== 'production') the record is NOT created (dry run) so test logins
 // with real clients never leave a Pending request in the CRM.
-// SWITCH_REQUEST_LIVE=1 on a dev server creates the record for an end-to-end test, but with Zoho's
-// workflows/blueprints/approvals suppressed (trigger: []) so nothing is sent to anyone — delete the
-// record from the CRM afterwards (it blocks the investor with "request in progress" until then).
+// SWITCH_REQUEST_LIVE=1 on a dev server creates the plan exactly as production does, workflows included (decided
+// 12 Oct 2026); SWITCH_REQUEST_TRIGGERS=0 suppresses the workflows for a quiet test. Delete test plans from the CRM
+// afterwards (they block the investor with "request in progress" until then).
 import { internalMailHeaders } from '@/lib/webSession'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import { sendClientAck, clientName } from '@/lib/mobileAckMail'
 import { hasZohoWriteToken, zohoApiDomain, zohoFetch } from '@/lib/zoho'
 import { irRecipient, irSubject, IR_EMAIL } from '@/lib/mobileIrMail'
+import { buildPlanRecord, createPlan, openPlans, liveConflict, liveBlocks } from '@/lib/switchPlan'
 
 const STRATS = ['QAW', 'QTF', 'QGF', 'QLF'] as const   // Qode Liquid Fund: switched like every strategy (Zoho has QLF_* fields)
 type Strat = typeof STRATS[number]
@@ -70,30 +75,6 @@ async function findInvestors(email: string): Promise<any[]> {
   return body?.data || []
 }
 
-// Pending requests per investor id — one Zoho call for the whole family (criteria OR), not one per member — each
-// with the strategies it moves out of and into (Full: the Full_Switch_From/To ticks; Partial: non-zero amounts).
-const PENDING_FIELDS = ['Investor_Name', 'Status', 'Request_Date', 'Switch_Type',
-  ...STRATS.flatMap((s) => [`Full_Switch_From_${s}`, `${s}_From_Amount`, `${s}_To_Amount`])].join(',')
-type Pending = { requestDate: string | null; switchType: string | null; from: Strat[]; to: Strat[] }
-const pendingView = (r: any): Pending => {
-  const full = String(r.Switch_Type || '') === 'Full Switch'
-  return {
-    requestDate: r.Request_Date || null, switchType: r.Switch_Type || null,
-    from: STRATS.filter((s) => (full ? r[`Full_Switch_From_${s}`] === true : n(r[`${s}_From_Amount`]) > 0)),
-    to: STRATS.filter((s) => n(r[`${s}_To_Amount`]) > 0),   // Zoho has no Full_Switch_To_* fields any more (12 Oct 2026)
-  }
-}
-async function pendingRequests(investorIds: string[]): Promise<Record<string, Pending[]>> {
-  if (!investorIds.length) return {}
-  const crit = investorIds.map((id) => `(Investor_Name:equals:${id})`).join('or')
-  const body = await zoho(`Strategy_Switch_Requests/search?criteria=${encodeURIComponent(investorIds.length > 1 ? `(${crit})` : crit)}&fields=${PENDING_FIELDS}&per_page=200`)
-  const out: Record<string, Pending[]> = {}
-  for (const r of (body?.data || []) as any[]) {
-    const id = String(r.Investor_Name?.id || '')
-    if (id && String(r.Status || '').trim() === 'Pending') (out[id] = out[id] || []).push(pendingView(r))
-  }
-  return out
-}
 
 // Investor Relations email for a switch request — the web's account-services page sends this same
 // "New Switch/Reallocation Request" to IR (inquiry_type 'switch'). Sent in production, or on a dev server when
@@ -148,9 +129,12 @@ export async function GET(request: NextRequest) {
   try {
     const list = await findInvestors(user!.email)
     if (!list.length) return NextResponse.json({ investors: [], message: 'We could not find your investor record. Please contact Investor Relations.' })
-    const pend = await pendingRequests(list.map((inv) => String(inv.id)))
+    const ids = list.map((inv) => String(inv.id))
+    const plans = await openPlans(ids)
     const investors = list.map((inv) => {
-      return { ...investorView(inv), pending: pend[String(inv.id)] || [] }
+      const mine = plans[String(inv.id)] || []
+      // pending: the plans in progress (shown on the form); blockedFrom / blockedPairs: what Zoho's rule refuses
+      return { ...investorView(inv), pending: mine, ...liveBlocks(mine) }
     })
     return NextResponse.json({ investors, dryRun: DRY_RUN })
   } catch (err: any) {
@@ -205,16 +189,10 @@ export async function POST(request: NextRequest) {
     const investorId = String(inv.id)
     const view = investorView(inv)
 
-    // A Pending request already moving out of the same strategy blocks this one (the Zoho automation ignores
-    // duplicates; we tell the user instead). A request out of a different strategy is allowed.
-    const pend = (await pendingRequests([investorId]))[investorId] || []
-    const clash = pend.find((p) => p.from.some((s) => fromList.includes(s)))
-    if (clash) {
-      const same = clash.from.filter((s) => fromList.includes(s)).join(', ')
-      return NextResponse.json({
-        error: `A switch request out of ${same} is already in progress` + (clash.requestDate ? ` (submitted ${String(clash.requestDate).slice(0, 10)})` : '') + '. Our team will reach out once it is processed; a new request for this strategy can be made after that.',
-        code: 'PENDING_EXISTS', pending: clash,
-      }, { status: 409 })
+    // Zoho's duplicate rule against the investor's live plans (lib/switchPlan.ts liveConflict), with its own words.
+    const conflict = liveConflict({ from: fromList, fullFrom: isFull ? fromList : [], to: toList }, (await openPlans([investorId]))[investorId] || [])
+    if (conflict) {
+      return NextResponse.json({ error: conflict + ' Our team will reach out once it is processed.', code: 'PENDING_EXISTS' }, { status: 409 })
     }
 
     // holdings check (Partial only), against the Investors record like Zoho does
@@ -246,19 +224,12 @@ export async function POST(request: NextRequest) {
       toAmt = (s: Strat) => amounts[s] || 0
     }
 
-    const record: Record<string, unknown> = {
-      Investor_Name: { id: investorId },
-      Request_Date: new Date().toISOString().slice(0, 10),
-      Status: 'Pending',
-      Switch_Type: isFull ? 'Full Switch' : 'Partial Switch',
-      Filled_By_Investor: true,
-      ...(inv.Owner?.id ? { Owner: { id: String(inv.Owner.id) } } : {}),
-    }
-    if (isFull) {
-      STRATS.forEach((s) => { record[`Full_Switch_From_${s}`] = fromList.includes(s); record[`${s}_To_Amount`] = toAmt(s) })
-    } else {
-      STRATS.forEach((s) => { record[`${s}_From_Amount`] = fromAmt(s); record[`${s}_To_Amount`] = toAmt(s) })
-    }
+    // The Switch Plan (lib/switchPlan.ts). On a full switch each source moves everything it holds.
+    const record = buildPlanRecord({
+      investor: { id: investorId, legalName: view.legalName, email: inv.Email || null, ownerId: inv.Owner?.id ? String(inv.Owner.id) : null },
+      isFull, from: fromList, to: toList,
+      fromAmt: (s) => (isFull ? view.invested[s] || 0 : fromAmt(s)), toAmt,
+    })
 
     if (DRY_RUN) {
       console.log('[mobile/services/switch-request] DRY RUN (not production) — would create:', JSON.stringify(record))
@@ -274,17 +245,14 @@ export async function POST(request: NextRequest) {
     })
       return NextResponse.json({ success: true, dryRun: true, requestId: null, investor: view, record })
     }
-    // Production fires the CRM workflow rules (RM notification lives there). A live TEST on a dev server
-    // passes trigger: [] — Zoho then runs no workflow, approval or blueprint for this record.
-    const trigger = IS_PROD ? ['workflow'] : []
+    // The plan's workflow rules run, as for a plan made in the CRM (SWITCH_REQUEST_TRIGGERS=0 turns them off for a test).
+    const runWorkflows = process.env.SWITCH_REQUEST_TRIGGERS !== '0'
     if (!hasZohoWriteToken()) {
       console.error('[mobile/services/switch-request] ZOHO_CRM_WRITE_REFRESH_TOKEN is not set — the switch record cannot be created. Mint it via /api/auth/zoho/authorize?write=switch')
       return NextResponse.json({ error: 'Switch requests can’t be submitted from the app right now. Please contact Investor Relations, or try again later.', code: 'SWITCH_UNAVAILABLE' }, { status: 503 })
     }
-    if (!IS_PROD) console.log('[mobile/services/switch-request] LIVE TEST (SWITCH_REQUEST_LIVE=1, triggers off) — creating:', JSON.stringify(record))
-    const created = await zoho('Strategy_Switch_Requests', { method: 'POST', body: JSON.stringify({ data: [record], trigger }) })
-    const id = created?.data?.[0]?.details?.id ?? null
-    if (!id) throw new Error(created?.data?.[0]?.message || 'Zoho did not return a record id')
+    if (!IS_PROD) console.log('[mobile/services/switch-request] LIVE (SWITCH_REQUEST_LIVE=1) — creating the switch plan:', JSON.stringify(record))
+    const id = await createPlan(record, runWorkflows)
     await emailIrSwitch(user, view, isFull, fromList, toList, fromAmt, toAmt, String(id), false, splitNote)
     await sendClientAck({
       to: user!.email, name: view.legalName, reference: String(id),

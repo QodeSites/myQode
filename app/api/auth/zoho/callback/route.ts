@@ -74,7 +74,9 @@ export async function GET(request: NextRequest) {
   const reveal =
     url.searchParams.get('reveal') === '1' || stateParts.includes('reveal')
   // ?write=switch flow: the token is the create-only one, stored under its own name.
-  const envName = stateParts.includes('switch') ? 'ZOHO_CRM_WRITE_REFRESH_TOKEN' : 'ZOHO_CRM_REFRESH_TOKEN'
+  // ?desk=1 flow: the Zoho Desk token (lib/zohoDesk.ts).
+  const isDesk = stateParts.includes('desk')
+  const envName = isDesk ? 'ZOHO_DESK_REFRESH_TOKEN' : stateParts.includes('switch') ? 'ZOHO_CRM_WRITE_REFRESH_TOKEN' : 'ZOHO_CRM_REFRESH_TOKEN'
 
   // ── Gate: same secret as /authorize ─────────────────────────────────────
   // Zoho does not forward our query params, so the secret is only enforced
@@ -162,7 +164,7 @@ export async function GET(request: NextRequest) {
 
     const refreshToken: string | undefined = data.refresh_token
     const scope: string = data.scope ?? ''
-    const isCrmScoped = /ZohoCRM/i.test(scope)
+    const isCrmScoped = isDesk ? /Desk\.tickets/i.test(scope) : /ZohoCRM/i.test(scope)
 
     // The whole point of the exercise: a Recruit-scoped token cannot read CRM,
     // so say so plainly rather than letting it fail later at query time.
