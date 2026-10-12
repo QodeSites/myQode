@@ -20,6 +20,16 @@ function sectionToDate(section: string): Date {
   return new Date(0)
 }
 
+// April and May share one newsletter (12 Oct 2026: the April 2026 issue covers both months), so an April issue is
+// titled "April & May <year>" — but only in a year without its own May issue (2025 had Apr-2025 and May-2025).
+// Other issues keep their folder name ("Sep-2026"), which the apps format.
+function issueTitle(section: string, sections: Set<string>): string {
+  const m = String(section || '').match(/^apr(?:il)?[-\s_]?(\d{4})$/i)
+  if (!m) return section
+  const hasMay = [...sections].some((x) => new RegExp(`^may[-\\s_]?${m[1]}$`, 'i').test(x))
+  return hasMay ? section : `April & May ${m[1]}`
+}
+
 export async function GET(request: NextRequest) {
   const { error } = await verifyMobileAuth(request)
   if (error) return error
@@ -33,6 +43,7 @@ export async function GET(request: NextRequest) {
       (o) => o.Key && !o.Key.endsWith('/')
     )
 
+    const sections = new Set(objects.map((o) => String(o.Key).split('/').slice(-2, -1)[0] ?? ''))
     const items = await Promise.all(
       objects.map(async (obj) => {
         const key = obj.Key as string
@@ -45,7 +56,7 @@ export async function GET(request: NextRequest) {
         const section = key.split('/').slice(-2, -1)[0] ?? ''
         return {
           key,
-          title: section || filename.replace(/\.[^.]+$/, ''),
+          title: issueTitle(section, sections) || filename.replace(/\.[^.]+$/, ''),
           filename,
           section,
           url,
