@@ -117,6 +117,8 @@ export default function AdminUserDetailPage() {
   const isSuper = admin?.role
     ? admin.role === "super" || (admin.role === "investors" && data?.user.type === "investor") || (admin.role === "partners" && data?.user.type === "distributor")
     : admin?.level === "super"
+  // Opening the dashboard: also partners admins on investors (12 Oct 2026, Krutika), but nothing else on them.
+  const canOpen = isSuper || (admin?.role === "partners" && data?.user.type === "investor")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<Busy>(null)
@@ -272,7 +274,7 @@ export default function AdminUserDetailPage() {
           </div>
 
           <div className="flex max-w-[520px] flex-wrap justify-end gap-2">
-            <Button onClick={openApp} disabled={busy !== null || !isSuper} className="bg-[#02422B] text-white hover:bg-[#02422B]/90">
+            <Button onClick={openApp} disabled={busy !== null || !canOpen} className="bg-[#02422B] text-white hover:bg-[#02422B]/90">
               {busy === "app" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
               Open dashboard as {u.type === "distributor" ? "partner" : "investor"}
             </Button>
@@ -305,7 +307,9 @@ export default function AdminUserDetailPage() {
         </div>
         {!isSuper ? (
           <p className="mt-4 text-xs text-muted-foreground">
-            Your access is read-only here. An admin for this side can manage passwords and open the dashboard as this user.
+            {canOpen
+              ? "You can open this investor's dashboard. Passwords and account changes are for an investors admin."
+              : "Your access is read-only here. An admin for this side can manage passwords and open the dashboard as this user."}
           </p>
         ) : null}
       </section>

@@ -1,7 +1,8 @@
 // POST /api/admin/bo/impersonate { email } — "Open as this user" (12 Oct 2026: one way only, the new dashboard).
 //  → { token, expiresIn, user }: a 4 h session exactly like that user's own login, marked isImpersonated /
 //    impersonatedBy (lib/mobileSession.ts), which the web app (/app) and the phone app open.
-// Who may: super admins anyone; 'investors' admins investors; 'partners' admins partners. The old web portal
+// Who may: super admins anyone; 'investors' admins investors; 'partners' admins partners and, to view only,
+// investors too (12 Oct 2026: Krutika opens her partners' clients). The old web portal
 // ('portal') is retired: everyone uses the new dashboard.
 import { NextRequest, NextResponse } from 'next/server'
 import jwt from 'jsonwebtoken'
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
   try {
     const type = await userTypeOf(email)
     if (!type) return NextResponse.json({ error: 'User not found' }, { status: 404 })
-    if (!canAct(admin, scopeOfType(type))) return forbidden()
+    if (!canAct(admin, scopeOfType(type)) && !(admin!.role === 'partners' && type === 'investor')) return forbidden()
     const { session, error: e, code, status } = await mobileSessionForEmail(email)
     if (!session) return NextResponse.json({ error: e, code }, { status: status || 400 })
     // Never carry admin rights into an impersonated session.
