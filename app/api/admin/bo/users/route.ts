@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
       status: sp.get('status') || 'all',
       page: Number(sp.get('page') || 1),
       limit: Number(sp.get('limit') || 50),
+      sort: sp.get('sort') || 'recent',
     }))
   } catch (e) {
     console.error('[admin/bo/users]', e)

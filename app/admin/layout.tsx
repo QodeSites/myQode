@@ -40,7 +40,7 @@ const NAV: NavItem[] = [
     href: "/admin/users?type=investor",
     icon: Users,
     isActive: (p, t) => p === "/admin/users" && t === "investor",
-    roles: INV,
+    roles: [...INV, "partners"],   // partners admins see investors (read-only) too
   },
   {
     label: "Distributors",

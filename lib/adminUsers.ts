@@ -16,6 +16,8 @@ export type AdminUserItem = {
   email: string
   name: string
   type: UserType
+  /** When this login's first account was opened (account_open_date): "since", and the oldest / newest sorts. */
+  openedOn?: string | null
   clientCodes: string[]
   groupId: string | null
   headOfFamily: boolean
@@ -68,6 +70,7 @@ const USERS_CTE = `
                       ORDER BY head_of_family DESC NULLS LAST, clientcode ASC NULLS LAST))[1] AS password_set,
            COALESCE(bool_or(locked_until > now()), false) AS locked,
            max(last_login_at) AS last_login_at,
+           min(COALESCE(account_open_date, inceptiondate)) AS opened_on,
            max(last_web_login_at) AS last_web_login_at,
            max(last_app_login_at) AS last_app_login_at,
            COALESCE(max(login_count), 0)::int AS login_count,
@@ -94,6 +97,7 @@ function toItem(r: any): AdminUserItem {
     email: r.email,
     name: r.name,
     type: r.is_distributor ? 'distributor' : 'investor',
+    openedOn: r.opened_on ? ((d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`)(new Date(r.opened_on)) : null,   // a date column: local date, not UTC (IST midnight is the day before in UTC)
     clientCodes: (r.client_codes || []).slice().sort(),
     groupId: r.group_id ?? null,
     headOfFamily: !!r.head_of_family,
@@ -134,7 +138,18 @@ async function withPortalInvestorCounts(items: AdminUserItem[]): Promise<AdminUs
   }
 }
 
-export async function listUsers(opts: { q?: string; type?: string; status?: string; page?: number; limit?: number }) {
+// Sorts for /admin/users (12 Oct 2026). Every one ends on name so pages are stable.
+export const USER_SORTS: Record<string, string> = {
+  recent: 'u.last_login_at DESC NULLS LAST, u.name ASC',
+  newest: 'u.opened_on DESC NULLS LAST, u.name ASC',
+  oldest: 'u.opened_on ASC NULLS LAST, u.name ASC',
+  name: 'lower(u.name) ASC, u.email ASC',
+  'name-desc': 'lower(u.name) DESC, u.email ASC',
+  'most-logins': 'u.login_count DESC, u.name ASC',
+  inactive: 'u.last_login_at ASC NULLS FIRST, u.name ASC',
+  'most-investors': 'u.client_count DESC, u.name ASC',
+}
+export async function listUsers(opts: { q?: string; type?: string; status?: string; page?: number; limit?: number; sort?: string }) {
   const page = Math.max(1, Math.floor(Number(opts.page) || 1))
   const limit = Math.min(200, Math.max(1, Math.floor(Number(opts.limit) || 50)))
   const where: string[] = []
@@ -157,7 +172,7 @@ export async function listUsers(opts: { q?: string; type?: string; status?: stri
      SELECT u.*, count(*) OVER()::int AS total
        FROM u
       ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-      ORDER BY u.last_login_at DESC NULLS LAST, u.name ASC
+      ORDER BY ${USER_SORTS[opts.sort || ''] || USER_SORTS.recent}
       LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params,
   )
@@ -315,5 +330,6 @@ export async function userTypeOf(email: string): Promise<UserType | null> {
   return d == null ? null : d ? 'distributor' : 'investor'
 }
 export const scopeOfType = (t: UserType) => (t === 'distributor' ? 'partners' : 'investors') as 'partners' | 'investors'
-/** The user type a scoped admin is limited to: investors admins see investors, partners admins see partners. */
-export const typeForRole = (role: string): UserType | null => (role === 'investors' ? 'investor' : role === 'partners' ? 'distributor' : null)
+/** The user type a scoped admin may SEE: investors admins see investors only; partners admins see everyone
+ *  (12 Oct 2026: Krutika needs to see every investor) but still act only on partners (canAct). */
+export const typeForRole = (role: string): UserType | null => (role === 'investors' ? 'investor' : null)

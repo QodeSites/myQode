@@ -34,6 +34,7 @@ import {
 } from "@/components/admin-kit"
 
 interface BoUser {
+  openedOn?: string | null
   email: string
   name: string
   type: "investor" | "distributor"
@@ -64,6 +65,13 @@ const LIMIT = 50
 const TYPES = ["all", "investor", "distributor"] as const
 const STATUSES = ["all", "needs-setup", "locked", "never"] as const
 
+// Orders for the list (server: lib/adminUsers USER_SORTS). "Since" is when the person's first account was opened.
+const SORTS: [string, string][] = [
+  ["recent", "Last sign-in"], ["newest", "Newest first"], ["oldest", "Oldest first"], ["name", "Name A–Z"], ["name-desc", "Name Z–A"],
+  ["most-logins", "Most sign-ins"], ["inactive", "Longest without signing in"], ["most-investors", "Most investors (distributors)"],
+]
+const fmtSince = (d?: string | null) => (d ? new Date(d + "T00:00:00").toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—")
+
 // Grid (cards) by default; List keeps the old table. Remembered per browser.
 const VIEW_KEY = "admin.users.view"
 function useView(): ["grid" | "list", (v: "grid" | "list") => void] {
@@ -80,6 +88,7 @@ function UsersPageInner() {
 
   const type = (TYPES as readonly string[]).includes(params.get("type") || "") ? params.get("type")! : "all"
   const status = (STATUSES as readonly string[]).includes(params.get("status") || "") ? params.get("status")! : "all"
+  const sort = SORTS.some((x) => x[0] === params.get("sort")) ? params.get("sort")! : "recent"
   const page = Math.max(1, Number(params.get("page")) || 1)
   const q = params.get("q") || ""
 
@@ -118,14 +127,14 @@ function UsersPageInner() {
     setLoading(true)
     setError(null)
     try {
-      const qs = new URLSearchParams({ q, type, status, page: String(page), limit: String(LIMIT) })
+      const qs = new URLSearchParams({ q, type, status, sort, page: String(page), limit: String(LIMIT) })
       setData(await boFetch<UsersResponse>(`/api/admin/bo/users?${qs}`))
     } catch (e) {
       setError(errorMessage(e))
     } finally {
       setLoading(false)
     }
-  }, [q, type, status, page])
+  }, [q, type, status, sort, page])
 
   useEffect(() => {
     load()
@@ -183,6 +192,14 @@ function UsersPageInner() {
             <SelectItem value="never">Never logged in</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={sort} onValueChange={(v) => setParams({ sort: v === "recent" ? null : v, page: null })}>
+          <SelectTrigger className="w-[230px] bg-white" aria-label="Sort by">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {SORTS.map(([k, l]) => <SelectItem key={k} value={k}>Sort: {l}</SelectItem>)}
+          </SelectContent>
+        </Select>
         {loading && data ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : null}
         <div className="ml-auto flex rounded-md border border-[#02422B]/15 bg-white p-0.5" role="group" aria-label="Layout">
           {(["grid", "list"] as const).map((v) => (
@@ -222,7 +239,7 @@ function UsersPageInner() {
                       </span>
                     </div>
                     <div className="mt-auto flex items-end justify-between gap-2 border-t border-[#02422B]/10 pt-2 text-xs">
-                      <span className="text-muted-foreground">Last sign-in <span className="text-[#002017]">{fmtRelative(u.lastLoginAt)}</span></span>
+                      <span className="text-muted-foreground">Since <span className="text-[#002017]">{fmtSince(u.openedOn)}</span> · Last sign-in <span className="text-[#002017]">{fmtRelative(u.lastLoginAt)}</span></span>
                       <span className="tabular-nums text-muted-foreground"><span className="font-semibold text-[#002017]">{fmtNum(u.loginCount)}</span> ({fmtNum(u.webLogins)} web, {fmtNum(u.appLogins)} app)</span>
                     </div>
                   </button>
@@ -236,6 +253,7 @@ function UsersPageInner() {
               <TableHead>Type</TableHead>
               <TableHead>Client codes</TableHead>
               <TableHead>Password</TableHead>
+              <TableHead>Since</TableHead>
               <TableHead>Last login</TableHead>
               <TableHead>Last web</TableHead>
               <TableHead>Last app</TableHead>
@@ -246,7 +264,7 @@ function UsersPageInner() {
             {loading && !data
               ? Array.from({ length: 10 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 8 }).map((__, j) => (
+                    {Array.from({ length: 9 }).map((__, j) => (
                       <TableCell key={j} className={j === 0 ? "pl-5" : undefined}>
                         <Skeleton className="h-4 w-full max-w-[160px]" />
                       </TableCell>
@@ -283,6 +301,7 @@ function UsersPageInner() {
                     <TableCell>
                       <PasswordStatusPill passwordSet={u.passwordSet} needsSetup={u.needsSetup} locked={u.locked} />
                     </TableCell>
+                    <TableCell className="whitespace-nowrap text-sm text-[#002017]">{fmtSince(u.openedOn)}</TableCell>
                     <TableCell>
                       <p className="text-sm text-[#002017]">{fmtRelative(u.lastLoginAt)}</p>
                       {u.lastLoginAt ? (

@@ -110,9 +110,13 @@ export default function AdminUserDetailPage() {
   const email = decodeParam(params?.email)
   const router = useRouter()
   const { admin } = useBackofficeAdmin()
-  const isSuper = admin?.level === "super"
 
   const [data, setData] = useState<Detail | null>(null)
+  // May this admin act on this user? Super: anyone; investors admins: investors; partners admins: partners.
+  // Others (e.g. a partners admin looking at an investor) see the page read-only.
+  const isSuper = admin?.role
+    ? admin.role === "super" || (admin.role === "investors" && data?.user.type === "investor") || (admin.role === "partners" && data?.user.type === "distributor")
+    : admin?.level === "super"
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<Busy>(null)
