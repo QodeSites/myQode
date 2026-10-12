@@ -34,7 +34,7 @@ type NavItem = {
 const INV = ["super", "investors", "viewer"], PART = ["super", "partners", "viewer"], SUPER = ["super"]
 
 const NAV: NavItem[] = [
-  { label: "Overview", href: "/admin", icon: LayoutDashboard, isActive: (p) => p === "/admin" },
+  { label: "Overview", href: "/admin", icon: LayoutDashboard, isActive: (p) => p === "/admin", roles: ["super", "investors", "partners", "viewer"] },
   {
     label: "Investors",
     href: "/admin/users?type=investor",
@@ -60,7 +60,7 @@ const NAV: NavItem[] = [
   { label: "Queries", href: "/admin/queries", icon: MessageSquare, isActive: (p) => p.startsWith("/admin/queries"), roles: INV },
   { label: "Feedback", href: "/admin/feedback", icon: MessageSquareHeart, isActive: (p) => p.startsWith("/admin/feedback"), roles: INV },
   { label: "Payments", href: "/admin/payments", icon: Banknote, isActive: (p) => p.startsWith("/admin/payments"), roles: INV },
-  { label: "Distributor invoices", href: "/admin/partner-invoices", icon: Receipt, isActive: (p) => p.startsWith("/admin/partner-invoices"), roles: PART },
+  { label: "Distributor invoices", href: "/admin/partner-invoices", icon: Receipt, isActive: (p) => p.startsWith("/admin/partner-invoices"), roles: [...PART, "accounts"] },
   { label: "Documents", href: "/admin/documents", icon: FileText, isActive: (p) => p.startsWith("/admin/documents"), roles: INV },
   { label: "Notifications", href: "/admin/notifications", icon: Bell, isActive: (p) => p.startsWith("/admin/notifications"), roles: INV },
   { label: "Audit log", href: "/admin/audit", icon: ScrollText, isActive: (p) => p.startsWith("/admin/audit"), roles: SUPER },
@@ -128,6 +128,11 @@ function GuardedShell({ pathname, children }: { pathname: string; children: Reac
   useEffect(() => {
     check()
   }, [check])
+
+  // The accounts team's only page is Distributor invoices: anywhere else in /admin takes them there.
+  useEffect(() => {
+    if (admin?.role === "accounts" && !pathname.startsWith("/admin/partner-invoices")) router.replace("/admin/partner-invoices")
+  }, [admin?.role, pathname, router])
 
   const signOut = useCallback(async () => {
     setSigningOut(true)
@@ -207,7 +212,7 @@ function GuardedShell({ pathname, children }: { pathname: string; children: Reac
               <div className="min-w-0">
                 <p className="truncate text-sm font-medium text-[#EFECD3]">{admin.name || admin.email}</p>
                 <p className="truncate text-[11px] text-[#EFECD3]/60">
-                  {({ super: "Super admin", investors: "Investors admin", partners: "Partners admin", viewer: "Read-only" } as Record<string, string>)[admin.role || ""] || (admin.level === "super" ? "Super admin" : "Read-only")}
+                  {({ super: "Super admin", investors: "Investors admin", partners: "Partners admin", accounts: "Accounts", viewer: "Read-only" } as Record<string, string>)[admin.role || ""] || (admin.level === "super" ? "Super admin" : "Read-only")}
                   {admin.via === "microsoft" ? " (Microsoft)" : ""}
                 </p>
               </div>

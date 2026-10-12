@@ -5,6 +5,7 @@
 //  - 'investors' the investor side: act on and open any investor's dashboard as them (Investors, documents,
 //                payments, notifications, password resets)
 //  - 'partners'  the partner side: act on and open any partner's portal as them (Distributors, partner invoices)
+//  - 'accounts'  the accounts team: Distributor invoices only (payment status, proofs, receipts); web only
 //  - 'viewer'    read-only, no impersonation, no changes
 // Sign-in: email + password (admin_users, bcrypt) on the web (httpOnly `qode-admin` cookie) or in the app (Bearer JWT
 // from /api/mobile/auth/login), or Microsoft on the web (Redis `admin-session`); all three read the same role.
@@ -18,9 +19,9 @@ import { query } from '@/lib/db'
 import { logAuthEvent } from '@/lib/authEvents'
 
 export type AdminLevel = 'staff' | 'super'
-export type AdminRole = 'super' | 'investors' | 'partners' | 'viewer'
-export type AdminScope = 'investors' | 'partners'
-export const ADMIN_ROLES: AdminRole[] = ['super', 'investors', 'partners', 'viewer']
+export type AdminRole = 'super' | 'investors' | 'partners' | 'accounts' | 'viewer'
+export type AdminScope = 'investors' | 'partners' | 'accounts'
+export const ADMIN_ROLES: AdminRole[] = ['super', 'investors', 'partners', 'accounts', 'viewer']
 /** level: 'super' = may act (within its scope for investors / partners admins), 'staff' = read-only. */
 export type Admin = { email: string; name: string; level: AdminLevel; role: AdminRole; via: 'password' | 'app' | 'microsoft' }
 
@@ -55,8 +56,8 @@ export async function adminRoleOf(email?: string | null): Promise<AdminRole | nu
 }
 /** Any admin (any role). */
 export const isAdminEmail = async (email?: string | null) => (await adminRoleOf(email)) != null
-/** Admins who sign in to the app's admin mode: everyone who can act (super, investors, partners). */
-export const isAppAdmin = async (email?: string | null) => { const r = await adminRoleOf(email); return r != null && r !== 'viewer' }
+/** Admins who sign in to the app's admin mode: super, investors and partners admins (accounts and viewers use the web). */
+export const isAppAdmin = async (email?: string | null) => { const r = await adminRoleOf(email); return r === 'super' || r === 'investors' || r === 'partners' }
 const levelOf = (role: AdminRole): AdminLevel => (role === 'viewer' ? 'staff' : 'super')
 /** May this admin act on the investor side ('investors') or the partner side ('partners')? */
 export const canAct = (admin: Admin | null | undefined, scope: AdminScope) => !!admin && (admin.role === 'super' || admin.role === scope)
@@ -143,7 +144,7 @@ async function fromJwt(token: string): Promise<Admin | null> {
   // The app's admin login: a mobile JWT for an admin (never an impersonation token).
   if (p.isAdmin && !p.isImpersonated) {
     const role = await adminRoleOf(p.email)
-    return role && role !== 'viewer' ? { email: norm(p.email), name: p.name || p.email, level: levelOf(role), role, via: 'app' } : null
+    return role && (role === 'super' || role === 'investors' || role === 'partners') ? { email: norm(p.email), name: p.name || p.email, level: levelOf(role), role, via: 'app' } : null
   }
   return null
 }

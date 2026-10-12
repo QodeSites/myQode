@@ -72,7 +72,7 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const { admin, error } = await requireAdmin(req, 'super', 'partners')
+  const { admin, error } = await requireAdmin(req, 'super', ['partners', 'accounts'])
   if (error) return error
   let form: FormData
   try { form = await req.formData() } catch { return NextResponse.json({ error: 'Send the update as multipart form data' }, { status: 400 }) }

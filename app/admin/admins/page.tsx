@@ -28,15 +28,16 @@ interface AdminRow {
   lastLoginAt: string | null
   app: boolean
 }
-type Role = "super" | "investors" | "partners" | "viewer"
+type Role = "super" | "investors" | "partners" | "accounts" | "viewer"
 // The one place admin access is decided (web /admin and the app's admin mode both read it).
 const ROLES: { role: Role; label: string; what: string; tone: "green" | "gold" | "amber" | "grey" }[] = [
   { role: "super", label: "Super admin", what: "Everything: every investor and partner, settings, admins", tone: "green" },
   { role: "investors", label: "Investors admin", what: "All investors: open their dashboard, documents, payments, passwords", tone: "gold" },
   { role: "partners", label: "Partners admin", what: "All partners: open their portal, invoices, passwords", tone: "gold" },
+  { role: "accounts", label: "Accounts", what: "Distributor invoices only: payment status, proofs, receipts", tone: "gold" },
   { role: "viewer", label: "Read-only", what: "Can look, cannot change anything or open accounts", tone: "grey" },
 ]
-const roleInfo = (r: Role) => ROLES.find((x) => x.role === r) || ROLES[3]
+const roleInfo = (r: Role) => ROLES.find((x) => x.role === r) || ROLES[ROLES.length - 1]
 
 export default function AdminAdminsPage() {
   const { admin: me } = useBackofficeAdmin()
@@ -92,7 +93,7 @@ export default function AdminAdminsPage() {
         description="Who can use the admin side, on the web and in the app, and what each role allows. This list is the only place it is set."
       />
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {ROLES.map((r) => (
           <div key={r.role} className="rounded-xl border border-[#02422B]/10 bg-[#F9F7EC] p-4">
             <Pill tone={r.tone}>{r.label}</Pill>
