@@ -8,6 +8,7 @@
 // IR mails (lib/mobileIrMail.ts: MOBILE_IR_EMAIL_OVERRIDE redirects while testing). A failed email does not lose the
 // feedback: the row is stored first and the email is best-effort.
 // Reviewer accounts: accepted, nothing stored or sent. View-only (partner) and impersonation tokens: 403.
+import { internalMailHeaders } from '@/lib/webSession'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import { query } from '@/lib/db'
@@ -87,7 +88,7 @@ export async function POST(request: NextRequest) {
     const base = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL?.trim() || 'http://localhost:2069'
     const res = await fetch(`${base}/api/send-email`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: internalMailHeaders(user?.email),
       body: JSON.stringify({
         to: irRecipient(),
         subject: irSubject(`New Feedback from ${primary} (recommend ${ratings.recommend}/5)`),

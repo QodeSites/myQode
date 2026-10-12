@@ -21,6 +21,7 @@
 // SWITCH_REQUEST_LIVE=1 on a dev server creates the record for an end-to-end test, but with Zoho's
 // workflows/blueprints/approvals suppressed (trigger: []) so nothing is sent to anyone — delete the
 // record from the CRM afterwards (it blocks the investor with "request in progress" until then).
+import { internalMailHeaders } from '@/lib/webSession'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import { sendClientAck, clientName } from '@/lib/mobileAckMail'
@@ -122,7 +123,7 @@ async function emailIrSwitch(user: any, view: any, isFull: boolean, fromList: st
   try {
     const base = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL?.trim() || 'http://localhost:2069'
     const res = await fetch(`${base}/api/send-email`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: internalMailHeaders(user?.email),
       body: JSON.stringify({
         to: irRecipient(), subject: irSubject(`New Switch/Reallocation Request from ${view.legalName}`), html,
         from: IR_EMAIL, fromName: 'Qode Investor Relations', inquiry_type: 'switch',

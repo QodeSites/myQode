@@ -1,5 +1,6 @@
 // POST /api/mobile/services/strategy-inquiry
 // Submit a strategy question to the fund manager team.
+import { internalMailHeaders } from '@/lib/webSession'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import { sendClientAck, clientName } from '@/lib/mobileAckMail'
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
 
     const emailRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL?.trim() || 'http://localhost:2069'}/api/send-email`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: internalMailHeaders(user?.email),
       body: JSON.stringify({
         to: irRecipient(),   // investor.relations@ — or MOBILE_IR_EMAIL_OVERRIDE while testing (lib/mobileIrMail.ts)
         subject: irSubject(`Strategy Question from ${accountId}`),

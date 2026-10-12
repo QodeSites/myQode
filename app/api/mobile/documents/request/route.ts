@@ -3,6 +3,7 @@
 // do (send-email, inquiry_type 'raised_request', so it appears in the admin queries console) and sends the
 // investor an acknowledgement.
 // Body: { accountId, category: 'pms-agreement' | 'account-opening' | 'cml' | 'other', message? }
+import { internalMailHeaders } from '@/lib/webSession'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import { irRecipient, irSubject, IR_EMAIL } from '@/lib/mobileIrMail'
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
   try {
     const base = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL?.trim() || 'http://localhost:2069'
     const res = await fetch(`${base}/api/send-email`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST', headers: internalMailHeaders(user?.email),
       body: JSON.stringify({
         to: irRecipient(), subject: irSubject(`Document Request — ${label} — ${accountId}`), html,
         from: IR_EMAIL, fromName: 'Qode Investor Relations', inquiry_type: 'raised_request',

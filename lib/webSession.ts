@@ -50,3 +50,10 @@ export async function signedUserContext(): Promise<{ value: string } | undefined
   const s = await webSession()
   return s?.ctx ? { value: JSON.stringify(s.ctx) } : undefined
 }
+
+/** Headers for the server's own calls to /api/send-email (the IR mails from app requests): a signed session with no
+ *  accounts, as lib/mobileIrMail.ts does. Since the 4 Oct 2026 lock-down (ce73aac) a call without one gets 401 and
+ *  IR is never emailed (found 12 Oct 2026). */
+export function internalMailHeaders(email?: string | null): Record<string, string> {
+  return { 'Content-Type': 'application/json', Cookie: `${WEB_SESSION_COOKIE}=${signWebSession([], { email: email || 'investor.relations@qodeinvest.com' })}` }
+}
