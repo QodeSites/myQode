@@ -6,7 +6,7 @@ import path from 'path'
 import { readFile } from 'fs/promises'
 import { verifyFileLink } from '@/lib/mobileDistributor'
 import { resolveDistributorByEmail } from '@/lib/distributorIdentity'
-import { documentBySlug } from '@/lib/distributorDocuments'
+import { deckBySlug, deckFile } from '@/lib/distributorDecks'
 import { findSoaForInvestor, downloadSoa } from '@/lib/zohoInvestorSoa'
 
 const pdf = (body: ArrayBuffer | Buffer, name: string) =>
@@ -28,9 +28,10 @@ export async function GET(request: NextRequest) {
   try {
     if (!(await resolveDistributorByEmail(d))) return NextResponse.json({ error: 'Not a partner' }, { status: 403 })
     if (kind === 'deck') {
-      const doc = documentBySlug(key)
+      const doc = await deckBySlug(key)
       if (!doc) return NextResponse.json({ error: 'No such document' }, { status: 404 })
-      const buf = await readFile(path.join(process.cwd(), 'assets', 'documents', `${doc.slug}.pdf`)).catch(() => null)
+      // the newest month's file from the object store; the copy bundled with the server if that cannot be read
+      const buf = (await deckFile(doc)) ?? await readFile(path.join(process.cwd(), 'assets', 'documents', `${doc.slug}.pdf`)).catch(() => null)
       if (!buf) return NextResponse.json({ error: 'That document is unavailable just now' }, { status: 404 })
       return pdf(buf, doc.downloadName)
     }

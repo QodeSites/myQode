@@ -1,10 +1,10 @@
-// POST /api/mobile/distributor/file-link   { kind: 'soa', email } | { kind: 'deck', slug }
+// POST /api/mobile/distributor/file-link   { kind: 'soa', email } | { kind: 'deck', slug }   (decks: lib/distributorDecks.ts, the newest month in the object store)
 // Returns a 5-minute signed URL the app opens in the phone's PDF viewer (see fileLink in lib/mobileDistributor).
 // Same checks as the web routes: partner role, and for a statement, the investor must be in this partner's book
 // (web: app/api/distributor/investor-soa). Unknown investors and "no statement" answer alike, as on the web.
 import { NextRequest, NextResponse } from 'next/server'
 import { requireMobileDistributor, fileLink, investorInBook } from '@/lib/mobileDistributor'
-import { documentBySlug } from '@/lib/distributorDocuments'
+import { deckBySlug } from '@/lib/distributorDecks'
 import { findSoaForInvestor } from '@/lib/zohoInvestorSoa'
 
 export async function POST(request: NextRequest) {
@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
   try { body = await request.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
   try {
     if (body?.kind === 'deck') {
-      const doc = documentBySlug(String(body.slug || ''))
+      const doc = await deckBySlug(String(body.slug || ''))
       if (!doc) return NextResponse.json({ error: 'No such document' }, { status: 404 })
       return NextResponse.json({ url: fileLink(distributor!.email, 'deck', doc.slug), fileName: doc.downloadName })
     }
