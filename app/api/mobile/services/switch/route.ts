@@ -2,6 +2,7 @@
 // Submit a strategy switch / reallocation request. Sends notification email.
 import { internalMailHeaders } from '@/lib/webSession'
 import { NextRequest, NextResponse } from 'next/server'
+import { requestChannel, submittedVia, internalBase } from '@/lib/requestChannel'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import { sendClientAck, clientName } from '@/lib/mobileAckMail'
 import { irRecipient, irSubject } from '@/lib/mobileIrMail'
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
         </div>
         <div style="background:#fff;padding:20px;border:1px solid #37584F;border-radius:8px">
           <p><strong>Request Type:</strong> Switch/Reallocation</p>
-          <p><strong>Submitted via:</strong> myQode Mobile App</p>
+          <p><strong>Submitted via:</strong> ${submittedVia(requestChannel(request))}</p>
           <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
           <div style="background:#EFECD3;padding:15px;border-left:4px solid #DABD38;margin:15px 0">
             <h3 style="margin-top:0;color:#37584F">Request Details</h3>
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
         </div>
       </div>`
 
-    const emailRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL?.trim() || 'http://localhost:2069'}/api/send-email`, {
+    const emailRes = await fetch(`${internalBase()}/api/send-email`, {
       method: 'POST',
       headers: internalMailHeaders(user?.email),
       body: JSON.stringify({

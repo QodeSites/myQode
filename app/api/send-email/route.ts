@@ -23,6 +23,9 @@ export async function POST(request: NextRequest) {
       client_id,
       user_email,
       priority = 'normal',
+      // record_only (13 Oct 2026): save the inquiry row but send no email — Zoho (Desk ticket / CRM switch plan)
+      // notifies the team and the client itself, and a second email from here would be a duplicate
+      record_only = false,
       ...inquirySpecificData // All other fields go into the JSON data column
     } = requestBody;
 
@@ -121,6 +124,11 @@ export async function POST(request: NextRequest) {
 
       const { rows } = await client.query(insertQuery, values);
       inquiryId = rows[0].id;
+    }
+
+    if (record_only) {
+      if (inquiryId) await client.query('COMMIT');
+      return NextResponse.json({ success: true, inquiry_id: inquiryId, emailData: { id: null, status: 'recorded' } });
     }
 
     // Prepare email payload - UPDATED with CC support

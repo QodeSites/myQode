@@ -10,6 +10,7 @@
 // Reviewer accounts: accepted, nothing stored or sent. View-only (partner) and impersonation tokens: 403.
 import { internalMailHeaders } from '@/lib/webSession'
 import { NextRequest, NextResponse } from 'next/server'
+import { requestChannel, submittedVia, internalBase } from '@/lib/requestChannel'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import { query } from '@/lib/db'
 import { IR_EMAIL, irRecipient, irSubject } from '@/lib/mobileIrMail'
@@ -72,7 +73,7 @@ export async function POST(request: NextRequest) {
         <h1 style="margin:0;color:#DABD38;font-family:Georgia,serif">Your Voice Matters: Feedback</h1>
       </div>
       <div style="background:#fff;padding:16px;border:1px solid #37584F;border-radius:8px">
-        <p><strong>Submitted via:</strong> myQode Mobile App${platform ? ' (' + esc(platform) + (appVersion ? ' ' + esc(appVersion) : '') + ')' : ''}</p>
+        <p><strong>Submitted via:</strong> ${submittedVia(requestChannel(request))}${platform ? ' (' + esc(platform) + (appVersion ? ' ' + esc(appVersion) : '') + ')' : ''}</p>
         <p><strong>Date:</strong> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</p>
         <div style="background:#EFECD3;padding:12px;border-left:4px solid #DABD38;margin:12px 0">
           <p><strong>Investor:</strong> ${esc(String(clientCode ?? '—'))}</p>
@@ -85,7 +86,7 @@ export async function POST(request: NextRequest) {
       </div>
     </div>`
   try {
-    const base = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL?.trim() || 'http://localhost:2069'
+    const base = internalBase()
     const res = await fetch(`${base}/api/send-email`, {
       method: 'POST',
       headers: internalMailHeaders(user?.email),

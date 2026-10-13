@@ -1,7 +1,7 @@
 // One-off: turn a Zoho "Self Client" grant code into ZOHO_CRM_WRITE_REFRESH_TOKEN and save it in .env.
 //
 //   1. Zoho API Console (https://api-console.zoho.in) → the Self Client whose Client ID is ZOHO_CRM_CLIENT_ID
-//      → "Generate Code" tab → Scope:  ZohoCRM.modules.custom.CREATE,ZohoCRM.modules.READ
+//      → "Generate Code" tab → Scope:  ZohoCRM.modules.custom.CREATE,ZohoCRM.modules.leads.CREATE,ZohoCRM.modules.READ
 //      → Time duration 10 minutes → Create → copy the code.
 //   2. node scripts/zoho-write-token.js <code>
 //
@@ -30,9 +30,10 @@ const dc = process.env.ZOHO_CRM_DATA_CENTER || process.env.ZOHO_DATA_CENTER || '
     process.exit(1)
   }
   if (!/ZohoCRM\.modules\.custom\.CREATE|ZohoCRM\.modules\.ALL/i.test(data.scope || '')) {
-    console.error('The granted scope has no create permission:', data.scope, '\nRegenerate the code with ZohoCRM.modules.custom.CREATE.')
+    console.error('The granted scope has no create permission:', data.scope, '\nRegenerate the code with ZohoCRM.modules.custom.CREATE,ZohoCRM.modules.leads.CREATE.')
     process.exit(1)
   }
+  if (!/ZohoCRM\.modules\.leads\.CREATE|ZohoCRM\.modules\.ALL/i.test(data.scope || '')) console.warn('Note: no ZohoCRM.modules.leads.CREATE in the scope — app sign-ups will not create Leads (lib/zohoLeads.ts).')
   const envPath = path.join(__dirname, '..', '.env')
   let env = fs.readFileSync(envPath, 'utf8')
   const line = `ZOHO_CRM_WRITE_REFRESH_TOKEN=${data.refresh_token}`

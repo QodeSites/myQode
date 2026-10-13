@@ -118,6 +118,35 @@ export async function createPlan(record: Record<string, unknown>, runWorkflows =
   return String(id)
 }
 
+const planCache = new Map<string, { at: number; s: PlanStatus | null }>()
+export type PlanStatus = { state: 'open' | 'on_hold' | 'closed'; label: string; updatedAt: string | null }
+/**
+ * Where a plan stands, for the app's request tracking (lib/requestTracking.ts); cached two minutes. The label is
+ * exactly what Zoho shows (asked 13 Oct 2026): the Holding Status (Active, Paused, Fully Deployed, Withdrawn, Merged)
+ * once set, else the Verification Status (Pending, Verified, Mismatch Detected). The state only picks the pill's tone:
+ * Fully Deployed / Withdrawn / Merged → closed; Paused / Mismatch Detected → on hold; else open. Null when unreadable.
+ */
+export async function planStatus(id: string): Promise<PlanStatus | null> {
+  if (!id) return null
+  const hit = planCache.get(id)
+  if (hit && Date.now() - hit.at < 120_000) return hit.s
+  let s: PlanStatus | null = null
+  try {
+    const res = await zohoFetch(`${zohoApiDomain()}/crm/v2/${PLAN_MODULE}/${id}?fields=Verification_Status,Holding_Status,Modified_Time`, { cache: 'no-store' })
+    const d: any = res.status === 204 ? null : (await res.json().catch(() => null))?.data?.[0]
+    if (d) {
+      const v = String(d.Verification_Status || ''), h = String(d.Holding_Status || ''), at = d.Modified_Time || null
+      // the label is Zoho's own word for it: the Holding Status once the plan has one, else the Verification Status
+      const label = h || v || 'Pending'
+      const state: PlanStatus['state'] = h === 'Fully Deployed' || h === 'Withdrawn' || h === 'Merged' ? 'closed'
+        : h === 'Paused' || v === 'Mismatch Detected' ? 'on_hold' : 'open'
+      s = { state, label, updatedAt: at }
+    }
+  } catch (e: any) { console.warn('[switchPlan] plan', id, 'not read -', e?.message) }
+  planCache.set(id, { at: Date.now(), s })
+  return s
+}
+
 export type OpenPlan = {
   id: string; planNo: string | null; requestDate: string | null; switchType: string | null
   from: Strat[]; to: Strat[]

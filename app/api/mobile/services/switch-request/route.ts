@@ -32,6 +32,7 @@ import { sendClientAck, clientName } from '@/lib/mobileAckMail'
 import { hasZohoWriteToken, zohoApiDomain, zohoFetch } from '@/lib/zoho'
 import { irRecipient, irSubject, IR_EMAIL } from '@/lib/mobileIrMail'
 import { buildPlanRecord, createPlan, openPlans, liveConflict, liveBlocks } from '@/lib/switchPlan'
+import { requestChannel, submittedVia, internalBase } from '@/lib/requestChannel'
 
 const STRATS = ['QAW', 'QTF', 'QGF', 'QLF'] as const   // Qode Liquid Fund: switched like every strategy (Zoho has QLF_* fields)
 type Strat = typeof STRATS[number]
@@ -79,8 +80,10 @@ async function findInvestors(email: string): Promise<any[]> {
 // Investor Relations email for a switch request — the web's account-services page sends this same
 // "New Switch/Reallocation Request" to IR (inquiry_type 'switch'). Sent in production, or on a dev server when
 // MOBILE_IR_EMAIL_OVERRIDE points it at the testers; never from a dev server to the real IR inbox.
-async function emailIrSwitch(user: any, view: any, isFull: boolean, fromList: string[], toList: string[], fromAmt: (s: any) => number, toAmt: (s: any) => number, requestId: string | null, dryRun: boolean, splitNote = '') {
-  if (!IS_PROD && !(process.env.MOBILE_IR_EMAIL_OVERRIDE || '').trim()) return
+// plan: the Switch Plan created — then the row is only recorded (record_only), with the plan's id and number for the
+// app's request tracking, and no email goes from here: Zoho's workflow on the plan notifies the team and the client.
+async function emailIrSwitch(user: any, view: any, isFull: boolean, fromList: string[], toList: string[], fromAmt: (s: any) => number, toAmt: (s: any) => number, requestId: string | null, dryRun: boolean, splitNote = '', plan: { id: string; no: string | null } | null = null) {
+  if (!plan && !IS_PROD && !(process.env.MOBILE_IR_EMAIL_OVERRIDE || '').trim()) return
   const rows = isFull
     ? `<p><strong>Switch From:</strong> ${fromList.join(', ')} (everything)</p><p><strong>Switch To:</strong> ${toList.map((s) => `${s} ${rs(toAmt(s))}`).join(', ')}</p>${splitNote ? `<p><strong>Note:</strong> ${splitNote}</p>` : ''}`
     : `<p><strong>Moving out:</strong> ${fromList.map((s) => `${s} ${rs(fromAmt(s))}`).join(', ')}</p><p><strong>Moving in:</strong> ${toList.map((s) => `${s} ${rs(toAmt(s))}`).join(', ')}</p>`
@@ -90,7 +93,7 @@ async function emailIrSwitch(user: any, view: any, isFull: boolean, fromList: st
         <h1 style="margin:0;color:#DABD38;font-family:Georgia,serif">Switch / Reallocation Request</h1>
       </div>
       <div style="background:#fff;padding:16px;border:1px solid #37584F;border-radius:8px">
-        <p><strong>Submitted via:</strong> myQode Mobile App</p>
+        <p><strong>Submitted via:</strong> ${submittedVia(user.channel)}</p>
         <p><strong>Date:</strong> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</p>
         <div style="background:#EFECD3;padding:12px;border-left:4px solid #DABD38;margin:12px 0">
           <p><strong>Investor:</strong> ${view.legalName}</p>
@@ -102,7 +105,7 @@ async function emailIrSwitch(user: any, view: any, isFull: boolean, fromList: st
       </div>
     </div>`
   try {
-    const base = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL?.trim() || 'http://localhost:2069'
+    const base = internalBase()
     const res = await fetch(`${base}/api/send-email`, {
       method: 'POST', headers: internalMailHeaders(user?.email),
       body: JSON.stringify({
@@ -111,6 +114,7 @@ async function emailIrSwitch(user: any, view: any, isFull: boolean, fromList: st
         nuvama_code: (user.accountCodes || []).find((c: string) => /^Q/.test(c)) || user.clientCode || 'MOBILE',
         client_id: user.clientId || '', user_email: user.email, priority: 'normal',
         switch_type: isFull ? 'Full Switch' : 'Partial Switch', switch_from: fromList, switch_to: toList, zoho_request_id: requestId,
+        zoho_plan_id: plan?.id ?? null, zoho_plan_no: plan?.no ?? null, record_only: !!plan, channel: user.channel ?? null,
       }),
     })
     if (!res.ok) console.warn('[switch-request] IR email answered', res.status)
@@ -147,6 +151,7 @@ export async function POST(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)
   if (error) return error
   if (user!.isReviewer) return NextResponse.json({ error: 'Not available for the reviewer account' }, { status: 403 })
+  ;(user as any).channel = requestChannel(request)   // Web / App, for the email and the tracking row
 
   let body: any
   try { body = await request.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
@@ -253,16 +258,9 @@ export async function POST(request: NextRequest) {
     }
     if (!IS_PROD) console.log('[mobile/services/switch-request] LIVE (SWITCH_REQUEST_LIVE=1) — creating the switch plan:', JSON.stringify(record))
     const id = await createPlan(record, runWorkflows)
-    await emailIrSwitch(user, view, isFull, fromList, toList, fromAmt, toAmt, String(id), false, splitNote)
-    await sendClientAck({
-      to: user!.email, name: view.legalName, reference: String(id),
-      subject: 'We’ve received your switch request', title: 'Switch request received',
-      intro: `We’ve received your request to switch strategies for ${view.legalName}, raised from the myQode app.`,
-      details: [['Switch type', isFull ? 'Full Switch' : 'Partial Switch'],
-        ['Moving out of', isFull ? fromList.join(', ') : fromList.map((s) => `${s} ${rs(fromAmt(s))}`).join(', ')],
-        ['Moving into', isFull ? toList.join(', ') : toList.map((s) => `${s} ${rs(toAmt(s))}`).join(', ')]],
-      next: 'Your relationship manager will confirm the details with you before anything moves. You do not need to send this again.',
-    })
+    // recorded for tracking; Zoho's workflow on the plan sends the notifications (no email from here, 13 Oct 2026)
+    await emailIrSwitch(user, view, isFull, fromList, toList, fromAmt, toAmt, String(id), false, splitNote, { id: String(id), no: null })
+    // no acknowledgement from here either: Zoho's workflow on the plan writes to the client
     return NextResponse.json({ success: true, dryRun: false, requestId: String(id), investor: view })
   } catch (err: any) {
     console.error('[mobile/services/switch-request POST]', err)

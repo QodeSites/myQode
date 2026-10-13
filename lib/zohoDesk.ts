@@ -1,6 +1,6 @@
 // Zoho Desk tickets for requests raised in the myQode app and web (decided 12 Oct 2026):
-//   Add Funds (payment or SIP confirmed), Ask About a Strategy, Book a Discussion, Raise Family Request,
-//   Raise Account Request, Referral Program. (Strategy switches go to Zoho CRM Switch Plans: lib/switchPlan.ts.)
+//   Ask About a Strategy, Raise Any Query, Raise Family Request, Raise Account Request, Referral Program.
+//   (Strategy switches go to Zoho CRM Switch Plans: lib/switchPlan.ts. Add Funds is not ticketed: decided 13 Oct 2026.)
 //
 // One ticket per request, in the Desk department set below, with the client as the ticket's contact (Desk finds the
 // contact by email, or creates it). The Investor Relations email and the client's acknowledgement still go out as
@@ -86,8 +86,34 @@ async function departmentId(): Promise<string> {
   return (store.dept = String(d.id))
 }
 
+export type DeskTicketStatus = { ticketNumber: string; status: string; statusType: 'Open' | 'On Hold' | 'Closed' | string; modifiedTime: string | null; closedTime: string | null; webUrl: string | null }
+const ticketCache = new Map<string, { at: number; t: DeskTicketStatus | null }>()
+let readBlockedUntil = 0   // the token has no Desk.tickets.READ: stop asking for a while, say so once
+/**
+ * A ticket's current status, for the app's request tracking (lib/requestTracking.ts); cached two minutes. Null when
+ * Desk is not set up, the ticket is gone, or the token cannot read tickets (logged once an hour; regenerate it with
+ * Desk.tickets.READ, scripts/zoho-desk-token.js).
+ */
+export async function getDeskTicketStatus(id: string): Promise<DeskTicketStatus | null> {
+  if (!deskConfigured() || !id || Date.now() < readBlockedUntil) return null
+  const hit = ticketCache.get(id)
+  if (hit && Date.now() - hit.at < 120_000) return hit.t
+  let t: DeskTicketStatus | null = null
+  try {
+    const d = await desk(`/tickets/${id}?include=`)
+    if (d) t = { ticketNumber: String(d.ticketNumber), status: String(d.status || ''), statusType: String(d.statusType || ''), modifiedTime: d.modifiedTime || null, closedTime: d.closedTime || null, webUrl: d.webUrl || null }
+  } catch (e: any) {
+    if (/SCOPE_MISMATCH|\(403\)/.test(String(e?.message))) {
+      readBlockedUntil = Date.now() + 3600_000
+      console.error('[zohoDesk] the Desk token cannot read tickets (add Desk.tickets.READ, scripts/zoho-desk-token.js); statuses show as Submitted for the next hour')
+    } else console.warn('[zohoDesk] ticket', id, 'not read -', e?.message)
+  }
+  ticketCache.set(id, { at: Date.now(), t })
+  return t
+}
+
 export type DeskRequest = {
-  kind: 'add_funds' | 'sip' | 'strategy' | 'discussion' | 'family_request' | 'account_request' | 'referral'
+  kind: 'strategy' | 'discussion' | 'family_request' | 'account_request' | 'referral'
   subject: string
   email: string                  // the client: the ticket's contact
   name?: string | null
@@ -100,7 +126,7 @@ export type DeskRequest = {
 export type DeskTicket = { id: string; ticketNumber: string; webUrl: string | null }
 
 const KIND_LABEL: Record<DeskRequest['kind'], string> = {
-  add_funds: 'Add Funds', sip: 'Add Funds (SIP)', strategy: 'Ask About a Strategy', discussion: 'Raise Any Query',
+  strategy: 'Ask About a Strategy', discussion: 'Raise Any Query',
   family_request: 'Family Request', account_request: 'Account Request', referral: 'Referral',
 }
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string))

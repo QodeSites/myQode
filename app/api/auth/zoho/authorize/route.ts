@@ -53,7 +53,7 @@ const WRITE_SCOPE = 'ZohoCRM.modules.ALL'
  * CREATE only, and only on custom modules (Strategy_Switch_Requests): it cannot edit or delete anything, nor
  * touch Leads/Contacts/Deals. Stored separately as ZOHO_CRM_WRITE_REFRESH_TOKEN (lib/zoho.ts).
  */
-const SWITCH_WRITE_SCOPE = 'ZohoCRM.modules.custom.CREATE'
+const SWITCH_WRITE_SCOPE = 'ZohoCRM.modules.custom.CREATE,ZohoCRM.modules.leads.CREATE'   // switch plans, and Leads for app sign-ups (lib/zohoLeads.ts)
 
 /**
  * `?desk=1` — the Zoho Desk token for tickets raised from app requests (lib/zohoDesk.ts): create tickets and their

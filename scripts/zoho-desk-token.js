@@ -1,7 +1,8 @@
 // One-off: turn a Zoho "Self Client" grant code into ZOHO_DESK_REFRESH_TOKEN (lib/zohoDesk.ts) and save it in .env,
 // then list the Desk organisations and departments this login sees.
 //
-//   1. Zoho API Console (https://api-console.zoho.in) → the Self Client whose Client ID is ZOHO_CRM_CLIENT_ID
+//   1. Zoho API Console (https://api-console.zoho.in) → the Self Client whose Client ID is ZOHO_DESK_CLIENT_ID (or
+//      ZOHO_CRM_CLIENT_ID when there is no separate Desk client: the code must come from the client it is exchanged on)
 //      → "Generate Code" tab, signed in as a Zoho Desk agent who can create tickets → Scope:
 //        Desk.tickets.CREATE,Desk.tickets.READ,Desk.contacts.READ,Desk.contacts.CREATE,Desk.basic.READ
 //      → Time duration 10 minutes → Create → copy the code.
@@ -24,7 +25,7 @@ const dc = process.env.ZOHO_DESK_DATA_CENTER || process.env.ZOHO_CRM_DATA_CENTER
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({
       grant_type: 'authorization_code', code,
-      client_id: process.env.ZOHO_CRM_CLIENT_ID, client_secret: process.env.ZOHO_CRM_CLIENT_SECRET,
+      client_id: process.env.ZOHO_DESK_CLIENT_ID || process.env.ZOHO_CRM_CLIENT_ID, client_secret: process.env.ZOHO_DESK_CLIENT_SECRET || process.env.ZOHO_CRM_CLIENT_SECRET,
     }),
   })
   const data = await res.json().catch(() => ({}))

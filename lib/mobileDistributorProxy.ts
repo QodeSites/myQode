@@ -7,10 +7,11 @@
 // Identity: the web routes read the qode-user-context cookie. Here that cookie is built on the server from the
 // partner the mobile JWT was verified for (requireMobileDistributor) — the app never supplies it, so it cannot
 // be forged from the phone. Never forwards admin flags (includeQodeShare).
-import { NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
+import { internalBase } from '@/lib/requestChannel'
 import { signWebSession, WEB_SESSION_COOKIE } from '@/lib/webSession'
 
-const base = () => (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL?.trim() || 'http://localhost:2069').replace(/\/$/, '')
+const base = () => (internalBase()).replace(/\/$/, '')
 
 export async function callWebDistributorRoute(email: string, path: string, init: { method?: string; body?: unknown } = {}) {
   const cookie = 'qode-auth=1; qode-user-context=' + encodeURIComponent(JSON.stringify({ email })) +

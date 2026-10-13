@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import { sendClientAck, clientName } from '@/lib/mobileAckMail'
 import { raiseDeskTicket } from '@/lib/zohoDesk'
-import { requestChannel } from '@/lib/requestChannel'
+import { requestChannel, submittedVia, internalBase } from '@/lib/requestChannel'
 import { irRecipient, irSubject } from '@/lib/mobileIrMail'
 
 export async function POST(request: NextRequest) {
@@ -33,6 +33,8 @@ export async function POST(request: NextRequest) {
     const isHeadOfFamily = user!.isHeadOfFamily
     const subject = `${isHeadOfFamily ? 'Family Mapping' : 'Account'} Request — ${accountId}`
 
+    const channel = requestChannel(request)   // Web / App (lib/requestChannel.ts)
+
     const emailHtml = `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#EFECD3">
         <div style="background:#02422B;padding:16px;border-radius:8px;margin-bottom:16px;text-align:center">
@@ -41,7 +43,7 @@ export async function POST(request: NextRequest) {
           </h1>
         </div>
         <div style="background:#fff;padding:16px;border:1px solid #37584F;border-radius:8px">
-          <p><strong>Submitted via:</strong> myQode Mobile App</p>
+          <p><strong>Submitted via:</strong> ${submittedVia(channel)}</p>
           <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
           <div style="background:#EFECD3;padding:12px;border-left:4px solid #DABD38;margin:12px 0">
             <p><strong>User Role:</strong> ${isHeadOfFamily ? 'Head of Family' : 'Account Owner'}</p>
@@ -56,13 +58,13 @@ export async function POST(request: NextRequest) {
 
     // Zoho Desk ticket (lib/zohoDesk.ts); null when Desk is not set up here or refused — the request carries on by email.
     const desk = await raiseDeskTicket({
-      channel: requestChannel(request),
+      channel,
       kind: isHeadOfFamily ? 'family_request' : 'account_request',
       subject: `${isHeadOfFamily ? 'Family' : 'Account'} request from ${accountId}`, email: user!.email, name: await clientName(user!.email), accountId,
       fields: [['Investor ID', user!.clientId], ['Head of family', isHeadOfFamily ? 'Yes' : 'No'], ['Request', String(message).trim()]],
     })
 
-    const emailRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL?.trim() || 'http://localhost:2069'}/api/send-email`, {
+    const emailRes = await fetch(`${internalBase()}/api/send-email`, {
       method: 'POST',
       headers: internalMailHeaders(user?.email),
       body: JSON.stringify({
@@ -73,6 +75,9 @@ export async function POST(request: NextRequest) {
         fromName: 'myQode Mobile',
         inquiry_type: 'raised_request',
         desk_ticket: desk?.ticketNumber ?? null,
+        desk_ticket_id: desk?.id ?? null,
+        record_only: !!desk,   // Desk notifies the team and the client; the row is kept for tracking
+        channel,               // Web / App, for the request tracking list
         nuvama_code: accountId,
         client_id: user!.clientId,
         user_email: user!.email,
@@ -83,9 +88,9 @@ export async function POST(request: NextRequest) {
     const emailData = await emailRes.json()
     if (!emailRes.ok) throw new Error(emailData.error || 'Email send failed')
 
-    // Acknowledgement to the investor (IR got its own notification above).
-    await sendClientAck({
-      to: user!.email, name: await clientName(user!.email), reference: desk ? `#${desk.ticketNumber}` : emailData.inquiry_id,
+    // Acknowledgement to the investor — ours only when there is no Desk ticket (Desk sends its own on creation).
+    if (!desk) await sendClientAck({
+      to: user!.email, name: await clientName(user!.email), reference: emailData.inquiry_id,
       subject: `We’ve received your ${isHeadOfFamily ? 'family' : 'account'} request`, title: `${isHeadOfFamily ? 'Family' : 'Account'} request received`,
       intro: 'We’ve received the request you raised from the myQode app.',
       details: [['Account', accountId], ['Your request', message]],
