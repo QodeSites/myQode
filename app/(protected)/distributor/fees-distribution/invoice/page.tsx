@@ -312,7 +312,8 @@ export default function DistributorInvoicePage() {
         setIssueError((await res.json()).error);
         return;
       }
-      if (!res.ok) throw new Error("Could not record the invoice");
+      // The server's reason (period not over yet, period already invoiced…) is shown as it is
+      if (!res.ok) throw new Error((await res.json().catch(() => null))?.error || "Could not record the invoice");
       window.print();
     } catch (e: any) {
       setIssueError(e.message || "Could not record the invoice");

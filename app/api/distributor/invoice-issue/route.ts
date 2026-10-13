@@ -99,9 +99,20 @@ export async function POST(req: Request) {
   // The period an invoice bills (12 Oct 2026). On 9 Oct a partner raised two invoices for the whole of FY 2027
   // (Apr 2026 – Mar 2027): a year not yet over, including a quarter already invoiced and paid, twice in a minute.
   // Now: the period must be given, must have ended, and must not overlap any invoice the partner already raised.
-  const isDay = (v: unknown) => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && !isNaN(Date.parse(v))
-  const periodStart = String(body.periodStart ?? ''), periodEnd = String(body.periodEnd ?? '')
-  if (!isDay(periodStart) || !isDay(periodEnd) || periodStart > periodEnd) {
+  // The pages send the period's days as the fee calculator labels them ("1-Jul-26"); an ISO day is accepted too.
+  // (13 Oct 2026: only ISO was accepted, so every invoice was refused from 12 Oct with "Choose the period".)
+  const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+  const toDay = (v: unknown): string => {
+    const t = String(v ?? '').trim()
+    const iso = t.match(/^(\d{4})-(\d{2})-(\d{2})$/), lab = t.match(/^(\d{1,2})-([A-Za-z]{3})-(\d{2}|\d{4})$/)
+    const y = iso ? +iso[1] : lab ? (lab[3].length === 2 ? 2000 + +lab[3] : +lab[3]) : 0
+    const m = iso ? +iso[2] : lab ? MONTHS.indexOf(lab[2].toLowerCase()) + 1 : 0
+    const d = iso ? +iso[3] : lab ? +lab[1] : 0
+    const dt = new Date(Date.UTC(y, m - 1, d))
+    return y && m && dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d ? dt.toISOString().slice(0, 10) : ''
+  }
+  const periodStart = toDay(body.periodStart), periodEnd = toDay(body.periodEnd)
+  if (!periodStart || !periodEnd || periodStart > periodEnd) {
     return NextResponse.json({ error: 'Choose the period this invoice is for.' }, { status: 400 })
   }
   const todayIst = new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10)
