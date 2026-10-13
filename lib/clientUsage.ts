@@ -78,7 +78,7 @@ export async function people() {
 
 export const sinceSql = (days: number) => `(('${istDay(Date.now() - (days - 1) * 86400000)}')::date)::timestamp AT TIME ZONE 'Asia/Kolkata'`
 
-export type ClientStatus = 'no_password' | 'never_signed_in' | 'website_only' | 'old_app' | 'app_not_used' | 'using_app'
+export type ClientStatus = 'no_password' | 'never_signed_in' | 'website_only' | 'old_app' | 'app_not_used' | 'using_app' | 'family_covered'
 
 /** Everything the page shows for the last `days` days (7, 14, 30 or 90). */
 export async function clientUsage(daysIn: number) {
@@ -87,7 +87,7 @@ export async function clientUsage(daysIn: number) {
   const since = sinceSql(days)
   const { byEmail, emailOf } = await people()
   const staff = await staffViews(byEmail)
-  const [master, push, notes, use, last, pages] = await Promise.all([
+  const [master, push, notes, use, last, pages, heads] = await Promise.all([
     query(
       `SELECT lower(trim(email)) AS email,
               bool_or(password_set_at IS NOT NULL OR coalesce(password, '') NOT IN ('', 'Qode@123') OR first_login_at IS NOT NULL OR last_login_at IS NOT NULL
@@ -122,13 +122,22 @@ export async function clientUsage(daysIn: number) {
     safe(async () => (await query1(
       `SELECT u.user_id, u.event_name, count(*)::int AS n FROM ${A} u
         WHERE ${CLIENT} AND ${NOT_STAFF} AND u.event_type = 'screen' AND u.occurred_at >= ${since} GROUP BY 1, 2`, staff)).rows, [] as any[]),
+    // Families: each member's family (groupid) and that family's head. A head's login shows every account in the
+    // family, so a member without a password of their own is not someone to chase once the head has signed up.
+    safe(async () => (await query(
+      `SELECT lower(trim(m.email)) AS email, lower(trim(h.email)) AS head
+         FROM pms_clients_master m JOIN pms_clients_master h ON h.groupid = m.groupid AND h.head_of_family
+        WHERE m.clientcode ~* '^Q' AND m.groupid IS NOT NULL AND coalesce(trim(m.email), '') <> '' AND coalesce(trim(h.email), '') <> ''
+          AND (m.maturity_date IS NULL OR m.maturity_date > NOW()) AND (h.maturity_date IS NULL OR h.maturity_date > NOW())
+          AND lower(trim(h.email)) <> lower(trim(m.email))
+        GROUP BY 1, 2`)).rows, [] as any[]),
   ])
 
   type Row = {
     email: string; name: string; accounts: string[]; status: ClientStatus | ''; passwordSet: boolean; passwordSetAt: string | null; signedIn: boolean
     hasApp: boolean; devices: string[]; appVersion: string | null; appSince: string | null; lastUsed: string | null; lastUsedApp: string | null
     daysUsed: number; opens: number; usedToday: boolean; used7: boolean; topPages: string[]; notificationsOn: boolean
-    notesSent: number; notesOnPhone: number; notesRead: number; locked: boolean
+    notesSent: number; notesOnPhone: number; notesRead: number; locked: boolean; familyHead: string | null
   }
   const rows = new Map<string, Row>()
   for (const m of master.rows) {
@@ -139,7 +148,7 @@ export async function clientUsage(daysIn: number) {
       appSince: m.app_since ? new Date(m.app_since).toISOString() : null,
       lastUsed: [m.app_last, m.web_last].filter(Boolean).map((x: any) => new Date(x).toISOString()).sort().pop() ?? null,
       lastUsedApp: m.app_last ? new Date(m.app_last).toISOString() : null,
-      daysUsed: 0, opens: 0, usedToday: false, used7: false, topPages: [], notificationsOn: false, notesSent: 0, notesOnPhone: 0, notesRead: 0, locked: !!m.locked,
+      daysUsed: 0, opens: 0, usedToday: false, used7: false, topPages: [], notificationsOn: false, notesSent: 0, notesOnPhone: 0, notesRead: 0, locked: !!m.locked, familyHead: null,
     })
   }
   // A client with no password and no sign-in on record cannot have opened anything: whatever the old portal holds
@@ -201,6 +210,11 @@ export async function clientUsage(daysIn: number) {
     r.status = !r.passwordSet ? 'no_password' : !r.signedIn ? 'never_signed_in' : !r.hasApp ? 'website_only' : !r.appVersion ? 'old_app'
       : r.lastUsedApp && Date.parse(r.lastUsedApp) >= cut ? 'using_app' : 'app_not_used'
   }
+  // A family member with no password whose family head has a login: seen through the head, kept apart from "No password yet"
+  for (const h of heads) {
+    const r = rows.get(h.email), head = rows.get(h.head)
+    if (r && head && r.status === 'no_password' && head.passwordSet) { r.status = 'family_covered'; r.familyHead = head.name }
+  }
   const list = [...rows.values()].sort((a, b) => (b.lastUsed || '').localeCompare(a.lastUsed || '') || a.name.localeCompare(b.name))
   const count = (f: (r: Row) => boolean) => list.filter(f).length
   return {
@@ -208,7 +222,7 @@ export async function clientUsage(daysIn: number) {
     summary: {
       clients: list.length,
       noPassword: count(r => r.status === 'no_password'), neverSignedIn: count(r => r.status === 'never_signed_in'),
-      websiteOnly: count(r => r.status === 'website_only'), oldApp: count(r => r.status === 'old_app'), appNotUsed: count(r => r.status === 'app_not_used'), usingApp: count(r => r.status === 'using_app'),
+      websiteOnly: count(r => r.status === 'website_only'), oldApp: count(r => r.status === 'old_app'), appNotUsed: count(r => r.status === 'app_not_used'), usingApp: count(r => r.status === 'using_app'), familyCovered: count(r => r.status === 'family_covered'),
       hasApp: count(r => r.hasApp), noApp: count(r => !r.hasApp), iphone: count(r => r.devices.includes('iPhone')), android: count(r => r.devices.includes('Android')),
       usedToday: count(r => r.usedToday), used7: count(r => r.used7), usedPeriod: count(r => r.daysUsed > 0),
       notificationsOn: count(r => r.notificationsOn), notificationsOff: count(r => r.hasApp && !r.notificationsOn), locked: count(r => r.locked),

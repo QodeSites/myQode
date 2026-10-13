@@ -18,12 +18,12 @@ import { EmptyState, ErrorNote, PageHeader, Panel, Pill, boFetch, errorMessage, 
 import { cn } from "@/lib/utils"
 import { downloadXlsx, type XSheet } from "@/lib/xlsxWriter"
 
-type Status = "no_password" | "never_signed_in" | "website_only" | "old_app" | "app_not_used" | "using_app"
+type Status = "no_password" | "never_signed_in" | "website_only" | "old_app" | "app_not_used" | "using_app" | "family_covered"
 type Client = {
   email: string; name: string; accounts: string[]; status: Status; passwordSet: boolean; passwordSetAt: string | null; signedIn: boolean
   hasApp: boolean; devices: string[]; appVersion: string | null; appSince: string | null; lastUsed: string | null; lastUsedApp: string | null
   daysUsed: number; opens: number; usedToday: boolean; used7: boolean; topPages: string[]; notificationsOn: boolean
-  notesSent: number; notesOnPhone: number; notesRead: number; locked: boolean; remindedAt: string | null
+  notesSent: number; notesOnPhone: number; notesRead: number; locked: boolean; remindedAt: string | null; familyHead: string | null
 }
 type Note = { key: string; kind: string; title: string; sent: number; clients: number; reachedPhone: number; inboxOnly: number; read: number }
 type Data = {
@@ -50,8 +50,9 @@ const STATUS: Record<Status, { label: string; tone: "red" | "amber" | "gold" | "
   old_app: { label: "Has the old app, needs to update", tone: "gold", color: "#8a9a94", meaning: "They have the phone app, but an old version. It still works, but it cannot tell us what they open.", action: "Ask them to update the app from the store." },
   app_not_used: { label: "Has the new app, not opened in 30 days", tone: "gold", color: "#6b7f78", meaning: "They have the latest app but have not opened it in the last 30 days.", action: "Remind them to open it." },
   using_app: { label: "Using the new app", tone: "green", color: "#02422B", meaning: "They opened the latest phone app in the last 30 days.", action: "Nothing to do." },
+  family_covered: { label: "Family member, seen by the family head", tone: "grey", color: "#c7c2a6", meaning: "They have no password of their own, but the head of their family has a login and sees their account in it.", action: "Nothing to do." },
 }
-const ORDER: Status[] = ["no_password", "never_signed_in", "website_only", "old_app", "app_not_used", "using_app"]
+const ORDER: Status[] = ["no_password", "never_signed_in", "website_only", "old_app", "app_not_used", "using_app", "family_covered"]
 type Filter = "all" | Status | "today" | "week" | "notes_off" | "no_app" | "outdated_app"
 const FILTERS: { key: Filter; label: string; test: (c: Client) => boolean }[] = [
   { key: "all", label: "Everyone", test: () => true },
@@ -86,17 +87,17 @@ function fullReport(d: Data, rem: Reminders | null): XSheet[] {
   const S = d.summary, n = (k: string) => S[k] ?? 0
   const share = (a: number) => (S.clients ? a / S.clients : 0)
   const clientCols = [
-    { label: "Client", width: 30 }, { label: "Email", width: 30 }, { label: "Accounts", width: 26 }, { label: "Where they stand", width: 30 }, { label: "What to do", width: 34 },
+    { label: "Client", width: 30 }, { label: "Email", width: 30 }, { label: "Accounts", width: 26 }, { label: "Where they stand", width: 30 }, { label: "What to do", width: 34 }, { label: "Family head", width: 24 },
     { label: "Phone", width: 16 }, { label: "App version", width: 12 }, { label: "Password set on", width: 14, type: "date" as const }, { label: "Last opened (app or website)", width: 16, type: "date" as const },
     { label: "Last opened the phone app", width: 16, type: "date" as const }, { label: `Days used (last ${d.days})`, width: 12, type: "number" as const }, { label: `Times opened (last ${d.days} days)`, width: 13, type: "number" as const },
     { label: "Looks at most", width: 34 }, { label: "Notifications on phone", width: 14 }, { label: "Notifications sent", width: 12, type: "number" as const },
     { label: "Reached the phone", width: 12, type: "number" as const }, { label: "Read", width: 8, type: "number" as const }, { label: "Reminded on", width: 14, type: "date" as const },
   ]
-  const clientRow = (c: Client) => [c.name, c.email, c.accounts.join(", "), STATUS[c.status].label, STATUS[c.status].action, !c.hasApp ? "No app" : c.devices.join(" + ") || "Phone app",
+  const clientRow = (c: Client) => [c.name, c.email, c.accounts.join(", "), STATUS[c.status].label, STATUS[c.status].action, c.familyHead || "", !c.hasApp ? "No app" : c.devices.join(" + ") || "Phone app",
     !c.hasApp ? "" : c.appVersion || "Old version", c.passwordSet ? c.passwordSetAt || "" : "", c.lastUsed || "", c.lastUsedApp || "", c.daysUsed, c.opens, c.topPages.join(", "),
     !c.hasApp ? "No app" : c.notificationsOn ? "On" : "Off", c.notesSent, c.notesOnPhone, c.notesRead, c.remindedAt || ""]
   const byName = [...d.clients].sort((a, b) => a.name.localeCompare(b.name))
-  const chase = d.clients.filter((c) => c.status !== "using_app").sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status) || a.name.localeCompare(b.name))
+  const chase = d.clients.filter((c) => c.status !== "using_app" && c.status !== "family_covered").sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status) || a.name.localeCompare(b.name))
   const sheets: XSheet[] = [
     { name: "Summary", columns: [{ label: "Measure", width: 42 }, { label: "Clients", width: 12, type: "number" }, { label: "Share of all clients", width: 14, type: "percent" }, { label: "What it means", width: 80 }],
       rows: [
@@ -242,10 +243,10 @@ export default function AppAnalyticsPage() {
           <div className="flex h-3 w-full overflow-hidden rounded-full bg-stone-200">
             {ORDER.map((s) => { const n = d.clients.filter((c) => c.status === s).length; return n ? <div key={s} title={`${STATUS[s].label}: ${n}`} style={{ width: `${(n / S.clients) * 100}%`, background: STATUS[s].color }} /> : null })}
           </div>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5">
             {ORDER.map((s) => {
               const n = d.clients.filter((c) => c.status === s).length
-              if (!n && (s === "never_signed_in" || s === "app_not_used")) return null
+              if (!n && (s === "never_signed_in" || s === "app_not_used" || s === "family_covered")) return null
               return (
                 <button key={s} type="button" onClick={() => pick(s)} className={cn("rounded-xl border bg-white p-4 text-left transition hover:border-[#02422B]/50", filter === s ? "border-[#02422B]" : "border-[#02422B]/10")}>
                   <div className="flex items-center gap-2 text-xs font-semibold text-[#002017]"><span className="h-2.5 w-2.5 rounded-full" style={{ background: STATUS[s].color }} />{STATUS[s].label}</div>
@@ -264,7 +265,7 @@ export default function AppAnalyticsPage() {
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
           <Fact label="Used myQode today" value={fmtNum(S.usedToday)} hint="App or website, so far today" icon={<Eye className="h-4 w-4" />} onClick={() => pick("today")} />
           <Fact label="Used it in the last 7 days" value={fmtNum(S.used7)} hint={`${pct(S.used7, S.clients)} of all clients`} icon={<Eye className="h-4 w-4" />} onClick={() => pick("week")} />
-          <Fact label="Don't have the app" value={fmtNum(S.noApp)} hint={`${fmtNum(S.noPassword)} have no password, ${fmtNum(S.websiteOnly + S.neverSignedIn)} use only the website`} icon={<Smartphone className="h-4 w-4" />} onClick={() => pick("no_app")} />
+          <Fact label="Don't have the app" value={fmtNum(S.noApp)} hint={`${fmtNum(S.noPassword)} have no password, ${fmtNum(S.websiteOnly + S.neverSignedIn)} use only the website${S.familyCovered ? `, ${fmtNum(S.familyCovered)} are seen through a family head` : ""}`} icon={<Smartphone className="h-4 w-4" />} onClick={() => pick("no_app")} />
           <Fact label="Have the app" value={fmtNum(S.hasApp)} hint={`${fmtNum(S.iphone)} iPhone · ${fmtNum(S.android)} Android`} icon={<Smartphone className="h-4 w-4" />} />
           <Fact label="Notifications switched off" value={fmtNum(S.notificationsOff)} hint={`Of ${fmtNum(S.hasApp)} with the app, only ${fmtNum(S.notificationsOn)} get alerts on their phone`} icon={<BellOff className="h-4 w-4" />} onClick={() => pick("notes_off")} />
         </div>
@@ -315,6 +316,7 @@ export default function AppAnalyticsPage() {
                     <TableRow key={c.email} className="cursor-pointer hover:bg-[#EFECD3]/50" onClick={() => setOpen(c)}>
                       <TableCell><p className="max-w-[15rem] truncate font-medium text-[#002017]">{c.name}</p><p className="max-w-[15rem] truncate text-xs text-muted-foreground">{c.accounts.join(" · ")}</p></TableCell>
                       <TableCell><Pill tone={STATUS[c.status].tone}>{STATUS[c.status].label}</Pill>{c.locked ? <Pill tone="red" className="ml-1">Locked</Pill> : null}
+                        {c.familyHead ? <span className="mt-1 block text-xs text-muted-foreground">Family head: {c.familyHead}</span> : null}
                         {c.remindedAt ? <span className="mt-1 block text-xs text-muted-foreground">Reminded {fmtRelative(c.remindedAt)}</span> : null}</TableCell>
                       <TableCell className="text-sm">{c.hasApp ? <>{c.devices.join(" + ") || "Phone app"}<span className={cn("block text-xs", c.appVersion ? "text-muted-foreground" : "text-amber-700")}>{c.appVersion ? `Version ${c.appVersion}` : "Old version, needs an update"}</span></> : <span className="text-muted-foreground">No app</span>}</TableCell>
                       <TableCell className="text-sm">{c.lastUsed ? fmtRelative(c.lastUsed) : <span className="text-muted-foreground">Never</span>}</TableCell>
@@ -390,7 +392,7 @@ export default function AppAnalyticsPage() {
             <div className="space-y-4 px-4 pb-8">
               <div className="rounded-lg border border-[#02422B]/10 bg-white p-3 text-sm">
                 <Pill tone={STATUS[open.status].tone}>{STATUS[open.status].label}</Pill>
-                <p className="mt-2 text-muted-foreground">{STATUS[open.status].meaning} <span className="font-medium text-[#02422B]">{STATUS[open.status].action}</span></p>
+                <p className="mt-2 text-muted-foreground">{open.familyHead ? `Family head: ${open.familyHead}. ` : ""}{STATUS[open.status].meaning} <span className="font-medium text-[#02422B]">{STATUS[open.status].action}</span></p>
                 <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
                   {[["Phone", phone(open)], ["Last opened", open.lastUsed ? fmtRelative(open.lastUsed) : "Never"], ["Password", open.passwordSet ? `Set${open.passwordSetAt ? ` on ${fmtDate(open.passwordSetAt)}` : ""}` : "Not set"],
                     ["Days used", `${open.daysUsed} of the last ${d?.days}`], ["Notifications on phone", !open.hasApp ? "No app" : open.notificationsOn ? "On" : "Off"],
