@@ -16,6 +16,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { EmptyState, ErrorNote, PageHeader, Panel, Pill, boFetch, errorMessage, fmtDate, fmtNum, fmtRelative, fmtShortDay, useBackofficeAdmin } from "@/components/admin-kit"
 import { cn } from "@/lib/utils"
+import { downloadXlsx, type XSheet } from "@/lib/xlsxWriter"
 
 type Status = "no_password" | "never_signed_in" | "website_only" | "old_app" | "app_not_used" | "using_app"
 type Client = {
@@ -78,6 +79,51 @@ function downloadCsv(name: string, rows: Record<string, unknown>[]) {
   const cell = (v: unknown) => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s }
   const blob = new Blob([[cols.join(","), ...rows.map((r) => cols.map((c) => cell(r[c])).join(","))].join("\n")], { type: "text/csv;charset=utf-8" })
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `${name}.csv`; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000)
+}
+
+// The whole page as one Excel workbook: a sheet per section, every client on one sheet, and a ready "to chase" list.
+function fullReport(d: Data, rem: Reminders | null): XSheet[] {
+  const S = d.summary, n = (k: string) => S[k] ?? 0
+  const share = (a: number) => (S.clients ? a / S.clients : 0)
+  const clientCols = [
+    { label: "Client", width: 30 }, { label: "Email", width: 30 }, { label: "Accounts", width: 26 }, { label: "Where they stand", width: 30 }, { label: "What to do", width: 34 },
+    { label: "Phone", width: 16 }, { label: "App version", width: 12 }, { label: "Password set on", width: 14, type: "date" as const }, { label: "Last opened (app or website)", width: 16, type: "date" as const },
+    { label: "Last opened the phone app", width: 16, type: "date" as const }, { label: `Days used (last ${d.days})`, width: 12, type: "number" as const }, { label: `Times opened (last ${d.days} days)`, width: 13, type: "number" as const },
+    { label: "Looks at most", width: 34 }, { label: "Notifications on phone", width: 14 }, { label: "Notifications sent", width: 12, type: "number" as const },
+    { label: "Reached the phone", width: 12, type: "number" as const }, { label: "Read", width: 8, type: "number" as const }, { label: "Reminded on", width: 14, type: "date" as const },
+  ]
+  const clientRow = (c: Client) => [c.name, c.email, c.accounts.join(", "), STATUS[c.status].label, STATUS[c.status].action, !c.hasApp ? "No app" : c.devices.join(" + ") || "Phone app",
+    !c.hasApp ? "" : c.appVersion || "Old version", c.passwordSet ? c.passwordSetAt || "" : "", c.lastUsed || "", c.lastUsedApp || "", c.daysUsed, c.opens, c.topPages.join(", "),
+    !c.hasApp ? "No app" : c.notificationsOn ? "On" : "Off", c.notesSent, c.notesOnPhone, c.notesRead, c.remindedAt || ""]
+  const byName = [...d.clients].sort((a, b) => a.name.localeCompare(b.name))
+  const chase = d.clients.filter((c) => c.status !== "using_app").sort((a, b) => ORDER.indexOf(a.status) - ORDER.indexOf(b.status) || a.name.localeCompare(b.name))
+  const sheets: XSheet[] = [
+    { name: "Summary", columns: [{ label: "Measure", width: 42 }, { label: "Clients", width: 12, type: "number" }, { label: "Share of all clients", width: 14, type: "percent" }, { label: "What it means", width: 80 }],
+      rows: [
+        ["All clients", n("clients"), 1, "People with an open account. Each person counts once, even with several accounts."],
+        ...ORDER.filter((s) => d.clients.some((c) => c.status === s)).map((s) => { const k = d.clients.filter((c) => c.status === s).length; return [STATUS[s].label, k, share(k), `${STATUS[s].meaning} ${STATUS[s].action}`] }),
+        ["Have the phone app", n("hasApp"), share(n("hasApp")), `Signed in from an iPhone or Android at least once: ${n("iphone")} iPhone, ${n("android")} Android.`],
+        ["Don't have the app", n("noApp"), share(n("noApp")), "No password yet, or use only the website."],
+        ["Used myQode today", n("usedToday"), share(n("usedToday")), "App or website, so far today."],
+        ["Used it in the last 7 days", n("used7"), share(n("used7")), "App or website."],
+        [`Used it in the last ${d.days} days`, n("usedPeriod"), share(n("usedPeriod")), "App or website."],
+        ["Get alerts on their phone", n("notificationsOn"), share(n("notificationsOn")), "Have the new app with notifications switched on."],
+        ["Have the app, notifications off", n("notificationsOff"), share(n("notificationsOff")), "They only see notifications inside the app, if they open it."],
+        [`Report period: ${d.from} to ${d.to}`, "", "", "Qode staff sessions, staff 'Open as' sessions and partners are left out. Phone-app activity is recorded from app version 1.3 (10 Oct 2026)."],
+      ] },
+    { name: "To chase", columns: clientCols, rows: chase.map(clientRow) },
+    { name: "All clients", columns: clientCols, rows: byName.map(clientRow) },
+    { name: "Daily use", columns: [{ label: "Day", width: 14, type: "date" }, { label: "Used the phone app", width: 16, type: "number" }, { label: "Website only", width: 14, type: "number" }, { label: "Total clients", width: 14, type: "number" }],
+      rows: d.daily.map((x) => [x.date, x.app, x.website, x.app + x.website]) },
+    { name: "What clients look at", columns: [{ label: "Page", width: 34 }, { label: "Clients who opened it", width: 16, type: "number" }, { label: "Times opened", width: 14, type: "number" }],
+      rows: d.pages.map((x) => [x.page, x.clients, x.views]) },
+    { name: "Notifications", columns: [{ label: "Notification", width: 40 }, { label: "Kind", width: 24 }, { label: "Sent", width: 10, type: "number" }, { label: "Clients", width: 10, type: "number" },
+        { label: "Reached the phone", width: 14, type: "number" }, { label: "In-app inbox only", width: 14, type: "number" }, { label: "Read", width: 10, type: "number" }],
+      rows: d.notifications.map((x) => [x.title, x.kind, x.sent, x.clients, x.reachedPhone, x.inboxOnly, x.read]) },
+  ]
+  if (rem?.history.length) sheets.push({ name: "Reminders sent", columns: [{ label: "Sent on", width: 14, type: "date" }, { label: "Group", width: 34 }, { label: "Clients", width: 10, type: "number" }, { label: "Subject", width: 44 }, { label: "Sent by", width: 30 }],
+    rows: rem.history.map((h) => [h.at, rem.kinds[h.kind]?.group ?? h.kind, h.recipients, h.subject, h.by]) })
+  return sheets
 }
 
 function Fact({ label, value, hint, icon, onClick }: { label: string; value: ReactNode; hint: ReactNode; icon: ReactNode; onClick?: () => void }) {
@@ -184,6 +230,7 @@ export default function AppAnalyticsPage() {
             {[7, 14, 30, 90].map((n) => <option key={n} value={n}>Last {n} days</option>)}
           </select>
           <Button variant="outline" className="bg-white" onClick={load} disabled={loading}><RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />Refresh</Button>
+          <Button className="bg-[#02422B] text-white hover:bg-[#02422B]/90" disabled={!d} onClick={() => d && downloadXlsx(`myQode-app-analytics-${d.to}.xlsx`, fullReport(d, rem))}><Download className="h-4 w-4" />Download full report</Button>
         </>} />
 
       {error ? <ErrorNote message={error} onRetry={load} /> : null}
