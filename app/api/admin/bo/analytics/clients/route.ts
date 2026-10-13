@@ -49,6 +49,19 @@ const reach = (s: string | null) => (s === 'delivered' || s === 'unconfirmed' ? 
 
 type Person = { email: string; name: string; accounts: string[] }
 
+// Staff "Open as": the old web portal recorded an admin's page views under the client's own email, so they looked
+// like the client's use. Those are the web page views (paths) in the 4 hours after an audited impersonation of that
+// client (admin_audit_log, kept since 27 Sep 2026). The new app and web never record an impersonated session.
+const NOT_STAFF = `NOT (u.platform = 'web' AND u.event_name LIKE '/%' AND EXISTS (
+  SELECT 1 FROM unnest($1::text[], $2::timestamptz[]) AS imp(uid, at) WHERE imp.uid = lower(u.user_id) AND u.occurred_at BETWEEN imp.at - interval '2 minutes' AND imp.at + interval '4 hours'))`
+async function staffViews(byEmail: Map<string, Person>): Promise<[string[], string[]]> {
+  const rows = await safe(async () => (await query(
+    `SELECT lower(target) AS email, created_at FROM admin_audit_log WHERE action IN ('user.impersonate', 'impersonate.open', 'managed.impersonate') AND created_at > NOW() - interval '100 days'`)).rows, [] as any[])
+  const ids: string[] = [], at: string[] = []
+  for (const r of rows) for (const id of [r.email, ...(byEmail.get(r.email)?.accounts ?? []).map(a => a.toLowerCase())]) { ids.push(id); at.push(new Date(r.created_at).toISOString()) }
+  return [ids, at]
+}
+
 /** Every client (open accounts) by email, and the lookup from an analytics user_id (account code or email) to that email. */
 async function people() {
   const rows = (await query(
@@ -77,7 +90,8 @@ export async function GET(req: NextRequest) {
   try {
     const { byEmail, emailOf } = await people()
     const one = String(sp.get('email') || '').trim().toLowerCase()
-    if (one) return NextResponse.json(await clientLog(one, byEmail.get(one) ?? null))
+    const staff = await staffViews(byEmail)
+    if (one) return NextResponse.json(await clientLog(one, byEmail.get(one) ?? null, staff))
     const note = sp.get('note')
     if (note) return NextResponse.json(await noteRecipients(note, since, byEmail))
 
@@ -107,15 +121,15 @@ export async function GET(req: NextRequest) {
            FROM app_notifications WHERE created_at >= ${since} GROUP BY 1, 2, 3, 4, 5`)).rows, [] as any[]),
       safe(async () => (await query1(
         `SELECT u.user_id, u.platform, to_char(u.occurred_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') AS d, count(DISTINCT u.session_id)::int AS opens
-           FROM ${A} u WHERE ${CLIENT} AND u.occurred_at >= ${since} GROUP BY 1, 2, 3`)).rows, [] as any[]),
+           FROM ${A} u WHERE ${CLIENT} AND ${NOT_STAFF} AND u.occurred_at >= ${since} GROUP BY 1, 2, 3`, staff)).rows, [] as any[]),
       safe(async () => (await query1(
         `SELECT u.user_id, max(u.occurred_at) AS last, max(u.occurred_at) FILTER (WHERE u.platform IN ('ios', 'android')) AS last_app,
                 (array_agg(u.app_version ORDER BY u.occurred_at DESC) FILTER (WHERE u.platform IN ('ios', 'android') AND coalesce(u.app_version, '') <> ''))[1] AS version,
                 bool_or(u.platform = 'ios') AS ios, bool_or(u.platform = 'android') AS android
-           FROM ${A} u WHERE ${CLIENT} GROUP BY 1`)).rows, [] as any[]),
+           FROM ${A} u WHERE ${CLIENT} AND ${NOT_STAFF} GROUP BY 1`, staff)).rows, [] as any[]),
       safe(async () => (await query1(
         `SELECT u.user_id, u.event_name, count(*)::int AS n FROM ${A} u
-          WHERE ${CLIENT} AND u.event_type = 'screen' AND u.occurred_at >= ${since} GROUP BY 1, 2`)).rows, [] as any[]),
+          WHERE ${CLIENT} AND ${NOT_STAFF} AND u.event_type = 'screen' AND u.occurred_at >= ${since} GROUP BY 1, 2`, staff)).rows, [] as any[]),
     ])
 
     type Row = {
@@ -136,11 +150,15 @@ export async function GET(req: NextRequest) {
         daysUsed: 0, opens: 0, usedToday: false, used7: false, topPages: [], notificationsOn: false, notesSent: 0, notesOnPhone: 0, notesRead: 0, locked: !!m.locked,
       })
     }
+    // A client with no password and no sign-in on record cannot have opened anything: whatever the old portal holds
+    // under their name is staff viewing as them from before the audit log (only a phone-app event proves otherwise).
+    const cannot = new Set(master.rows.filter((m: any) => !m.pw && !m.signed_in).map((m: any) => m.email as string))
     const later = (a: string | null, b: unknown) => { const x = b ? new Date(b as any).toISOString() : null; return x && (!a || x > a) ? x : a }
     for (const l of last) {
       const r = rows.get(emailOf(l.user_id) || ''); if (!r) continue
+      if (l.last_app) { r.hasApp = true; r.signedIn = true; r.passwordSet = true; cannot.delete(r.email) }
+      if (cannot.has(r.email)) continue
       r.lastUsed = later(r.lastUsed, l.last); r.lastUsedApp = later(r.lastUsedApp, l.last_app)
-      if (l.last_app) { r.hasApp = true; r.signedIn = true; r.passwordSet = true }
       if (l.version && (!r.appVersion || l.version > r.appVersion)) r.appVersion = l.version
       for (const [flag, label] of [[l.ios, 'iPhone'], [l.android, 'Android']] as const) if (flag && !r.devices.includes(label)) r.devices.push(label)
     }
@@ -148,7 +166,7 @@ export async function GET(req: NextRequest) {
     const d7 = istDay(Date.now() - 6 * 86400000)
     const dayPeople = new Map<string, Map<string, boolean>>(), personDays = new Map<string, Set<string>>()
     for (const u of use) {
-      const e = emailOf(u.user_id), r = rows.get(e || ''); if (!r) continue
+      const e = emailOf(u.user_id), r = rows.get(e || ''); if (!r || cannot.has(r.email)) continue
       r.opens += u.opens
       const set = personDays.get(r.email) ?? new Set<string>(); set.add(u.d); personDays.set(r.email, set)
       const m = dayPeople.get(u.d) ?? new Map<string, boolean>(); m.set(r.email, m.get(r.email) || u.platform !== 'web'); dayPeople.set(u.d, m)
@@ -164,7 +182,7 @@ export async function GET(req: NextRequest) {
     // Pages: people per page, and each person's three most opened
     const pagePeople = new Map<string, Set<string>>(), pageViews = new Map<string, number>(), personPages = new Map<string, Map<string, number>>()
     for (const s of pages) {
-      const r = rows.get(emailOf(s.user_id) || ''); if (!r) continue
+      const r = rows.get(emailOf(s.user_id) || ''); if (!r || cannot.has(r.email)) continue
       const name = screenName(s.event_name)
       const set = pagePeople.get(name) ?? new Set<string>(); set.add(r.email); pagePeople.set(name, set)
       pageViews.set(name, (pageViews.get(name) || 0) + s.n)
@@ -215,14 +233,14 @@ export async function GET(req: NextRequest) {
 }
 
 /** One client's log, newest first: what they opened and did, sign-ins, and the notifications sent to them (last 60 days, 400 entries). */
-async function clientLog(email: string, person: Person | null) {
+async function clientLog(email: string, person: Person | null, staff: [string[], string[]]) {
   if (!person) return { client: null, log: [] }
   const ids = [email, ...person.accounts.map(a => a.toLowerCase())]
   const [events, auth, notes] = await Promise.all([
     safe(async () => (await query1(
       `SELECT u.occurred_at AS at, u.event_type, u.event_name, u.platform, u.app_version, u.properties->>'title' AS title FROM ${A} u
-        WHERE lower(u.user_id) = ANY($1::text[]) AND u.occurred_at > NOW() - interval '60 days' AND u.event_name NOT IN ('app_background', 'app_foreground')
-        ORDER BY u.occurred_at DESC LIMIT 400`, [ids])).rows, [] as any[]),
+        WHERE lower(u.user_id) = ANY($3::text[]) AND ${NOT_STAFF} AND u.occurred_at > NOW() - interval '60 days' AND u.event_name NOT IN ('app_background', 'app_foreground')
+        ORDER BY u.occurred_at DESC LIMIT 400`, [...staff, ids])).rows, [] as any[]),
     safe(async () => (await query(
       `SELECT occurred_at AS at, event, reason, platform, os FROM auth_events WHERE lower(email) = $1 AND occurred_at > NOW() - interval '60 days'
         ORDER BY occurred_at DESC LIMIT 200`, [email])).rows, [] as any[]),
