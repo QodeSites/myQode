@@ -17,6 +17,37 @@ function getCorsOrigin(requestOrigin: string | null): string {
   return allowed.includes(requestOrigin) ? requestOrigin : ''
 }
 
+// Phone apps below APP_MIN_VERSION get no data: the app's own "Update Required" screen (driven by
+// /api/mobile/app-version) can be missing on very old builds, so the server refuses them as well.
+// A phone app is told apart from a browser by its User-Agent (Android: okhttp, iPhone: CFNetwork/Darwin);
+// the old app sends no x-app-version at all, which counts as below the minimum. Browsers (the website) are never
+// blocked here, and /api/mobile/app-version stays open so the app can still show its update screen.
+const MIN_APP_VERSION = process.env.APP_MIN_VERSION ?? '1.3.1'
+const IOS_URL = process.env.APP_IOS_URL ?? 'https://apps.apple.com/in/app/myqode/id6761060137'
+const ANDROID_URL = process.env.APP_ANDROID_URL ?? 'https://play.google.com/store/apps/details?id=com.qodeinvest.myqode'
+const UPDATE_MESSAGE = 'This version of myQode is no longer supported. Please update the app from the App Store or Play Store to continue.'
+const versionLt = (a: string, b: string) => {
+  const x = a.split('.').map(n => parseInt(n, 10) || 0), y = b.split('.').map(n => parseInt(n, 10) || 0)
+  for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0) }
+  return false
+}
+
+function oldAppBlock(request: NextRequest): NextResponse | null {
+  const path = request.nextUrl.pathname
+  if (!path.startsWith('/api/mobile/') || path.startsWith('/api/mobile/app-version') || request.method === 'OPTIONS') return null
+  // Signed links the current app opens outside its own requests (a partner's PDF download on Android, the payment
+  // page) carry no version and no login: a GET without a Bearer token is let through. Every data call has one.
+  if (request.method === 'GET' && !request.headers.get('authorization')) return null
+  const ua = request.headers.get('user-agent') ?? ''
+  if (!/^okhttp\/|CFNetwork\/|Darwin\//i.test(ua)) return null
+  const version = (request.headers.get('x-app-version') ?? '').trim()
+  if (version && !versionLt(version, MIN_APP_VERSION)) return null
+  return NextResponse.json(
+    { error: UPDATE_MESSAGE, message: UPDATE_MESSAGE, code: 'UPDATE_REQUIRED', minVersion: MIN_APP_VERSION, updateUrls: { ios: IOS_URL, android: ANDROID_URL } },
+    { status: 426 },
+  )
+}
+
 export async function middleware(request: NextRequest) {
   // Handle CORS preflight for all API routes
   if (request.method === 'OPTIONS' && request.nextUrl.pathname.startsWith('/api/')) {
@@ -33,6 +64,9 @@ export async function middleware(request: NextRequest) {
       },
     });
   }
+
+  const blocked = oldAppBlock(request)
+  if (blocked) return blocked
 
   // Admin route protection (existing behaviour)
   if (request.nextUrl.pathname.startsWith('/admin')) {
