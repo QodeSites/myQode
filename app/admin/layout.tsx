@@ -17,7 +17,7 @@ import {
   MessageSquareHeart,
   ScrollText,
   ShieldCheck,
-  Users, FileText, Receipt } from "lucide-react"
+  Users, UsersRound, FileText, Receipt } from "lucide-react"
 import { AdminSessionProvider, type BackofficeAdmin } from "@/components/admin-kit"
 import { cn } from "@/lib/utils"
 
@@ -42,6 +42,7 @@ const NAV: NavItem[] = [
     isActive: (p, t) => p === "/admin/users" && t === "investor",
     roles: [...INV, "partners"],   // partners admins see investors (read-only) too
   },
+  { label: "Families", href: "/admin/families", icon: UsersRound, isActive: (p) => p.startsWith("/admin/families"), roles: [...INV, "partners"] },
   {
     label: "Distributors",
     href: "/admin/users?type=distributor",
