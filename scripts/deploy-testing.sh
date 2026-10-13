@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Deploy the pushed feat/web-app head to myqode-testing (server 220) without disturbing anything that is running.
 #   bash scripts/deploy-testing.sh            push first: it deploys origin/feat/web-app, not your working copy
+#   bash scripts/deploy-testing.sh <branch>   deploy another pushed branch instead (e.g. one change on top of what is live)
 #
 # 1. Build in a separate copy (/var/www/.myqode-testing-build) at low CPU and disk priority, so the running
 #    myqode-testing keeps serving and the other apps on the server keep their CPU. A failed build changes nothing.
@@ -13,25 +14,27 @@ LIVE=/var/www/myqode-testing
 BUILD=/var/www/.myqode-testing-build
 URL=https://myqode-testing.qodeinvest.com
 here="$(cd "$(dirname "$0")/.." && pwd)"
+BRANCH="${1:-feat/web-app}"
+case "$BRANCH" in *[!A-Za-z0-9._/-]*) echo "✗ odd branch name: $BRANCH" >&2; exit 1 ;; esac
 
-git -C "$here" fetch -q origin feat/web-app
+git -C "$here" fetch -q origin "$BRANCH"
 SHA=$(git -C "$here" rev-parse FETCH_HEAD)
 echo "→ Deploying $(git -C "$here" log -1 --format='%h %s' "$SHA")"
 
-ssh -o BatchMode=yes "$SSH" "LIVE=$LIVE BUILD=$BUILD SHA=$SHA bash -s" <<'REMOTE' 2>&1 | grep -v -E "NOTICE|prohibited|prosecuted|logged and monitored|\*\*\*\*"
+ssh -o BatchMode=yes "$SSH" "LIVE=$LIVE BUILD=$BUILD SHA=$SHA BRANCH=$BRANCH bash -s" <<'REMOTE' 2>&1 | grep -v -E "NOTICE|prohibited|prosecuted|logged and monitored|\*\*\*\*"
 set -euo pipefail
 if [ ! -d "$BUILD/.git" ]; then
   git clone -q "$LIVE" "$BUILD"
   git -C "$BUILD" remote set-url origin "$(git -C "$LIVE" remote get-url origin)"
 fi
 cd "$BUILD"
-git fetch -q origin feat/web-app
+git fetch -q origin "$BRANCH"
 git checkout -q -f "$SHA"
 git clean -q -fd -e node_modules -e .next -e '.env*'
 # same dependencies and settings as the running copy, so the build matches what will run it
 ln -sfn "$LIVE/node_modules" node_modules
 for f in "$LIVE"/.env*; do [ -f "$f" ] && ln -sfn "$f" "$(basename "$f")"; done
-git -C "$LIVE" fetch -q origin feat/web-app
+git -C "$LIVE" fetch -q origin "$BRANCH"
 OLD=$(git -C "$LIVE" rev-parse HEAD)
 if ! git -C "$LIVE" diff --quiet "$OLD" "$SHA" -- package.json package-lock.json 2>/dev/null; then
   echo "! package.json or package-lock.json changed since the running build: run npm ci in $LIVE first if a dependency was added"
