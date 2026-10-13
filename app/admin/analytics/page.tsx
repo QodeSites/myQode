@@ -6,14 +6,15 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import Link from "next/link"
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
-import { Bell, BellOff, Download, ExternalLink, Eye, KeyRound, LogIn, RefreshCw, Search, Smartphone, TriangleAlert } from "lucide-react"
+import { Bell, BellOff, Download, ExternalLink, Eye, KeyRound, LogIn, Mail, RefreshCw, Search, Send, Smartphone, TriangleAlert } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { EmptyState, ErrorNote, PageHeader, Panel, Pill, boFetch, errorMessage, fmtDate, fmtNum, fmtRelative, fmtShortDay } from "@/components/admin-kit"
+import { EmptyState, ErrorNote, PageHeader, Panel, Pill, boFetch, errorMessage, fmtDate, fmtNum, fmtRelative, fmtShortDay, useBackofficeAdmin } from "@/components/admin-kit"
 import { cn } from "@/lib/utils"
 
 type Status = "no_password" | "never_signed_in" | "website_only" | "old_app" | "app_not_used" | "using_app"
@@ -21,7 +22,7 @@ type Client = {
   email: string; name: string; accounts: string[]; status: Status; passwordSet: boolean; passwordSetAt: string | null; signedIn: boolean
   hasApp: boolean; devices: string[]; appVersion: string | null; appSince: string | null; lastUsed: string | null; lastUsedApp: string | null
   daysUsed: number; opens: number; usedToday: boolean; used7: boolean; topPages: string[]; notificationsOn: boolean
-  notesSent: number; notesOnPhone: number; notesRead: number; locked: boolean
+  notesSent: number; notesOnPhone: number; notesRead: number; locked: boolean; remindedAt: string | null
 }
 type Note = { key: string; kind: string; title: string; sent: number; clients: number; reachedPhone: number; inboxOnly: number; read: number }
 type Data = {
@@ -32,6 +33,12 @@ type Data = {
   pages: { page: string; clients: number; views: number }[]
   notifications: Note[]
 }
+// Reminders (GET/POST /api/admin/bo/analytics/reminders): one ready message per group that needs chasing
+type Kind = "no_password" | "website_only" | "old_app" | "outdated_app"
+const KINDS: Kind[] = ["no_password", "website_only", "old_app", "outdated_app"]
+type Reminder = { channel: "email" | "phone"; group: string; subject: string; message: string; recipients: number; skipped: number }
+type Reminders = { kinds: Record<Kind, Reminder>; cooldownDays: number; latestVersion: string; history: { kind: Kind; by: string; at: string; recipients: number; subject: string }[] }
+const older = (a: string, b: string) => { const x = a.split(".").map(Number), y = b.split(".").map(Number); for (let i = 0; i < 3; i++) { if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0) } return false }
 type LogRow = { at: string; kind: "opened" | "did" | "signin" | "problem" | "notification"; text: string; detail: string }
 
 // The four places a client can be, in the order to chase them
@@ -44,7 +51,7 @@ const STATUS: Record<Status, { label: string; tone: "red" | "amber" | "gold" | "
   using_app: { label: "Using the new app", tone: "green", color: "#02422B", meaning: "They opened the latest phone app in the last 30 days.", action: "Nothing to do." },
 }
 const ORDER: Status[] = ["no_password", "never_signed_in", "website_only", "old_app", "app_not_used", "using_app"]
-type Filter = "all" | Status | "today" | "week" | "notes_off" | "no_app"
+type Filter = "all" | Status | "today" | "week" | "notes_off" | "no_app" | "outdated_app"
 const FILTERS: { key: Filter; label: string; test: (c: Client) => boolean }[] = [
   { key: "all", label: "Everyone", test: () => true },
   ...ORDER.map((s) => ({ key: s as Filter, label: STATUS[s].label, test: (c: Client) => c.status === s })),
@@ -95,12 +102,42 @@ export default function AppAnalyticsPage() {
   const [open, setOpen] = useState<Client | null>(null)
   const [log, setLog] = useState<LogRow[] | null>(null)
   const [note, setNote] = useState<Note | null>(null)
+  const { admin } = useBackofficeAdmin()
+  const maySend = admin?.role === "super" || admin?.role === "investors"
+  const [rem, setRem] = useState<Reminders | null>(null)
+  const [kind, setKind] = useState<Kind | null>(null)
+  const [subject, setSubject] = useState("")
+  const [message, setMessage] = useState("")
+  const [preview, setPreview] = useState<{ recipients: number; skipped: number; names: string[]; html: string | null } | null>(null)
+  const [sending, setSending] = useState<null | "preview" | "test" | "send">(null)
+  const [confirm, setConfirm] = useState(false)
+  const [tested, setTested] = useState(false)
   const [recipients, setRecipients] = useState<{ email: string; name: string; title: string; at: string; reached: string; read: boolean }[] | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true); setError(null)
     try { setD(await boFetch<Data>(`/api/admin/bo/analytics/clients?days=${days}`)) } catch (e) { setError(errorMessage(e)) } finally { setLoading(false) }
+    boFetch<Reminders>("/api/admin/bo/analytics/reminders").then(setRem).catch(() => setRem(null))
   }, [days])
+
+  // The reminder dialog: the ready message can be edited; nothing goes out before "Send a test to me" and a second confirmation
+  const post = (mode: "preview" | "test" | "send", k = kind, sub = subject, msg = message) =>
+    boFetch<any>("/api/admin/bo/analytics/reminders", { method: "POST", json: { kind: k, subject: sub, message: msg, mode } })
+  const openReminder = (k: Kind) => {
+    const r = rem?.kinds[k]; if (!r) return
+    setKind(k); setSubject(r.subject); setMessage(r.message); setPreview(null); setConfirm(false); setTested(false); setSending("preview")
+    post("preview", k, r.subject, r.message).then(setPreview).catch((e) => toast.error(errorMessage(e))).finally(() => setSending(null))
+  }
+  const refreshPreview = async () => { setSending("preview"); try { setPreview(await post("preview")) } catch (e) { toast.error(errorMessage(e)) } finally { setSending(null) } }
+  const sendTest = async () => { setSending("test"); try { const r = await post("test"); setTested(true); toast.success(`Test sent to ${r.to}`) } catch (e) { toast.error(errorMessage(e)) } finally { setSending(null) } }
+  const sendAll = async () => {
+    setSending("send")
+    try {
+      const r = await post("send"); setKind(null)
+      toast.success(r.queued ? `Sending to ${r.queued} clients now. It takes a few minutes; refresh to see them marked as reminded.` : "Nobody left to remind in this group.")
+      setTimeout(load, 4000)
+    } catch (e) { toast.error(errorMessage(e)) } finally { setSending(null); setConfirm(false) }
+  }
   useEffect(() => { load() }, [load])
 
   useEffect(() => {
@@ -117,15 +154,19 @@ export default function AppAnalyticsPage() {
   }, [note, days])
 
   const pick = (f: Filter) => { setFilter(f); setShown(50); document.getElementById("clients")?.scrollIntoView({ behavior: "smooth", block: "start" }) }
+  const latest = rem?.latestVersion || ""
+  const filters = useMemo(() => [...FILTERS, { key: "outdated_app" as Filter, label: "On an older version of the new app", test: (c: Client) => !!(latest && c.appVersion && older(c.appVersion, latest)) }], [latest])
   const list = useMemo(() => {
     if (!d) return []
-    const f = FILTERS.find((x) => x.key === filter)!, s = q.trim().toLowerCase()
+    const f = filters.find((x) => x.key === filter)!, s = q.trim().toLowerCase()
     return d.clients.filter((c) => f.test(c) && (!s || c.name.toLowerCase().includes(s) || c.email.includes(s) || c.accounts.some((a) => a.toLowerCase().includes(s))))
-  }, [d, filter, q])
+  }, [d, filter, q, filters])
+  const remindable = KINDS.includes(filter as Kind) ? (filter as Kind) : null
   const exportList = () => downloadCsv(`myqode-clients-${filter}`, list.map((c) => ({
     Client: c.name, Email: c.email, Accounts: c.accounts.join(" "), Status: STATUS[c.status].label, "What to do": STATUS[c.status].action, Phone: phone(c),
     "Last opened": c.lastUsed ? fmtDate(c.lastUsed) : "Never", [`Days used (last ${d?.days})`]: c.daysUsed, "Looks at most": c.topPages.join(", "),
     "Notifications on phone": !c.hasApp ? "No app" : c.notificationsOn ? "On" : "Off", "Notifications sent": c.notesSent, "Reached phone": c.notesOnPhone, Read: c.notesRead,
+    "Reminded on": c.remindedAt ? fmtDate(c.remindedAt) : "",
   })))
   const S = d?.summary
   const logByDay = useMemo(() => {
@@ -164,6 +205,8 @@ export default function AppAnalyticsPage() {
                   <p className="mt-2 text-3xl font-bold tabular-nums text-[#002017]">{fmtNum(n)} <span className="text-sm font-medium text-muted-foreground">{pct(n, S.clients)}</span></p>
                   <p className="mt-1 text-xs text-muted-foreground">{STATUS[s].meaning}</p>
                   <p className="mt-2 text-xs font-medium text-[#02422B]">{STATUS[s].action}</p>
+                  {maySend && rem?.kinds[s as Kind] ? <span role="button" tabIndex={0} onClick={(e) => { e.stopPropagation(); openReminder(s as Kind) }} onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); openReminder(s as Kind) } }}
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-md border border-[#02422B]/25 px-2.5 py-1 text-xs font-semibold text-[#02422B] hover:bg-[#EFECD3]"><Mail className="h-3.5 w-3.5" />Send them a reminder</span> : null}
                 </button>
               )
             })}
@@ -200,12 +243,15 @@ export default function AppAnalyticsPage() {
         {/* 4. Every client */}
         <div id="clients" className="scroll-mt-4">
           <Panel title="Every client" description="Click a client to see everything they did: what they opened, sign-ins, and notifications sent to them."
-            action={<Button size="sm" variant="outline" className="bg-white" onClick={exportList} disabled={!list.length}><Download className="h-4 w-4" />Download this list</Button>} bodyClassName="p-0">
+            action={<div className="flex flex-wrap justify-end gap-2">
+              {remindable && maySend && rem ? <Button size="sm" className="bg-[#02422B] text-white hover:bg-[#02422B]/90" onClick={() => openReminder(remindable)}><Send className="h-4 w-4" />Send reminder to this group</Button> : null}
+              <Button size="sm" variant="outline" className="bg-white" onClick={exportList} disabled={!list.length}><Download className="h-4 w-4" />Download this list</Button>
+            </div>} bodyClassName="p-0">
             <div className="space-y-3 border-b border-[#02422B]/10 p-4">
               <div className="relative max-w-sm"><Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input value={q} onChange={(e) => { setQ(e.target.value); setShown(50) }} placeholder="Search name, email or account" className="bg-white pl-9" /></div>
               <div className="flex flex-wrap gap-1.5">
-                {FILTERS.map((f) => { const n = d.clients.filter(f.test).length; if (!n && f.key !== "all") return null
+                {filters.map((f) => { const n = d.clients.filter(f.test).length; if (!n && f.key !== "all") return null
                   return <button key={f.key} type="button" onClick={() => { setFilter(f.key); setShown(50) }}
                     className={cn("rounded-full border px-3 py-1 text-xs font-medium", filter === f.key ? "border-[#02422B] bg-[#02422B] text-white" : "border-[#02422B]/15 bg-white text-[#002017] hover:border-[#02422B]/40")}>
                     {f.label} <span className={filter === f.key ? "text-[#DABD38]" : "text-muted-foreground"}>{fmtNum(n)}</span></button> })}
@@ -221,7 +267,8 @@ export default function AppAnalyticsPage() {
                   {list.slice(0, shown).map((c) => (
                     <TableRow key={c.email} className="cursor-pointer hover:bg-[#EFECD3]/50" onClick={() => setOpen(c)}>
                       <TableCell><p className="max-w-[15rem] truncate font-medium text-[#002017]">{c.name}</p><p className="max-w-[15rem] truncate text-xs text-muted-foreground">{c.accounts.join(" · ")}</p></TableCell>
-                      <TableCell><Pill tone={STATUS[c.status].tone}>{STATUS[c.status].label}</Pill>{c.locked ? <Pill tone="red" className="ml-1">Locked</Pill> : null}</TableCell>
+                      <TableCell><Pill tone={STATUS[c.status].tone}>{STATUS[c.status].label}</Pill>{c.locked ? <Pill tone="red" className="ml-1">Locked</Pill> : null}
+                        {c.remindedAt ? <span className="mt-1 block text-xs text-muted-foreground">Reminded {fmtRelative(c.remindedAt)}</span> : null}</TableCell>
                       <TableCell className="text-sm">{c.hasApp ? <>{c.devices.join(" + ") || "Phone app"}<span className={cn("block text-xs", c.appVersion ? "text-muted-foreground" : "text-amber-700")}>{c.appVersion ? `Version ${c.appVersion}` : "Old version, needs an update"}</span></> : <span className="text-muted-foreground">No app</span>}</TableCell>
                       <TableCell className="text-sm">{c.lastUsed ? fmtRelative(c.lastUsed) : <span className="text-muted-foreground">Never</span>}</TableCell>
                       <TableCell className="text-right text-sm tabular-nums">{c.daysUsed ? `${c.daysUsed} of ${d.days}` : <span className="text-muted-foreground">0</span>}</TableCell>
@@ -272,6 +319,12 @@ export default function AppAnalyticsPage() {
             </Table> : <EmptyState title="No notifications sent in this period" />}
           </Panel>
         </div>
+
+        {rem?.history.length ? <Panel title="Reminders sent" description="Each time a group was reminded, and by whom.">
+          <ul className="space-y-1.5 text-sm">
+            {rem.history.map((h, i) => <li key={i} className="flex flex-wrap justify-between gap-2"><span><b className="text-[#002017]">{rem.kinds[h.kind]?.group ?? h.kind}</b> · {fmtNum(h.recipients)} clients · &quot;{h.subject}&quot;</span><span className="text-xs text-muted-foreground">{fmtDate(h.at)} · {h.by}</span></li>)}
+          </ul>
+        </Panel> : null}
 
         <p className="text-xs text-muted-foreground">
           <KeyRound className="mr-1 inline h-3.5 w-3.5" />
@@ -324,6 +377,50 @@ export default function AppAnalyticsPage() {
           </> : null}
         </SheetContent>
       </Sheet>
+
+      {/* Send a reminder to one group */}
+      <Dialog open={!!kind} onOpenChange={(v) => { if (!v && sending !== "send") setKind(null) }}>
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
+          {kind && rem ? <>
+            <DialogHeader>
+              <DialogTitle>Send a reminder: {rem.kinds[kind].group}</DialogTitle>
+              <DialogDescription>
+                {rem.kinds[kind].channel === "email"
+                  ? "Goes as an email from Qode Investor Relations (investor.relations@qodeinvest.com). These clients cannot get a phone alert, because they do not have the new app."
+                  : "Goes as an alert on the phone and into the in-app inbox, to clients on the new app who have notifications switched on."}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="rounded-lg border border-[#02422B]/15 bg-[#F9F7EC] p-3 text-sm">
+                {preview ? <>
+                  <b className="text-[#002017]">{fmtNum(preview.recipients)} clients</b> will get this.
+                  {preview.skipped ? <> {fmtNum(preview.skipped)} more are left out because they were already reminded in the last {rem.cooldownDays} days.</> : null}
+                  {preview.names.length ? <details className="mt-1 text-xs text-muted-foreground"><summary className="cursor-pointer">See who</summary><p className="mt-1">{preview.names.join(", ")}</p></details> : null}
+                </> : <Skeleton className="h-5 w-64" />}
+              </div>
+              <label className="block text-xs font-medium text-muted-foreground">{rem.kinds[kind].channel === "email" ? "Subject" : "Title"}
+                <Input value={subject} maxLength={90} onChange={(e) => { setSubject(e.target.value); setTested(false); setConfirm(false) }} className="mt-1 bg-white text-sm text-[#002017]" /></label>
+              <label className="block text-xs font-medium text-muted-foreground">{rem.kinds[kind].channel === "email" ? "Message (the email starts with Dear and the client's name; the buttons and the IR signature are added below your text)" : "Message (up to 300 characters)"}
+                <textarea value={message} maxLength={rem.kinds[kind].channel === "email" ? 2000 : 300} rows={rem.kinds[kind].channel === "email" ? 9 : 3} onChange={(e) => { setMessage(e.target.value); setTested(false); setConfirm(false) }}
+                  className="mt-1 w-full rounded-md border border-input bg-white p-3 text-sm text-[#002017]" /></label>
+              {rem.kinds[kind].channel === "email" ? <div>
+                <div className="flex items-center justify-between"><p className="text-xs font-medium text-muted-foreground">How the email looks</p>
+                  <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={refreshPreview} disabled={sending !== null}><RefreshCw className={cn("h-3.5 w-3.5", sending === "preview" && "animate-spin")} />Update preview</Button></div>
+                {preview?.html ? <iframe title="Email preview" srcDoc={preview.html} sandbox="" className="mt-1 h-80 w-full rounded-lg border border-[#02422B]/15 bg-white" /> : <Skeleton className="mt-1 h-80 w-full" />}
+              </div> : null}
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#02422B]/10 pt-3">
+                <Button variant="outline" onClick={sendTest} disabled={sending !== null || !subject.trim() || !message.trim()}><Send className="h-4 w-4" />{sending === "test" ? "Sending the test…" : "1. Send a test to me"}</Button>
+                {!confirm
+                  ? <Button className="bg-[#02422B] text-white hover:bg-[#02422B]/90" onClick={() => setConfirm(true)} disabled={sending !== null || !tested || !preview?.recipients}>2. Send to {fmtNum(preview?.recipients ?? 0)} clients</Button>
+                  : <span className="flex flex-wrap items-center gap-2 text-sm"><span className="text-red-700">This goes to {fmtNum(preview?.recipients ?? 0)} clients and cannot be undone.</span>
+                      <Button variant="outline" onClick={() => setConfirm(false)} disabled={sending !== null}>Cancel</Button>
+                      <Button className="bg-red-700 text-white hover:bg-red-800" onClick={sendAll} disabled={sending !== null}>{sending === "send" ? "Sending…" : "Yes, send it"}</Button></span>}
+              </div>
+              {!tested ? <p className="text-xs text-muted-foreground">Send a test to yourself first and read it. The send button unlocks after that. Changing the text asks for a new test.</p> : null}
+            </div>
+          </> : null}
+        </DialogContent>
+      </Dialog>
 
       {/* Who received one notification */}
       <Dialog open={!!note} onOpenChange={(v) => { if (!v) setNote(null) }}>
