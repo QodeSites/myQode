@@ -578,10 +578,12 @@ export default function AppAnalyticsPage() {
                         {c.familyHead ? <span className="mt-1 block text-xs text-muted-foreground">Family head: {c.familyHead}</span> : null}
                         {c.remindedAt ? <span className="mt-1 block text-xs text-muted-foreground">Reminded {fmtRelative(c.remindedAt)}</span> : null}</TableCell>
                       <TableCell className="text-sm">{c.hasApp ? <>{phoneType(c)}<span className={cn("block text-xs", isNew(c) ? "text-muted-foreground" : "text-amber-700")}>{isNew(c) ? "New app" : "Old app, needs to update"}</span></> : <span className="text-muted-foreground">No app</span>}</TableCell>
-                      {/* Last opened counts the website too: say where, and when the phone app itself was last opened */}
+                      {/* Last opened counts the website too: say where, and when the phone app itself was last opened.
+                          No app date: the old app's sign-ins (before 4 Oct) did not say which phone, and the website has
+                          signed in through the same route since, so the date of their last old-app use is not kept. */}
                       <TableCell className="text-sm">{c.lastUsed ? <>{fmtRelative(c.lastUsed)}
                         <span className="block text-xs text-muted-foreground">{c.lastUsedApp && c.lastUsedApp >= c.lastUsed ? "on the app"
-                          : c.hasApp ? `on the website · app ${c.lastUsedApp ? fmtRelative(c.lastUsedApp) : "not opened"}` : "on the website"}</span></>
+                          : c.hasApp ? `on the website · app ${c.lastUsedApp ? fmtRelative(c.lastUsedApp) : "before 4 Oct"}` : "on the website"}</span></>
                         : <span className="text-muted-foreground">Never</span>}</TableCell>
                       <TableCell className="text-right text-sm tabular-nums">{c.daysUsed ? `${c.daysUsed} of ${d.days}` : <span className="text-muted-foreground">0</span>}</TableCell>
                       <TableCell className="max-w-[14rem] truncate text-sm" title={c.topPages.join(", ")}>{c.topPages.length ? c.topPages.join(", ") : <span className="text-muted-foreground">–</span>}</TableCell>

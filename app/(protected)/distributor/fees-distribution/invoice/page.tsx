@@ -758,6 +758,7 @@ export default function DistributorInvoicePage() {
         )}
 
         <div className="pt-4 border-t border-border/25 text-[11px] text-muted-foreground leading-relaxed">
+          <p className="mb-1 font-semibold text-[#02422B]">This is a system generated invoice.</p>
           Amounts are for distribution fees earned on client portfolios managed by{" "}
           {QODE_ENTITY.name} for the period stated. This invoice is raised by the distributor named
           above.
