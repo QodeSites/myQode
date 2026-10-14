@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/adminAuth'
 import { userCounts } from '@/lib/adminUsers'
+import { clientUsage } from '@/lib/clientUsage'
 import { query } from '@/lib/db'
 import pool from '@/lib/db1'
 
@@ -17,7 +18,9 @@ export async function GET(req: NextRequest) {
   const { error } = await requireAdmin(req, 'staff')
   if (error) return error
 
-  const [users, logins, daily, appVersions, topScreens, errors7, recentErrors, recentLogins, openQueries] = await Promise.all([
+  const [clients, users, logins, daily, appVersions, topScreens, errors7, recentErrors, recentLogins, openQueries] = await Promise.all([
+    // Investors as App analytics and the Admin Dashboard count them (owners with an open account), so the three pages agree
+    safe<Record<string, number> | null>('clients', async () => (await clientUsage(30)).summary, null),
     safe('users', userCounts, { investors: 0, distributors: 0, passwordSet: 0, needsSetup: 0, neverLoggedIn: 0, locked: 0, byType: { investor: { passwordSet: 0, needsSetup: 0, neverLoggedIn: 0 }, distributor: { passwordSet: 0, needsSetup: 0, neverLoggedIn: 0 } } }),
 
     safe('logins', async () => {
@@ -86,5 +89,5 @@ export async function GET(req: NextRequest) {
        WHERE COALESCE(status, 'pending') NOT IN ('resolved', 'closed')`)).rows[0]?.n ?? 0, 0),
   ])
 
-  return NextResponse.json({ users, logins, daily, appVersions, topScreens, errors7, recentErrors, recentLogins, openQueries })
+  return NextResponse.json({ clients, users, logins, daily, appVersions, topScreens, errors7, recentErrors, recentLogins, openQueries })
 }

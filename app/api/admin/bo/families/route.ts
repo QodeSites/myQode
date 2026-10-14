@@ -1,10 +1,13 @@
 // GET /api/admin/bo/families (staff): every family (pms_clients_master.groupid) with two or more people, who its
 // head is (head_of_family), and how each member gets to their account: their own login, through the head's login
 // (a head sees every account in the family), or not at all yet.
-// A person is one email (several accounts count once); an account with no email is its own person, who cannot have a login.
+// A person is an owner (ownerid), as App analytics and the Admin Dashboard count them; several accounts count once.
+// Without an owner id it is the email, and an account with neither is its own person, who cannot have a login.
+// Qode's test accounts are left out.
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/adminAuth'
 import { query } from '@/lib/db'
+import { HAS_PASSWORD, REAL } from '@/lib/clientUsage'
 
 export const dynamic = 'force-dynamic'
 
@@ -17,16 +20,15 @@ export async function GET(req: NextRequest) {
   try {
     const rows = (await query(
       `SELECT groupid::text AS gid, max(trim(groupname)) AS gname,
-              coalesce(nullif(lower(trim(email)), ''), 'code:' || min(clientcode)) AS person, nullif(lower(trim(max(email))), '') AS email,
+              nullif(lower(trim(max(email))), '') AS email,
               (array_agg(trim(regexp_replace(clientname, '\\s+', ' ', 'g')) ORDER BY head_of_family DESC NULLS LAST, clientcode))[1] AS name,
               array_agg(DISTINCT clientcode ORDER BY clientcode) AS accounts,
               coalesce(bool_or(head_of_family), false) AS is_head,
-              bool_or(coalesce(trim(email), '') <> '' AND (password_set_at IS NOT NULL OR coalesce(password, '') NOT IN ('', 'Qode@123') OR first_login_at IS NOT NULL
-                      OR last_login_at IS NOT NULL OR first_app_login_at IS NOT NULL OR first_web_login_at IS NOT NULL)) AS has_login,
+              bool_or(coalesce(trim(email), '') <> '' AND ${HAS_PASSWORD}) AS has_login,
               max(greatest(last_login_at::timestamptz, last_web_login_at, last_app_login_at)) AS last_seen
          FROM pms_clients_master
-        WHERE clientcode ~* '^Q' AND groupid IS NOT NULL AND (maturity_date IS NULL OR maturity_date > NOW())
-        GROUP BY groupid, nullif(lower(trim(email)), ''), CASE WHEN coalesce(trim(email), '') = '' THEN clientcode END`)).rows
+        WHERE ${REAL} AND groupid IS NOT NULL AND (maturity_date IS NULL OR maturity_date > NOW())
+        GROUP BY groupid, coalesce(ownerid::text, nullif(lower(trim(email)), ''), 'code:' || clientcode)`)).rows
     const byFamily = new Map<string, { name: string; people: any[] }>()
     for (const r of rows) { const f = byFamily.get(r.gid) ?? { name: r.gname || '', people: [] as any[] }; f.people.push(r); byFamily.set(r.gid, f) }
     const title = (s: string) => s.replace(/\s+/g, ' ').trim().toLowerCase().replace(/\b\w/g, c => c.toUpperCase())

@@ -59,6 +59,7 @@ interface UsersResponse {
   total: number
   page: number
   limit: number
+  investorLogins?: { current: number; closed: number; test: number; clients: number }
 }
 
 const LIMIT = 50
@@ -91,6 +92,10 @@ function UsersPageInner() {
   const sort = SORTS.some((x) => x[0] === params.get("sort")) ? params.get("sort")! : "recent"
   const page = Math.max(1, Number(params.get("page")) || 1)
   const q = params.get("q") || ""
+  // Closed and Qode test logins are left out unless asked for, so the list is the same people App analytics counts.
+  // A search always looks through everyone, so a closed client can still be found.
+  const past = params.get("past") === "1"
+  const scope = past || q ? "all" : "current"
 
   const [search, setSearch] = useState(q)
   const [data, setData] = useState<UsersResponse | null>(null)
@@ -127,14 +132,14 @@ function UsersPageInner() {
     setLoading(true)
     setError(null)
     try {
-      const qs = new URLSearchParams({ q, type, status, sort, page: String(page), limit: String(LIMIT) })
+      const qs = new URLSearchParams({ q, type, status, sort, scope, page: String(page), limit: String(LIMIT) })
       setData(await boFetch<UsersResponse>(`/api/admin/bo/users?${qs}`))
     } catch (e) {
       setError(errorMessage(e))
     } finally {
       setLoading(false)
     }
-  }, [q, type, status, sort, page])
+  }, [q, type, status, sort, scope, page])
 
   useEffect(() => {
     load()
@@ -164,6 +169,13 @@ function UsersPageInner() {
         }
       />
 
+      {data?.investorLogins && type !== "distributor" ? (
+        <p className="rounded-lg border border-[#02422B]/10 bg-[#F9F7EC] px-3 py-2 text-xs text-muted-foreground">
+          Each row is one login (an email). <b className="text-[#002017]">{fmtNum(data.investorLogins.current)} investor logins</b> belong to the {fmtNum(data.investorLogins.clients)} current clients{data.investorLogins.clients > data.investorLogins.current ? `: ${fmtNum(data.investorLogins.clients - data.investorLogins.current)} clients share a login with a family member` : ""}.
+          {past || q ? " Shown here as well: " : " Left out: "}{fmtNum(data.investorLogins.closed)} logins whose accounts are all closed and {fmtNum(data.investorLogins.test)} Qode test logins.
+        </p>
+      ) : null}
+
       <div className="flex flex-wrap items-center gap-3">
         <Tabs value={type} onValueChange={(v) => setParams({ type: v, page: null })}>
           <TabsList className="bg-[#EFECD3]">
@@ -192,6 +204,10 @@ function UsersPageInner() {
             <SelectItem value="never">Never logged in</SelectItem>
           </SelectContent>
         </Select>
+        <label className="flex cursor-pointer items-center gap-2 text-sm text-[#002017]">
+          <input type="checkbox" checked={past} onChange={(e) => setParams({ past: e.target.checked ? "1" : null, page: null })} className="h-4 w-4 accent-[#02422B]" />
+          Include closed and test
+        </label>
         <Select value={sort} onValueChange={(v) => setParams({ sort: v === "recent" ? null : v, page: null })}>
           <SelectTrigger className="w-[230px] bg-white" aria-label="Sort by">
             <SelectValue />

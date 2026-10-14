@@ -1,5 +1,8 @@
 // App analytics data (GET /api/admin/bo/analytics/clients, and the reminders that go to a group of clients):
-// one row per client (a person = one email with an open account; several accounts count once).
+// one row per client. A client is an owner (pms_clients_master.ownerid, the same "owner" the Admin Dashboard counts)
+// with an open account; several accounts count once. A login belongs to an email, and a few family members share
+// one: each of them is a client in their own right and carries that login's password, phone and activity.
+// Owners on record = clients + owners who closed every account + Qode's test accounts (summary.ownersOnRecord).
 //   ?days=7|14|30|90        the period for "used it", pages and notifications (IST days, default 30)
 //   ?email=<client email>   one client's activity log instead: what they opened, sign-ins, notifications
 //   ?note=<category>|<title> who received one notification in the period
@@ -11,7 +14,19 @@ import { query as query1 } from '@/lib/db1'
 
 const A = 'pms_clients_tracker.pms_mobile_analytics'
 const CLIENT = `u.user_id NOT LIKE 'a:%' AND u.user_id NOT LIKE 'd:%'`
-const WEB_LAUNCH = '2026-10-10 16:00+05:30'   // the new website (which signs in like the app) went live
+// Qode's own test accounts (QTEST0001…) are not clients
+export const REAL = `clientcode ~* '^Q' AND clientcode !~* '^QTEST'`
+/** SQL: this row of pms_clients_master shows a password was set up (the one rule every admin page uses). */
+export const HAS_PASSWORD = `(password_set_at IS NOT NULL OR coalesce(password, '') NOT IN ('', 'Qode@123') OR first_login_at IS NOT NULL OR last_login_at IS NOT NULL
+  OR first_app_login_at IS NOT NULL OR first_web_login_at IS NOT NULL)`
+// The new website signs in through the app's route. Its first such sign-in on record is 4 Oct 2026, 01:26 IST
+// (auth_events), six days before it went live for everyone, so an app sign-in without a phone type proves the
+// phone app only before that day.
+const WEB_LAUNCH = '2026-10-04 00:00+05:30'
+// Two kinds of app, nothing in between: the new app is this version or later, anything before it is the old app.
+// A fixed version, not "the latest in the stores", so a later release does not turn today's new app into the old one.
+export const NEW_APP_VERSION = process.env.APP_NEW_VERSION || '1.3.1'
+const older = (a: string, b: string) => { const x = a.split('.').map(Number), y = b.split('.').map(Number); for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0); return false }
 const istDay = (t: number) => new Date(t + 330 * 60000).toISOString().slice(0, 10)
 const safe = async <T>(fn: () => Promise<T>, fallback: T): Promise<T> => { try { return await fn() } catch (e) { console.error('[bo/analytics/clients]', (e as Error).message); return fallback } }
 
@@ -23,7 +38,7 @@ const SCREENS: Record<string, string> = {
   '/portfolio/snapshot': 'Portfolio', '/': 'Home',
 }
 // Old web portal pages arrive as paths ("/experience/investor-portal-guide"): the last part is the page
-const screenName = (k: string) => SCREENS[k] ?? (String(k || '').replace(/^page:/, '').replace(/\/+$/, '').split('/').pop() || 'Home').replace(/[_-]+/g, ' ').replace(/^\w/, c => c.toUpperCase())
+const screenName = (k: string) => SCREENS[k] ?? (String(k || '').replace(/^page:/, '').replace(/\/+$/, '').split('/').pop() || 'Home').replace(/[_-]+/g, ' ').replace('managment', 'management').replace(/^\w/, c => c.toUpperCase())
 const ACTIONS: Record<string, string> = {
   session_start: 'Opened the app', biometric_enabled: 'Turned on Face ID / fingerprint', xlsx_download: 'Downloaded an Excel report',
   pdf_download: 'Downloaded a PDF report', notification_open: 'Opened a notification', notification_permission: 'Allowed notifications',
@@ -39,11 +54,15 @@ const FAIL: Record<string, string> = { wrong_password: 'Wrong password', unknown
 const DEVICE: Record<string, string> = { ios: 'iPhone', android: 'Android', web: 'Website' }
 const NOTE_KIND: Record<string, string> = { money: 'Money', portfolio: 'Portfolio', reading: 'Insights and newsletters' }
 // "Money received: (QAW00385)" → "Money received": one line per kind of notification, not per account
-const noteTitle = (t: string) => String(t || '').replace(/\s*:?\s*\([A-Z]{2,4}\d+\)\s*$/, '').replace(/\s*crossed ₹.*$/, ' crossed a milestone').replace(/received your ₹.*$/, 'received your money').trim()
+const noteTitle = (t: string) => String(t || '').replace(/\s*:?\s*\([A-Z]{2,4}\d+\)\s*$/, '').replace(/\s*crossed ₹.*$/, ' crossed a milestone').replace(/received your ₹.*$/, 'received your money').replace(/^Your ₹.* is going into .*$/, 'Your money is going into a strategy').trim()
+// A newsletter or perspective is one message to everyone, and its body starts with the issue ("Sep 2026. Tap to read."):
+// each issue is its own line, so "sent" and "clients" are the same number
+const NOTE_SUB = `CASE WHEN category = 'reading' THEN nullif(trim(split_part(body, '.', 1)), '') END`
+const noteLabel = (title: string, sub: string | null) => (sub ? `${noteTitle(title)}: ${sub}` : noteTitle(title))
 // Whether a notification reached the phone: 'no_device' = the client has no phone registered, so it sits in the in-app inbox only
 const reach = (s: string | null) => (s === 'delivered' || s === 'unconfirmed' ? 'phone' : s === 'failed' ? 'failed' : s === 'held' ? 'waiting' : 'inbox')
 
-export type Person = { email: string; name: string; accounts: string[] }
+export type Person = { id: string; email: string; name: string; accounts: string[] }
 
 // Staff "Open as": the old web portal recorded an admin's page views under the client's own email, so they looked
 // like the client's use. Those are the web page views (paths) in the 4 hours after an audited impersonation of that
@@ -61,19 +80,25 @@ export async function staffViews(byEmail: Map<string, Person>): Promise<[string[
 /** Every client (open accounts) by email, and the lookup from an analytics user_id (account code or email) to that email. */
 export async function people() {
   const rows = (await query(
-    `SELECT lower(trim(email)) AS email, clientcode, trim(regexp_replace(clientname, '\\s+', ' ', 'g')) AS name,
+    `SELECT lower(trim(email)) AS email, clientcode, trim(regexp_replace(clientname, '\\s+', ' ', 'g')) AS name, ownerid::text AS owner,
             (maturity_date IS NULL OR maturity_date > NOW()) AS open
-       FROM pms_clients_master WHERE clientcode ~* '^Q' AND coalesce(trim(email), '') <> ''`)).rows
-  const byEmail = new Map<string, Person>(), idToEmail = new Map<string, string>()
+       FROM pms_clients_master WHERE ${REAL} AND coalesce(trim(email), '') <> '' ORDER BY head_of_family DESC NULLS LAST, clientcode`)).rows
+  // byEmail: the login (every open account under that email). owners: the clients behind it, usually one.
+  const byEmail = new Map<string, Person>(), idToEmail = new Map<string, string>(), byOwner = new Map<string, Person>()
   for (const r of rows) {
     idToEmail.set(String(r.clientcode).toLowerCase(), r.email)
     if (!r.open) continue
-    const p: Person = byEmail.get(r.email) ?? { email: r.email, name: r.name, accounts: [] }
+    const p: Person = byEmail.get(r.email) ?? { id: r.email, email: r.email, name: r.name, accounts: [] }
     p.accounts.push(r.clientcode); byEmail.set(r.email, p)
+    const id = r.owner || r.email   // an owner counts once, under the first email found for them
+    const o: Person = byOwner.get(id) ?? { id, email: r.email, name: r.name, accounts: [] }
+    if (o.email === r.email) { o.accounts.push(r.clientcode); byOwner.set(id, o) }
   }
+  const owners = new Map<string, Person[]>()
+  for (const o of byOwner.values()) { o.accounts.sort(); owners.set(o.email, [...(owners.get(o.email) ?? []), o]) }
   for (const p of byEmail.values()) p.accounts.sort()
   const emailOf = (userId: string) => { const k = String(userId || '').toLowerCase(); return idToEmail.get(k) ?? (k.includes('@') ? k : null) }
-  return { byEmail, emailOf }
+  return { byEmail, emailOf, owners }
 }
 
 export const sinceSql = (days: number) => `(('${istDay(Date.now() - (days - 1) * 86400000)}')::date)::timestamp AT TIME ZONE 'Asia/Kolkata'`
@@ -85,13 +110,15 @@ export async function clientUsage(daysIn: number) {
   const days = [7, 14, 30, 90].includes(Number(daysIn)) ? Number(daysIn) : 30
   const today = istDay(Date.now()), from = istDay(Date.now() - (days - 1) * 86400000)
   const since = sinceSql(days)
-  const { byEmail, emailOf } = await people()
+  const { byEmail, emailOf, owners } = await people()
+  // How many clients a login email stands for (1, or more where family members share it)
+  const w = (email: string) => owners.get(email)?.length || 1
+  const weigh = (emails: Iterable<string>) => { let n = 0; for (const e of emails) n += w(e); return n }
   const staff = await staffViews(byEmail)
-  const [master, push, notes, use, last, pages, heads] = await Promise.all([
+  const [master, push, notes, use, last, pages, heads, record] = await Promise.all([
     query(
       `SELECT lower(trim(email)) AS email,
-              bool_or(password_set_at IS NOT NULL OR coalesce(password, '') NOT IN ('', 'Qode@123') OR first_login_at IS NOT NULL OR last_login_at IS NOT NULL
-                      OR first_app_login_at IS NOT NULL OR first_web_login_at IS NOT NULL) AS pw,
+              bool_or(${HAS_PASSWORD}) AS pw,
               min(password_set_at) AS pw_at,
               bool_or(first_login_at IS NOT NULL OR last_login_at IS NOT NULL OR first_app_login_at IS NOT NULL OR last_app_login_at IS NOT NULL
                       OR first_web_login_at IS NOT NULL OR last_web_login_at IS NOT NULL) AS signed_in,
@@ -105,12 +132,12 @@ export async function clientUsage(daysIn: number) {
               max(greatest(last_web_login_at, last_app_login_at)) AS web_last,
               bool_or(locked_until > NOW()) AS locked
          FROM pms_clients_master
-        WHERE clientcode ~* '^Q' AND coalesce(trim(email), '') <> '' AND (maturity_date IS NULL OR maturity_date > NOW())
+        WHERE ${REAL} AND coalesce(trim(email), '') <> '' AND (maturity_date IS NULL OR maturity_date > NOW())
         GROUP BY 1`),
     safe(async () => (await query(`SELECT lower(email) AS email, string_agg(DISTINCT platform, ',') AS platforms FROM app_push_devices WHERE is_active GROUP BY 1`)).rows, [] as any[]),
     safe(async () => (await query(
-      `SELECT lower(email) AS email, category, title, push_status, (read_at IS NOT NULL) AS read, count(*)::int AS n
-         FROM app_notifications WHERE created_at >= ${since} GROUP BY 1, 2, 3, 4, 5`)).rows, [] as any[]),
+      `SELECT lower(email) AS email, category, title, ${NOTE_SUB} AS sub, push_status, (read_at IS NOT NULL) AS read, count(*)::int AS n, max(created_at) AS last
+         FROM app_notifications WHERE created_at >= ${since} GROUP BY 1, 2, 3, 4, 5, 6`)).rows, [] as any[]),
     safe(async () => (await query1(
       `SELECT u.user_id, u.platform, to_char(u.occurred_at AT TIME ZONE 'Asia/Kolkata', 'YYYY-MM-DD') AS d, count(DISTINCT u.session_id)::int AS opens
          FROM ${A} u WHERE ${CLIENT} AND ${NOT_STAFF} AND u.occurred_at >= ${since} GROUP BY 1, 2, 3`, staff)).rows, [] as any[]),
@@ -131,24 +158,33 @@ export async function clientUsage(daysIn: number) {
           AND (m.maturity_date IS NULL OR m.maturity_date > NOW()) AND (h.maturity_date IS NULL OR h.maturity_date > NOW())
           AND lower(trim(h.email)) <> lower(trim(m.email))
         GROUP BY 1, 2`)).rows, [] as any[]),
+    // Owners on record, the Admin Dashboard's "Total Owners": everyone with an owner id, closed and test accounts included
+    safe(async () => (await query(
+      `SELECT count(*)::int AS total, count(*) FILTER (WHERE test)::int AS test, count(*) FILTER (WHERE NOT test AND NOT open)::int AS closed,
+              sum(n)::int AS accounts, sum(n_test)::int AS accounts_test, sum(n_closed)::int AS accounts_closed
+         FROM (SELECT ownerid, bool_or(clientcode ~* '^QTEST') AS test,
+                      bool_or(${REAL} AND coalesce(trim(email), '') <> '' AND (maturity_date IS NULL OR maturity_date > NOW())) AS open,
+                      count(*) AS n, count(*) FILTER (WHERE clientcode ~* '^QTEST') AS n_test,
+                      count(*) FILTER (WHERE clientcode !~* '^QTEST' AND maturity_date <= NOW()) AS n_closed
+                 FROM pms_clients_master WHERE ownerid IS NOT NULL GROUP BY 1) o`)).rows[0], null as any),
   ])
 
   type Row = {
-    email: string; name: string; accounts: string[]; status: ClientStatus | ''; passwordSet: boolean; passwordSetAt: string | null; signedIn: boolean
-    hasApp: boolean; devices: string[]; appVersion: string | null; appSince: string | null; lastUsed: string | null; lastUsedApp: string | null
-    daysUsed: number; opens: number; usedToday: boolean; used7: boolean; topPages: string[]; notificationsOn: boolean
+    id: string; email: string; name: string; accounts: string[]; status: ClientStatus | ''; passwordSet: boolean; passwordSetAt: string | null; signedIn: boolean
+    hasApp: boolean; newApp: boolean; devices: string[]; appVersion: string | null; appSince: string | null; lastUsed: string | null; lastUsedApp: string | null
+    daysUsed: number; opens: number; usedToday: boolean; used7: boolean; usedTodayApp: boolean; used7App: boolean; topPages: string[]; notificationsOn: boolean
     notesSent: number; notesOnPhone: number; notesRead: number; locked: boolean; familyHead: string | null
   }
   const rows = new Map<string, Row>()
   for (const m of master.rows) {
     const p = byEmail.get(m.email); if (!p) continue
     rows.set(m.email, {
-      email: m.email, name: p.name, accounts: p.accounts, status: '', passwordSet: !!m.pw, passwordSetAt: m.pw_at ? new Date(m.pw_at).toISOString() : null,
-      signedIn: !!m.signed_in, hasApp: !!m.app, devices: [m.ios && 'iPhone', m.android && 'Android'].filter(Boolean) as string[], appVersion: null,
+      id: m.email, email: m.email, name: p.name, accounts: p.accounts, status: '', passwordSet: !!m.pw, passwordSetAt: m.pw_at ? new Date(m.pw_at).toISOString() : null,
+      signedIn: !!m.signed_in, hasApp: !!m.app, newApp: false, devices: [m.ios && 'iPhone', m.android && 'Android'].filter(Boolean) as string[], appVersion: null,
       appSince: m.app_since ? new Date(m.app_since).toISOString() : null,
       lastUsed: [m.app_last, m.web_last].filter(Boolean).map((x: any) => new Date(x).toISOString()).sort().pop() ?? null,
       lastUsedApp: m.app_last ? new Date(m.app_last).toISOString() : null,
-      daysUsed: 0, opens: 0, usedToday: false, used7: false, topPages: [], notificationsOn: false, notesSent: 0, notesOnPhone: 0, notesRead: 0, locked: !!m.locked, familyHead: null,
+      daysUsed: 0, opens: 0, usedToday: false, used7: false, usedTodayApp: false, used7App: false, topPages: [], notificationsOn: false, notesSent: 0, notesOnPhone: 0, notesRead: 0, locked: !!m.locked, familyHead: null,
     })
   }
   // A client with no password and no sign-in on record cannot have opened anything: whatever the old portal holds
@@ -171,14 +207,15 @@ export async function clientUsage(daysIn: number) {
     r.opens += u.opens
     const set = personDays.get(r.email) ?? new Set<string>(); set.add(u.d); personDays.set(r.email, set)
     const m = dayPeople.get(u.d) ?? new Map<string, boolean>(); m.set(r.email, m.get(r.email) || u.platform !== 'web'); dayPeople.set(u.d, m)
-    if (u.d === today) r.usedToday = true
-    if (u.d >= d7) r.used7 = true
+    const onApp = u.platform !== 'web'
+    if (u.d === today) { r.usedToday = true; if (onApp) r.usedTodayApp = true }
+    if (u.d >= d7) { r.used7 = true; if (onApp) r.used7App = true }
   }
   for (const [e, set] of personDays) rows.get(e)!.daysUsed = set.size
   const daily = Array.from({ length: days }, (_, i) => {
     const d = istDay(Date.now() - (days - 1 - i) * 86400000), m = dayPeople.get(d)
-    const app = m ? [...m.values()].filter(Boolean).length : 0
-    return { date: d, app, website: m ? m.size - app : 0 }
+    const app = m ? weigh([...m].filter(x => x[1]).map(x => x[0])) : 0
+    return { date: d, app, website: m ? weigh(m.keys()) - app : 0 }
   })
   // Pages: people per page, and each person's three most opened
   const pagePeople = new Map<string, Set<string>>(), pageViews = new Map<string, number>(), personPages = new Map<string, Map<string, number>>()
@@ -192,22 +229,24 @@ export async function clientUsage(daysIn: number) {
   for (const [e, pm] of personPages) rows.get(e)!.topPages = [...pm.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(x => x[0])
   for (const p of push) { const r = rows.get(p.email); if (r) { r.notificationsOn = true; r.hasApp = true } }
   // Notifications: per person, and per kind of notification
-  const kinds = new Map<string, { key: string; kind: string; title: string; sent: number; people: Set<string>; phone: number; inbox: number; read: number }>()
+  const kinds = new Map<string, { key: string; kind: string; title: string; sent: number; last: string; people: Set<string>; phone: Set<string>; read: Set<string> }>()
   for (const x of notes) {
     const r = rows.get(x.email); if (!r) continue
     const onPhone = reach(x.push_status) === 'phone'
     r.notesSent += x.n; if (onPhone) r.notesOnPhone += x.n; if (x.read) r.notesRead += x.n
-    const title = noteTitle(x.title), key = `${x.category}|${title}`
-    const k = kinds.get(key) ?? { key, kind: NOTE_KIND[x.category] ?? x.category, title, sent: 0, people: new Set<string>(), phone: 0, inbox: 0, read: 0 }
-    k.sent += x.n; k.people.add(r.email); if (onPhone) k.phone += x.n; else k.inbox += x.n; if (x.read) k.read += x.n
+    const title = noteLabel(x.title, x.sub), key = `${x.category}|${title}`, at = new Date(x.last).toISOString()
+    const k = kinds.get(key) ?? { key, kind: NOTE_KIND[x.category] ?? x.category, title, sent: 0, last: at, people: new Set<string>(), phone: new Set<string>(), read: new Set<string>() }
+    k.sent += x.n; if (at > k.last) k.last = at
+    k.people.add(r.email); if (onPhone) k.phone.add(r.email); if (x.read) k.read.add(r.email)
     kinds.set(key, k)
   }
   // One plain status per client, in the order someone would chase them
   const cut = Date.now() - 30 * 86400000
   for (const r of rows.values()) {
     r.devices.sort()
-    // The app before 1.3 reports neither its version nor what is opened, so its users cannot be judged active or not
-    r.status = !r.passwordSet ? 'no_password' : !r.signedIn ? 'never_signed_in' : !r.hasApp ? 'website_only' : !r.appVersion ? 'old_app'
+    // The old app: any version before NEW_APP_VERSION, and the apps that do not report a version at all
+    r.newApp = r.hasApp && !!r.appVersion && !older(r.appVersion, NEW_APP_VERSION)
+    r.status = !r.passwordSet ? 'no_password' : !r.signedIn ? 'never_signed_in' : !r.hasApp ? 'website_only' : !r.newApp ? 'old_app'
       : r.lastUsedApp && Date.parse(r.lastUsedApp) >= cut ? 'using_app' : 'app_not_used'
   }
   // A family member with no password whose family head has a login: seen through the head, kept apart from "No password yet"
@@ -215,22 +254,42 @@ export async function clientUsage(daysIn: number) {
     const r = rows.get(h.email), head = rows.get(h.head)
     if (r && head && r.status === 'no_password' && head.passwordSet) { r.status = 'family_covered'; r.familyHead = head.name }
   }
-  const list = [...rows.values()].sort((a, b) => (b.lastUsed || '').localeCompare(a.lastUsed || '') || a.name.localeCompare(b.name))
+  // One row per client: each owner behind a login carries that login's figures
+  const seen = new Set<string>()
+  const list = [...rows.values()].flatMap(r => (owners.get(r.email) ?? [byEmail.get(r.email)!]).filter(o => !seen.has(o.id) && !!seen.add(o.id))
+    .map(o => ({ ...r, id: o.id, name: o.name, accounts: o.accounts }))).sort((a, b) => (b.lastUsed || '').localeCompare(a.lastUsed || '') || a.name.localeCompare(b.name))
   const count = (f: (r: Row) => boolean) => list.filter(f).length
+  const isNew = (r: Row) => r.newApp
   return {
     days, from, to: today, generatedAt: new Date().toISOString(),
     summary: {
       clients: list.length,
+      // The bridge from the Admin Dashboard's owners to the clients counted here
+      ownersOnRecord: record?.total ?? list.length, ownersClosed: record?.closed ?? 0, ownersTest: record?.test ?? 0,
+      passwordSet: count(r => r.passwordSet), neverSignedInAll: count(r => !r.signedIn),
+      // Accounts on record (the Admin Dashboard's "Total Accounts") = open + closed + test
+      accountsOnRecord: record?.accounts ?? 0, accountsClosed: record?.accounts_closed ?? 0, accountsTest: record?.accounts_test ?? 0,
+      accountsOpen: (record?.accounts ?? 0) - (record?.accounts_closed ?? 0) - (record?.accounts_test ?? 0),
+      // Logins: one per email. A few family members share one, so there are fewer logins than clients.
+      logins: rows.size, sharingLogin: list.length - rows.size,
+      // Everyone whose phone is registered for alerts, on the new app or the old one
+      phoneAlerts: count(r => r.notificationsOn),
       noPassword: count(r => r.status === 'no_password'), neverSignedIn: count(r => r.status === 'never_signed_in'),
       websiteOnly: count(r => r.status === 'website_only'), oldApp: count(r => r.status === 'old_app'), appNotUsed: count(r => r.status === 'app_not_used'), usingApp: count(r => r.status === 'using_app'), familyCovered: count(r => r.status === 'family_covered'),
-      hasApp: count(r => r.hasApp), noApp: count(r => !r.hasApp), iphone: count(r => r.devices.includes('iPhone')), android: count(r => r.devices.includes('Android')),
-      usedToday: count(r => r.usedToday), used7: count(r => r.used7), usedPeriod: count(r => r.daysUsed > 0),
-      notificationsOn: count(r => r.notificationsOn), notificationsOff: count(r => r.hasApp && !r.notificationsOn), locked: count(r => r.locked),
+      hasApp: count(r => r.hasApp), noApp: count(r => !r.hasApp),
+      // Which phone: the four add up to hasApp (the old app did not always say which phone it was)
+      iphoneOnly: count(r => r.hasApp && r.devices.length === 1 && r.devices[0] === 'iPhone'), androidOnly: count(r => r.hasApp && r.devices.length === 1 && r.devices[0] === 'Android'),
+      bothPhones: count(r => r.hasApp && r.devices.length === 2), phoneUnknown: count(r => r.hasApp && !r.devices.length),
+      usedToday: count(r => r.usedToday), usedTodayApp: count(r => r.usedTodayApp), used7: count(r => r.used7), used7App: count(r => r.used7App), usedPeriod: count(r => r.daysUsed > 0),
+      // Phone alerts are counted for the new app: on + off = newApp
+      newApp: count(isNew), alertsOn: count(r => isNew(r) && r.notificationsOn), alertsOff: count(r => isNew(r) && !r.notificationsOn), locked: count(r => r.locked),
     },
+    newAppVersion: NEW_APP_VERSION,
     daily, clients: list,
-    pages: [...pagePeople.entries()].map(([page, set]) => ({ page, clients: set.size, views: pageViews.get(page) || 0 })).sort((a, b) => b.clients - a.clients || b.views - a.views).slice(0, 20),
-    notifications: [...kinds.values()].map(k => ({ key: k.key, kind: k.kind, title: k.title, sent: k.sent, clients: k.people.size, reachedPhone: k.phone, inboxOnly: k.inbox, read: k.read }))
-      .sort((a, b) => b.sent - a.sent),
+    pages: [...pagePeople.entries()].map(([page, set]) => ({ page, clients: weigh(set), views: pageViews.get(page) || 0 })).sort((a, b) => b.clients - a.clients || b.views - a.views).slice(0, 20),
+    // Every figure is a number of clients, so a row reads across: sent to → reached the phone → read
+    notifications: [...kinds.values()].map(k => ({ key: k.key, kind: k.kind, title: k.title, sent: k.sent, lastSent: k.last, clients: weigh(k.people), reachedPhone: weigh(k.phone), inboxOnly: weigh(k.people) - weigh(k.phone), read: weigh(k.read) }))
+      .sort((a, b) => b.clients - a.clients || b.sent - a.sent),
   }
 }
 
@@ -273,9 +332,9 @@ export async function clientLog(email: string, person: Person | null, staff: [st
 export async function noteRecipients(key: string, since: string, byEmail: Map<string, Person>) {
   const [category, ...rest] = key.split('|'); const title = rest.join('|')
   const rows = (await query(
-    `SELECT lower(email) AS email, title, created_at, push_status, read_at FROM app_notifications WHERE category = $1 AND created_at >= ${since} ORDER BY created_at DESC LIMIT 5000`, [category])).rows
+    `SELECT lower(email) AS email, title, ${NOTE_SUB} AS sub, created_at, push_status, read_at FROM app_notifications WHERE category = $1 AND created_at >= ${since} ORDER BY created_at DESC LIMIT 5000`, [category])).rows
   return {
-    recipients: rows.filter((r: any) => noteTitle(r.title) === title && byEmail.has(r.email)).map((r: any) => ({
+    recipients: rows.filter((r: any) => noteLabel(r.title, r.sub) === title && byEmail.has(r.email)).map((r: any) => ({
       email: r.email, name: byEmail.get(r.email)!.name, title: r.title, at: new Date(r.created_at).toISOString(), reached: reach(r.push_status), read: !!r.read_at,
     })),
   }

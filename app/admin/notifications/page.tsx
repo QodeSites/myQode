@@ -23,6 +23,7 @@ type Campaign = { id: number; title: string; body: string; link: string | null; 
 type Overview = {
   ready: boolean; live: boolean; testEmails: string[]; everyone?: number; strategies?: string[]
   devices?: { active: number; logins: number; ios: number; android: number }
+  clientAlerts?: { clients: number; logins: number } | null
   outbox?: { pending: number; failed24h: number; created24h: number }
   campaigns: Campaign[]
 }
@@ -133,8 +134,8 @@ export default function AdminNotificationsPage() {
         <ErrorNote message="The notification tables aren't created on the server yet." />
       ) : d ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <KpiCard label="Reach" value={fmtNum(d.everyone ?? 0)} hint="people who use the app" icon={<Bell className="h-4 w-4" />} accent />
-          <KpiCard label="Phones registered" value={fmtNum(d.devices?.active ?? 0)} hint={`${fmtNum(d.devices?.ios ?? 0)} iPhone · ${fmtNum(d.devices?.android ?? 0)} Android`} icon={<Smartphone className="h-4 w-4" />} />
+          <KpiCard label="Reach" value={fmtNum(d.everyone ?? 0)} hint="Logins that a notification to everyone goes to: anyone who has signed in to the app or the new website. It lands in their inbox, and on the phone if one is registered" icon={<Bell className="h-4 w-4" />} accent />
+          <KpiCard label="Phones registered" value={fmtNum(d.devices?.active ?? 0)} hint={`${fmtNum(d.devices?.ios ?? 0)} iPhone + ${fmtNum(d.devices?.android ?? 0)} Android, on ${fmtNum(d.devices?.logins ?? 0)} logins${d.clientAlerts ? `: ${fmtNum(d.clientAlerts.logins)} client logins (${fmtNum(d.clientAlerts.clients)} clients, as in App analytics)${(d.devices?.logins ?? 0) > d.clientAlerts.logins ? ` + ${fmtNum((d.devices?.logins ?? 0) - d.clientAlerts.logins)} staff or partner` : ""}` : ""}`} icon={<Smartphone className="h-4 w-4" />} />
           <KpiCard label="Sent in the last 24 hours" value={fmtNum(d.outbox?.created24h ?? 0)} hint={`${fmtNum(d.outbox?.pending ?? 0)} waiting · ${fmtNum(d.outbox?.failed24h ?? 0)} failed`} icon={<Send className="h-4 w-4" />} />
           <KpiCard label="Automatic notifications" value={d.live ? "On" : "Off"} hint={d.live ? "Money, portfolio and reading go to clients" : "Money, portfolio and reading: off until PUSH_LIVE=1"} icon={<CheckCircle2 className="h-4 w-4" />} />
         </div>

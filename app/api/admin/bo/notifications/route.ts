@@ -7,6 +7,7 @@
 //   wait for PUSH_LIVE (that switch holds back only the automatic money / portfolio / reading notifications).
 //   Returns { campaignId, recipients }. Audited as notifications.send.
 import { NextRequest, NextResponse } from 'next/server'
+import { clientUsage } from '@/lib/clientUsage'
 import { requireAdmin, audit } from '@/lib/adminAuth'
 import { query } from '@/lib/db'
 import { tablesReady, pushLive, testEmails, appAudience, notifyEmails, Category } from '@/lib/appNotify'
@@ -21,6 +22,8 @@ export async function GET(req: NextRequest) {
   if (error) return error
   if (!(await tablesReady())) return NextResponse.json({ ready: false, live: pushLive(), testEmails: testEmails(), campaigns: [] })
   try {
+    // Clients whose phone is registered, as App analytics counts them, so the two pages state the same people
+    const alerts = clientUsage(30).then(u => { const on = u.clients.filter(c => c.notificationsOn); return { clients: on.length, logins: new Set(on.map(c => c.email)).size } }).catch(() => null)
     const [camps, dev, outbox, strat, everyone] = await Promise.all([
       query(
         `SELECT c.id, c.title, c.body, c.link, c.category, c.audience, c.created_by, c.created_at, c.recipients,
@@ -45,7 +48,7 @@ export async function GET(req: NextRequest) {
     ])
     return NextResponse.json({
       ready: true, live: pushLive(), testEmails: testEmails(), links: LINKS,
-      devices: dev.rows[0], outbox: outbox.rows[0], everyone: everyone.length, strategies: strat.rows.map((r: any) => r.schemename),
+      devices: dev.rows[0], clientAlerts: await alerts, outbox: outbox.rows[0], everyone: everyone.length, strategies: strat.rows.map((r: any) => r.schemename),
       campaigns: camps.rows.map((c: any) => ({
         id: Number(c.id), title: c.title, body: c.body, link: c.link, category: c.category, audience: c.audience,
         createdBy: c.created_by, createdAt: c.created_at, recipients: c.recipients,

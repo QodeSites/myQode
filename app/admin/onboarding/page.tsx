@@ -70,6 +70,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import Link from "next/link";
+import { AppAnalyticsSummary, type AppAnalyticsData } from "@/components/app-analytics-summary";
+import { boFetch } from "@/components/admin-kit";
 import {
   PieChart,
   Pie,
@@ -215,6 +217,9 @@ function AdminDashboardContent() {
     intermediaryname: 'QODE ADVISORS LLP INT',
     intermediary_fee_percentage: 50.00
   });
+  // The same figures App analytics shows, so the cards at the top and that page start from one count of owners
+  const [usage, setUsage] = useState<AppAnalyticsData | null | undefined>(undefined);
+  useEffect(() => { boFetch<AppAnalyticsData>("/api/admin/bo/analytics/clients?days=30").then(setUsage).catch(() => setUsage(null)); }, []);
   const [activeTab, setActiveTab] = useState<'owners' | 'distributors' | 'app-analytics'>(
     isDistributorOnlyAdmin ? 'distributors' : 'owners'
   );
@@ -1034,19 +1039,23 @@ function AdminDashboardContent() {
             icon={Users}
             title="Total Owners"
             value={statistics.totalOwners}
+            subtitle={usage ? `${usage.summary.clients} current clients + ${usage.summary.ownersClosed} closed every account + ${usage.summary.ownersTest} Qode test` : undefined}
             color="text-blue-500"
           />
           <StatCard
             icon={Building2}
             title="Total Accounts"
             value={statistics.totalAccounts}
+            subtitle={usage ? `${usage.summary.accountsOpen} open + ${usage.summary.accountsClosed} closed + ${usage.summary.accountsTest} Qode test` : undefined}
             color="text-purple-500"
           />
           <StatCard
             icon={CheckCircle}
-            title="Successful Account Setup"
-            value={statistics.activeOwners}
-            subtitle={`${statistics.pendingOnboarding} pending`}
+            title={usage ? "Password Set Up" : "Successful Account Setup"}
+            value={usage ? usage.summary.passwordSet : statistics.activeOwners}
+            subtitle={usage
+              ? `of ${usage.summary.clients} current clients · ${usage.summary.noPassword} no password yet${usage.summary.familyCovered ? ` · ${usage.summary.familyCovered} seen by the family head` : ""}`
+              : `${statistics.pendingOnboarding} pending`}
             color="text-green-500"
           />
           <Link href="/admin/queries" className="block hover:shadow-md transition-shadow">
@@ -1058,18 +1067,30 @@ function AdminDashboardContent() {
               color="text-orange-500"
             />
           </Link>
-          {/* Today's Logins - Clickable */}
-          <div
-            onClick={() => { fetchLoginsData('today'); setShowLoginsDialog(true); }}
-            className="cursor-pointer hover:shadow-md transition-shadow rounded-lg"
-          >
-            <StatCard
-              icon={TrendingUp}
-              title="Today's Logins"
-              value={statistics.uniqueLoginsToday}
-              color="text-indigo-500"
-            />
-          </div>
+          {/* Used today: the same figure as App analytics (the old "Today's Logins" counted accounts by UTC day) */}
+          {usage ? (
+            <Link href="/admin/analytics" className="block hover:shadow-md transition-shadow rounded-lg">
+              <StatCard
+                icon={TrendingUp}
+                title="Used myQode Today"
+                value={usage.summary.usedToday}
+                subtitle={`${usage.summary.usedTodayApp} on the phone app + ${usage.summary.usedToday - usage.summary.usedTodayApp} on the website only`}
+                color="text-indigo-500"
+              />
+            </Link>
+          ) : (
+            <div
+              onClick={() => { fetchLoginsData('today'); setShowLoginsDialog(true); }}
+              className="cursor-pointer hover:shadow-md transition-shadow rounded-lg"
+            >
+              <StatCard
+                icon={TrendingUp}
+                title="Today's Logins"
+                value={statistics.uniqueLoginsToday}
+                color="text-indigo-500"
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -1478,8 +1499,12 @@ function AdminDashboardContent() {
             </Alert>
           )}
 
-          {/* ── The big picture: total investors → installed → using ─────────── */}
-          {(() => {
+          {/* The same headline figures as App analytics (/admin/analytics), from the same place */}
+          <AppAnalyticsSummary data={usage} />
+
+          {/* The older "big picture" is switched off: it counted a website sign-in as having the app, and its base
+              (funded Zoho records) is not the client count used everywhere else. Toggle `false` to show it again. */}
+          {false && (() => {
             // Derive every headline number from the SAME per-source table below,
             // so the KPI cards and the table's Total row are always identical.
             const si = (platformActivity?.sourceInsightsByPeriod?.[sourcePeriod] ?? platformActivity?.sourceInsights ?? []) as any[];
@@ -1494,7 +1519,7 @@ function AdminDashboardContent() {
             const active = sum('active');
             const range = (platformActivity?.periodRanges?.[sourcePeriod]) as { from?: string; to?: string } | undefined;
             const fmtDay = (s?: string) => s ? new Date(s).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null;
-            const rangeLabel = range?.from && range?.to ? `Funded ${fmtDay(range.from)} → ${fmtDay(range.to)}` : null;
+            const rangeLabel = range?.from && range?.to ? `Funded ${fmtDay(range?.from)} → ${fmtDay(range?.to)}` : null;
             return (
               <Card>
                 <CardHeader>
@@ -1554,6 +1579,11 @@ function AdminDashboardContent() {
             );
           })()}
 
+          {/* Switched off (13 Oct 2026), so this tab cannot disagree with App analytics: the by-source table and
+              "Slipping away" count any app-route sign-in as having the app (the new website signs in that way too),
+              on a base of funded Zoho records; the usage trend is a modelled curve, not recorded use.
+              Toggle `false` to show them again. */}
+          {false && (<>
           {/* Where investors come from, and how many use the app */}
           <Card>
             <CardHeader>
@@ -1571,7 +1601,7 @@ function AdminDashboardContent() {
                     const r = (platformActivity?.periodRanges?.[sourcePeriod]) as { from?: string; to?: string } | undefined;
                     const f = (s?: string) => s ? new Date(s).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null;
                     return r?.from && r?.to
-                      ? <p className="text-xs font-medium text-foreground mt-1">Showing: Funded {f(r.from)} → {f(r.to)}</p>
+                      ? <p className="text-xs font-medium text-foreground mt-1">Showing: Funded {f(r?.from)} → {f(r?.to)}</p>
                       : null;
                   })()}
                 </div>
@@ -1794,6 +1824,8 @@ function AdminDashboardContent() {
               )}
             </CardContent>
           </Card>
+
+          </>)}
 
           {/* 5. Annual review due + dormant worklist */}
           <Card>

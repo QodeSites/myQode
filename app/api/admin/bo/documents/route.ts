@@ -127,6 +127,7 @@ export async function GET(req: NextRequest) {
       return {
         clientId: fs[0].clientId, clientIds: fs.map(f => f.clientId), name: fs[0].name, email: fs[0].email,
         codes: fs.flatMap(f => f.codes), folders: withCounts, closed: fs.every(f => f.closed),
+        test: fs.every(f => f.codes.every((c: any) => /^QTEST/i.test(c.code))),   // Qode's own test accounts: not clients
         counts: cnt, total: Object.values(cnt).reduce((a, b) => a + b, 0), missingIn,
         status: judged.every(f => hasAll(f.counts)) ? 'complete' : any ? 'partial' : 'none',
       }

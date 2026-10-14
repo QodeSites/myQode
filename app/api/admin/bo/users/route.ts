@@ -15,6 +15,7 @@ export async function GET(req: NextRequest) {
       page: Number(sp.get('page') || 1),
       limit: Number(sp.get('limit') || 50),
       sort: sp.get('sort') || 'recent',
+      scope: sp.get('scope') || 'all',   // 'current': without closed and test investor logins
     }))
   } catch (e) {
     console.error('[admin/bo/users]', e)
