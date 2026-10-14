@@ -47,7 +47,7 @@ export async function POST(req: NextRequest) {
     if (b?.mode === 'send') return NextResponse.json(await sendReminders(kind, admin!, subject, message))
     const a = await reminderAudience(kind)
     return NextResponse.json({
-      recipients: a.send.length, skipped: a.skipped, names: a.send.slice(0, 200).map(c => c.name),
+      recipients: a.send.length, skipped: a.skipped, sharing: a.sharing, names: a.send.slice(0, 200).map(c => c.name),
       html: R.channel === 'email' ? reminderHtml(a.send[0]?.name || 'Client Name', message, R.buttons) : null,
     })
   } catch (e) {

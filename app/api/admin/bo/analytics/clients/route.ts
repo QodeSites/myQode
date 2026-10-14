@@ -4,6 +4,7 @@
 //   ?note=<category>|<title> who received one notification in the period
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/adminAuth'
+import { clientCrm } from '@/lib/clientCrm'
 import { clientLog, clientUsage, noteRecipients, people, remindedAt, sinceSql, staffViews } from '@/lib/clientUsage'
 
 export const dynamic = 'force-dynamic'
@@ -21,7 +22,10 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(await noteRecipients(note!, sinceSql(days), byEmail))
     }
     const [data, reminded] = await Promise.all([clientUsage(days), remindedAt()])
-    return NextResponse.json({ ...data, clients: data.clients.map(c => ({ ...c, remindedAt: reminded.get(c.email) ?? null })) })
+    // Zoho CRM (lead source, relationship manager, partner) and assets, per client: lib/clientCrm.ts
+    const { zoho, crm, aum } = await clientCrm(data.clients)
+    return NextResponse.json({ ...data, zoho, clients: data.clients.map(c => ({ ...c, remindedAt: reminded.get(c.email) ?? null,
+      source: crm.get(c.id)?.source ?? null, bucket: crm.get(c.id)?.bucket ?? null, rm: crm.get(c.id)?.rm ?? null, partner: crm.get(c.id)?.partner ?? null, inZoho: !!crm.get(c.id)?.matchedBy, aum: aum.get(c.id) ?? 0 })) })
   } catch (e) {
     console.error('[bo/analytics/clients]', e)
     return NextResponse.json({ error: 'Could not load the analytics' }, { status: 500 })

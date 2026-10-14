@@ -19,7 +19,7 @@ import { EmptyState, ErrorNote, KpiCard, PageHeader, Panel, Pill, boFetch, error
 type Code = { code: string; strategy: string; closed: boolean }
 type Folder = { clientId: string; codes: Code[]; closed: boolean; counts: Record<string, number> }
 // One client = all their strategy accounts (grouped by PAN on the server); each account has its own vault folder.
-type Client = { clientId: string; clientIds: string[]; name: string; email: string; codes: Code[]; folders: Folder[]; closed: boolean; counts: Record<string, number>; total: number; missingIn: string[]; status: "complete" | "partial" | "none" }
+type Client = { clientId: string; clientIds: string[]; name: string; email: string; codes: Code[]; folders: Folder[]; closed: boolean; test?: boolean; counts: Record<string, number>; total: number; missingIn: string[]; status: "complete" | "partial" | "none" }
 type VaultFile = { key: string; clientId: string; section: string; filename: string; size: number; lastModified: string | null; url: string }
 // The same document in several account folders, shown once.
 type Doc = { section: string; filename: string; size: number; lastModified: string | null; url: string; keys: string[]; clientIds: string[] }
@@ -74,7 +74,7 @@ export default function AdminDocumentsPage() {
   }, [])
   useEffect(() => { load() }, [load])
 
-  const pool = useMemo(() => (data?.clients || []).filter(c => showClosed || !c.closed), [data, showClosed])
+  const pool = useMemo(() => (data?.clients || []).filter(c => showClosed || (!c.closed && !c.test)), [data, showClosed])
   const kpi = useMemo(() => ({ complete: pool.filter(c => c.status === "complete").length, partial: pool.filter(c => c.status === "partial").length, none: pool.filter(c => c.status === "none").length }), [pool])
   const rows = useMemo(() => {
     const s = q.trim().toLowerCase()
@@ -91,6 +91,7 @@ export default function AdminDocumentsPage() {
         </div>} />
       {error ? <ErrorNote message={error} onRetry={load} /> : null}
 
+      {data ? <p className="text-xs text-muted-foreground">{pool.length} {showClosed ? "clients, including those who closed every account and Qode test accounts" : "current clients, the same people App analytics counts"}: {kpi.complete} with all documents + {kpi.partial} missing some + {kpi.none} with none.</p> : null}
       <div className="grid gap-3 sm:grid-cols-3">
         <button className="text-left" onClick={() => setFilter("complete")}><KpiCard label="All documents" value={kpi.complete} hint={`${(data?.required || []).join(", ")}`} icon={<CheckCircle2 className="h-4 w-4" />} /></button>
         <button className="text-left" onClick={() => setFilter("partial")}><KpiCard label="Missing some" value={kpi.partial} hint="At least one required section empty" /></button>
@@ -104,7 +105,7 @@ export default function AdminDocumentsPage() {
           <select value={filter} onChange={e => setFilter(e.target.value as any)} className="h-8 rounded-md border bg-white px-2 text-sm">
             <option value="all">All</option><option value="complete">All documents</option><option value="partial">Missing some</option><option value="none">No documents</option>
           </select>
-          <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={showClosed} onChange={e => setShowClosed(e.target.checked)} className="accent-[#02422B]" />Closed accounts</label>
+          <label className="flex items-center gap-1.5 text-xs"><input type="checkbox" checked={showClosed} onChange={e => setShowClosed(e.target.checked)} className="accent-[#02422B]" />Closed and test accounts</label>
         </div>}>
         {!data ? <p className="p-6 text-sm text-muted-foreground">{loading ? "Reading the document store…" : ""}</p> : rows.length ? (
           <div className="max-h-[65vh] overflow-auto">

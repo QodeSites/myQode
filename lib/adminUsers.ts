@@ -5,6 +5,7 @@
 // email with any coded row signs in as an investor, so it is a distributor only when every row has no code.
 // The "primary" row is the one login picks: head of family first, then the lowest client code.
 import bcrypt from 'bcryptjs'
+import { HAS_PASSWORD, REAL } from '@/lib/clientUsage'
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
 import pool from '@/lib/db1'
@@ -51,6 +52,8 @@ export async function readJson(req: NextRequest): Promise<{ body: any; error: Ne
 }
 
 // One row per login email. $n parameters are appended by the callers.
+// is_current: the login has an open client account (as App analytics counts clients); is_test: a Qode test account.
+// password_set: the one rule every admin page uses (HAS_PASSWORD).
 const USERS_CTE = `
   WITH base AS (
     SELECT m.*, lower(trim(m.email)) AS em,
@@ -66,8 +69,9 @@ const USERS_CTE = `
            COALESCE(array_agg(DISTINCT clientcode) FILTER (WHERE clientcode IS NOT NULL), '{}') AS client_codes,
            (array_agg(groupid ORDER BY head_of_family DESC NULLS LAST, clientcode ASC NULLS LAST))[1] AS group_id,
            COALESCE(bool_or(head_of_family), false) AS head_of_family,
-           (array_agg(password IS NOT NULL AND password <> 'Qode@123'
-                      ORDER BY head_of_family DESC NULLS LAST, clientcode ASC NULLS LAST))[1] AS password_set,
+           COALESCE(bool_or(${HAS_PASSWORD}), false) AS password_set,
+           COALESCE(bool_or(clientcode ~* '^QTEST'), false) AS is_test,
+           COALESCE(bool_or(${REAL} AND (maturity_date IS NULL OR maturity_date > NOW())), false) AS is_current,
            COALESCE(bool_or(locked_until > now()), false) AS locked,
            max(last_login_at) AS last_login_at,
            min(COALESCE(account_open_date, inceptiondate)) AS opened_on,
@@ -149,7 +153,8 @@ export const USER_SORTS: Record<string, string> = {
   inactive: 'u.last_login_at ASC NULLS FIRST, u.name ASC',
   'most-investors': 'u.client_count DESC, u.name ASC',
 }
-export async function listUsers(opts: { q?: string; type?: string; status?: string; page?: number; limit?: number; sort?: string }) {
+/** scope 'current' leaves out investor logins with no open account and Qode's test accounts (distributors are never left out). */
+export async function listUsers(opts: { q?: string; type?: string; status?: string; page?: number; limit?: number; sort?: string; scope?: string }) {
   const page = Math.max(1, Math.floor(Number(opts.page) || 1))
   const limit = Math.min(200, Math.max(1, Math.floor(Number(opts.limit) || 50)))
   const where: string[] = []
@@ -160,6 +165,7 @@ export async function listUsers(opts: { q?: string; type?: string; status?: stri
     params.push('%' + q.replace(/[\\%_]/g, m => '\\' + m) + '%')
     where.push(`(u.email ILIKE $${params.length} OR u.name ILIKE $${params.length} OR u.search_text ILIKE $${params.length})`)
   }
+  if (opts.scope === 'current') where.push('(u.is_distributor OR u.is_current)')
   if (opts.type === 'investor') where.push('NOT u.is_distributor')
   if (opts.type === 'distributor') where.push('u.is_distributor')
   if (opts.status === 'needs-setup') where.push('NOT u.password_set')
@@ -177,7 +183,15 @@ export async function listUsers(opts: { q?: string; type?: string; status?: stri
     params,
   )
   const total = r.rows[0]?.total ?? (page > 1 ? (await countUsers(where, params.slice(0, -2))) : 0)
-  return { items: await withPortalInvestorCounts(r.rows.map(toItem)), total, page, limit }
+  // Investor logins by kind, so the page can say what its count is made of
+  const k = (await query(`${USERS_CTE}
+    SELECT count(*) FILTER (WHERE is_current)::int AS current, count(*) FILTER (WHERE is_test AND NOT is_current)::int AS test,
+           count(*) FILTER (WHERE NOT is_current AND NOT is_test)::int AS closed
+      FROM u WHERE NOT is_distributor`)).rows[0] || {}
+  const clients = (await query(`SELECT count(DISTINCT coalesce(ownerid::text, lower(trim(email))))::int AS n FROM pms_clients_master
+    WHERE ${REAL} AND coalesce(trim(email), '') <> '' AND (maturity_date IS NULL OR maturity_date > NOW())`)).rows[0]?.n ?? 0
+  return { items: await withPortalInvestorCounts(r.rows.map(toItem)), total, page, limit,
+    investorLogins: { current: k.current ?? 0, closed: k.closed ?? 0, test: k.test ?? 0, clients } }
 }
 
 async function countUsers(where: string[], params: any[]): Promise<number> {

@@ -41,6 +41,7 @@ import {
 } from "@/components/admin-kit"
 
 interface Overview {
+  clients: Record<string, number> | null
   users: {
     byType?: Record<"investor" | "distributor", { passwordSet: number; needsSetup: number; neverLoggedIn: number }>
     investors: number
@@ -135,6 +136,8 @@ function OverviewSkeleton() {
 
 function OverviewBody({ data }: { data: Overview }) {
   const u = data.users
+  // Investor figures come from the same count as App analytics; distributors from the user list
+  const c = data.clients, dist = u.byType?.distributor
   const l = data.logins
   const totalUsers = (u.investors || 0) + (u.distributors || 0)
   const maxVersion = Math.max(1, ...data.appVersions.map((v) => v.users))
@@ -146,23 +149,23 @@ function OverviewBody({ data }: { data: Overview }) {
       <div>
         <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[#02422B]/70">Users</p>
         <div className="grid grid-cols-3 gap-4 xl:grid-cols-6">
-          <Link href="/admin/users?type=investor" className="block">
-            <KpiCard label="Investors" value={fmtNum(u.investors)} icon={<Users className="h-4 w-4" />} accent />
+          <Link href={c ? "/admin/analytics" : "/admin/users?type=investor"} className="block">
+            <KpiCard label="Investors" value={fmtNum(c ? c.clients : u.investors)} hint={c ? `Current clients. ${fmtNum(c.ownersOnRecord)} owners on record, less ${fmtNum(c.ownersClosed)} who closed every account and ${fmtNum(c.ownersTest)} Qode test accounts` : undefined} icon={<Users className="h-4 w-4" />} accent />
           </Link>
           <Link href="/admin/users?type=distributor" className="block">
             <KpiCard label="Distributors" value={fmtNum(u.distributors)} icon={<Briefcase className="h-4 w-4" />} />
           </Link>
           <KpiCard
             label="Password set"
-            value={fmtNum(u.passwordSet)}
-            hint={u.byType ? `${fmtNum(u.byType.investor.passwordSet)} investors · ${fmtNum(u.byType.distributor.passwordSet)} distributors` : `${pct(u.passwordSet, totalUsers)} of all users`}
+            value={fmtNum(c && dist ? c.passwordSet + dist.passwordSet : u.passwordSet)}
+            hint={c && dist ? `${fmtNum(c.passwordSet)} of ${fmtNum(c.clients)} investors · ${fmtNum(dist.passwordSet)} distributors` : u.byType ? `${fmtNum(u.byType.investor.passwordSet)} investors · ${fmtNum(u.byType.distributor.passwordSet)} distributors` : `${pct(u.passwordSet, totalUsers)} of all users`}
             icon={<KeyRound className="h-4 w-4" />}
           />
-          <Link href="/admin/users?status=needs-setup" className="block">
-            <KpiCard label="No password yet" value={fmtNum(u.needsSetup)} hint={u.byType ? `${fmtNum(u.byType.investor.needsSetup)} investors · ${fmtNum(u.byType.distributor.needsSetup)} distributors` : "No password yet"} />
+          <Link href={c ? "/admin/analytics?group=no_password" : "/admin/users?status=needs-setup"} className="block">
+            <KpiCard label="No password yet" value={fmtNum(c && dist ? c.noPassword + dist.needsSetup : u.needsSetup)} hint={c && dist ? `${fmtNum(c.noPassword)} investors · ${fmtNum(dist.needsSetup)} distributors${c.familyCovered ? `. ${fmtNum(c.familyCovered)} more investors have no password of their own but are seen by their family head` : ""}` : u.byType ? `${fmtNum(u.byType.investor.needsSetup)} investors · ${fmtNum(u.byType.distributor.needsSetup)} distributors` : "No password yet"} />
           </Link>
-          <Link href="/admin/users?status=never" className="block">
-            <KpiCard label="Never logged in" value={fmtNum(u.neverLoggedIn)} hint={u.byType ? `${fmtNum(u.byType.investor.neverLoggedIn)} investors · ${fmtNum(u.byType.distributor.neverLoggedIn)} distributors` : undefined} icon={<UserX className="h-4 w-4" />} />
+          <Link href={c ? "/admin/analytics?group=never_in" : "/admin/users?status=never"} className="block">
+            <KpiCard label="Never logged in" value={fmtNum(c && dist ? c.neverSignedInAll + dist.neverLoggedIn : u.neverLoggedIn)} hint={c && dist ? `${fmtNum(c.neverSignedInAll)} investors · ${fmtNum(dist.neverLoggedIn)} distributors` : u.byType ? `${fmtNum(u.byType.investor.neverLoggedIn)} investors · ${fmtNum(u.byType.distributor.neverLoggedIn)} distributors` : undefined} icon={<UserX className="h-4 w-4" />} />
           </Link>
           <Link href="/admin/users?status=locked" className="block">
             <KpiCard label="Locked" value={fmtNum(u.locked)} icon={<Lock className="h-4 w-4" />} />
@@ -172,7 +175,7 @@ function OverviewBody({ data }: { data: Overview }) {
 
       {/* Logins */}
       <div>
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[#02422B]/70">Logins</p>
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-[#02422B]/70">Sign-ins <span className="font-normal normal-case tracking-normal text-muted-foreground">· each time someone signs in, investors and distributors. People stay signed in, so this is lower than how many used myQode (App analytics).</span></p>
         <div className="grid grid-cols-3 gap-4 xl:grid-cols-6">
           <KpiCard label="Today" value={fmtNum(l.today)} />
           <KpiCard label="Last 7 days" value={fmtNum(l.last7)} />

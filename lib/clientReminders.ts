@@ -42,7 +42,7 @@ Install it from the store below and sign in with the same email and password.`,
     buttons: [{ label: 'Get it for iPhone', url: IOS_URL }, { label: 'Get it for Android', url: ANDROID_URL }],
   },
   old_app: {
-    channel: 'email', group: 'Has the old app, needs to update', subject: 'Please update your myQode app',
+    channel: 'email', group: 'On the old app', subject: 'Please update your myQode app',
     message: `We have released a new version of the myQode app, and your phone still has the older one.
 
 The new version is faster and clearer, and adds sign-in with Face ID or your fingerprint and alerts on your phone.
@@ -83,9 +83,12 @@ export async function reminderAudiences() {
   const recent = (email: string) => { const at = reminded.get(email); return !!at && Date.parse(at) > cut }
   const of = (kind: ReminderKind) => {
     const inGroup = data.clients.filter(c => kind === 'outdated_app'
-      ? !!(latest && c.hasApp && c.appVersion && c.notificationsOn && older(c.appVersion, latest))
+      ? !!(latest && c.newApp && c.appVersion && c.notificationsOn && older(c.appVersion, latest))
       : c.status === kind)
-    return { group: inGroup.length, send: inGroup.filter(c => !recent(c.email)), skipped: inGroup.filter(c => recent(c.email)).length }
+    // One reminder per login email: family members who share an email get one between them
+    const emails = new Set<string>(), due = inGroup.filter(c => !recent(c.email))
+    const send = due.filter(c => !emails.has(c.email) && !!emails.add(c.email))
+    return { group: inGroup.length, send, sharing: due.length - send.length, skipped: inGroup.filter(c => recent(c.email)).length }
   }
   return Object.fromEntries((Object.keys(REMINDERS) as ReminderKind[]).map(k => [k, of(k)])) as Record<ReminderKind, ReturnType<typeof of>>
 }
