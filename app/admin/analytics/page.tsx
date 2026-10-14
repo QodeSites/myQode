@@ -73,6 +73,8 @@ const rmOf = (c: Client) => (isDist(c) ? "" : c.rm || NO_RM)
 const keeper = (c: Client) => (isDist(c) ? `Partner: ${c.partner || "not named in Zoho"}` : `RM: ${rmOf(c)}`)
 const crore = (n: number) => `₹${(n / 1e7).toFixed(1)} Cr`
 const SHORT: Record<Status, string> = { no_password: "No password", never_signed_in: "Never signed in", website_only: "Website only", old_app: "Old app", app_not_used: "New app, unused", using_app: "New app", family_covered: "Family, seen by head" }
+// Chart cards side by side are the same height: the panel fills its grid cell and centres its chart
+const EQ = "flex w-full flex-col", EQ_BODY = "flex flex-1 flex-col justify-center"
 const BUCKET_COLORS = ["#02422B", "#DABD38", "#8a9a94", "#b42318", "#6b7f78", "#d97706", "#c7c2a6"]
 const TO_CHASE: Status[] = ["no_password", "never_signed_in", "website_only", "old_app", "app_not_used"]
 type Group = { key: string; clients: Client[]; by: Record<Status, number>; hasApp: number; used: number; never: number; avgDays: number | null; aum: number; chase: number }
@@ -397,8 +399,8 @@ export default function AppAnalyticsPage() {
             const donut = byBucket.map((g, n) => ({ name: g.key, value: g.clients.length, color: BUCKET_COLORS[n % BUCKET_COLORS.length] }))
             return (<>
               <div className="grid gap-6 xl:grid-cols-5">
-                <div className="xl:col-span-2">
-                  <Panel title="Clients by source bucket" description={`How the ${fmtNum(S.clients)} clients split across Zoho's source buckets. Click a slice or a name to see those clients.`}>
+                <div className="flex xl:col-span-2">
+                  <Panel className={EQ} bodyClassName={EQ_BODY} title="Clients by source bucket" description={`How the ${fmtNum(S.clients)} clients split across Zoho's source buckets. Click a slice or a name to see those clients.`}>
                     <div className="flex flex-wrap items-center gap-4">
                       <div className="relative h-52 w-52 shrink-0">
                         <ResponsiveContainer width="100%" height="100%">
@@ -423,27 +425,27 @@ export default function AppAnalyticsPage() {
                     </div>
                   </Panel>
                 </div>
-                <div className="xl:col-span-3">
-                  <Panel title="Where clients came from, and where they stand" action={toggle}
+                <div className="flex xl:col-span-3">
+                  <Panel className={EQ} bodyClassName={EQ_BODY} title="Where clients came from, and where they stand" action={toggle}
                     description={`Each bar is one ${srcMode === "bucket" ? "source bucket" : "lead source"} from Zoho CRM. Its length is the number of clients (printed at the end), and the colours show where they stand on myQode. Click a bar to see the names.`}>
                     <HBars rows={groups.map((g) => ({ name: g.key, total: g.clients.length, ...g.by }))} segs={statusSegs} onPick={(n) => pickSource(n)} />
                   </Panel>
                 </div>
               </div>
               <div className="grid gap-6 xl:grid-cols-5">
-                <div className="xl:col-span-2">
-                  <Panel title={`The ${fmtNum(S.neverSignedInAll)} who have never signed in, by source`}
+                <div className="flex xl:col-span-2">
+                  <Panel className={EQ} bodyClassName={EQ_BODY} title={`The ${fmtNum(S.neverSignedInAll)} who have never signed in, by source`}
                     description={`Clients with no sign-in to myQode at all, out of ${fmtNum(S.clients)}. A longer bar means more people to reach in that ${srcMode === "bucket" ? "bucket" : "source"}. Click a bar for the names.`}>
                     <HBars rows={groups.filter((g) => g.never).sort((a, b) => b.never - a.never).map((g) => ({ name: g.key, total: g.never, never: g.never }))}
                       segs={[{ key: "never", label: "Never signed in", color: "#b42318" }]} onPick={(n) => pickSource(n, "never_in")} />
                   </Panel>
                 </div>
-                <div className="xl:col-span-3">
-            <Panel title="Who should call them" description={`The five relationship managers (from Zoho) with the most clients still to chase. Clients who came through a distributor are left out here: their partner looks after them (${fmtNum(d.clients.filter(isDist).length)} clients). Click a bar to see that person's list.`}>
+                <div className="flex xl:col-span-3">
+            <Panel className={EQ} bodyClassName={EQ_BODY} title="Who should call them" description={`The relationship managers (from Zoho) with the most clients still to chase, up to five. Clients who came through a distributor are left out here: their partner looks after them (${fmtNum(d.clients.filter(isDist).length)} clients). Click a bar to see that person's list.`}>
               <HBars rows={byRm.filter((g) => g.chase).slice(0, 5).map((g) => ({ name: g.key.length > 26 ? g.key.slice(0, 25) + "…" : g.key, full: g.key, total: g.chase, nopw: g.by.no_password + g.by.never_signed_in, web: g.by.website_only, old: g.by.old_app + g.by.app_not_used }))}
                 segs={[{ key: "nopw", label: "No password", color: STATUS.no_password.color }, { key: "web", label: "Website only", color: STATUS.website_only.color }, { key: "old", label: "Old app", color: STATUS.old_app.color }]}
                 onPick={(n) => { const g = byRm.find((x) => x.key === n || (x.key.length > 26 && x.key.slice(0, 25) + "…" === n)); if (g) { setRm(g.key); setSrc(null); setBucket(null); setFilter("all"); toClients() } }} />
-              <p className="mt-2 text-xs text-muted-foreground">{fmtNum(byRm.reduce((t, g) => t + g.chase, 0))} clients to chase in all, across {fmtNum(byRm.filter((g) => g.chase).length)} people; these five hold {fmtNum(byRm.filter((g) => g.chase).slice(0, 5).reduce((t, g) => t + g.chase, 0))} of them.</p>
+              <p className="mt-2 text-xs text-muted-foreground">{fmtNum(byRm.reduce((t, g) => t + g.chase, 0))} clients to chase in all, across {fmtNum(byRm.filter((g) => g.chase).length)} people{byRm.filter((g) => g.chase).length > 5 ? <>; these five hold {fmtNum(byRm.filter((g) => g.chase).slice(0, 5).reduce((t, g) => t + g.chase, 0))} of them</> : null}.</p>
             </Panel>
                 </div>
               </div>
