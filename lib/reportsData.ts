@@ -247,11 +247,14 @@ export async function expensesReport(accountId: string, params0: URLSearchParams
 // Fact sheet. A stored Nuvama snapshot (pms_factsheet) is served when one exists for exactly the requested date (or,
 // with no date, the latest snapshot); any other date is computed by Qode from the NAV series, holdings and cash flows
 // (lib/factsheetCompute.ts), flagged `computed: true`. `dates` lists the stored snapshots; `coverage` is the range a
-// fact sheet can be computed for (the account's first to latest NAV date).
+// fact sheet can be computed for (the account's first to latest NAV date). `closedOn` (a closed account: the day the
+// money left) lets the "All accounts" view count it as withdrawn on later dates (myqode-native src/combine.js).
 export const COMPUTED_FACTSHEET_NOTE =
   "Computed by Qode from Nuvama transaction and holdings data. Benchmark returns use the price index; Nuvama's fact sheet uses the total-return index."
 export async function factsheetReport(accountId: string, params0: URLSearchParams): Promise<ReportResult> {
-  const cap = await closedCap([accountId])
+  const cl = (await closures([accountId])).get(accountId)
+  const cap = cl && cl.closed ? cl.cutoff || cl.closedOn : null
+  const closedOn = cap ? cl!.closedOn || cap : null
   const params = capped(params0, 'date', cap)
 
   try {
@@ -271,7 +274,7 @@ export async function factsheetReport(accountId: string, params0: URLSearchParam
     if (r) {
       const holder = await accountHolder(accountId)
       return R({
-        holder, accountId, asOf: day(r.as_of_date), dates, date, coverage, computed: false, strategy: r.strategy, inceptionDate: day(r.inception_date),
+        holder, accountId, asOf: day(r.as_of_date), dates, date, coverage, closedOn, computed: false, strategy: r.strategy, inceptionDate: day(r.inception_date),
         contribution: n(r.contribution), withdrawal: n(r.withdrawal), profitLoss: n(r.profit_loss),
         portfolioValue: n(r.portfolio_value), valueDate: day(r.value_date),
         returns: r.returns, sectors: r.sectors || [], holdings: r.holdings || [],
@@ -282,7 +285,7 @@ export async function factsheetReport(accountId: string, params0: URLSearchParam
     if (!asOf || !coverage.from || asOf < coverage.from) return R({ accountId, asOf: null, dates, date, coverage })
     const [c, holder] = await Promise.all([computeFactsheet(accountId, asOf), accountHolder(accountId)])
     if (!c) return R({ accountId, asOf: null, dates, date, coverage })
-    return R({ holder, accountId, dates, date, coverage, ...c, strategy: c.strategy ?? holder.strategy, note: COMPUTED_FACTSHEET_NOTE })
+    return R({ holder, accountId, dates, date, coverage, closedOn, ...c, strategy: c.strategy ?? holder.strategy, note: COMPUTED_FACTSHEET_NOTE })
   } catch (err) {
     console.error('[mobile/reports/factsheet]', err)
     return R({ error: 'Could not load the fact sheet' }, { status: 500 })
