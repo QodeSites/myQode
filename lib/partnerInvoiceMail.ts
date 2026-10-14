@@ -1,12 +1,12 @@
 // Emails sent when a partner raises an invoice in the portal (app/api/distributor/invoice-issue):
 //
-//   1. partnerships@qodeinvest.com: the invoice — key figures, the partner's details, the invoice itself inline and as
+//   1. partnerships@ and accounts@qodeinvest.com: the invoice — key figures, the partner's details, the invoice itself inline and as
 //      an attached file (the same document the partner downloads as a PDF). Reply-to is the partner.
 //   2. the partner: "we've received your invoice", with the figures echoed back (lib/mobileAckMail).
 //
 // Who receives them:
 //   PARTNER_INVOICE_EMAIL_OVERRIDE / MOBILE_AUTH_EMAIL_OVERRIDE set   the testers (subject names the intended one)
-//   production, no override                                           partnerships@ and the partner
+//   production, no override                                           partnerships@, accounts@ and the partner
 //   any other server                                                  nothing (logged)
 // Failures are logged, never surfaced: the invoice is already recorded.
 import { graphMailer, isGraphEmailConfigured } from '@/lib/graphEmail'
@@ -14,6 +14,7 @@ import { sendClientAck } from '@/lib/mobileAckMail'
 
 const IS_PROD = process.env.NODE_ENV === 'production'
 const PARTNERSHIPS_EMAIL = 'partnerships@qodeinvest.com'
+const ACCOUNTS_EMAIL = 'accounts@qodeinvest.com'   // every invoice a partner raises goes to Accounts too
 const esc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 const inr = (n: number) => '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -43,8 +44,8 @@ const body = (doc: string) => (doc.match(/<body[^>]*>([\s\S]*)<\/body>/i)?.[1] ?
 
 function internalRecipients(): { to: string[]; prefix: string } | null {
   const override = (process.env.PARTNER_INVOICE_EMAIL_OVERRIDE || process.env.MOBILE_AUTH_EMAIL_OVERRIDE || '').split(',').map((s) => s.trim()).filter(Boolean)
-  if (override.length) return { to: override, prefix: `[TEST · for ${PARTNERSHIPS_EMAIL}] ` }
-  if (IS_PROD) return { to: [PARTNERSHIPS_EMAIL], prefix: '' }
+  if (override.length) return { to: override, prefix: `[TEST · for ${PARTNERSHIPS_EMAIL}, ${ACCOUNTS_EMAIL}] ` }
+  if (IS_PROD) return { to: [PARTNERSHIPS_EMAIL, ACCOUNTS_EMAIL], prefix: '' }
   return null
 }
 
@@ -58,7 +59,7 @@ export async function sendPartnerInvoiceMails(inv: IssuedInvoice, profile: Profi
   ]
   const doc = inv.html ? cleanDoc(inv.html) : ''
 
-  // 1. partnerships@
+  // 1. partnerships@ and accounts@
   try {
     const plan = internalRecipients()
     if (!plan) console.log(`[partner-invoice] not sent (dev server): invoice ${inv.invoiceNumber} from ${inv.partnerEmail}`)
