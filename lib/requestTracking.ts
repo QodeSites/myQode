@@ -11,6 +11,7 @@
 import { query as q1 } from '@/lib/db1'
 import { getDeskTicketStatus } from '@/lib/zohoDesk'
 import { planStatus } from '@/lib/switchPlan'
+import { leadStatus } from '@/lib/zohoLeads'
 
 export type RequestStatus = { state: 'open' | 'on_hold' | 'closed'; label: string; updatedAt: string | null }
 export type TrackedRequest = {
@@ -52,7 +53,7 @@ export async function listRequests(email: string, accountCodes: string[], limit 
     `SELECT id, type, nuvama_code, subject, status, data, created_at, updated_at
        FROM pms_clients_tracker.qode_microsite_inquiries
       WHERE type = ANY($3::text[]) AND (lower(user_email) = $1 OR nuvama_code = ANY($2::text[]))
-        AND (data ? 'desk_ticket_id' OR data ? 'zoho_plan_id')
+        AND (data ? 'desk_ticket_id' OR data ? 'zoho_plan_id' OR (data ->> 'zoho_lead_id') IS NOT NULL)
       ORDER BY created_at DESC LIMIT $4`,
     [String(email || '').toLowerCase(), accountCodes.filter(Boolean), KINDS, limit])
   return Promise.all(r.rows.map(async (row: any) => {
@@ -64,6 +65,8 @@ export async function listRequests(email: string, accountCodes: string[], limit 
       const t = await getDeskTicketStatus(String(d.desk_ticket_id))
       if (t) status = { state: t.statusType === 'Closed' ? 'closed' : t.statusType === 'On Hold' ? 'on_hold' : 'open', label: t.status, updatedAt: t.modifiedTime }
       reference = d.desk_ticket ? `#${d.desk_ticket}` : reference
+    } else if (d.zoho_lead_id) {
+      status = await leadStatus(String(d.zoho_lead_id))   // a referral: the referred person's Lead (14 Oct 2026)
     } else if (d.zoho_plan_id) {
       const p = await planStatus(String(d.zoho_plan_id))
       if (p) status = p
