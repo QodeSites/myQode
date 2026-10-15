@@ -82,7 +82,8 @@ export async function POST(request: NextRequest) {
         'sip_success',
         'admin_response',      // NEW: For admin email responses
         'admin_notification',   // NEW: For admin notifications,
-        'investor_referral'
+        'investor_referral',
+        'help_request'          // Account Services › What do you need help with? (a Desk ticket of the chosen type)
       ];
 
       if (!validInquiryTypes.includes(inquiry_type)) {

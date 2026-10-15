@@ -21,7 +21,10 @@ const DC = process.env.ZOHO_DESK_DATA_CENTER || process.env.ZOHO_CRM_DATA_CENTER
 const DESK = `https://desk.zoho.${DC}/api/v1`
 export const DESK_SCOPES = ['Desk.tickets.CREATE', 'Desk.tickets.READ', 'Desk.contacts.READ', 'Desk.contacts.CREATE', 'Desk.basic.READ']
 
-export const deskConfigured = () => !!(process.env.ZOHO_DESK_REFRESH_TOKEN || '').trim()
+// The refresh token: ZOHO_REFRESH_TOKEN (16 Oct 2026: the Desk token that can also read custom modules, for the request
+// types) when set, else ZOHO_DESK_REFRESH_TOKEN. Both belong to the Desk client below.
+const refreshToken = () => String(process.env.ZOHO_REFRESH_TOKEN || process.env.ZOHO_DESK_REFRESH_TOKEN || '').trim()
+export const deskConfigured = () => !!refreshToken()
 export const deskLive = () => deskConfigured() && (process.env.NODE_ENV === 'production' || process.env.ZOHO_DESK_LIVE === '1')
 
 type Tok = { token: string; expiresAt: number }
@@ -32,10 +35,10 @@ async function accessToken(): Promise<string> {
   if (store.tok && store.tok.expiresAt > Date.now() + 60_000) return store.tok.token
   store.refresh ??= (async () => {
     const params = new URLSearchParams({
-      refresh_token: String(process.env.ZOHO_DESK_REFRESH_TOKEN || '').trim(),
+      refresh_token: refreshToken(),
       // the Desk token's own OAuth client when it has one, else the CRM client (same Zoho account)
       client_id: String(process.env.ZOHO_DESK_CLIENT_ID || process.env.ZOHO_CRM_CLIENT_ID || ''),
-      client_secret: String(process.env.ZOHO_DESK_CLIENT_SECRET || process.env.ZOHO_CRM_CLIENT_SECRET || ''),
+      client_secret: String(process.env.ZOHO_CLIENT_SECRET || process.env.ZOHO_DESK_CLIENT_SECRET || process.env.ZOHO_CRM_CLIENT_SECRET || ''),   // ZOHO_CLIENT_SECRET pairs with ZOHO_REFRESH_TOKEN
       grant_type: 'refresh_token',
     })
     const res = await fetch(`https://accounts.zoho.${DC}/oauth/v2/token?${params}`, { method: 'POST', cache: 'no-store' })
@@ -55,6 +58,38 @@ async function desk(path: string, init: RequestInit = {}, withOrg = true): Promi
   const body: any = await res.json().catch(() => null)
   if (!res.ok) throw new Error(`Zoho Desk ${path} refused (${res.status}): ${body?.message || body?.errorCode || ''}${body?.errors ? ' ' + JSON.stringify(body.errors).slice(0, 300) : ''}`)
   return body
+}
+
+// ── Request types (Desk custom module cm_request_types, 16 Oct 2026) ─────────────────────────────────────────────
+// The types a client can choose when raising a request: active ones that are not staff-only, as
+// { id, code, name, category }. The request is ?limit=100&fields=name,cf_type_code,cf_category,cf_active,cf_staff_only;
+// Desk still returns at most 50 records a call, so a full page is followed by the next (&from=51, …) until a short one.
+// Cached 10 minutes (per process): the app's form costs at most one listing in that time.
+export type RequestType = { id: string; code: string; name: string; category: string }
+const typesStore: { at: number; list: RequestType[] | null; p: Promise<RequestType[]> | null } =
+  ((globalThis as any).__qodeDeskTypes ??= { at: 0, list: null, p: null })
+export async function listRequestTypes(): Promise<RequestType[]> {
+  if (typesStore.list && Date.now() - typesStore.at < 10 * 60_000) return typesStore.list
+  typesStore.p ??= (async () => {
+    const all: any[] = []
+    const DESK_PAGE = 50   // Desk's own cap per call, whatever limit asks for
+    for (let from = 1; from < 1000; from += DESK_PAGE) {
+      const page = (await desk(`/cm_request_types?limit=100&fields=name,cf_type_code,cf_category,cf_active,cf_staff_only${from > 1 ? `&from=${from}` : ''}`))?.data || []
+      all.push(...page)
+      if (page.length < DESK_PAGE) break
+    }
+    const list: RequestType[] = all
+      .filter((r: any) => String(r.cf?.cf_active) === 'true' && String(r.cf?.cf_staff_only) !== 'true')
+      .map((r: any) => ({ id: String(r.id), code: String(r.cf?.cf_type_code || ''), name: String(r.name || ''), category: String(r.cf?.cf_category || '') }))
+    typesStore.list = list; typesStore.at = Date.now()
+    return list
+  })().finally(() => { typesStore.p = null })
+  return typesStore.p
+}
+/** The type with this code, or null (unknown code, or Desk unreachable). */
+export async function requestTypeByCode(code: string): Promise<RequestType | null> {
+  try { return (await listRequestTypes()).find(t => t.code === String(code).trim()) || null }
+  catch (e: any) { console.warn('[zohoDesk] request types not read -', e?.message); return null }
 }
 
 /** The Desk organisations and departments this token sees (for setup: /api/auth/zoho/desk-status). */
@@ -86,24 +121,30 @@ async function departmentId(): Promise<string> {
   return (store.dept = String(d.id))
 }
 
-export type DeskTicketStatus = { ticketNumber: string; status: string; statusType: 'Open' | 'On Hold' | 'Closed' | string; modifiedTime: string | null; closedTime: string | null; webUrl: string | null }
+export type DeskTicketStatus = { ticketNumber: string; status: string; statusType: 'Open' | 'On Hold' | 'Closed' | string; modifiedTime: string | null; closedTime: string | null; webUrl: string | null
+  deleted?: boolean   // deleted in Desk: in its trash (isTrashed) or gone altogether (404) — the app no longer lists it
+}
 const ticketCache = new Map<string, { at: number; t: DeskTicketStatus | null }>()
+const TICKET_TTL_MS = 20_000   // near real time (16 Oct 2026; was 2 minutes); still one Desk read per ticket per 20 s at most
 let readBlockedUntil = 0   // the token has no Desk.tickets.READ: stop asking for a while, say so once
 /**
- * A ticket's current status, for the app's request tracking (lib/requestTracking.ts); cached two minutes. Null when
- * Desk is not set up, the ticket is gone, or the token cannot read tickets (logged once an hour; regenerate it with
- * Desk.tickets.READ, scripts/zoho-desk-token.js).
+ * A ticket's current status, for the app's request tracking (lib/requestTracking.ts); cached 20 seconds. A ticket
+ * deleted in Desk comes back with deleted: true — Desk keeps a trashed ticket readable, still "Open", with
+ * isTrashed — so it can be left out. Null when Desk is not set up or the token cannot read tickets (logged once an
+ * hour; regenerate it with Desk.tickets.READ, scripts/zoho-desk-token.js).
  */
 export async function getDeskTicketStatus(id: string): Promise<DeskTicketStatus | null> {
   if (!deskConfigured() || !id || Date.now() < readBlockedUntil) return null
   const hit = ticketCache.get(id)
-  if (hit && Date.now() - hit.at < 120_000) return hit.t
+  if (hit && Date.now() - hit.at < TICKET_TTL_MS) return hit.t
   let t: DeskTicketStatus | null = null
   try {
     const d = await desk(`/tickets/${id}?include=`)
-    if (d) t = { ticketNumber: String(d.ticketNumber), status: String(d.status || ''), statusType: String(d.statusType || ''), modifiedTime: d.modifiedTime || null, closedTime: d.closedTime || null, webUrl: d.webUrl || null }
+    if (d) t = { ticketNumber: String(d.ticketNumber), status: String(d.status || ''), statusType: String(d.statusType || ''), modifiedTime: d.modifiedTime || null, closedTime: d.closedTime || null, webUrl: d.webUrl || null, deleted: d.isTrashed === true }
   } catch (e: any) {
-    if (/SCOPE_MISMATCH|\(403\)/.test(String(e?.message))) {
+    if (/\(404\)/.test(String(e?.message))) {
+      t = { ticketNumber: '', status: '', statusType: '', modifiedTime: null, closedTime: null, webUrl: null, deleted: true }   // deleted for good
+    } else if (/SCOPE_MISMATCH|\(403\)/.test(String(e?.message))) {
       readBlockedUntil = Date.now() + 3600_000
       console.error('[zohoDesk] the Desk token cannot read tickets (add Desk.tickets.READ, scripts/zoho-desk-token.js); statuses show as Submitted for the next hour')
     } else console.warn('[zohoDesk] ticket', id, 'not read -', e?.message)
@@ -113,7 +154,7 @@ export async function getDeskTicketStatus(id: string): Promise<DeskTicketStatus 
 }
 
 export type DeskRequest = {
-  kind: 'strategy' | 'discussion' | 'family_request' | 'account_request' | 'referral'
+  kind: 'strategy' | 'discussion' | 'family_request' | 'account_request' | 'referral' | 'link_family' | 'topup' | 'update_details' | 'switch_query'
   subject: string
   email: string                  // the client: the ticket's contact
   name?: string | null
@@ -122,12 +163,16 @@ export type DeskRequest = {
   fields: [string, string | number | null | undefined][]   // label / value rows for the description
   priority?: 'High' | 'Medium' | 'Low'
   channel?: 'Web' | 'App' | null   // where it was raised (lib/requestChannel.ts); unknown → "myQode"
+  label?: string                   // the request's name in the subject and description, instead of the kind's
+  typeCode?: string | null         // a request type's code (cm_request_types, e.g. 'C1'): set on the ticket as cf_request_type
 }
 export type DeskTicket = { id: string; ticketNumber: string; webUrl: string | null }
 
 const KIND_LABEL: Record<DeskRequest['kind'], string> = {
   strategy: 'Ask About a Strategy', discussion: 'Raise Any Query',
   family_request: 'Family Request', account_request: 'Account Request', referral: 'Referral',
+  // "What do you need help with?" on Account Services (15 Oct 2026; app/api/mobile/services/help-request)
+  link_family: 'Link Family Accounts', topup: 'Investment Related Query', update_details: 'Update Details', switch_query: 'Switch Strategy (query)',
 }
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string))
 
@@ -140,13 +185,15 @@ export async function raiseDeskTicket(r: DeskRequest): Promise<DeskTicket | null
   try {
     const name = String(r.name || '').trim()
     const parts = name.replace(/^(mr|mrs|ms|dr)\.?\s+/i, '').split(/\s+/).filter(Boolean)
-    const rows = [['Request', KIND_LABEL[r.kind]], ['Raised from', r.channel || 'myQode'], ['Account', r.accountId], ['Client email', r.email], ...r.fields]
+    const label = r.label || KIND_LABEL[r.kind]
+    const type = r.typeCode ? await requestTypeByCode(r.typeCode) : null
+    const rows = [['Request', label], ['Request type', type ? `${type.name} (${type.code})` : null], ['Raised from', r.channel || 'myQode'], ['Account', r.accountId], ['Client email', r.email], ...r.fields]
       .filter(([, v]) => v != null && String(v).trim() !== '')
       // investor ids are stored float-formatted ("14410854.0"); show them as the plain id
       .map(([k, v]) => [k, k === 'Investor ID' ? String(v).replace(/\.0+$/, '') : v])
       .map(([k, v]) => `<tr><td style="padding:4px 12px 4px 0;color:#555;vertical-align:top"><b>${esc(k)}</b></td><td style="padding:4px 0">${esc(v).replace(/\n/g, '<br/>')}</td></tr>`).join('')
     const body = {
-      subject: `${KIND_LABEL[r.kind]}: ${r.subject}`.slice(0, 250),
+      subject: `${label}: ${r.subject}`.slice(0, 250),
       departmentId: await departmentId(),
       contact: { email: r.email, lastName: parts.length > 1 ? parts.slice(1).join(' ') : (parts[0] || r.email), ...(parts.length > 1 ? { firstName: parts[0] } : {}), ...(r.phone ? { phone: r.phone } : {}) },
       email: r.email,
@@ -154,6 +201,8 @@ export async function raiseDeskTicket(r: DeskRequest): Promise<DeskTicket | null
       channel: 'Web',
       priority: r.priority || 'Medium',
       description: `<table>${rows}</table>`,
+      // the request type the client chose: the Request Type lookup, who set it, and its id (none chosen → no cf)
+      ...(type ? { cf: { cf_request_type: type.id, cf_type_set_by: 'App', cf_applied_type_id: type.id } } : {}),
     }
     const t = await desk('/tickets', { method: 'POST', body: JSON.stringify(body) })
     return { id: String(t.id), ticketNumber: String(t.ticketNumber), webUrl: t.webUrl || null }

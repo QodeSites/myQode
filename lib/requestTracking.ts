@@ -26,7 +26,8 @@ export type TrackedRequest = {
   status: RequestStatus | null   // null: Zoho could not be read just now
 }
 
-const KINDS = ['strategy', 'discussion', 'raised_request', 'investor_referral', 'switch']
+const KINDS = ['strategy', 'discussion', 'raised_request', 'investor_referral', 'switch', 'help_request']
+const HELP_TITLE: Record<string, string> = { switch: 'Switch Strategy', referral: 'Refer Someone', family: 'Link Family Accounts', topup: 'Investment Related Query', details: 'Update Details', other: 'Raise Any Query' }
 const TITLE: Record<string, string> = {
   strategy: 'Ask About a Strategy', discussion: 'Raise Any Query', raised_request: 'Account Request', investor_referral: 'Referral',
   switch: 'Switch Strategy',
@@ -38,6 +39,7 @@ function describe(type: string, subject: string, d: any): { title: string; detai
     case 'strategy': return { title: TITLE.strategy, detail: oneLine(d.question) }
     case 'discussion': return { title: TITLE.discussion, detail: oneLine(d.topic) }
     case 'raised_request': return { title: /family/i.test(subject) ? 'Family Request' : 'Account Request', detail: oneLine(d.message) }
+    case 'help_request': return { title: d.type_name || HELP_TITLE[d.help_kind] || 'Request', detail: oneLine(d.message) }   // Account Services › What do you need help with?
     case 'investor_referral': return { title: 'Referral', detail: oneLine([d.referred_investor_name, d.referred_investor_email].filter(Boolean).join(' · ')) }
     case 'switch': {
       const from = [].concat(d.switch_from || []).join(', '), to = [].concat(d.switch_to || []).join(', ')
@@ -56,13 +58,14 @@ export async function listRequests(email: string, accountCodes: string[], limit 
         AND (data ? 'desk_ticket_id' OR data ? 'zoho_plan_id' OR (data ->> 'zoho_lead_id') IS NOT NULL)
       ORDER BY created_at DESC LIMIT $4`,
     [String(email || '').toLowerCase(), accountCodes.filter(Boolean), KINDS, limit])
-  return Promise.all(r.rows.map(async (row: any) => {
+  const rows = await Promise.all(r.rows.map(async (row: any) => {
     const d = row.data || {}
     const { title, detail } = describe(row.type, row.subject || '', d)
     let status: RequestStatus | null = null
     let reference = String(row.id).slice(0, 8)
     if (d.desk_ticket_id) {
       const t = await getDeskTicketStatus(String(d.desk_ticket_id))
+      if (t?.deleted) return null   // deleted in Zoho Desk: not listed (16 Oct 2026)
       if (t) status = { state: t.statusType === 'Closed' ? 'closed' : t.statusType === 'On Hold' ? 'on_hold' : 'open', label: t.status, updatedAt: t.modifiedTime }
       reference = d.desk_ticket ? `#${d.desk_ticket}` : reference
     } else if (d.zoho_lead_id) {
@@ -74,4 +77,5 @@ export async function listRequests(email: string, accountCodes: string[], limit 
     }
     return { id: String(row.id), kind: row.type, title, detail, accountId: row.nuvama_code || null, createdAt: row.created_at, reference, channel: d.channel || null, status }
   }))
+  return rows.filter((x): x is TrackedRequest => !!x)
 }
