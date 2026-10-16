@@ -7,6 +7,7 @@
 //   portfolio  monthly update (1st–7th, once the month-end NAV is in), new high, crossing ₹25 L … ₹25 Cr,
 //              account anniversary
 //   reading    a new newsletter or perspective in S3
+//   tickets    a request raised from the app (a Zoho Desk ticket) changed status
 import { ListObjectsV2Command } from '@aws-sdk/client-s3'
 import { s3 } from '@/lib/s3'
 import { query } from '@/lib/db'
@@ -220,4 +221,47 @@ export async function scanReading(): Promise<number> {
       title: src.title, body: `${label ? label + '. ' : ''}Tap to read.` })
   }
   return n
+}
+
+// ── tickets ───────────────────────────────────────────────────────────────────────────────────────────────────
+// A client's request (a Zoho Desk ticket raised from the app or web) changes status in Desk → a notification to the
+// login that raised it (16 Oct 2026). Our tickets of the last 90 days (pms_clients_tracker.qode_microsite_inquiries,
+// data.desk_ticket_id) are read by id — Desk's ticket list only shows what the token's own agent can see — through
+// lib/zohoDesk's queue (3 calls at a time) and 20-second cache, and compared with the status last seen
+// (app_notification_state 'ticket.status.<id>' = statusType|status). Tickets last seen Closed are not read again. The
+// first sighting of a ticket only records it, so nothing older floods in; a ticket deleted in Desk is not announced.
+// Category 'updates', opening Past Requests.
+export async function scanTickets(): Promise<number> {
+  const { deskConfigured, getDeskTicketStatus } = await import('@/lib/zohoDesk')
+  if (!deskConfigured()) return 0
+  const { query: q1 } = await import('@/lib/db1')
+  const { describe } = await import('@/lib/requestTracking')
+  const rows = (await q1(
+    `SELECT type, subject, user_email, data FROM pms_clients_tracker.qode_microsite_inquiries
+      WHERE data ->> 'desk_ticket_id' IS NOT NULL AND created_at > NOW() - interval '90 days'`)).rows
+  let sent = 0
+  for (const row of rows) {
+    const d = row.data || {}
+    const id = String(d.desk_ticket_id), key = 'ticket.status.' + id
+    const prev = await getState(key)
+    if (prev && prev.startsWith('Closed|')) continue   // finished: not read again
+    const t = await getDeskTicketStatus(id)
+    if (!t || t.deleted || !t.status || !row.user_email) continue
+    const now = (t.statusType || '') + '|' + t.status
+    if (prev === now) continue
+    await setState(key, now)
+    if (prev === null || !prev.includes('|')) continue   // first sighting (or an older record): remember, do not announce
+    const was = prev.split('|').slice(1).join('|')
+    if (was === t.status) continue   // only the status type moved
+    const { title } = describe(row.type, row.subject || '', d)
+    sent += await notifyEmails([row.user_email], {
+      category: 'updates',
+      title: `Request #${t.ticketNumber}: ${t.status}`,
+      body: `${title}: the status changed from ${was} to ${t.status}.`,
+      link: 'page:requests',
+      data: { ticket: t.ticketNumber, status: t.status },
+      dedupeKey: `ticket:${id}:${t.status}:${t.modifiedTime || ''}`,
+    })
+  }
+  return sent
 }

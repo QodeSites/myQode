@@ -50,14 +50,29 @@ async function accessToken(): Promise<string> {
   return store.refresh
 }
 
+// Zoho Desk caps how many API calls may be in flight at once for the whole organisation ("The maximum number of
+// Concurrent API Calls that can be made has been exceeded", 429). Past Requests reads one ticket per row, so a
+// client with many tickets used to fire them all together. Every Desk call now waits its turn: at most
+// DESK_CONCURRENCY at a time from this server, the rest queue (16 Oct 2026).
+const DESK_CONCURRENCY = 3
+const slots: { busy: number; queue: (() => void)[] } = ((globalThis as any).__qodeDeskSlots ??= { busy: 0, queue: [] })
+// urgent (a client raising a ticket) jumps the queue, ahead of background reads such as the ticket-status scan
+async function withSlot<T>(fn: () => Promise<T>, urgent = false): Promise<T> {
+  if (slots.busy >= DESK_CONCURRENCY) await new Promise<void>(res => (urgent ? slots.queue.unshift(res) : slots.queue.push(res)))
+  slots.busy++
+  try { return await fn() } finally { slots.busy--; const next = slots.queue.shift(); if (next) next() }
+}
+
 async function desk(path: string, init: RequestInit = {}, withOrg = true): Promise<any> {
   const headers: Record<string, string> = { Authorization: `Zoho-oauthtoken ${await accessToken()}`, 'Content-Type': 'application/json' }
   if (withOrg) headers.orgId = await orgId()
-  const res = await fetch(`${DESK}${path}`, { ...init, cache: 'no-store', headers: { ...headers, ...((init.headers as any) || {}) } })
-  if (res.status === 204) return null
-  const body: any = await res.json().catch(() => null)
-  if (!res.ok) throw new Error(`Zoho Desk ${path} refused (${res.status}): ${body?.message || body?.errorCode || ''}${body?.errors ? ' ' + JSON.stringify(body.errors).slice(0, 300) : ''}`)
-  return body
+  return withSlot(async () => {
+    const res = await fetch(`${DESK}${path}`, { ...init, cache: 'no-store', headers: { ...headers, ...((init.headers as any) || {}) } })
+    if (res.status === 204) return null
+    const body: any = await res.json().catch(() => null)
+    if (!res.ok) throw new Error(`Zoho Desk ${path} refused (${res.status}): ${body?.message || body?.errorCode || ''}${body?.errors ? ' ' + JSON.stringify(body.errors).slice(0, 300) : ''}`)
+    return body
+  }, (init.method || 'GET') !== 'GET')
 }
 
 // ── Request types (Desk custom module cm_request_types, 16 Oct 2026) ─────────────────────────────────────────────
@@ -127,6 +142,7 @@ export type DeskTicketStatus = { ticketNumber: string; status: string; statusTyp
 const ticketCache = new Map<string, { at: number; t: DeskTicketStatus | null }>()
 const TICKET_TTL_MS = 20_000   // near real time (16 Oct 2026; was 2 minutes); still one Desk read per ticket per 20 s at most
 let readBlockedUntil = 0   // the token has no Desk.tickets.READ: stop asking for a while, say so once
+let busyUntil = 0          // Desk answered 429 (too many calls): use the last known statuses until then
 /**
  * A ticket's current status, for the app's request tracking (lib/requestTracking.ts); cached 20 seconds. A ticket
  * deleted in Desk comes back with deleted: true — Desk keeps a trashed ticket readable, still "Open", with
@@ -137,6 +153,8 @@ export async function getDeskTicketStatus(id: string): Promise<DeskTicketStatus 
   if (!deskConfigured() || !id || Date.now() < readBlockedUntil) return null
   const hit = ticketCache.get(id)
   if (hit && Date.now() - hit.at < TICKET_TTL_MS) return hit.t
+  // Desk said "too many calls" a moment ago: show what we last knew instead of asking again straight away
+  if (Date.now() < busyUntil) return hit ? hit.t : null
   let t: DeskTicketStatus | null = null
   try {
     const d = await desk(`/tickets/${id}?include=`)
@@ -147,6 +165,11 @@ export async function getDeskTicketStatus(id: string): Promise<DeskTicketStatus 
     } else if (/SCOPE_MISMATCH|\(403\)/.test(String(e?.message))) {
       readBlockedUntil = Date.now() + 3600_000
       console.error('[zohoDesk] the Desk token cannot read tickets (add Desk.tickets.READ, scripts/zoho-desk-token.js); statuses show as Submitted for the next hour')
+    } else if (/\(429\)/.test(String(e?.message))) {
+      // rate or concurrency limit: back off 30 s and keep the last known status (it is better than none)
+      if (Date.now() >= busyUntil) console.warn('[zohoDesk] Desk is busy (429); ticket statuses shown from the last read for 30 s')
+      busyUntil = Date.now() + 30_000
+      return hit ? hit.t : null
     } else console.warn('[zohoDesk] ticket', id, 'not read -', e?.message)
   }
   ticketCache.set(id, { at: Date.now(), t })
@@ -205,9 +228,16 @@ export async function raiseDeskTicket(r: DeskRequest): Promise<DeskTicket | null
       ...(type ? { cf: { cf_request_type: type.id, cf_type_set_by: 'App', cf_applied_type_id: type.id } } : {}),
     }
     const t = await desk('/tickets', { method: 'POST', body: JSON.stringify(body) })
+    // remember its first status now, so the ticket-status scan (lib/appNotifyTriggers.ts) announces the very first
+    // change, even one made (say, closed) before the scan first sees the ticket
+    try {
+      const { setState } = await import('@/lib/appNotify')
+      await setState('ticket.status.' + String(t.id), `${t.statusType || 'Open'}|${t.status || 'Open'}`)
+    } catch (e: any) { console.warn('[zohoDesk] first status not recorded -', e?.message) }
     return { id: String(t.id), ticketNumber: String(t.ticketNumber), webUrl: t.webUrl || null }
   } catch (e: any) {
     console.error('[zohoDesk] ticket not raised for', r.kind, '-', e?.message)
     return null
   }
 }
+

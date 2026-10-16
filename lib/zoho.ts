@@ -1,3 +1,4 @@
+import { createHash } from 'crypto'
 // Minimal Zoho CRM client for admin-side lookups ("View in Zoho" links).
 // Shares the same Zoho CRM org as new-qode-website — credentials copied from
 // there (ZOHO_CRM_CLIENT_ID/SECRET/REFRESH_TOKEN, ZOHO_DATA_CENTER).
@@ -45,8 +46,44 @@ async function refreshAccessToken(): Promise<string> {
   return tokens.read.token
 }
 
+// One access token per refresh token, shared by every process (16 Oct 2026). Production, the testing server, dev
+// servers and scripts all use the same CRM refresh token (as do the read and write slots, when they hold the same
+// value); each minting its own access token tripped Zoho's refresh limit ("too many requests continuously") and
+// broke whatever asked next. The token is kept in the shared database (app_notification_state, key zoho.token.<hash>)
+// and in memory, and reused until 2 minutes before it expires. A token Zoho rejects (401) is dropped from both.
+const tokenKey = (refreshToken: string) => 'zoho.token.' + createHash('sha256').update(refreshToken).digest('hex').slice(0, 16)
+const memTokens: Map<string, { token: string; expiresAt: number }> = ((globalThis as any).__qodeZohoShared ??= new Map())
+async function sharedToken(refreshToken: string): Promise<{ token: string; expiresAt: number } | null> {
+  const key = tokenKey(refreshToken)
+  const m = memTokens.get(key)
+  if (m && m.expiresAt > Date.now() + 120_000) return m
+  try {
+    const { query } = await import('@/lib/db')
+    const r = await query(`SELECT value FROM app_notification_state WHERE key = $1`, [key])
+    const v = r.rows[0]?.value ? JSON.parse(r.rows[0].value) : null
+    if (v?.token && v.expiresAt > Date.now() + 120_000) { memTokens.set(key, v); return v }
+  } catch { /* no shared store: mint as before */ }
+  return null
+}
+async function keepToken(refreshToken: string, t: { token: string; expiresAt: number }) {
+  const key = tokenKey(refreshToken)
+  memTokens.set(key, t)
+  try {
+    const { query } = await import('@/lib/db')
+    await query(`INSERT INTO app_notification_state (key, value, updated_at) VALUES ($1, $2, NOW())
+                 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`, [key, JSON.stringify(t)])
+  } catch { /* memory only */ }
+}
+/** Forget a token Zoho rejected, here and in the shared store, so the next call mints a fresh one. */
+export async function dropToken(token: string) {
+  for (const [k, v] of memTokens) if (v.token === token) memTokens.delete(k)
+  try { const { query } = await import('@/lib/db'); await query(`DELETE FROM app_notification_state WHERE key LIKE 'zoho.token.%' AND value LIKE $1`, ['%' + token + '%']) } catch { /* ignore */ }
+}
+
 // Exchange a refresh token for an access token. Zoho reports refresh errors (e.g. invalid_client) as HTTP 200 + {error}.
 async function mintToken(refreshToken: string, what: string): Promise<{ token: string; expiresAt: number }> {
+  const shared = await sharedToken(refreshToken)
+  if (shared) return shared
   if (Date.now() < tokens.pausedUntil) {
     throw new Error(`${what}: Zoho rate limit — refreshes paused for ${Math.ceil((tokens.pausedUntil - Date.now()) / 1000)}s more`)
   }
@@ -71,7 +108,9 @@ async function mintToken(refreshToken: string, what: string): Promise<{ token: s
   if (!data.access_token) {
     throw new Error(`${what}: ${JSON.stringify(data).slice(0, 300)}`)
   }
-  return { token: data.access_token, expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000 }
+  const t = { token: data.access_token, expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000 }
+  await keepToken(refreshToken, t)
+  return t
 }
 
 /**
@@ -97,7 +136,8 @@ export async function zohoFetch(url: string, init: RequestInit = {}, opts: { wri
   const res = await send(token)
   if (res.status !== 401) return res
 
-  // Drop the rejected token unless a concurrent caller already replaced it.
+  // Drop the rejected token unless a concurrent caller already replaced it (and from the shared store).
+  await dropToken(token)
   if (opts.write) { if (tokens.write?.token === token) tokens.write = null }
   else if (tokens.read?.token === token) tokens.read = null
   return send(await get())

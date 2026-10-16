@@ -166,7 +166,7 @@ const leadCache = new Map<string, { at: number; s: { state: 'open' | 'on_hold' |
 export async function leadStatus(id: string) {
   if (!id) return null
   const hit = leadCache.get(id)
-  if (hit && Date.now() - hit.at < 120_000) return hit.s
+  if (hit && Date.now() - hit.at < 20_000) return hit.s
   let s: { state: 'open' | 'on_hold' | 'closed'; label: string; updatedAt: string | null } | null = null
   try {
     const d = (await zohoRead(`Leads/${id}?fields=Lead_Status,Modified_Time`))?.data?.[0]

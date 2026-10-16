@@ -119,7 +119,7 @@ export async function createPlan(record: Record<string, unknown>, runWorkflows =
 }
 
 const planCache = new Map<string, { at: number; s: PlanStatus | null }>()
-export type PlanStatus = { state: 'open' | 'on_hold' | 'closed'; label: string; updatedAt: string | null }
+export type PlanStatus = { state: 'open' | 'on_hold' | 'closed'; label: string; updatedAt: string | null; planNo?: string | null }
 /**
  * Where a plan stands, for the app's request tracking (lib/requestTracking.ts); cached two minutes. The label is
  * exactly what Zoho shows (asked 13 Oct 2026): the Holding Status (Active, Paused, Fully Deployed, Withdrawn, Merged)
@@ -129,10 +129,10 @@ export type PlanStatus = { state: 'open' | 'on_hold' | 'closed'; label: string; 
 export async function planStatus(id: string): Promise<PlanStatus | null> {
   if (!id) return null
   const hit = planCache.get(id)
-  if (hit && Date.now() - hit.at < 120_000) return hit.s
+  if (hit && Date.now() - hit.at < 20_000) return hit.s   // 20 s, as ticket statuses (was 2 minutes, 16 Oct 2026)
   let s: PlanStatus | null = null
   try {
-    const res = await zohoFetch(`${zohoApiDomain()}/crm/v2/${PLAN_MODULE}/${id}?fields=Verification_Status,Holding_Status,Modified_Time`, { cache: 'no-store' })
+    const res = await zohoFetch(`${zohoApiDomain()}/crm/v2/${PLAN_MODULE}/${id}?fields=Verification_Status,Holding_Status,Modified_Time,Switch_Plan_No`, { cache: 'no-store' })
     const d: any = res.status === 204 ? null : (await res.json().catch(() => null))?.data?.[0]
     if (d) {
       const v = String(d.Verification_Status || ''), h = String(d.Holding_Status || ''), at = d.Modified_Time || null
@@ -140,7 +140,7 @@ export async function planStatus(id: string): Promise<PlanStatus | null> {
       const label = h || v || 'Pending'
       const state: PlanStatus['state'] = h === 'Fully Deployed' || h === 'Withdrawn' || h === 'Merged' ? 'closed'
         : h === 'Paused' || v === 'Mismatch Detected' ? 'on_hold' : 'open'
-      s = { state, label, updatedAt: at }
+      s = { state, label, updatedAt: at, planNo: d.Switch_Plan_No ? String(d.Switch_Plan_No) : null }   // as Zoho writes it (SP - 46), for the reference
     }
   } catch (e: any) { console.warn('[switchPlan] plan', id, 'not read -', e?.message) }
   planCache.set(id, { at: Date.now(), s })
@@ -165,16 +165,27 @@ export async function openPlans(investorIds: string[]): Promise<Record<string, O
     ...STRATS.flatMap((s) => [`Full_Switch_From_${s}`, `${s}_From_Amount`, `${s}_From_Percent`, `${s}_To_Amount`, `${s}_To_Percent`])]
   // COQL, not search: Zoho's search index takes a while to see a new record, COQL sees it at once.
   const ids = investorIds.map((id) => `'${String(id).replace(/[^0-9]/g, '')}'`).join(', ')
+  let rows: any[] = []
   const res = await zohoFetch(`${zohoApiDomain()}/crm/v3/coql`, {
     method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ select_query: `select id, ${fields.join(', ')} from ${PLAN_MODULE} where Investor in (${ids}) limit 200` }),
   })
-  if (res.status === 204) return {}
-  const text = await res.text()
+  const text = res.status === 204 ? '' : await res.text()
   const body: any = text ? JSON.parse(text) : null
-  if (!res.ok) throw new Error(body?.message || `Zoho ${PLAN_MODULE} query failed (${res.status})`)
+  if (res.ok || res.status === 204) rows = body?.data || []
+  else if (/scope/i.test(String(body?.message || body?.code || ''))) {
+    // The CRM token cannot run COQL (no ZohoCRM.coql.READ, 16 Oct 2026): search each investor's plans instead. Search can
+    // miss a plan made seconds ago (its index lags); Zoho's own rule still checks every new plan when it is saved.
+    for (const id of investorIds) {
+      const r = await zohoFetch(`${zohoApiDomain()}/crm/v2/${PLAN_MODULE}/search?criteria=${encodeURIComponent(`(Investor:equals:${String(id).replace(/[^0-9]/g, '')})`)}&fields=${fields.join(',')}&per_page=200`, { cache: 'no-store' })
+      if (r.status === 204) continue
+      const b: any = await r.json().catch(() => null)
+      if (!r.ok) throw new Error(b?.message || `Zoho ${PLAN_MODULE} search failed (${r.status})`)
+      rows.push(...(b?.data || []))
+    }
+  } else throw new Error(body?.message || `Zoho ${PLAN_MODULE} query failed (${res.status})`)
   const out: Record<string, OpenPlan[]> = {}
-  for (const r of (body?.data || []) as any[]) {
+  for (const r of rows) {
     const status = String(r.Holding_Status || '')
     if (['Fully Deployed', 'Withdrawn', 'Merged'].includes(status)) continue
     const id = String(r.Investor?.id || '')

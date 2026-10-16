@@ -130,11 +130,21 @@ export async function GET(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)
   if (error) return error
   if (user!.isReviewer) return NextResponse.json({ investors: [] })
+  // Zoho now and then refuses a call for a moment (rate limit, token refresh): try once more before saying so
+  const twice = async <T,>(fn: () => Promise<T>): Promise<T> => {
+    try { return await fn() } catch (e: any) {
+      console.warn('[mobile/services/switch-request GET] Zoho refused, retrying once -', e?.message)
+      await new Promise(r => setTimeout(r, 1500))
+      return fn()
+    }
+  }
   try {
-    const list = await findInvestors(user!.email)
+    const list = await twice(() => findInvestors(user!.email))
     if (!list.length) return NextResponse.json({ investors: [], message: 'We could not find your investor record. Please contact Investor Relations.' })
     const ids = list.map((inv) => String(inv.id))
-    const plans = await openPlans(ids)
+    // the plans already in progress (shown on the form, and what Zoho's duplicate rule checks). Not being able to read
+    // them must not stop the form: Zoho checks every new plan again when it is saved.
+    const plans = await openPlans(ids).catch((e: any) => { console.error('[mobile/services/switch-request GET] plans not read -', e?.message); return {} as Record<string, any[]> })
     const investors = list.map((inv) => {
       const mine = plans[String(inv.id)] || []
       // pending: the plans in progress (shown on the form); blockedFrom / blockedPairs: what Zoho's rule refuses
@@ -194,11 +204,22 @@ export async function POST(request: NextRequest) {
     const investorId = String(inv.id)
     const view = investorView(inv)
 
-    // Zoho's duplicate rule against the investor's live plans (lib/switchPlan.ts liveConflict), with its own words.
-    const conflict = liveConflict({ from: fromList, fullFrom: isFull ? fromList : [], to: toList }, (await openPlans([investorId]))[investorId] || [])
-    if (conflict) {
-      return NextResponse.json({ error: conflict + ' Our team will reach out once it is processed.', code: 'PENDING_EXISTS' }, { status: 409 })
+    // One switch at a time (16 Oct 2026): while any plan of this investor is still in progress (not Fully Deployed,
+    // Withdrawn or Merged) no new switch request is taken. The plans must be readable to decide that; if Zoho cannot be
+    // read right now, the client is asked to try again rather than a second plan slipping through.
+    let mine: any[]
+    try { mine = (await openPlans([investorId]))[investorId] || [] }
+    catch (e: any) {
+      console.error('[mobile/services/switch-request] plans not read -', e?.message)
+      return NextResponse.json({ error: 'We couldn’t check your switch requests in progress just now. Please try again in a minute.', code: 'PLANS_UNREADABLE' }, { status: 503 })
     }
+    if (mine.length) {
+      const p = mine[0]
+      return NextResponse.json({ error: `A switch request${p.planNo ? ' (' + p.planNo + ')' : ''} is already in progress. Only one switch can be in progress at a time; you can raise a new one once it is completed.`, code: 'PENDING_EXISTS' }, { status: 409 })
+    }
+    // (Zoho's finer rule, liveConflict, is kept below as a second guard; with one plan at a time it does not fire.)
+    const conflict = liveConflict({ from: fromList, fullFrom: isFull ? fromList : [], to: toList }, mine)
+    if (conflict) return NextResponse.json({ error: conflict + ' Our team will reach out once it is processed.', code: 'PENDING_EXISTS' }, { status: 409 })
 
     // holdings check (Partial only), against the Investors record like Zoho does
     if (!isFull) {
@@ -264,6 +285,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, dryRun: false, requestId: String(id), investor: view })
   } catch (err: any) {
     console.error('[mobile/services/switch-request POST]', err)
-    return NextResponse.json({ error: err?.message || 'Could not submit the switch request' }, { status: 502 })
+    // never the raw cause on screen (it can name Zoho, tokens, field names): a plain message; the detail is in the log
+    return NextResponse.json({ error: 'We couldn’t send your switch request just now. Please try again in a minute.', code: 'SWITCH_FAILED' }, { status: 502 })
   }
 }

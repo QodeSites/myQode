@@ -34,7 +34,7 @@ const TITLE: Record<string, string> = {
 }
 const oneLine = (s: unknown, max = 140) => { const t = String(s ?? '').replace(/\s+/g, ' ').trim(); return t.length > max ? t.slice(0, max - 1) + '…' : t }
 
-function describe(type: string, subject: string, d: any): { title: string; detail: string } {
+export function describe(type: string, subject: string, d: any): { title: string; detail: string } {
   switch (type) {
     case 'strategy': return { title: TITLE.strategy, detail: oneLine(d.question) }
     case 'discussion': return { title: TITLE.discussion, detail: oneLine(d.topic) }
@@ -73,7 +73,7 @@ export async function listRequests(email: string, accountCodes: string[], limit 
     } else if (d.zoho_plan_id) {
       const p = await planStatus(String(d.zoho_plan_id))
       if (p) status = p
-      reference = d.zoho_plan_no || reference
+      reference = d.zoho_plan_no || p?.planNo || reference   // the plan number (SP-46) once Zoho has given it one
     }
     return { id: String(row.id), kind: row.type, title, detail, accountId: row.nuvama_code || null, createdAt: row.created_at, reference, channel: d.channel || null, status }
   }))
