@@ -2,10 +2,12 @@
 
 import { useCallback, useEffect, useState } from "react"
 import { toast } from "sonner"
-import { KeyRound, ShieldCheck, UserMinus, UserPlus } from "lucide-react"
+import { FileSpreadsheet, KeyRound, ShieldCheck, UserMinus, UserPlus } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Textarea } from "@/components/ui/textarea"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   EmptyState,
@@ -27,6 +29,8 @@ interface AdminRow {
   passwordSet: boolean
   lastLoginAt: string | null
   app: boolean
+  /** Investors whose raw-data workbook this admin may download (super admins: any investor). */
+  rawDataEmails: string[]
 }
 type Role = "super" | "investors" | "partners" | "accounts" | "viewer"
 // The one place admin access is decided (web /admin and the app's admin mode both read it).
@@ -48,6 +52,20 @@ export default function AdminAdminsPage() {
   const [busy, setBusy] = useState<string | null>(null)
   const [newEmail, setNewEmail] = useState("")
   const [newRole, setNewRole] = useState<Role>("investors")
+  const [rawFor, setRawFor] = useState<AdminRow | null>(null)
+  const [rawText, setRawText] = useState("")
+
+  const saveRawData = async () => {
+    if (!rawFor) return
+    setBusy(rawFor.email)
+    try {
+      const rawDataEmails = rawText.split(/[\s,;]+/).map((x) => x.trim().toLowerCase()).filter(Boolean)
+      await boFetch("/api/admin/bo/admins", { method: "PATCH", json: { email: rawFor.email, rawDataEmails } })
+      toast.success(rawDataEmails.length ? `${rawFor.email} can download raw data for ${rawDataEmails.length} investor${rawDataEmails.length === 1 ? "" : "s"}` : `Raw-data access removed for ${rawFor.email}`)
+      setRawFor(null)
+      await load()
+    } catch (e) { toast.error(errorMessage(e)) } finally { setBusy(null) }
+  }
 
   const saveRole = async (email: string, role: Role, name?: string) => {
     setBusy(email)
@@ -127,6 +145,7 @@ export default function AdminAdminsPage() {
               <TableHead className="pl-5">Admin</TableHead>
               <TableHead>Role</TableHead>
               <TableHead>Password</TableHead>
+              <TableHead>Raw data</TableHead>
               <TableHead>Last login</TableHead>
               <TableHead className="pr-5 text-right">Actions</TableHead>
             </TableRow>
@@ -135,7 +154,7 @@ export default function AdminAdminsPage() {
             {loading && !items
               ? Array.from({ length: 4 }).map((_, i) => (
                   <TableRow key={i}>
-                    {Array.from({ length: 5 }).map((__, j) => (
+                    {Array.from({ length: 6 }).map((__, j) => (
                       <TableCell key={j} className={j === 0 ? "pl-5" : undefined}>
                         <Skeleton className="h-4 w-full max-w-[180px]" />
                       </TableCell>
@@ -163,6 +182,23 @@ export default function AdminAdminsPage() {
                     </TableCell>
                     <TableCell>
                       {a.passwordSet ? <Pill tone="green">Password set</Pill> : <Pill tone="amber">Microsoft only</Pill>}
+                    </TableCell>
+                    <TableCell className="max-w-[260px]">
+                      {a.role === "super" ? (
+                        <span className="text-xs text-muted-foreground">Any investor</span>
+                      ) : (
+                        <div className="flex items-start gap-1">
+                          <p className="break-all text-xs text-[#002017]">
+                            {a.rawDataEmails.length ? a.rawDataEmails.join(", ") : <span className="text-muted-foreground">None</span>}
+                          </p>
+                          {canEdit ? (
+                            <Button variant="ghost" size="sm" className="h-6 shrink-0 px-1.5" disabled={busy !== null}
+                              onClick={() => { setRawFor(a); setRawText(a.rawDataEmails.join("\n")) }} aria-label={`Raw-data access for ${a.email}`}>
+                              <FileSpreadsheet className="h-3.5 w-3.5" />
+                            </Button>
+                          ) : null}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>
                       <p className="text-sm text-[#002017]">{fmtRelative(a.lastLoginAt)}</p>
@@ -201,6 +237,23 @@ export default function AdminAdminsPage() {
       <p className="text-xs text-muted-foreground">
         A change applies within 30 seconds, on the web and in the app. Every change is in the audit log. You cannot change or remove your own role.
       </p>
+
+      <Dialog open={rawFor !== null} onOpenChange={(o) => !o && setRawFor(null)}>
+        <DialogContent className="bg-[#F9F7EC]">
+          <DialogHeader>
+            <DialogTitle>Raw-data downloads</DialogTitle>
+            <DialogDescription>
+              Investors whose raw-data workbook {rawFor?.name || rawFor?.email} may download from the investor&apos;s admin page.
+              One investor login email per line. Leave empty to remove access. Every download is in the audit log.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea rows={6} value={rawText} onChange={(e) => setRawText(e.target.value)} placeholder="investor@example.com" className="bg-white font-mono text-sm" />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRawFor(null)} disabled={busy !== null}>Cancel</Button>
+            <Button onClick={saveRawData} disabled={busy !== null}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <SetPasswordDialog
         open={target !== null}

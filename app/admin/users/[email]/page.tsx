@@ -7,6 +7,7 @@ import { toast } from "sonner"
 import {
   ArrowLeft,
   ExternalLink,
+  FileSpreadsheet,
   KeyRound,
   Loader2,
   Mail,
@@ -66,6 +67,8 @@ interface BoUser {
 
 interface Detail {
   user: BoUser
+  /** This admin may download the investor's raw-data workbook (Admins page → Raw data; super admins: any). */
+  canDownloadRawData?: boolean
   accounts: {
     clientId: string | number
     clientCode: string | null
@@ -83,7 +86,7 @@ interface Detail {
   audit: { at: string; admin: string; action: string; details: unknown }[]
 }
 
-type Busy = null | "portal" | "app" | "reset" | "unlock" | "delete"
+type Busy = null | "portal" | "app" | "reset" | "unlock" | "delete" | "raw"
 
 function decodeParam(raw: string | string[] | undefined): string {
   const v = Array.isArray(raw) ? raw[0] : raw || ""
@@ -142,6 +145,29 @@ export default function AdminUserDetailPage() {
   }, [load])
 
   // Open the tab synchronously (before the await) so popup blockers allow it.
+  const downloadRawData = async () => {
+    setBusy("raw")
+    try {
+      const res = await fetch(`/api/admin/bo/users/raw-data?email=${encodeURIComponent(email)}`, { credentials: "same-origin", cache: "no-store" })
+      if (!res.ok) {
+        const data = await res.json().catch(() => null)
+        throw new Error((data && data.error) || "Could not download the raw data")
+      }
+      const name = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") || "")?.[1] || "raw-data.xlsx"
+      const url = URL.createObjectURL(await res.blob())
+      const a = document.createElement("a")
+      a.href = url
+      a.download = name
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 10_000)
+      toast.success("Raw data downloaded", { description: "Open it in Excel: the Calculation sheet recalculates on opening." })
+    } catch (e) {
+      toast.error(errorMessage(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const openApp = async () => {
     const win = window.open("about:blank", "_blank")
     setBusy("app")
@@ -278,6 +304,12 @@ export default function AdminUserDetailPage() {
               {busy === "app" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
               Open dashboard as {u.type === "distributor" ? "partner" : "investor"}
             </Button>
+            {data?.canDownloadRawData ? (
+              <Button onClick={downloadRawData} disabled={busy !== null} variant="outline" className="bg-white">
+                {busy === "raw" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+                Download raw data
+              </Button>
+            ) : null}
             <Button onClick={() => setPwOpen(true)} disabled={busy !== null || !isSuper} variant="outline" className="bg-white">
               <KeyRound className="h-4 w-4" />
               Set password

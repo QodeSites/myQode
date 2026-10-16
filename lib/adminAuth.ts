@@ -90,9 +90,24 @@ export function ensureAdminTables() {
       ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS role text;
       ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS role_updated_at timestamptz;
       ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS role_updated_by text;
+      ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS raw_data_emails text[];
     `).catch(e => { ready = null; throw e })
   }
   return ready
+}
+
+// ── raw-data downloads ─────────────────────────────────────────────────────────────────────────────────────
+/** Investors whose raw-data workbook this admin may download (admin_users.raw_data_emails, set on the Admins page).
+ *  Super admins may download any investor's; every other role only the investors listed for them. */
+export async function rawDataEmailsOf(email: string): Promise<string[]> {
+  await ensureAdminTables()
+  const r = await query(`SELECT raw_data_emails FROM admin_users WHERE email = $1`, [norm(email)])
+  return ((r.rows[0]?.raw_data_emails as string[] | null) || []).map(norm)
+}
+export async function canDownloadRawData(admin: Admin | null | undefined, investorEmail: string): Promise<boolean> {
+  if (!admin) return false
+  if (admin.role === 'super') return true
+  return (await rawDataEmailsOf(admin.email)).includes(norm(investorEmail))
 }
 
 // ── passwords ──────────────────────────────────────────────────────────────────────────────────────────────
