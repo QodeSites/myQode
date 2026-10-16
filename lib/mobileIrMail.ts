@@ -6,8 +6,8 @@ import { signWebSession, WEB_SESSION_COOKIE } from '@/lib/webSession'
 // Testing:    MOBILE_IR_EMAIL_OVERRIDE=<address>[,<address>…] in .env sends every one of them there instead, with the
 //             subject prefixed so it is obviously a test. Remove the variable in production.
 export const IR_EMAIL = 'investor.relations@qodeinvest.com'
-import { raiseDeskTicket } from '@/lib/zohoDesk'
 import { fetchRazorpayOrder, fetchRazorpaySubscription } from '@/lib/razorpay'
+import { submittedVia, internalBase } from '@/lib/requestChannel'
 
 // Web or App for a payment: stored as the channel note on the Razorpay order / subscription when it was created
 // (create-order, setup-sip), so any of the routes that confirm a payment can tell. Older ones have none → null.
@@ -19,17 +19,6 @@ async function paymentChannel(kind: 'one_time' | 'sip', reference: string): Prom
   } catch { return null }
 }
 
-// The client behind a payment when the caller has no signed-in user (a Razorpay webhook): email and name from
-// pms_clients_master by account code.
-async function clientOfAccount(accountId: string): Promise<{ email: string | null; name: string | null }> {
-  try {
-    const { query } = await import('@/lib/db')
-    const r = await query(
-      `SELECT email, trim(concat_ws(' ', salutation, firstname, lastname)) AS name FROM pms_clients_master
-        WHERE clientcode = $1 AND email IS NOT NULL ORDER BY head_of_family DESC NULLS LAST LIMIT 1`, [accountId])
-    return { email: r.rows[0]?.email || null, name: r.rows[0]?.name || null }
-  } catch { return { email: null, name: null } }
-}
 
 export function irRecipient(): string[] {
   const list = (process.env.MOBILE_IR_EMAIL_OVERRIDE || '').split(',').map((s) => s.trim()).filter(Boolean)
@@ -55,6 +44,7 @@ export async function notifyIrPayment(p: {
   method?: string | null
 }) {
   const inr = '₹' + Number(p.amount || 0).toLocaleString('en-IN')
+  const channel = await paymentChannel(p.kind, p.reference)   // Web / App, from the Razorpay order's notes
   const title = p.kind === 'sip' ? 'SIP Mandate Registered' : 'Payment Completed'
   const subject = irSubject(
     p.kind === 'sip'
@@ -67,7 +57,7 @@ export async function notifyIrPayment(p: {
         <h1 style="margin:0;color:#DABD38;font-family:Georgia,serif">${title}</h1>
       </div>
       <div style="background:#fff;padding:16px;border:1px solid #37584F;border-radius:8px">
-        <p><strong>Submitted via:</strong> myQode Mobile App (Razorpay)</p>
+        <p><strong>Submitted via:</strong> ${submittedVia(channel)} (Razorpay)</p>
         <p><strong>Date:</strong> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</p>
         <div style="background:#EFECD3;padding:12px;border-left:4px solid #DABD38;margin:12px 0">
           <p><strong>Account Code:</strong> ${p.accountId}</p>
@@ -80,19 +70,9 @@ export async function notifyIrPayment(p: {
         </div>
       </div>
     </div>`
-  // Zoho Desk ticket for Add Funds (lib/zohoDesk.ts), the client as its contact; null when Desk is not set up here.
-  const who = await clientOfAccount(p.accountId)
-  const contact = p.userEmail || who.email
-  const desk = contact ? await raiseDeskTicket({
-    kind: p.kind === 'sip' ? 'sip' : 'add_funds',
-    subject: p.kind === 'sip' ? `SIP set up, ${inr}${p.frequency ? ' ' + p.frequency : ''}, ${p.accountId}` : `Payment received, ${inr}, ${p.accountId}`,
-    email: contact, name: who.name, accountId: p.accountId, priority: 'High', channel: await paymentChannel(p.kind, p.reference),
-    fields: [['Investor ID', p.clientId ? String(p.clientId).replace(/\.0+$/, '') : null], ['Amount', inr], ['Frequency', p.kind === 'sip' ? p.frequency : null],
-      ['Method', p.method], ['Razorpay reference', p.reference],
-      ['Status', p.kind === 'sip' ? 'Mandate authorised; instalments will be debited on schedule' : 'Captured by the payment gateway']],
-  }) : null
+  // Add Funds is not ticketed in Zoho Desk (decided 13 Oct 2026): this email is the notification.
   try {
-    const base = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL?.trim() || 'http://localhost:2069'
+    const base = internalBase()
     const res = await fetch(`${base}/api/send-email`, {
       method: 'POST',
       // a signed session so /api/send-email accepts this server-side call (lib/webSession.ts)
@@ -113,7 +93,7 @@ export async function notifyIrPayment(p: {
         transaction_id: p.reference,
         payment_status: 'success',
         gateway: 'razorpay',
-        desk_ticket: desk?.ticketNumber ?? null,
+        channel,
       }),
     })
     if (!res.ok) console.warn('[mobileIrMail] send-email answered', res.status)

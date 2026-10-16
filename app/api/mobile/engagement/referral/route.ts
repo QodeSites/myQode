@@ -1,11 +1,16 @@
 // POST /api/mobile/engagement/referral
-// Submit an investor referral. Sends notification email to IR team.
+// Submit an investor referral. The referred person becomes a Zoho CRM Lead (Lead Source "Investor Referral", its
+// Referring Investor = the logged-in client's Investor record; lib/zohoLeads.ts, 14 Oct 2026). Only the Lead: no Desk
+// ticket and no email of ours (decided 14 Oct 2026) — the referral is recorded for Past Requests, where it shows the
+// Lead's status. If Zoho refuses the Lead, the referral is not lost: it goes to IR by email as before, with an
+// acknowledgement to the client.
 import { internalMailHeaders } from '@/lib/webSession'
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import { sendClientAck, clientName } from '@/lib/mobileAckMail'
-import { raiseDeskTicket } from '@/lib/zohoDesk'
-import { requestChannel } from '@/lib/requestChannel'
+import { upsertReferralLead, type ReferralLeadResult } from '@/lib/zohoLeads'
+import { query } from '@/lib/db'
+import { requestChannel, submittedVia, internalBase } from '@/lib/requestChannel'
 import { irRecipient, irSubject } from '@/lib/mobileIrMail'
 
 export async function POST(request: NextRequest) {
@@ -40,6 +45,21 @@ export async function POST(request: NextRequest) {
     }
     if (description && String(description).length > 500) return NextResponse.json({ error: 'Please keep the note under 500 characters.' }, { status: 400 })
 
+    const channel = requestChannel(request)   // Web / App (lib/requestChannel.ts)
+
+    // Zoho CRM Lead for the referred person, linked to the client who referred them (Referring Investor). The
+    // account's holder name picks the right Investor record when one email covers a family.
+    let lead: ReferralLeadResult | null = null
+    try {
+      const holder = (await query(`SELECT clientname FROM pms_clients_master WHERE clientcode = $1 LIMIT 1`, [accountId])).rows[0]?.clientname || null
+      lead = await upsertReferralLead({
+        name: String(name).trim(), email: String(email).trim(), phone: String(phone).trim(), note: description || null, channel,
+        referrer: { email: user!.email, accountId, holderName: holder },
+      })
+    } catch (e: any) {
+      console.error('[mobile/engagement/referral] lead not created for', accountId, '-', e?.message)
+    }
+
     const emailHtml = `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;background:#EFECD3">
         <div style="background:#02422B;padding:20px;border-radius:8px;margin-bottom:20px;text-align:center">
@@ -47,7 +67,7 @@ export async function POST(request: NextRequest) {
         </div>
         <div style="background:#fff;padding:20px;border:1px solid #37584F;border-radius:8px">
           <p><strong>Request Type:</strong> Referral Submission</p>
-          <p><strong>Submitted via:</strong> myQode Mobile App</p>
+          <p><strong>Submitted via:</strong> ${submittedVia(channel)}</p>
           <p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
           <div style="background:#EFECD3;padding:15px;border-left:4px solid #DABD38;margin:15px 0">
             <h3 style="margin-top:0;color:#37584F">Referral Details</h3>
@@ -61,15 +81,7 @@ export async function POST(request: NextRequest) {
         </div>
       </div>`
 
-    // Zoho Desk ticket (lib/zohoDesk.ts), with the referring client as its contact; null when Desk is not set up here
-    // or refused — the referral carries on by email.
-    const desk = await raiseDeskTicket({
-      channel: requestChannel(request),
-      kind: 'referral', subject: `Referral of ${String(name).trim()} from ${accountId}`, email: user!.email, name: await clientName(user!.email), accountId,
-      fields: [['Referred investor', String(name).trim()], ['Referred email', String(email).trim()], ['Referred mobile', String(phone).trim()], ['Note', description ? String(description).trim() : null]],
-    })
-
-    const emailRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL?.trim() || 'http://localhost:2069'}/api/send-email`, {
+    const emailRes = await fetch(`${internalBase()}/api/send-email`, {
       method: 'POST',
       headers: internalMailHeaders(user?.email),
       body: JSON.stringify({
@@ -79,7 +91,8 @@ export async function POST(request: NextRequest) {
         from: 'investor.relations@qodeinvest.com',
         fromName: 'Qode Investor Relations',
         inquiry_type: 'investor_referral',
-        desk_ticket: desk?.ticketNumber ?? null,
+        record_only: !!lead,   // with a Lead: recorded only, no email (the Lead is the hand-off to the team)
+        channel,               // Web / App, for the request tracking list
         nuvama_code: accountId,
         client_id: user!.clientId,
         user_email: user!.email,
@@ -88,6 +101,8 @@ export async function POST(request: NextRequest) {
         referred_investor_email: email,
         referred_investor_phone: phone,
         description: description || '',
+        zoho_lead_id: lead?.id ?? null,           // the referred person's Lead in Zoho CRM
+        zoho_lead_status: lead?.status ?? 'failed',
       }),
     })
 
@@ -96,15 +111,15 @@ export async function POST(request: NextRequest) {
       throw new Error(emailData.error || 'Email send failed')
     }
 
-    // Acknowledgement to the investor (IR got its own notification above).
-    await sendClientAck({
-      to: user!.email, name: await clientName(user!.email), reference: desk ? `#${desk.ticketNumber}` : emailData.inquiry_id,
+    // Acknowledgement to the investor — only on the fallback path, when the Lead could not be created.
+    if (!lead) await sendClientAck({
+      to: user!.email, name: await clientName(user!.email), reference: emailData.inquiry_id,
       subject: 'We’ve received your referral', title: 'Referral received',
       intro: `Thank you for referring ${String(name).trim()} to Qode. We’ve received the details below from the myQode app.`,
       details: [['Referred investor', name], ['Email', email], ['Mobile', phone], ['Note', description], ['Your account', accountId]],
       next: 'Our Investor Relations team will reach out to them and keep you posted. You do not need to send this again.',
     })
-    return NextResponse.json({ success: true, inquiry_id: emailData.inquiry_id, ticket: desk?.ticketNumber ?? null })
+    return NextResponse.json({ success: true, inquiry_id: emailData.inquiry_id, lead: lead?.status ?? null })
   } catch (err) {
     console.error('[mobile/engagement/referral]', err)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

@@ -5,6 +5,7 @@
 // Body: { accountId, category: 'pms-agreement' | 'account-opening' | 'cml' | 'other', message? }
 import { internalMailHeaders } from '@/lib/webSession'
 import { NextRequest, NextResponse } from 'next/server'
+import { requestChannel, submittedVia, internalBase } from '@/lib/requestChannel'
 import { verifyMobileAuth } from '@/lib/mobileAuth'
 import { irRecipient, irSubject, IR_EMAIL } from '@/lib/mobileIrMail'
 import { sendClientAck, clientName } from '@/lib/mobileAckMail'
@@ -38,7 +39,7 @@ export async function POST(request: NextRequest) {
       </div>
       <div style="background:#fff;padding:20px;border:1px solid #37584F;border-radius:8px">
         <p><strong>Request Type:</strong> Document Request</p>
-        <p><strong>Submitted via:</strong> myQode Mobile App</p>
+        <p><strong>Submitted via:</strong> ${submittedVia(requestChannel(request))}</p>
         <p><strong>Date:</strong> ${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })}</p>
         <div style="background:#EFECD3;padding:15px;border-left:4px solid #DABD38;margin:15px 0">
           <p><strong>Account Code:</strong> ${esc(accountId)}</p>
@@ -51,7 +52,7 @@ export async function POST(request: NextRequest) {
       </div>
     </div>`
   try {
-    const base = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXTAUTH_URL?.trim() || 'http://localhost:2069'
+    const base = internalBase()
     const res = await fetch(`${base}/api/send-email`, {
       method: 'POST', headers: internalMailHeaders(user?.email),
       body: JSON.stringify({
