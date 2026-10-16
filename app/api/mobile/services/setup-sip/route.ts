@@ -18,7 +18,7 @@ import { createRazorpayPlan, createRazorpaySubscription, checkoutToken } from '@
 import { registeredBankFor } from '@/lib/registeredBank'
 
 const FREQUENCIES = ['daily', 'weekly', 'monthly', 'quarterly', 'yearly']
-const MIN_AMOUNT = 100
+const MIN_AMOUNT = 50000
 const MAX_AMOUNT = 500000
 
 export async function POST(request: NextRequest) {
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `frequency must be one of: ${FREQUENCIES.join(', ')}` }, { status: 400 })
   }
   if (typeof amount !== 'number' || isNaN(amount) || amount < MIN_AMOUNT) {
-    return NextResponse.json({ error: `Minimum SIP amount is ₹${MIN_AMOUNT}` }, { status: 400 })
+    return NextResponse.json({ error: `Minimum SIP amount is ₹${MIN_AMOUNT.toLocaleString('en-IN')} per cycle.` }, { status: 400 })
   }
   if (amount > MAX_AMOUNT) {
     return NextResponse.json({ error: `Maximum SIP amount is ₹${MAX_AMOUNT.toLocaleString('en-IN')} per cycle.` }, { status: 400 })
