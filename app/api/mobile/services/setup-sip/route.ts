@@ -19,6 +19,7 @@ import { registeredBankFor } from '@/lib/registeredBank'
 
 const FREQUENCIES = ['daily', 'weekly', 'monthly', 'quarterly', 'yearly']
 const MIN_AMOUNT = 50000
+const CUSTOM_FROM = 100000   // between ₹50,000 and ₹1,00,000 only the two fixed amounts
 const MAX_AMOUNT = 500000
 
 export async function POST(request: NextRequest) {
@@ -38,8 +39,9 @@ export async function POST(request: NextRequest) {
   if (!FREQUENCIES.includes(frequency)) {
     return NextResponse.json({ error: `frequency must be one of: ${FREQUENCIES.join(', ')}` }, { status: 400 })
   }
-  if (typeof amount !== 'number' || isNaN(amount) || amount < MIN_AMOUNT) {
-    return NextResponse.json({ error: `Minimum SIP amount is ₹${MIN_AMOUNT.toLocaleString('en-IN')} per cycle.` }, { status: 400 })
+  // ₹50,000, ₹1,00,000, or a custom amount above ₹1,00,000 (16 Oct 2026; the app offers the same three choices)
+  if (typeof amount !== 'number' || isNaN(amount) || amount < MIN_AMOUNT || (amount > MIN_AMOUNT && amount < CUSTOM_FROM)) {
+    return NextResponse.json({ error: 'Choose ₹50,000 or ₹1,00,000, or a custom amount above ₹1,00,000 per cycle.' }, { status: 400 })
   }
   if (amount > MAX_AMOUNT) {
     return NextResponse.json({ error: `Maximum SIP amount is ₹${MAX_AMOUNT.toLocaleString('en-IN')} per cycle.` }, { status: 400 })
