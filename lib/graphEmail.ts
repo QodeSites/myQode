@@ -18,6 +18,8 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
+import { logEmail } from '@/lib/emailLog'
+
 const TENANT_ID = process.env.MS_GRAPH_EMAIL_TENANT_ID
 const CLIENT_ID = process.env.MS_GRAPH_EMAIL_CLIENT_ID
 const CLIENT_SECRET = process.env.MS_GRAPH_EMAIL_CLIENT_SECRET
@@ -38,6 +40,8 @@ export interface SendEmailPayload {
   text?: string
   /** Files sent with the message (small ones: Graph sendMail takes up to ~3 MB inline). */
   attachments?: Array<{ name: string; contentType: string; content: string | Buffer }>
+  /** Don't keep the body in email_log (lib/emailLog.ts already withholds code and password-reset emails). */
+  sensitive?: boolean
 }
 
 export interface SendEmailResult {
@@ -103,7 +107,20 @@ function toRecipients(value: AddressInput): Array<{ emailAddress: { address: str
 }
 
 // ── Core send ─────────────────────────────────────────────────────────────────
+/** Send, then record the attempt (sent or failed) in email_log for the backoffice's Emails page. */
 export async function sendGraphEmail(
+  payload: SendEmailPayload
+): Promise<SendEmailResult> {
+  const result = await sendViaGraph(payload)
+  await logEmail({
+    to: payload.to, cc: payload.cc, bcc: payload.bcc, fromName: parseDisplayName(payload.from),
+    subject: payload.subject, html: payload.html, attachments: payload.attachments, sensitive: payload.sensitive,
+    ok: !result.error, error: result.error?.message, requestId: result.data?.id,
+  })
+  return result
+}
+
+async function sendViaGraph(
   payload: SendEmailPayload
 ): Promise<SendEmailResult> {
   if (!isGraphEmailConfigured()) {
