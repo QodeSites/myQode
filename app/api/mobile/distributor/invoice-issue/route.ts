@@ -6,7 +6,9 @@ import { callWebDistributorRoute, relay } from '@/lib/mobileDistributorProxy'
 export async function GET(request: NextRequest) {
   const { distributor, error } = await requireMobileDistributor(request)
   if (error) return error
-  try { return relay(await callWebDistributorRoute(distributor!.email, 'invoice-issue')) }
+  // ?doc=<invoice number> → { url } to open an issued invoice again; otherwise the history
+  const doc = request.nextUrl.searchParams.get('doc')
+  try { return relay(await callWebDistributorRoute(distributor!.email, 'invoice-issue' + (doc ? '?doc=' + encodeURIComponent(doc) : ''))) }
   catch (err) { console.error('[mobile/distributor/invoice-issue GET]', err); return NextResponse.json({ error: 'Could not load your invoice history' }, { status: 502 }) }
 }
 

@@ -13,7 +13,7 @@ import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { query } from '@/lib/db'
 import { sendPartnerInvoiceMails } from '@/lib/partnerInvoiceMail'
-import { ensureInvoiceStatus, putInvoiceFile } from '@/lib/partnerInvoices'
+import { ensureInvoiceStatus, putInvoiceFile, invoiceFileUrl } from '@/lib/partnerInvoices'
 
 interface UserContext {
   email?: string
@@ -32,14 +32,25 @@ async function callerEmail(): Promise<string | null> {
 }
 
 /** Past invoices, most recent first — shown on the invoice page. */
-export async function GET() {
+// GET ?doc=<invoice number> → { url }: a 10-minute link to the invoice the partner raised (the document saved when it
+// was issued), so an issued invoice can be opened again from "Invoices you have issued" (17 Oct 2026).
+export async function GET(request: Request) {
   const email = await callerEmail()
   if (!email) return NextResponse.json({ error: 'Not signed in' }, { status: 401 })
 
   try {
     await ensureInvoiceStatus()
+    const doc = new URL(request.url).searchParams.get('doc')
+    if (doc) {
+      const r = await query(`SELECT invoice_number, invoice_doc_key FROM distributor_invoice_issued
+                              WHERE distributor_email = $1 AND invoice_number = $2 LIMIT 1`, [email, doc])
+      const row: any = r.rows[0]
+      if (!row?.invoice_doc_key) return NextResponse.json({ error: 'This invoice has no saved copy. Please write to partnerships@qodeinvest.com for it.' }, { status: 404 })
+      const url = await invoiceFileUrl(row.invoice_doc_key, `invoice-${String(row.invoice_number).replace(/[^\w.-]+/g, '_')}.html`)
+      return NextResponse.json({ url }, { headers: { 'Cache-Control': 'no-store' } })
+    }
     const res = await query(
-      `SELECT invoice_number, invoice_date, period_label,
+      `SELECT invoice_number, invoice_date, period_label, invoice_doc_key IS NOT NULL AS has_doc,
               amount_before_tax, tax_amount, total_amount,
               status, paid_on, paid_amount, payment_ref, payment_note
          FROM distributor_invoice_issued
@@ -54,6 +65,7 @@ export async function GET() {
           invoiceNumber: r.invoice_number,
           invoiceDate: r.invoice_date,
           periodLabel: r.period_label,
+          hasDoc: !!r.has_doc,   // a saved copy to open again (GET ?doc=)
           amountBeforeTax: Number(r.amount_before_tax),
           taxAmount: Number(r.tax_amount),
           totalAmount: Number(r.total_amount),
