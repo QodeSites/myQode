@@ -14,6 +14,7 @@ import { cookies } from 'next/headers'
 import { query } from '@/lib/db'
 import { sendPartnerInvoiceMails } from '@/lib/partnerInvoiceMail'
 import { ensureInvoiceStatus, putInvoiceFile, invoiceFileUrl } from '@/lib/partnerInvoices'
+import { buildInvoicePdf } from '@/lib/partnerInvoicePdf'
 
 interface UserContext {
   email?: string
@@ -46,7 +47,8 @@ export async function GET(request: Request) {
                               WHERE distributor_email = $1 AND invoice_number = $2 LIMIT 1`, [email, doc])
       const row: any = r.rows[0]
       if (!row?.invoice_doc_key) return NextResponse.json({ error: 'This invoice has no saved copy. Please write to partnerships@qodeinvest.com for it.' }, { status: 404 })
-      const url = await invoiceFileUrl(row.invoice_doc_key, `invoice-${String(row.invoice_number).replace(/[^\w.-]+/g, '_')}.html`)
+      const ext = /\.pdf$/i.test(row.invoice_doc_key) ? 'pdf' : 'html'   // PDF from 19 Oct 2026; earlier invoices kept the HTML
+      const url = await invoiceFileUrl(row.invoice_doc_key, `invoice-${String(row.invoice_number).replace(/[^\w.-]+/g, '_')}.${ext}`)
       return NextResponse.json({ url }, { headers: { 'Cache-Control': 'no-store' } })
     }
     const res = await query(
@@ -180,11 +182,30 @@ export async function POST(req: Request) {
       )
     }
 
+    // The invoice as a PDF (lib/partnerInvoicePdf), built here from the saved invoice details and the recorded amounts:
+    // it is what Accounts receives and what is kept with the record (19 Oct 2026: both were the portal's HTML file).
+    // If the PDF can't be built, the HTML the portal sent is used as before. Best effort: the invoice is recorded.
+    const id = Number(ins.rows[0]?.id)
+    let prof: any = null, nm: string | null = null, pdf: Buffer | null = null
+    try {
+      prof = (await query(`SELECT * FROM distributor_invoice_profile WHERE distributor_email = $1`, [email])).rows[0] || null
+      nm = (await query(`SELECT clientname FROM pms_clients_master WHERE lower(btrim(email)) = $1 AND clientcode IS NULL LIMIT 1`, [email])).rows[0]?.clientname || null
+      pdf = await buildInvoicePdf({
+        invoiceNumber, invoiceDate, periodLabel,
+        periodStart: String(body.periodStart ?? '').trim() || null, periodEnd: String(body.periodEnd ?? '').trim() || null,
+        amountBeforeTax: num(body.amountBeforeTax), taxAmount: num(body.taxAmount), totalAmount: num(body.totalAmount),
+        ratePct: typeof body.ratePct === 'string' ? body.ratePct : null, clientCount: num(body.clientCount), discount: num(body.discount),
+        partnerName: nm, partnerEmail: email,
+      }, prof)
+    } catch (e) { console.warn('[distributor/invoice-issue] PDF not built:', (e as any)?.message) }
+    const html = typeof body.invoiceHtml === 'string' && body.invoiceHtml.length < 1_500_000 ? body.invoiceHtml : null
+
     // Keep the invoice document with the record, for the backoffice (Admin → Distributor invoices). Best effort.
-    if (typeof body.invoiceHtml === 'string' && body.invoiceHtml.length < 1_500_000) {
+    if (pdf || html) {
       try {
-        const id = Number(ins.rows[0]?.id)
-        const key = await putInvoiceFile(id, `invoice-${invoiceNumber}.html`, body.invoiceHtml, 'text/html; charset=utf-8')
+        const key = pdf
+          ? await putInvoiceFile(id, `invoice-${invoiceNumber}.pdf`, pdf, 'application/pdf')
+          : await putInvoiceFile(id, `invoice-${invoiceNumber}.html`, html!, 'text/html; charset=utf-8')
         await query(`UPDATE distributor_invoice_issued SET invoice_doc_key = $2 WHERE id = $1`, [id, key])
       } catch (e) { console.warn('[distributor/invoice-issue] document not saved:', (e as any)?.message) }
     }
@@ -192,12 +213,10 @@ export async function POST(req: Request) {
     // The invoice goes to partnerships@ and the partner gets a receipt (lib/partnerInvoiceMail). Best effort: the
     // invoice is recorded either way.
     try {
-      const prof = (await query(`SELECT * FROM distributor_invoice_profile WHERE distributor_email = $1`, [email])).rows[0] || null
-      const nm = (await query(`SELECT clientname FROM pms_clients_master WHERE lower(btrim(email)) = $1 AND clientcode IS NULL LIMIT 1`, [email])).rows[0]?.clientname || null
       await sendPartnerInvoiceMails({
         partnerEmail: email, invoiceNumber, invoiceDate, periodLabel,
         amountBeforeTax: num(body.amountBeforeTax), taxAmount: num(body.taxAmount), totalAmount: num(body.totalAmount),
-        html: typeof body.invoiceHtml === 'string' ? body.invoiceHtml : null,
+        html, pdf,
       }, prof, nm)
     } catch (e) { console.warn('[distributor/invoice-issue] mail failed:', (e as any)?.message) }
 

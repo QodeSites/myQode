@@ -1,7 +1,7 @@
 // Emails sent when a partner raises an invoice in the portal (app/api/distributor/invoice-issue):
 //
 //   1. partnerships@ and accounts@qodeinvest.com: the invoice — key figures, the partner's details, the invoice itself inline and as
-//      an attached file (the same document the partner downloads as a PDF). Reply-to is the partner.
+//      an attached PDF (lib/partnerInvoicePdf; the portal's HTML file only if the PDF couldn't be built). Reply-to is the partner.
 //   2. the partner: "we've received your invoice", with the figures echoed back (lib/mobileAckMail).
 //
 // Who receives them:
@@ -27,6 +27,7 @@ export type IssuedInvoice = {
   taxAmount: number
   totalAmount: number
   html?: string | null              // the invoice document the portal built (optional: the app may not send it)
+  pdf?: Buffer | null               // the same invoice as a PDF, built on the server: the attachment when present
 }
 type Profile = { legal_name?: string; gstin?: string; pan?: string; bank_name?: string; bank_account_number?: string; bank_ifsc?: string } | null
 
@@ -71,13 +72,15 @@ export async function sendPartnerInvoiceMails(inv: IssuedInvoice, profile: Profi
         <p>A partner has raised an invoice in the myQode partner portal.</p>
         <table style="border-collapse:collapse;font-size:14px">${table}</table>
         <p style="color:#555;font-size:13px">Check the total against the partner's fee statement for ${esc(inv.periodLabel)} before paying. Reply to this email to reach the partner.</p>
-        ${doc ? `<hr style="margin:20px 0"/><div>${body(doc)}</div>` : '<p style="color:#555;font-size:13px">The invoice document was not attached (raised from the app); the partner has the PDF.</p>'}
+        ${doc ? `<hr style="margin:20px 0"/><div>${body(doc)}</div>` : inv.pdf ? '' : '<p style="color:#555;font-size:13px">The invoice document was not attached (raised from the app); the partner has the PDF.</p>'}
       </div>`
-      const file = `Invoice ${inv.invoiceNumber} - ${who}`.replace(/[\\/:*?"<>|]+/g, '-').slice(0, 120) + '.html'
+      const file = `Invoice ${inv.invoiceNumber} - ${who}`.replace(/[\\/:*?"<>|]+/g, '-').slice(0, 120)
+      const attachment = inv.pdf ? { name: file + '.pdf', contentType: 'application/pdf', content: inv.pdf }
+        : doc ? { name: file + '.html', contentType: 'text/html', content: doc } : null
       const res = await graphMailer.emails.send({
         from: `myQode Partner Portal <${PARTNERSHIPS_EMAIL}>`, to: plan.to, replyTo: inv.partnerEmail,
         subject: `${plan.prefix}Invoice ${inv.invoiceNumber} from ${who} · ${inv.periodLabel} · ${inr(inv.totalAmount)}`,
-        html, ...(doc ? { attachments: [{ name: file, contentType: 'text/html', content: doc }] } : {}),
+        html, ...(attachment ? { attachments: [attachment] } : {}),
       })
       if (res?.error) console.warn('[partner-invoice] partnerships mail failed:', res.error.message)
     }
