@@ -11,7 +11,7 @@
 // `Rack_Rate_Performance_Fee`, `Fees_Structure` (a free-text multiselect) and
 // `Primary_distributo`. The names below are the real ones — verified against
 // the live module, not the plan.
-import { zohoApiDomain, zohoFetch } from '@/lib/zoho'
+import { zohoApiDomain, zohoFetch, withLastGood } from '@/lib/zoho'
 
 export interface InvestorFeeTerms {
   /** Lowercased email — the join key against pms_clients_master. */
@@ -217,7 +217,7 @@ async function fetchAll(): Promise<Map<string, InvestorFeeTerms>> {
  */
 export async function getInvestorFeeTerms(): Promise<Map<string, InvestorFeeTerms>> {
   if (cache && cache.expiresAt > Date.now()) return cache.data
-  const data = await fetchAll()
+  const data = await withLastGood('investorFeeTerms', fetchAll)
   cache = { data, expiresAt: Date.now() + CACHE_TTL_MS }
   return data
 }

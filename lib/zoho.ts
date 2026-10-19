@@ -135,6 +135,10 @@ export async function zohoFetch(url: string, init: RequestInit = {}, opts: { wri
   const token = await get()
   const res = await send(token)
   if (res.status !== 401) return res
+  // A 401 for a URL outside the token's scope (OAUTH_SCOPE_MISMATCH) says nothing about the token itself: it stays
+  // valid for everything else. Dropping it here minted a new token on every such call, until Zoho's refresh limit
+  // ("too many requests continuously") blocked every Zoho-backed screen (partner pages, 19 Oct 2026).
+  if (/OAUTH_SCOPE_MISMATCH/.test(await res.clone().text().catch(() => ''))) return res
 
   // Drop the rejected token unless a concurrent caller already replaced it (and from the shared store).
   await dropToken(token)
@@ -391,4 +395,36 @@ export async function getZohoSourceTotals(): Promise<
   return Array.from(bySource.entries())
     .map(([source, v]) => ({ source, total: v.total, activated: v.activated }))
     .sort((a, b) => b.total - a.total)
+}
+
+// Last good answer for a Zoho read, so a Zoho outage, a rate limit or a bad token never reaches a partner as an error
+// (19 Oct 2026). Each success is kept in memory and in app_notification_state (shared by every process, survives
+// restarts); a failure serves that copy and is only logged. With no copy yet, the failure is thrown as before.
+// Maps are stored as their entries. Keys are scoped by the caller (e.g. a partner's own email), never shared across them.
+const lastGoodMem: Map<string, unknown> = ((globalThis as any).__qodeZohoLastGood ??= new Map())
+export async function withLastGood<T>(key: string, read: () => Promise<T>): Promise<T> {
+  const k = 'zoho.lastgood.' + key
+  try {
+    const v = await read()
+    lastGoodMem.set(k, v)
+    const json = JSON.stringify(v instanceof Map ? { map: [...v.entries()] } : { value: v })
+    import('@/lib/db').then(({ query }) => query(
+      `INSERT INTO app_notification_state (key, value, updated_at) VALUES ($1, $2, NOW())
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`, [k, json])).catch(() => {})
+    return v
+  } catch (err) {
+    if (lastGoodMem.has(k)) { console.warn(`[zoho] ${key}: serving last good copy —`, (err as any)?.message); return lastGoodMem.get(k) as T }
+    try {
+      const { query } = await import('@/lib/db')
+      const r = await query(`SELECT value FROM app_notification_state WHERE key = $1`, [k])
+      if (r.rows[0]?.value) {
+        const s = JSON.parse(r.rows[0].value)
+        const v = ('map' in s ? new Map(s.map) : s.value) as T
+        lastGoodMem.set(k, v)
+        console.warn(`[zoho] ${key}: serving last good copy (stored) —`, (err as any)?.message)
+        return v
+      }
+    } catch { /* no stored copy */ }
+    throw err
+  }
 }

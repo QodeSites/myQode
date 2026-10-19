@@ -20,7 +20,7 @@
 // Lead_Stage is effectively binary in production (105 of 112 distributor leads
 // read "Onboarding Investor", 7 read "Lost Lead"). Investor_Stage carries the
 // real funnel. Leads convert to Investors already, so nothing is lost.
-import { zohoApiDomain, zohoFetch } from "@/lib/zoho";
+import { zohoApiDomain, zohoFetch, withLastGood } from "@/lib/zoho";
 
 /**
  * The seven values present in production, funnel order first, inactive last.
@@ -220,6 +220,11 @@ export async function findDistributorZohoId(
 export async function getJourneyForDistributor(
   email: string,
 ): Promise<DistributorJourney | null> {
+  const key = String(email ?? "").trim().toLowerCase();
+  return withLastGood("journey." + key, () => readJourney(key));
+}
+
+async function readJourney(email: string): Promise<DistributorJourney | null> {
   const record = await findDistributorZohoId(email);
   if (!record) return null;
 
@@ -422,6 +427,10 @@ export async function getAllDistributorRecords(): Promise<DistributorRecord[]> {
  * Joined on email because the two modules have no lookup between them.
  */
 export async function getOnboardingStages(): Promise<Map<string, string>> {
+  return withLastGood("onboardingStages", readOnboardingStages);
+}
+
+async function readOnboardingStages(): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   let offset = 0;
 

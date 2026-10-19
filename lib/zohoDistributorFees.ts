@@ -16,7 +16,7 @@
 //
 // Values in use today: 50 (Standard 50:50), 55 and 50 (Tiered), 60 and 65
 // (Flat Custom Split).
-import { zohoApiDomain, zohoFetch } from '@/lib/zoho'
+import { zohoApiDomain, zohoFetch, withLastGood } from '@/lib/zoho'
 
 /** The revenue-sharing arrangement, per the signed agreement. */
 export type RevenueSharingModel =
@@ -181,7 +181,7 @@ async function fetchAll(): Promise<Map<string, DistributorShare>> {
 /** Every distributor's terms, keyed by lowercased email. */
 export async function getDistributorShares(): Promise<Map<string, DistributorShare>> {
   if (cache && cache.expiresAt > Date.now()) return cache.data
-  const data = await fetchAll()
+  const data = await withLastGood('distributorShares', fetchAll)
   cache = { data, expiresAt: Date.now() + CACHE_TTL_MS }
   return data
 }
