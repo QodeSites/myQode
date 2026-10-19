@@ -119,12 +119,12 @@ export async function createPlan(record: Record<string, unknown>, runWorkflows =
 }
 
 const planCache = new Map<string, { at: number; s: PlanStatus | null }>()
-export type PlanStatus = { state: 'open' | 'on_hold' | 'closed'; label: string; updatedAt: string | null; planNo?: string | null }
+export type PlanStatus = { state: 'open' | 'on_hold' | 'closed'; label: string; updatedAt: string | null; planNo?: string | null; deleted?: boolean }
 /**
- * Where a plan stands, for the app's request tracking (lib/requestTracking.ts); cached two minutes. The label is
- * exactly what Zoho shows (asked 13 Oct 2026): the Holding Status (Active, Paused, Fully Deployed, Withdrawn, Merged)
- * once set, else the Verification Status (Pending, Verified, Mismatch Detected). The state only picks the pill's tone:
- * Fully Deployed / Withdrawn / Merged → closed; Paused / Mismatch Detected → on hold; else open. Null when unreadable.
+ * Where a switch stands, for the app's request tracking (lib/requestTracking.ts); cached 20 seconds. Since 19 Oct 2026
+ * the label is the Status of the Strategy Switch Request Zoho raised for this plan (Pending / Completed; Normal Switch
+ * requests only, never Staggered; Pending until one exists), so Completed reads as closed. The plan is still read: a deleted plan (204) hides the request, and its
+ * number (SP - 46) is the reference. Null when unreadable. (The one-switch-at-a-time rule still uses the plan's status.)
  */
 export async function planStatus(id: string): Promise<PlanStatus | null> {
   if (!id) return null
@@ -133,6 +133,7 @@ export async function planStatus(id: string): Promise<PlanStatus | null> {
   let s: PlanStatus | null = null
   try {
     const res = await zohoFetch(`${zohoApiDomain()}/crm/v2/${PLAN_MODULE}/${id}?fields=Verification_Status,Holding_Status,Modified_Time,Switch_Plan_No`, { cache: 'no-store' })
+    if (res.status === 204) s = { state: 'closed', label: '', updatedAt: null, deleted: true }   // the plan was deleted in Zoho
     const d: any = res.status === 204 ? null : (await res.json().catch(() => null))?.data?.[0]
     if (d) {
       const v = String(d.Verification_Status || ''), h = String(d.Holding_Status || ''), at = d.Modified_Time || null
@@ -141,10 +142,29 @@ export async function planStatus(id: string): Promise<PlanStatus | null> {
       const state: PlanStatus['state'] = h === 'Fully Deployed' || h === 'Withdrawn' || h === 'Merged' ? 'closed'
         : h === 'Paused' || v === 'Mismatch Detected' ? 'on_hold' : 'open'
       s = { state, label, updatedAt: at, planNo: d.Switch_Plan_No ? String(d.Switch_Plan_No) : null }   // as Zoho writes it (SP - 46), for the reference
+      // What the client sees (19 Oct 2026): the Status of the Strategy Switch Request Zoho raised for this plan
+      // (module Strategy_Switch_Requests, linked through Liquid_Fund_Holding): Pending or Completed. Normal switches only:
+      // Staggered Switch requests are left out (19 Oct 2026). Until Zoho has raised one, the request is Pending.
+      const swr = await latestSwitchRequest(id)
+      const st = swr?.Status ? String(swr.Status) : 'Pending'
+      s = { ...s, label: st, state: /completed/i.test(st) ? 'closed' : 'open', updatedAt: swr?.Modified_Time || at }
     }
   } catch (e: any) { console.warn('[switchPlan] plan', id, 'not read -', e?.message) }
   planCache.set(id, { at: Date.now(), s })
   return s
+}
+
+// The Strategy Switch Request raised for this Switch Plan (a Normal Switch; Staggered Switch requests are not
+// considered), the newest if there is more than one, or null.
+async function latestSwitchRequest(planId: string): Promise<any | null> {
+  const crit = encodeURIComponent(`(Liquid_Fund_Holding:equals:${String(planId).replace(/[^0-9]/g, '')})`)
+  const res = await zohoFetch(`${zohoApiDomain()}/crm/v2/Strategy_Switch_Requests/search?criteria=${crit}&fields=Name,Status,Request_Date,Modified_Time,Request_Origin&per_page=50`, { cache: 'no-store' })
+  if (res.status === 204) return null
+  const body: any = await res.json().catch(() => null)
+  if (!res.ok) throw new Error(body?.message || `Zoho Strategy_Switch_Requests search failed (${res.status})`)
+  const list: any[] = (body?.data || []).filter((x: any) => String(x.Request_Origin || '') !== 'Staggered Switch')
+  list.sort((x, y) => String(y.Request_Date || '').localeCompare(String(x.Request_Date || '')) || String(y.Modified_Time || '').localeCompare(String(x.Modified_Time || '')))
+  return list[0] || null
 }
 
 export type OpenPlan = {

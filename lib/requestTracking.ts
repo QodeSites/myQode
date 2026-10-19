@@ -69,9 +69,12 @@ export async function listRequests(email: string, accountCodes: string[], limit 
       if (t) status = { state: t.statusType === 'Closed' ? 'closed' : t.statusType === 'On Hold' ? 'on_hold' : 'open', label: t.status, updatedAt: t.modifiedTime }
       reference = d.desk_ticket ? `#${d.desk_ticket}` : reference
     } else if (d.zoho_lead_id) {
-      status = await leadStatus(String(d.zoho_lead_id))   // a referral: the referred person's Lead (14 Oct 2026)
+      const l = await leadStatus(String(d.zoho_lead_id))   // a referral: the referred person's Lead (14 Oct 2026)
+      if (l?.deleted) return null   // the Lead was deleted in Zoho: not listed
+      status = l
     } else if (d.zoho_plan_id) {
       const p = await planStatus(String(d.zoho_plan_id))
+      if (p?.deleted) return null   // the plan was deleted in Zoho: not listed
       if (p) status = p
       reference = d.zoho_plan_no || p?.planNo || reference   // the plan number (SP-46) once Zoho has given it one
     }

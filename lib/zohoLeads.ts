@@ -162,14 +162,18 @@ export async function upsertReferralLead(r: ReferralLead): Promise<ReferralLeadR
 
 // A referral's status for Past Requests (lib/requestTracking.ts): the Lead's Lead Status exactly as Zoho has it,
 // cached two minutes. Converted, Lost and Junk read as closed; the rest open. Null when the Lead cannot be read.
-const leadCache = new Map<string, { at: number; s: { state: 'open' | 'on_hold' | 'closed'; label: string; updatedAt: string | null } | null }>()
+type LeadStatus = { state: 'open' | 'on_hold' | 'closed'; label: string; updatedAt: string | null; deleted?: boolean }
+const leadCache = new Map<string, { at: number; s: LeadStatus | null }>()
 export async function leadStatus(id: string) {
   if (!id) return null
   const hit = leadCache.get(id)
   if (hit && Date.now() - hit.at < 20_000) return hit.s
-  let s: { state: 'open' | 'on_hold' | 'closed'; label: string; updatedAt: string | null } | null = null
+  let s: LeadStatus | null = null
   try {
-    const d = (await zohoRead(`Leads/${id}?fields=Lead_Status,Modified_Time`))?.data?.[0]
+    const body = await zohoRead(`Leads/${id}?fields=Lead_Status,Modified_Time`)
+    // Zoho answers a deleted Lead with 204 (no record): the referral then leaves Past Requests (19 Oct 2026)
+    if (body === null) s = { state: 'closed', label: '', updatedAt: null, deleted: true }
+    const d = body?.data?.[0]
     if (d) {
       const label = String(d.Lead_Status || '').trim()
       s = label ? { state: /convert|lost|junk|not qualified/i.test(label) ? 'closed' : 'open', label, updatedAt: d.Modified_Time || null } : null
