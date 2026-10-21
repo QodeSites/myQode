@@ -25,7 +25,7 @@ export const ZOHO_MODULE_TABS: Record<string, string> = {
 // reload — enough to hit Zoho's refresh rate limit ("too many requests continuously"). One copy per process now.
 // After a rate-limit refusal, refreshes pause for RATE_LIMIT_PAUSE_MS instead of retrying into the limit.
 type ZohoTok = { token: string; expiresAt: number }
-type ZohoTokenStore = { read: ZohoTok | null; readRefresh: Promise<string> | null; write: ZohoTok | null; writeRefresh: Promise<string> | null; pausedUntil: number }
+type ZohoTokenStore = { read: ZohoTok | null; readRefresh: Promise<string> | null; write: ZohoTok | null; writeRefresh: Promise<string> | null; pausedUntil: number; refusals?: number }
 const tokens: ZohoTokenStore = ((globalThis as any).__qodeZohoTokens ??= { read: null, readRefresh: null, write: null, writeRefresh: null, pausedUntil: 0 })
 const RATE_LIMIT_PAUSE_MS = 60_000
 
@@ -100,7 +100,12 @@ async function mintToken(refreshToken: string, what: string): Promise<{ token: s
 
   if (!res.ok) {
     const text = await res.text()
-    if (/too many requests/i.test(text)) tokens.pausedUntil = Date.now() + RATE_LIMIT_PAUSE_MS
+    // Each refusal in a row doubles the pause (1, 2, 4, 8, then 15 minutes): retrying every minute kept Zoho's block
+    // going for hours on 21 Oct 2026, even with a new refresh token (Zoho limits the client, not one token).
+    if (/too many requests/i.test(text)) {
+      tokens.refusals = (tokens.refusals || 0) + 1
+      tokens.pausedUntil = Date.now() + Math.min(RATE_LIMIT_PAUSE_MS * 2 ** (tokens.refusals - 1), 15 * 60_000)
+    }
     throw new Error(`${what}: ${res.status} ${text}`)
   }
 
@@ -108,6 +113,7 @@ async function mintToken(refreshToken: string, what: string): Promise<{ token: s
   if (!data.access_token) {
     throw new Error(`${what}: ${JSON.stringify(data).slice(0, 300)}`)
   }
+  tokens.refusals = 0
   const t = { token: data.access_token, expiresAt: Date.now() + (data.expires_in ?? 3600) * 1000 }
   await keepToken(refreshToken, t)
   return t

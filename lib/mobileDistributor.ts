@@ -81,6 +81,32 @@ export async function distributorJourney(distributor: DistributorIdentity) {
     zohoAvailable = false
   }
 
+  // Zoho failed and there is no saved copy for this partner (21 Oct 2026, Futurewise during a Zoho rate limit): list
+  // their investors from our own accounts rather than show "We couldn't load your investor data". One row per investor
+  // email; no CRM stage (shown as not known); invested and current value come from the portfolio figures below, as usual.
+  if (!zohoAvailable) {
+    try {
+      const r = await query(
+        `SELECT lower(btrim(email)) AS em, MIN(clientname) AS legal,
+                MIN(NULLIF(trim(concat_ws(' ', salutation, firstname, middlename, lastname)), '')) AS person
+           FROM pms_clients_master
+          WHERE intermediaryname = $1 AND clientcode IS NOT NULL AND btrim(coalesce(email, '')) <> ''
+          GROUP BY 1 ORDER BY 2`, [distributor.clientname])
+      if (r.rows.length) {
+        const clients = r.rows.map((x: any) => ({
+          name: x.person || x.legal || null, legalName: x.legal || null, email: x.em, stage: null, stageEntryDate: null,
+          activationDate: null, accountLiveDate: null, firstTopUpDate: null, investedAmount: null, currentValue: null,
+          strategies: [], relationshipManager: null, mobile: null, city: null, occupation: null, lastConversation: null,
+          nextContactDate: null, annualReviewStatus: null, hadWalkthrough: false,
+        }))
+        journey = { zohoId: '', zohoName: null, clients, stageCounts: {} }
+        zohoAvailable = true
+        crmLinked = true
+        console.warn(`[mobile/distributor/journey] ${distributor.email}: Zoho unavailable, listed ${clients.length} investors from portal accounts`)
+      }
+    } catch (err) { console.error('[mobile/distributor/journey] portal fallback failed:', err) }
+  }
+
   let onboardingStages = new Map<string, string>()
   try { onboardingStages = await getOnboardingStages() } catch (err) {
     console.error('[mobile/distributor/journey] onboarding stage lookup failed:', err)
