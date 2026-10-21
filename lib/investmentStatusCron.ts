@@ -76,8 +76,12 @@ async function checkSettlements(): Promise<number> {
   }
 
   // Cashfree (web orders) — one settlements query per order, as before.
+  // Missing Cashfree credentials (the account is being closed) must not stop the Razorpay rows below.
+  let cashfree: ReturnType<typeof initCashfree> | null = null
   if (cashfreeRows.length > 0) {
-    const cashfree = initCashfree()
+    try { cashfree = initCashfree() } catch (e: any) { console.warn('[cron] Cashfree settlements skipped:', e?.message || e) }
+  }
+  if (cashfree) {
     for (const tx of cashfreeRows) {
       try {
         const resp: any = await cashfree.PGFetchSettlements('2023-08-01', undefined, undefined, {
