@@ -12,11 +12,12 @@ export async function GET(request: NextRequest) {
   catch (err) { console.error('[mobile/distributor/invoice-issue GET]', err); return NextResponse.json({ error: 'Could not load your invoice history' }, { status: 502 }) }
 }
 
+// An admin viewing the partner gets a test run: nothing recorded, the PDF and mails go to the admin (see the web route).
 export async function POST(request: NextRequest) {
-  const { distributor, error } = await requireMobileDistributor(request)
+  const { distributor, error, adminBy } = await requireMobileDistributor(request)
   if (error) return error
   let body: any
   try { body = await request.json() } catch { return NextResponse.json({ error: 'Invalid request' }, { status: 400 }) }
-  try { return relay(await callWebDistributorRoute(distributor!.email, 'invoice-issue', { method: 'POST', body })) }
+  try { return relay(await callWebDistributorRoute(distributor!.email, 'invoice-issue', { method: 'POST', body, testBy: adminBy })) }
   catch (err) { console.error('[mobile/distributor/invoice-issue POST]', err); return NextResponse.json({ error: 'Could not record the invoice' }, { status: 502 }) }
 }

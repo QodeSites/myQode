@@ -13,9 +13,11 @@ import { signWebSession, WEB_SESSION_COOKIE } from '@/lib/webSession'
 
 const base = () => (internalBase()).replace(/\/$/, '')
 
-export async function callWebDistributorRoute(email: string, path: string, init: { method?: string; body?: unknown } = {}) {
+// `testBy`: an admin viewing the partner (requireMobileDistributor's adminBy). It travels inside the signed session,
+// so a web route can trust it: /api/distributor/invoice-issue then runs as a test and records nothing.
+export async function callWebDistributorRoute(email: string, path: string, init: { method?: string; body?: unknown; testBy?: string | null } = {}) {
   const cookie = 'qode-auth=1; qode-user-context=' + encodeURIComponent(JSON.stringify({ email })) +
-    `; ${WEB_SESSION_COOKIE}=${signWebSession([], { email })}`   // the web routes trust only the signed session
+    `; ${WEB_SESSION_COOKIE}=${signWebSession([], { email, ...(init.testBy ? { testBy: init.testBy } : {}) })}`   // the web routes trust only the signed session
   const res = await fetch(`${base()}/api/distributor/${path}`, {
     method: init.method || 'GET',
     headers: { Cookie: cookie, 'Content-Type': 'application/json' },

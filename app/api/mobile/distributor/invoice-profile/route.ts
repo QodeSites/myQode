@@ -11,10 +11,13 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PUT(request: NextRequest) {
-  const { distributor, error } = await requireMobileDistributor(request)
+  const { distributor, error, adminBy } = await requireMobileDistributor(request)
   if (error) return error
   let body: any
   try { body = await request.json() } catch { return NextResponse.json({ error: 'Invalid request' }, { status: 400 }) }
+  // An admin viewing the partner (a test run of Generate Invoice): answered as saved, but the partner's details are
+  // not changed. The test invoice is built from the details the partner saved.
+  if (adminBy) return NextResponse.json({ ok: true, test: true }, { headers: { 'Cache-Control': 'private, no-store' } })
   try { return relay(await callWebDistributorRoute(distributor!.email, 'invoice-profile', { method: 'PUT', body })) }
   catch (err) { console.error('[mobile/distributor/invoice-profile PUT]', err); return NextResponse.json({ error: 'Could not save your invoice details' }, { status: 502 }) }
 }

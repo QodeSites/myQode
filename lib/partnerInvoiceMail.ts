@@ -50,7 +50,10 @@ function internalRecipients(): { to: string[]; prefix: string } | null {
   return null
 }
 
-export async function sendPartnerInvoiceMails(inv: IssuedInvoice, profile: Profile, partnerName: string | null): Promise<void> {
+// `test`: an admin's test run (app/api/distributor/invoice-issue): both mails go only to `test.to`, subjects marked
+// TEST, with the run's notes (refusals the partner would get, step timings) at the top of the invoice mail.
+export async function sendPartnerInvoiceMails(inv: IssuedInvoice, profile: Profile, partnerName: string | null,
+  test?: { to: string; notes?: string[] } | null): Promise<void> {
   const who = profile?.legal_name || partnerName || inv.partnerEmail
   const rows: Array<[string, unknown]> = [
     ['Partner', who], ['Partner email', inv.partnerEmail], ['GSTIN', profile?.gstin], ['PAN', profile?.pan],
@@ -62,13 +65,16 @@ export async function sendPartnerInvoiceMails(inv: IssuedInvoice, profile: Profi
 
   // 1. partnerships@ and accounts@
   try {
-    const plan = internalRecipients()
+    const plan = test ? { to: [test.to], prefix: `[TEST · for ${PARTNERSHIPS_EMAIL}, ${ACCOUNTS_EMAIL}] ` } : internalRecipients()
     if (!plan) console.log(`[partner-invoice] not sent (dev server): invoice ${inv.invoiceNumber} from ${inv.partnerEmail}`)
     else if (!isGraphEmailConfigured()) console.log(`[partner-invoice] mail not configured — would send invoice ${inv.invoiceNumber}`)
     else {
       const table = rows.filter(([, v]) => v != null && String(v).trim() !== '')
         .map(([k, v]) => `<tr><td style="padding:4px 12px 4px 0;color:#555">${esc(k)}</td><td style="padding:4px 0"><b>${esc(v)}</b></td></tr>`).join('')
-      const html = `<div style="font-family:Arial,sans-serif;max-width:720px">
+      const testNote = test ? `<p style="padding:10px 12px;background:#fdf6d8;border:1px solid #dabd38;border-radius:6px;font-size:13px">
+        <b>Test run</b> by ${esc(test.to)} while viewing this partner. Nothing was recorded and the partner was not emailed.
+        ${(test.notes || []).map((n) => `<br/>${esc(n)}`).join('')}</p>` : ''
+      const html = `<div style="font-family:Arial,sans-serif;max-width:720px">${testNote}
         <p>A partner has raised an invoice in the myQode partner portal.</p>
         <table style="border-collapse:collapse;font-size:14px">${table}</table>
         <p style="color:#555;font-size:13px">Check the total against the partner's fee statement for ${esc(inv.periodLabel)} before paying. Reply to this email to reach the partner.</p>
@@ -88,8 +94,8 @@ export async function sendPartnerInvoiceMails(inv: IssuedInvoice, profile: Profi
 
   // 2. the partner
   await sendClientAck({
-    to: inv.partnerEmail, name: who, from: 'partnerships',
-    subject: `We’ve received your invoice ${inv.invoiceNumber}`, title: 'Invoice received',
+    to: test ? test.to : inv.partnerEmail, name: who, from: 'partnerships',
+    subject: `${test ? `[TEST · for ${inv.partnerEmail}] ` : ''}We’ve received your invoice ${inv.invoiceNumber}`, title: 'Invoice received',
     intro: `We’ve received invoice ${inv.invoiceNumber} for ${inv.periodLabel}, raised from the myQode partner portal.`,
     details: [['Invoice no.', inv.invoiceNumber], ['Invoice date', inv.invoiceDate], ['Period', inv.periodLabel],
       ['Amount before tax', inr(inv.amountBeforeTax)], ['GST', inr(inv.taxAmount)], ['Total', inr(inv.totalAmount)]],

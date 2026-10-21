@@ -32,6 +32,16 @@ async function callerEmail(): Promise<string | null> {
   }
 }
 
+/** The admin running a test as this partner (lib/mobileDistributorProxy testBy, inside the signed session), or null. */
+async function callerTestBy(): Promise<string | null> {
+  try {
+    const t = JSON.parse((await signedUserContext())?.value || '{}')?.testBy
+    return typeof t === 'string' && t.includes('@') ? t.trim().toLowerCase() : null
+  } catch {
+    return null
+  }
+}
+
 /** Past invoices, most recent first — shown on the invoice page. */
 // GET ?doc=<invoice number> → { url }: a 10-minute link to the invoice the partner raised (the document saved when it
 // was issued), so an issued invoice can be opened again from "Invoices you have issued" (17 Oct 2026).
@@ -137,13 +147,43 @@ export async function POST(req: Request) {
     }, { status: 400 })
   }
 
+  const testBy = await callerTestBy()
+  const findClash = async () => (await query(
+    `SELECT invoice_number, period_label, period_start, period_end FROM distributor_invoice_issued
+      WHERE distributor_email = $1 AND period_start IS NOT NULL AND period_end IS NOT NULL
+        AND period_start <= $3::date AND period_end >= $2::date
+      ORDER BY period_start LIMIT 1`, [email, periodStart, periodEnd])).rows[0]
+  const finishArgs = { email, body, invoiceNumber, invoiceDate, periodLabel, num }
+
+  // A test run: an admin viewing the partner ("Open as user", lib/mobileDistributor ADMIN_TEST_WRITES, 21 Oct 2026),
+  // to see what the partner sees before replying to them. The same checks, PDF and mails, but nothing is recorded,
+  // the number series doesn't move, and the mails go to the admin only. A refusal the partner would get (period
+  // already invoiced, number already used) is reported in the result and the mail rather than enforced, so a period
+  // the partner has already invoiced can still be tried.
+  if (testBy) {
+    try {
+      await ensureInvoiceStatus()
+      const notes: string[] = []
+      const clash = await findClash()
+      if (clash) notes.push(`For the partner this would be refused: the period overlaps invoice ${clash.invoice_number} (${clash.period_label}), already raised.`)
+      const dup = (await query(`SELECT 1 FROM distributor_invoice_issued WHERE distributor_email = $1 AND invoice_number = $2 LIMIT 1`, [email, invoiceNumber])).rows[0]
+      if (dup) notes.push(`For the partner this would be refused: invoice number ${invoiceNumber} is already used.`)
+      after(() => finishInvoice({ ...finishArgs, id: null, test: { to: testBy, notes } }))
+      console.log(`[distributor/invoice-issue] test run by ${testBy} as ${email}: invoice ${invoiceNumber}, ${periodLabel}`)
+      return NextResponse.json({
+        ok: true, test: true, notes,
+        message: `Test run: nothing was recorded for this partner. The invoice and the partner's receipt are emailed to ${testBy} only.`
+          + (notes.length ? ' ' + notes.join(' ') : ''),
+      }, { status: 200 })
+    } catch (err) {
+      console.error('[distributor/invoice-issue] test run failed:', err)
+      return NextResponse.json({ error: 'The test invoice could not be run' }, { status: 500 })
+    }
+  }
+
   try {
     await ensureInvoiceStatus()
-    const clash = (await query(
-      `SELECT invoice_number, period_label, period_start, period_end FROM distributor_invoice_issued
-        WHERE distributor_email = $1 AND period_start IS NOT NULL AND period_end IS NOT NULL
-          AND period_start <= $3::date AND period_end >= $2::date
-        ORDER BY period_start LIMIT 1`, [email, periodStart, periodEnd])).rows[0]
+    const clash = await findClash()
     if (clash) {
       return NextResponse.json({
         error: `This period overlaps invoice ${clash.invoice_number} (${clash.period_label}), which you have already raised. Each period can be invoiced once; choose a period that has not been invoiced.`,
@@ -186,44 +226,7 @@ export async function POST(req: Request) {
     // the request timed out at the proxy, and Enso was told "Could not record the invoice" for an invoice that was
     // recorded and mailed. The invoice is recorded once the INSERT above succeeds; everything below is best effort.
     const id = Number(ins.rows[0]?.id)
-    after(async () => {
-      // The invoice as a PDF (lib/partnerInvoicePdf), built here from the saved invoice details and the recorded amounts:
-      // it is what Accounts receives and what is kept with the record (19 Oct 2026: both were the portal's HTML file).
-      // If the PDF can't be built, the HTML the portal sent is used as before. Best effort: the invoice is recorded.
-      let prof: any = null, nm: string | null = null, pdf: Buffer | null = null
-      try {
-        prof = (await query(`SELECT * FROM distributor_invoice_profile WHERE distributor_email = $1`, [email])).rows[0] || null
-        nm = (await query(`SELECT clientname FROM pms_clients_master WHERE lower(btrim(email)) = $1 AND clientcode IS NULL LIMIT 1`, [email])).rows[0]?.clientname || null
-        pdf = await buildInvoicePdf({
-          invoiceNumber, invoiceDate, periodLabel,
-          periodStart: String(body.periodStart ?? '').trim() || null, periodEnd: String(body.periodEnd ?? '').trim() || null,
-          amountBeforeTax: num(body.amountBeforeTax), taxAmount: num(body.taxAmount), totalAmount: num(body.totalAmount),
-          ratePct: typeof body.ratePct === 'string' ? body.ratePct : null, clientCount: num(body.clientCount), discount: num(body.discount),
-          partnerName: nm, partnerEmail: email,
-        }, prof)
-      } catch (e) { console.warn('[distributor/invoice-issue] PDF not built:', (e as any)?.message) }
-      const html = typeof body.invoiceHtml === 'string' && body.invoiceHtml.length < 1_500_000 ? body.invoiceHtml : null
-
-      // Keep the invoice document with the record, for the backoffice (Admin → Distributor invoices). Best effort.
-      if (pdf || html) {
-        try {
-          const key = pdf
-            ? await putInvoiceFile(id, `invoice-${invoiceNumber}.pdf`, pdf, 'application/pdf')
-            : await putInvoiceFile(id, `invoice-${invoiceNumber}.html`, html!, 'text/html; charset=utf-8')
-          await query(`UPDATE distributor_invoice_issued SET invoice_doc_key = $2 WHERE id = $1`, [id, key])
-        } catch (e) { console.warn('[distributor/invoice-issue] document not saved:', (e as any)?.message) }
-      }
-
-      // The invoice goes to partnerships@ and the partner gets a receipt (lib/partnerInvoiceMail). Best effort: the
-      // invoice is recorded either way.
-      try {
-        await sendPartnerInvoiceMails({
-          partnerEmail: email, invoiceNumber, invoiceDate, periodLabel,
-          amountBeforeTax: num(body.amountBeforeTax), taxAmount: num(body.taxAmount), totalAmount: num(body.totalAmount),
-          html, pdf,
-        }, prof, nm)
-      } catch (e) { console.warn('[distributor/invoice-issue] mail failed:', (e as any)?.message) }
-    })
+    after(() => finishInvoice({ ...finishArgs, id, test: null }))
 
     return NextResponse.json({ ok: true }, { status: 200 })
   } catch (err: any) {
@@ -238,4 +241,58 @@ export async function POST(req: Request) {
     console.error('[distributor/invoice-issue] write failed:', err)
     return NextResponse.json({ error: 'Could not record the invoice' }, { status: 500 })
   }
+}
+
+// After the reply (21 Oct 2026): the invoice as a PDF (lib/partnerInvoicePdf), built from the saved invoice details and
+// the recorded amounts — what Accounts receives and what is kept with the record (19 Oct 2026: both were the portal's
+// HTML file; if the PDF can't be built, that HTML is used as before) — then the saved copy, then the mails. Each step
+// is best effort and timed in the log, so a slow one shows up (Enso's took over a minute on 21 Oct).
+// `id` null and `test` set: an admin's test run — no copy is saved and the mails go to the admin only.
+async function finishInvoice(a: {
+  email: string; body: Record<string, any>; invoiceNumber: string; invoiceDate: string; periodLabel: string
+  num: (v: unknown) => number; id: number | null; test: { to: string; notes: string[] } | null
+}) {
+  const { email, body, invoiceNumber, invoiceDate, periodLabel, num, id, test } = a
+  const t0 = Date.now(), ms: Record<string, number> = {}
+  const step = async (name: string, fn: () => Promise<void>) => { const t = Date.now(); try { await fn() } finally { ms[name] = Date.now() - t } }
+  let prof: any = null, nm: string | null = null, pdf: Buffer | null = null
+  await step('pdf', async () => {
+    try {
+      prof = (await query(`SELECT * FROM distributor_invoice_profile WHERE distributor_email = $1`, [email])).rows[0] || null
+      nm = (await query(`SELECT clientname FROM pms_clients_master WHERE lower(btrim(email)) = $1 AND clientcode IS NULL LIMIT 1`, [email])).rows[0]?.clientname || null
+      pdf = await buildInvoicePdf({
+        invoiceNumber, invoiceDate, periodLabel,
+        periodStart: String(body.periodStart ?? '').trim() || null, periodEnd: String(body.periodEnd ?? '').trim() || null,
+        amountBeforeTax: num(body.amountBeforeTax), taxAmount: num(body.taxAmount), totalAmount: num(body.totalAmount),
+        ratePct: typeof body.ratePct === 'string' ? body.ratePct : null, clientCount: num(body.clientCount), discount: num(body.discount),
+        partnerName: nm, partnerEmail: email,
+      }, prof)
+    } catch (e) { console.warn('[distributor/invoice-issue] PDF not built:', (e as any)?.message) }
+  })
+  const html = typeof body.invoiceHtml === 'string' && body.invoiceHtml.length < 1_500_000 ? body.invoiceHtml : null
+
+  // Keep the invoice document with the record, for the backoffice (Admin → Distributor invoices). Not on a test run.
+  if (id && (pdf || html)) {
+    await step('save', async () => {
+      try {
+        const key = pdf
+          ? await putInvoiceFile(id, `invoice-${invoiceNumber}.pdf`, pdf, 'application/pdf')
+          : await putInvoiceFile(id, `invoice-${invoiceNumber}.html`, html!, 'text/html; charset=utf-8')
+        await query(`UPDATE distributor_invoice_issued SET invoice_doc_key = $2 WHERE id = $1`, [id, key])
+      } catch (e) { console.warn('[distributor/invoice-issue] document not saved:', (e as any)?.message) }
+    })
+  }
+
+  // The invoice goes to partnerships@ and accounts@, and the partner gets a receipt (lib/partnerInvoiceMail).
+  await step('mail', async () => {
+    try {
+      const notes = test ? [...test.notes, `Before the mails: PDF ${ms.pdf} ms.`] : []
+      await sendPartnerInvoiceMails({
+        partnerEmail: email, invoiceNumber, invoiceDate, periodLabel,
+        amountBeforeTax: num(body.amountBeforeTax), taxAmount: num(body.taxAmount), totalAmount: num(body.totalAmount),
+        html, pdf,
+      }, prof, nm, test ? { to: test.to, notes } : null)
+    } catch (e) { console.warn('[distributor/invoice-issue] mail failed:', (e as any)?.message) }
+  })
+  console.log(`[distributor/invoice-issue] ${test ? 'test run' : 'invoice'} ${invoiceNumber} for ${email} finished in ${Date.now() - t0} ms`, ms)
 }

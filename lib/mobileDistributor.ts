@@ -25,11 +25,17 @@ import { isAdminEmail } from '@/lib/adminAuth'
 // POSTs that only read: view-account issues a read-only token for one of their investors, fees runs the
 // calculator for a period, file-link signs a download link. They stay available when admin is viewing.
 const READ_ONLY_POSTS = ['/view-account', '/fees', '/file-link']
+// Changes an admin viewing a partner may make as a TEST RUN (21 Oct 2026, to reproduce what a partner sees before
+// replying to them): the routes see `adminBy` and record nothing in the partner's name. Generate Invoice runs the
+// whole flow and mails the PDF to the admin only; saving the invoice details is answered without saving.
+const ADMIN_TEST_WRITES = ['/invoice-issue', '/invoice-profile']
 
 export async function requireMobileDistributor(request: NextRequest): Promise<{
   user: MobileAuthUser | null
   distributor: DistributorIdentity | null
   error: NextResponse | null
+  /** The admin's email when a backoffice admin is viewing this partner ("Open as user"); otherwise null. */
+  adminBy?: string | null
 }> {
   const { user, error } = await verifyMobileAuth(request)
   if (error) return { user: null, distributor: null, error }
@@ -39,14 +45,15 @@ export async function requireMobileDistributor(request: NextRequest): Promise<{
   if (user!.isReviewer || (user!.isImpersonated && !adminView)) {
     return { user, distributor: null, error: NextResponse.json({ error: 'Not a partner' }, { status: 403 }) }
   }
-  if (adminView && request.method !== 'GET' && request.method !== 'HEAD' && !READ_ONLY_POSTS.some(p => request.nextUrl.pathname.endsWith(p))) {
+  if (adminView && request.method !== 'GET' && request.method !== 'HEAD' && !READ_ONLY_POSTS.some(p => request.nextUrl.pathname.endsWith(p))
+      && !ADMIN_TEST_WRITES.some(p => request.nextUrl.pathname.endsWith(p))) {
     return { user, distributor: null, error: NextResponse.json({ error: 'You are viewing this partner from admin. Changes are not available.', code: 'VIEW_ONLY' }, { status: 403 }) }
   }
   const distributor = await resolveDistributorByEmail(user!.email)
   if (!distributor) {
     return { user, distributor: null, error: NextResponse.json({ error: 'Not a partner', code: 'NOT_DISTRIBUTOR' }, { status: 403 }) }
   }
-  return { user, distributor, error: null }
+  return { user, distributor, error: null, adminBy: adminView ? String(user!.impersonatedBy).trim().toLowerCase() : null }
 }
 
 const ONBOARDING_BASE = 'https://onboarding.qodeinvest.com'
