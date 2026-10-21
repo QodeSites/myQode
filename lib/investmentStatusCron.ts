@@ -18,7 +18,7 @@
 import pool from '@/lib/db'
 import { Cashfree, CFEnvironment } from 'cashfree-pg'
 import { notifyClientById } from '@/lib/notifications'
-import { fetchRazorpaySettlementRecon, shouldNotifyClient } from '@/lib/razorpay'
+import { fetchRazorpaySettlementRecon, fetchRazorpayOrderPayments, shouldNotifyClient } from '@/lib/razorpay'
 
 const SETTLEMENT_TOLERANCE = 0.05  // ±5% — covers gateway charges deducted pre-settlement
 
@@ -232,6 +232,40 @@ async function expireStale(): Promise<number> {
   return (rowCount ?? 0) + (sip.rowCount ?? 0)
 }
 
+// ── Step 4: Razorpay checkouts that were abandoned or failed ─────────────────
+// An order the client closed without paying (or whose attempts all failed) used to read "Payment Pending" for two
+// days until expireStale caught it. After 30 minutes ask Razorpay: any payment still in flight or through → leave it
+// (verify / the webhook own success); every attempt failed → PAYMENT_FAILED; no attempt at all → EXPIRED ("Cancelled").
+async function closeAbandonedRazorpay(): Promise<number> {
+  const { rows } = await pool.query(
+    `SELECT order_id, razorpay_order_id FROM payment_transactions
+     WHERE investment_status = 'PENDING_PAYMENT' AND payment_type != 'SIP' AND gateway = 'razorpay'
+       AND razorpay_order_id IS NOT NULL
+       AND created_at < NOW() - INTERVAL '30 minutes' AND created_at >= NOW() - INTERVAL '2 days'
+     ORDER BY created_at LIMIT 20`
+  )
+  let closed = 0
+  for (const tx of rows) {
+    try {
+      const list: any = await fetchRazorpayOrderPayments(tx.razorpay_order_id)
+      const items: any[] = list?.items || []
+      if (items.some((p) => p.status !== 'failed')) continue   // created / authorized / captured / refunded: not ours to close
+      const failed = items.length > 0
+      const last = failed ? items.reduce((a, b) => ((b.created_at || 0) > (a.created_at || 0) ? b : a)) : null
+      const r = await pool.query(
+        `UPDATE payment_transactions SET investment_status = $1, payment_status = $2,
+           payment_message = COALESCE($3, payment_message), updated_at = NOW()
+         WHERE order_id = $4 AND investment_status = 'PENDING_PAYMENT'`,
+        [failed ? 'PAYMENT_FAILED' : 'EXPIRED', failed ? 'FAILED' : 'CANCELLED', last?.error_description || null, tx.order_id]
+      )
+      if (r.rowCount) { closed++; console.log(`[cron] ${failed ? 'FAILED' : 'CANCELLED'}: ${tx.order_id} (${items.length} attempt(s))`) }
+    } catch (err: any) {
+      console.warn(`[cron] Pending check failed for ${tx.order_id}:`, err?.message || err)
+    }
+  }
+  return closed
+}
+
 // ── Main entry ────────────────────────────────────────────────────────────────
 export async function runInvestmentStatusCron(): Promise<{
   settled: number
@@ -261,7 +295,13 @@ export async function runInvestmentStatusCron(): Promise<{
   }
 
   try {
-    expired = await expireStale()
+    expired += await closeAbandonedRazorpay()
+  } catch (e) {
+    console.error('[cron] abandoned-checkout error:', e)
+  }
+
+  try {
+    expired += await expireStale()
   } catch (e) {
     console.error('[cron] expire error:', e)
   }

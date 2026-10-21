@@ -113,9 +113,9 @@ const STATUS_META: Record<string, {
     color:      '#EF4444',
     isTerminal: true,
   },
-  EXPIRED: {
-    label:      'Order Expired',
-    message:    'This payment order expired before completion. Please create a new investment.',
+  EXPIRED: {   // checkout closed without paying, or never completed (lib/investmentStatusCron)
+    label:      'Cancelled',
+    message:    'This payment was not completed and no money was taken. Use Add Funds to try again.',
     color:      '#6B7280',
     isTerminal: true,
   },
