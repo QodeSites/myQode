@@ -20,7 +20,7 @@
 // Lead_Stage is effectively binary in production (105 of 112 distributor leads
 // read "Onboarding Investor", 7 read "Lost Lead"). Investor_Stage carries the
 // real funnel. Leads convert to Investors already, so nothing is lost.
-import { zohoApiDomain, zohoFetch, withLastGood } from "@/lib/zoho";
+import { zohoApiDomain, zohoFetch, withLastGood, rememberLastGood } from "@/lib/zoho";
 
 /**
  * The seven values present in production, funnel order first, inactive last.
@@ -314,6 +314,31 @@ export async function getAllDistributorJourneys(): Promise<Map<string, Distribut
 
   journeyCache = { data: out, expiresAt: Date.now() + CACHE_TTL_MS };
   return out;
+}
+
+/**
+ * Keeps a last good copy of every partner's journey (21 Oct 2026), so a partner whose own read fails — Zoho down,
+ * rate-limited or a bad token — sees their saved list instead of "We couldn't load your investor data". Until now a
+ * copy existed only after that partner's own successful visit (Futurewise had none). One bulk read for all partners,
+ * stored under the same key getJourneyForDistributor uses, for each of the record's Email / Secondary_Email. An address
+ * on two Distributor records is skipped: the per-partner read would pick one of them, and the copy must match it.
+ * Run every 30 minutes by the notification worker (lib/appNotifyWorker.ts).
+ */
+export async function warmPartnerJourneys(): Promise<{ partners: number; skipped: number }> {
+  journeyCache = null;   // a fresh read, not the admin view's 5-minute copy
+  const all = await getAllDistributorJourneys();
+  const uses = new Map<string, number>();
+  for (const j of all.values()) for (const e of j.emails ?? []) uses.set(e, (uses.get(e) ?? 0) + 1);
+  let partners = 0, skipped = 0;
+  for (const j of all.values()) {
+    const { emails, ...journey } = j;
+    for (const e of new Set(emails ?? [])) {
+      if (uses.get(e) !== 1) { skipped++; continue; }
+      await rememberLastGood("journey." + e, journey);
+      partners++;
+    }
+  }
+  return { partners, skipped };
 }
 
 /**

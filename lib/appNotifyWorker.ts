@@ -9,7 +9,7 @@ import { scanMoney, scanPortfolio, scanReading, scanTickets } from '@/lib/appNot
 
 const ME = randomUUID()
 const TICK_MS = 15_000
-const EVERY = { receipts: 5 * 60_000, money: 5 * 60_000, reading: 30 * 60_000, portfolio: 30 * 60_000, zoho: 5 * 60_000, tickets: 5 * 60_000 }   // tickets: one Desk read per open ticket per scan
+const EVERY = { receipts: 5 * 60_000, money: 5 * 60_000, reading: 30 * 60_000, portfolio: 30 * 60_000, zoho: 5 * 60_000, tickets: 5 * 60_000, partners: 30 * 60_000 }   // tickets: one Desk read per open ticket per scan
 const lastRun: Record<string, number> = {}
 
 async function leader(): Promise<boolean> {
@@ -44,6 +44,8 @@ export async function tick(force = false) {
     portfolio: portfolioHours || force ? await job('portfolio', scanPortfolio, force) : null,
     deliver: await job('deliver', deliverDue, force),
     receipts: await job('receipts', checkReceipts, force),
+    // a saved copy of every partner's investor list, for when Zoho fails (lib/zohoDistributorJourney)
+    partners: await job('partners', async () => (await import('@/lib/zohoDistributorJourney')).warmPartnerJourneys(), force),
   }
 }
 

@@ -402,15 +402,20 @@ export async function getZohoSourceTotals(): Promise<
 // restarts); a failure serves that copy and is only logged. With no copy yet, the failure is thrown as before.
 // Maps are stored as their entries. Keys are scoped by the caller (e.g. a partner's own email), never shared across them.
 const lastGoodMem: Map<string, unknown> = ((globalThis as any).__qodeZohoLastGood ??= new Map())
+/** Keep `v` as the last good answer for `key` (withLastGood does this on every success; the worker warms partners). */
+export async function rememberLastGood(key: string, v: unknown): Promise<void> {
+  const k = 'zoho.lastgood.' + key
+  lastGoodMem.set(k, v)
+  const json = JSON.stringify(v instanceof Map ? { map: [...v.entries()] } : { value: v })
+  const { query } = await import('@/lib/db')
+  await query(`INSERT INTO app_notification_state (key, value, updated_at) VALUES ($1, $2, NOW())
+               ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`, [k, json])
+}
 export async function withLastGood<T>(key: string, read: () => Promise<T>): Promise<T> {
   const k = 'zoho.lastgood.' + key
   try {
     const v = await read()
-    lastGoodMem.set(k, v)
-    const json = JSON.stringify(v instanceof Map ? { map: [...v.entries()] } : { value: v })
-    import('@/lib/db').then(({ query }) => query(
-      `INSERT INTO app_notification_state (key, value, updated_at) VALUES ($1, $2, NOW())
-       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`, [k, json])).catch(() => {})
+    rememberLastGood(key, v).catch(() => {})
     return v
   } catch (err) {
     if (lastGoodMem.has(k)) { console.warn(`[zoho] ${key}: serving last good copy —`, (err as any)?.message); return lastGoodMem.get(k) as T }
