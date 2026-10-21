@@ -26,6 +26,9 @@ export async function GET(request: NextRequest) {
          payment_status, created_at, frequency, start_date
        FROM payment_transactions
        WHERE nuvama_code = $1
+         -- unpaid checkouts (opened and closed, no attempt) are hidden, as in payments/investment-status
+         AND NOT (investment_status = 'EXPIRED' AND payment_type != 'SIP' AND razorpay_payment_id IS NULL
+                  AND cf_payment_id IS NULL AND payment_message IS NULL)
        ORDER BY created_at DESC`,
       [accountId]
     )

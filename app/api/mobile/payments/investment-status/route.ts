@@ -277,6 +277,9 @@ export async function GET(request: NextRequest) {
        FROM payment_transactions pt
        LEFT JOIN sip_charges sc ON sc.subscription_id = pt.order_id
        WHERE pt.nuvama_code = $1
+         -- checkout opened and closed with no payment attempt: nothing happened, so the investor never sees it
+         AND NOT (pt.investment_status = 'EXPIRED' AND pt.payment_type != 'SIP' AND pt.razorpay_payment_id IS NULL
+                  AND pt.cf_payment_id IS NULL AND pt.payment_message IS NULL)
        GROUP BY pt.order_id, pt.payment_type, pt.amount, pt.currency,
                 pt.payment_status, pt.investment_status,
                 pt.cf_payment_id, pt.payment_time, pt.bank_reference,
