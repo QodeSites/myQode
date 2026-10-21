@@ -9,7 +9,7 @@
 // compliance defect, and the database refusing it is a stronger guarantee than
 // the UI trying not to offer it.
 import { signedUserContext } from '@/lib/webSession';
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { cookies } from 'next/headers'
 import { query } from '@/lib/db'
 import { sendPartnerInvoiceMails } from '@/lib/partnerInvoiceMail'
@@ -182,43 +182,48 @@ export async function POST(req: Request) {
       )
     }
 
-    // The invoice as a PDF (lib/partnerInvoicePdf), built here from the saved invoice details and the recorded amounts:
-    // it is what Accounts receives and what is kept with the record (19 Oct 2026: both were the portal's HTML file).
-    // If the PDF can't be built, the HTML the portal sent is used as before. Best effort: the invoice is recorded.
+    // The PDF, the saved copy and the mails run after the reply (21 Oct 2026): done inline they took over a minute,
+    // the request timed out at the proxy, and Enso was told "Could not record the invoice" for an invoice that was
+    // recorded and mailed. The invoice is recorded once the INSERT above succeeds; everything below is best effort.
     const id = Number(ins.rows[0]?.id)
-    let prof: any = null, nm: string | null = null, pdf: Buffer | null = null
-    try {
-      prof = (await query(`SELECT * FROM distributor_invoice_profile WHERE distributor_email = $1`, [email])).rows[0] || null
-      nm = (await query(`SELECT clientname FROM pms_clients_master WHERE lower(btrim(email)) = $1 AND clientcode IS NULL LIMIT 1`, [email])).rows[0]?.clientname || null
-      pdf = await buildInvoicePdf({
-        invoiceNumber, invoiceDate, periodLabel,
-        periodStart: String(body.periodStart ?? '').trim() || null, periodEnd: String(body.periodEnd ?? '').trim() || null,
-        amountBeforeTax: num(body.amountBeforeTax), taxAmount: num(body.taxAmount), totalAmount: num(body.totalAmount),
-        ratePct: typeof body.ratePct === 'string' ? body.ratePct : null, clientCount: num(body.clientCount), discount: num(body.discount),
-        partnerName: nm, partnerEmail: email,
-      }, prof)
-    } catch (e) { console.warn('[distributor/invoice-issue] PDF not built:', (e as any)?.message) }
-    const html = typeof body.invoiceHtml === 'string' && body.invoiceHtml.length < 1_500_000 ? body.invoiceHtml : null
-
-    // Keep the invoice document with the record, for the backoffice (Admin → Distributor invoices). Best effort.
-    if (pdf || html) {
+    after(async () => {
+      // The invoice as a PDF (lib/partnerInvoicePdf), built here from the saved invoice details and the recorded amounts:
+      // it is what Accounts receives and what is kept with the record (19 Oct 2026: both were the portal's HTML file).
+      // If the PDF can't be built, the HTML the portal sent is used as before. Best effort: the invoice is recorded.
+      let prof: any = null, nm: string | null = null, pdf: Buffer | null = null
       try {
-        const key = pdf
-          ? await putInvoiceFile(id, `invoice-${invoiceNumber}.pdf`, pdf, 'application/pdf')
-          : await putInvoiceFile(id, `invoice-${invoiceNumber}.html`, html!, 'text/html; charset=utf-8')
-        await query(`UPDATE distributor_invoice_issued SET invoice_doc_key = $2 WHERE id = $1`, [id, key])
-      } catch (e) { console.warn('[distributor/invoice-issue] document not saved:', (e as any)?.message) }
-    }
+        prof = (await query(`SELECT * FROM distributor_invoice_profile WHERE distributor_email = $1`, [email])).rows[0] || null
+        nm = (await query(`SELECT clientname FROM pms_clients_master WHERE lower(btrim(email)) = $1 AND clientcode IS NULL LIMIT 1`, [email])).rows[0]?.clientname || null
+        pdf = await buildInvoicePdf({
+          invoiceNumber, invoiceDate, periodLabel,
+          periodStart: String(body.periodStart ?? '').trim() || null, periodEnd: String(body.periodEnd ?? '').trim() || null,
+          amountBeforeTax: num(body.amountBeforeTax), taxAmount: num(body.taxAmount), totalAmount: num(body.totalAmount),
+          ratePct: typeof body.ratePct === 'string' ? body.ratePct : null, clientCount: num(body.clientCount), discount: num(body.discount),
+          partnerName: nm, partnerEmail: email,
+        }, prof)
+      } catch (e) { console.warn('[distributor/invoice-issue] PDF not built:', (e as any)?.message) }
+      const html = typeof body.invoiceHtml === 'string' && body.invoiceHtml.length < 1_500_000 ? body.invoiceHtml : null
 
-    // The invoice goes to partnerships@ and the partner gets a receipt (lib/partnerInvoiceMail). Best effort: the
-    // invoice is recorded either way.
-    try {
-      await sendPartnerInvoiceMails({
-        partnerEmail: email, invoiceNumber, invoiceDate, periodLabel,
-        amountBeforeTax: num(body.amountBeforeTax), taxAmount: num(body.taxAmount), totalAmount: num(body.totalAmount),
-        html, pdf,
-      }, prof, nm)
-    } catch (e) { console.warn('[distributor/invoice-issue] mail failed:', (e as any)?.message) }
+      // Keep the invoice document with the record, for the backoffice (Admin → Distributor invoices). Best effort.
+      if (pdf || html) {
+        try {
+          const key = pdf
+            ? await putInvoiceFile(id, `invoice-${invoiceNumber}.pdf`, pdf, 'application/pdf')
+            : await putInvoiceFile(id, `invoice-${invoiceNumber}.html`, html!, 'text/html; charset=utf-8')
+          await query(`UPDATE distributor_invoice_issued SET invoice_doc_key = $2 WHERE id = $1`, [id, key])
+        } catch (e) { console.warn('[distributor/invoice-issue] document not saved:', (e as any)?.message) }
+      }
+
+      // The invoice goes to partnerships@ and the partner gets a receipt (lib/partnerInvoiceMail). Best effort: the
+      // invoice is recorded either way.
+      try {
+        await sendPartnerInvoiceMails({
+          partnerEmail: email, invoiceNumber, invoiceDate, periodLabel,
+          amountBeforeTax: num(body.amountBeforeTax), taxAmount: num(body.taxAmount), totalAmount: num(body.totalAmount),
+          html, pdf,
+        }, prof, nm)
+      } catch (e) { console.warn('[distributor/invoice-issue] mail failed:', (e as any)?.message) }
+    })
 
     return NextResponse.json({ ok: true }, { status: 200 })
   } catch (err: any) {
