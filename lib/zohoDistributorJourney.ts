@@ -42,9 +42,12 @@ export const STAGE_ORDER = [
 export type InvestorJourneyStage = (typeof STAGE_ORDER)[number];
 
 export type JourneyClient = {
+  /** The account holder: Zoho's Legal_Name when set (a company such as Kaps IT Solutions), else the record's Name. */
   name: string | null;
   /** Legal_Name: the account holder when the CRM contact is someone else (e.g. a spouse's account). */
   legalName: string | null;
+  /** The CRM contact (Zoho Name) when it is a different person from the account holder, else null. */
+  contactName: string | null;
   email: string | null;
   stage: string | null;
   stageEntryDate: string | null;
@@ -135,9 +138,14 @@ function mapClient(r: any): JourneyClient {
   // (10 Oct 2026)
   const rm = String(r["RM_Name.Name"] ?? "").trim();   // a lookup: COQL gives its name only as a dotted field
 
+  // Partners know the account by its holder ("Kaps It Solutions Private Limited"), not the contact person Zoho
+  // files it under ("Jayashree Ship"), so the holder leads and the contact is kept alongside. (22 Oct 2026)
+  const contact = String(r.Name ?? "").trim();
+  const legal = String(r.Legal_Name ?? "").trim();
   return {
-    name: r.Name ?? null,
-    legalName: r.Legal_Name ?? null,
+    name: legal || contact || null,
+    legalName: legal || null,
+    contactName: legal && contact && legal.toLowerCase() !== contact.toLowerCase() ? contact : null,
     email: r.Email ?? null,
     stage: r.Investor_Stage ?? null,
     stageEntryDate: r.Stage_Entry_Date ?? null,
