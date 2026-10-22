@@ -2,6 +2,7 @@
 import { isAdminEmail } from '@/lib/adminAuth'
 import { NextRequest, NextResponse } from 'next/server'
 import { microsoftAuthConfig } from '@/lib/auth-config'
+import { MS_STATE_COOKIE, safeAdminPath, sameNonce } from '@/lib/oauthState'
 import { saveSession } from '@/lib/session-store'
 import { v4 as uuidv4 } from 'uuid';
 export async function GET(request: NextRequest) {
@@ -41,7 +42,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/admin/login?error=invalid_state`)
     }
 
-    const redirectTo = stateData.redirect || '/admin/onboarding'
+    // The sign-in must have been started by this browser (nonce in the state = nonce in its cookie).
+    if (!sameNonce(stateData?.nonce, request.cookies.get(MS_STATE_COOKIE)?.value)) {
+      console.error('❌ State nonce does not match this browser')
+      return NextResponse.redirect(`${process.env.NEXTAUTH_URL}/admin/login?error=invalid_state`)
+    }
+
+    const redirectTo = safeAdminPath(stateData.redirect)
 
     // Exchange code for token
     console.log('🔄 Exchanging code for token...')
@@ -148,6 +155,7 @@ export async function GET(request: NextRequest) {
     const redirectResponse = NextResponse.redirect(redirectUrl);
     const cookieHeader = `admin-session=${encodeURIComponent(sessionId)}; HttpOnly; Path=/; Max-Age=${tokenData.expires_in}; SameSite=Lax${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`;
     redirectResponse.headers.set('Set-Cookie', cookieHeader);
+    redirectResponse.headers.append('Set-Cookie', `${MS_STATE_COOKIE}=; Path=/api/auth/microsoft; Max-Age=0; HttpOnly; SameSite=Lax`);
     console.log('🍪 Cookie set in response:', { sessionId, cookieHeader });
     console.log('📤 Manually Set-Cookie Header:', cookieHeader);
     console.log('📤 Full Response Headers:', Object.fromEntries(redirectResponse.headers.entries()));

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { lockedMinutes, recordWrongPassword, clearWrongPasswords, lockedResponse, unknownIdentifierResponse } from '@/lib/loginLockout'
 import { WEB_SESSION_COOKIE, signWebSession, webSessionCookieOptions } from '@/lib/webSession'
 import { query } from '@/lib/db'
 import { cookies } from 'next/headers'
@@ -69,7 +70,7 @@ export async function POST(request: NextRequest) {
 
     // Check if password is set for this user — prefer head_of_family=true row
     const passwordCheck = await query(
-      `SELECT password FROM pms_clients_master
+      `SELECT password, email FROM pms_clients_master
        WHERE email = $1 OR clientcode = $1
        ORDER BY head_of_family DESC NULLS LAST, clientcode ASC
        LIMIT 1`,
@@ -78,22 +79,28 @@ export async function POST(request: NextRequest) {
 
     if (passwordCheck.rows.length === 0) {
       void logAuthEvent(request, { email: /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(username)) ? username : null, event: 'login_failed', reason: 'unknown_user', platform: 'web' })
-      return NextResponse.json(
-        { error: 'User not found' },
-        { status: 404 }
-      )
+      return unknownIdentifierResponse(username)
     }
 
     const currentPassword = passwordCheck.rows[0].password
+    const accountEmail: string | null = passwordCheck.rows[0].email
     const isDefaultPassword = currentPassword === 'Qode@123' || !currentPassword
 
-    // First-time account: only the default password moves on to first-time setup; anything else is a wrong password.
-    if (isDefaultPassword && password !== 'Qode@123') {
-      void logAuthEvent(request, { email: /@/.test(String(username)) ? username : null, event: 'login_failed', reason: 'wrong_password', platform: 'web', meta: /@/.test(String(username)) ? undefined : { clientcode: username } })
-      return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
+    const locked = await lockedMinutes(accountEmail)
+    if (locked) {
+      void logAuthEvent(request, { email: accountEmail, event: 'login_failed', reason: 'locked', platform: 'web' })
+      return lockedResponse(locked)
+    }
+    const wrongPassword = async () => {
+      void logAuthEvent(request, { email: accountEmail, event: 'login_failed', reason: 'wrong_password', platform: 'web', meta: /@/.test(String(username)) ? undefined : { clientcode: username } })
+      return recordWrongPassword(accountEmail)
     }
 
+    // First-time account: only the default password moves on to first-time setup; anything else is a wrong password.
+    if (isDefaultPassword && password !== 'Qode@123') return wrongPassword()
+
     if (isDefaultPassword) {
+      await clearWrongPasswords(accountEmail)
       void logAuthEvent(request, { email: /@/.test(String(username)) ? username : null, event: 'login_failed', reason: 'no_password_set', platform: 'web', meta: /@/.test(String(username)) ? undefined : { clientcode: username } })
       return NextResponse.json(
         { requirePasswordSetup: true, message: 'Password setup required' },
@@ -124,13 +131,8 @@ export async function POST(request: NextRequest) {
     // Verify password (assuming bcrypt for hashed passwords)
     const isPasswordValid = await bcrypt.compare(password, user.password)
 
-    if (!isPasswordValid) {
-      void logAuthEvent(request, { email: user.email, event: 'login_failed', reason: 'wrong_password', platform: 'web' })
-      return NextResponse.json(
-        { error: 'Invalid credentials' },
-        { status: 401 }
-      )
-    }
+    if (!isPasswordValid) return wrongPassword()
+    await clearWrongPasswords(accountEmail)
 
     await query(
       `UPDATE pms_clients_master

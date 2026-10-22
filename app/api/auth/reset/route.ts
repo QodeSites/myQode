@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
     // Update user password
     const upd = await query(
       `UPDATE pms_clients_master
-          SET password = $1
+          SET password = $1, login_attempts = 0, locked_until = NULL
         WHERE email = $2`,
       [hashedPassword, email]
     )

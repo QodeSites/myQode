@@ -19,10 +19,24 @@ interface AnalyticsEvent {
 
 // Maximum events per batch — prevents abuse
 const MAX_BATCH_SIZE = 100
+// Largest properties object kept per event (JSON characters); bigger ones are replaced by { truncated: true }
+const MAX_PROPERTIES_CHARS = 4000
+const EVENT_TYPES = ['screen', 'event', 'error']
+
+/** The id the app tracks this user under (src/api/track.js): client code, 'd:' + email, or 'a:' + email. */
+function trackedUserId(user: any): string | null {
+  if (user.isAdmin) return 'a:' + user.email
+  if (user.isDistributor) return 'd:' + user.email
+  return user.clientCode ?? null
+}
 
 export async function POST(request: NextRequest) {
-  // Auth is required but errors still return 200 (analytics must never block)
+  // A signed-in session is required (the app only tracks after sign-in); anything else is dropped, still with 200
+  // (analytics must never block). The user comes from the token, never from the events, and an admin viewing a
+  // client is not that client's usage.
   const { user } = await verifyMobileAuth(request)
+  if (!user || user.isImpersonated || user.viewOnly) return NextResponse.json({ ok: true })
+  const uid = trackedUserId(user)
 
   try {
     let body: any
@@ -45,10 +59,13 @@ export async function POST(request: NextRequest) {
     await ensureTableExists()
 
     // Insert all events in a single query using unnested arrays (fast)
-    const types      = events.map((e) => e.type ?? 'event')
+    const types      = events.map((e) => (EVENT_TYPES.includes(e.type) ? e.type : 'event'))
     const names      = events.map((e) => String(e.name ?? '').slice(0, 100))
-    const properties = events.map((e) => JSON.stringify(e.properties ?? {}))
-    const userIds    = events.map((e) => e.userId ?? user?.userId ?? null)
+    const properties = events.map((e) => {
+      const json = JSON.stringify(e.properties && typeof e.properties === 'object' ? e.properties : {})
+      return json.length > MAX_PROPERTIES_CHARS ? JSON.stringify({ truncated: true }) : json
+    })
+    const userIds    = events.map(() => uid)
     const sessionIds = events.map((e) => String(e.sessionId ?? '').slice(0, 64))
     const timestamps = events.map((e) => {
       try { return new Date(e.timestamp).toISOString() } catch { return new Date().toISOString() }

@@ -10,13 +10,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { verifyMobileAuth, requireSuperAdmin } from '@/lib/mobileAuth'
 import type { MobileAuthUser } from '@/lib/mobileAuth'
 import { query } from '@/lib/db'
+import { audit } from '@/lib/adminAuth'
 import jwt from 'jsonwebtoken'
 
 export async function POST(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)
   if (error) return error
 
-  const adminError = requireSuperAdmin(user!)
+  const adminError = await requireSuperAdmin(user!)
   if (adminError) return adminError
 
   let body: any
@@ -100,6 +101,7 @@ export async function POST(request: NextRequest) {
 
     // Impersonation tokens are short-lived (4 hours)
     const token = jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: '4h' })
+    await audit(request, { email: user!.email }, 'impersonate', target.clientcode, { via: 'app', target: target.email })
 
     return NextResponse.json({
       token,

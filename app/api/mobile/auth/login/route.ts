@@ -4,6 +4,7 @@
 // a Bearer token instead of setting HTTP-only cookies, so the mobile app can
 // store it in SecureStore and send it with each request.
 import { NextRequest, NextResponse } from 'next/server'
+import { lockedMinutes, recordWrongPassword, clearWrongPasswords, lockedResponse, unknownIdentifierResponse } from '@/lib/loginLockout'
 import { query } from '@/lib/db'
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
@@ -184,23 +185,28 @@ export async function POST(request: NextRequest) {
     if (userResult.rows.length === 0) {
       // The identifier matched nobody: store it only if it looks like an email (not a typo'd password).
       logApp('login_failed', /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(username) ? username : null, 'unknown_user')
-      return NextResponse.json(
-        { error: 'No account found for this email or ID. Please check and try again.', code: 'USER_NOT_FOUND' },
-        { status: 401 }
-      )
+      return unknownIdentifierResponse(username)
     }
 
     const user = userResult.rows[0]
 
     // Skip all password checks in development — allows passwordless login in Expo Go / simulator.
     if (!isDevelopment) {
+      const locked = await lockedMinutes(user.email)
+      if (locked) {
+        logApp('login_failed', user.email, 'locked')
+        return lockedResponse(locked)
+      }
+      const wrongPassword = async () => {
+        logApp('login_failed', user.email, 'wrong_password')
+        return recordWrongPassword(user.email)
+      }
+
       // Reject default/unset password
       if (!user.password || user.password === 'Qode@123') {
         // Same as the web: the default password is the only one that moves on to first-time setup.
-        if (password !== 'Qode@123') {
-          logApp('login_failed', user.email, 'wrong_password')
-          return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
-        }
+        if (password !== 'Qode@123') return wrongPassword()
+        await clearWrongPasswords(user.email)
         console.log('[login] blocked — PASSWORD_SETUP_REQUIRED for', user.clientcode)
         logApp('login_failed', user.email, 'no_password_set')
         return NextResponse.json(
@@ -212,9 +218,9 @@ export async function POST(request: NextRequest) {
       const isValid = await bcrypt.compare(password!, user.password)
       if (!isValid) {
         console.log('[login] blocked — invalid password for', user.clientcode)
-        logApp('login_failed', user.email, 'wrong_password')
-        return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 })
+        return wrongPassword()
       }
+      await clearWrongPasswords(user.email)
     }
 
     // ── Distributor (partner) login ───────────────────────────────────────────

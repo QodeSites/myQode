@@ -3,11 +3,18 @@
 // investment status pipeline without making real payments.
 //
 // Supports both one-time payment events and SIP subscription events.
-// Disabled automatically in production unless ALLOW_SIMULATE_WEBHOOK=true.
+// Off everywhere (dev included) unless ALLOW_SIMULATE_WEBHOOK=true, and then only for a signed-in super admin.
+// It writes to payment_transactions, which dev shares with production.
 import { NextRequest, NextResponse } from 'next/server'
 import pool from '@/lib/db'
+import { requireAdmin, audit } from '@/lib/adminAuth'
 
-const GUARD = process.env.NODE_ENV === 'production' && process.env.ALLOW_SIMULATE_WEBHOOK !== 'true'
+async function guard(req: NextRequest) {
+  if (process.env.NODE_ENV === 'production' || process.env.ALLOW_SIMULATE_WEBHOOK !== 'true') {
+    return { admin: null, error: NextResponse.json({ error: 'Not available' }, { status: 404 }) }
+  }
+  return requireAdmin(req, 'super')
+}
 
 // ── SIP / subscription webhook payloads ──────────────────────────────────────
 const SIP_EVENT_TYPES = [
@@ -125,9 +132,8 @@ function buildWebhookPayload(orderId: string, paymentStatus: string, amount: num
 }
 
 export async function POST(request: NextRequest) {
-  if (GUARD) {
-    return NextResponse.json({ error: 'Not available in production' }, { status: 403 })
-  }
+  const { admin, error } = await guard(request)
+  if (error) return error
 
   let body: any
   try { body = await request.json() } catch {
@@ -155,6 +161,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: `Order ${orderId} not found` }, { status: 404 })
   }
   const tx = rows[0]
+  await audit(request, admin!, 'dev.simulate_webhook', orderId, { paymentStatus, simulateCronToo, sipEvent: sipEvent ?? null, nuvamaCode: tx.nuvama_code })
   const amount = parseFloat(tx.amount)
   const isSip = tx.payment_type === 'SIP' || !!sipEvent
 
@@ -271,9 +278,8 @@ export async function POST(request: NextRequest) {
 
 // GET — list all orders available to simulate against
 export async function GET(request: NextRequest) {
-  if (GUARD) {
-    return NextResponse.json({ error: 'Not available in production' }, { status: 403 })
-  }
+  const { error } = await guard(request)
+  if (error) return error
 
   const { rows } = await pool.query(
     `SELECT order_id, nuvama_code, client_name, amount, payment_status, investment_status, created_at
