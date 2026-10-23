@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import bcrypt from 'bcryptjs';
 import { logAuthEvent } from '@/lib/authEvents';
+import { lockedMinutes, recordWrongPassword, lockedResponse, unknownIdentifierResponse } from '@/lib/loginLockout';
 
 export async function POST(request: NextRequest) {
   try {
@@ -51,14 +52,13 @@ export async function POST(request: NextRequest) {
       [identifier]
     );
 
-    if (result.rows.length === 0) {
-      return NextResponse.json(
-        { error: 'Email address not found' },
-        { status: 404 }
-      );
-    }
+    // Same reply as a wrong password, so this can't be used to find out who is a client.
+    if (result.rows.length === 0) return unknownIdentifierResponse(identifier);
 
     const client = result.rows[0];
+
+    const locked = await lockedMinutes(identifier);
+    if (locked) return lockedResponse(locked);
 
     // Verify current password again
     // An account still on the shared default password (or none) must set its password through the emailed
@@ -75,10 +75,7 @@ export async function POST(request: NextRequest) {
 
     if (!currentPasswordValid) {
       void logAuthEvent(request, { email: identifier, event: 'login_failed', reason: 'wrong_password', platform: 'web', meta: { during: 'password_setup' } });
-      return NextResponse.json(
-        { error: 'Current password is incorrect' },
-        { status: 401 }
-      );
+      return recordWrongPassword(identifier);
     }
 
     // Prevent setting the same password as current

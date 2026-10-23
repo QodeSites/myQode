@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { adminRoleOf } from '@/lib/adminAuth'
 import jwt from 'jsonwebtoken'
 import { query } from '@/lib/db'
 
@@ -97,17 +98,20 @@ export async function verifyMobileAuth(request: NextRequest): Promise<{
   }
 }
 
-/** Guard: reject requests that don't have isSuperAdmin=true in the JWT.
- *  Also rejects impersonation tokens — admin actions must use the original JWT. */
-export function requireSuperAdmin(user: MobileAuthUser): NextResponse | null {
+/** Guard for /api/mobile/admin/*: a super admin only. Every app admin token carries isSuperAdmin, whatever the
+ *  admin's role, so the role is read now from the Admins list (as /api/admin/* does) — a 'partners' / 'investors'
+ *  admin, or one whose role was removed, is refused at once. The legacy shared admin@ login (MOBILE_ADMIN_PASSWORD)
+ *  keeps its access. Impersonation tokens are refused: admin actions must use the original token. */
+export async function requireSuperAdmin(user: MobileAuthUser): Promise<NextResponse | null> {
   if (user.isImpersonated) {
     return NextResponse.json(
       { error: 'Admin actions require the original token. Exit impersonation first.', code: 'IMPERSONATION_TOKEN' },
       { status: 403 }
     )
   }
-  if (!user.isSuperAdmin) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+  const legacyAdmin = user.userId === 'admin' && user.clientId === 'admin' && user.email?.toLowerCase() === 'admin@qodeinvest.com'
+  if (!user.isSuperAdmin || !(legacyAdmin || (await adminRoleOf(user.email)) === 'super')) {
+    return NextResponse.json({ error: 'Your admin role does not cover this', code: 'ADMIN_FORBIDDEN' }, { status: 403 })
   }
   return null
 }

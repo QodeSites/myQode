@@ -1,7 +1,7 @@
 // app/api/auth/forgot/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { query } from '@/lib/db'
-import { sendPasswordResetLink } from '@/lib/passwordReset'
+import { sendPasswordResetLink, allowResetMail } from '@/lib/passwordReset'
 import { logAuthEvent } from '@/lib/authEvents'
 
 export async function POST(req: NextRequest) {
@@ -18,10 +18,10 @@ export async function POST(req: NextRequest) {
       [email]
     )
 
-    // Always behave the same regardless of existence
-    // But only create a token if user exists
-    if (userRes.rows.length >= 0) {
-      await sendPasswordResetLink(email)
+    // Always behave the same regardless of existence, but only create a token and send mail for a real account,
+    // at most once a minute and 5 times an hour per email, shared with the app (the reply never says which).
+    if (userRes.rows.length > 0 && allowResetMail(email)) {
+      await sendPasswordResetLink(userRes.rows[0].email)
     }
 
     // Analytics only: the caller still gets the same generic answer either way.

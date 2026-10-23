@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   const { user, error } = await verifyMobileAuth(request)
   if (error) return error
 
-  const adminError = requireSuperAdmin(user!)
+  const adminError = await requireSuperAdmin(user!)
   if (adminError) return adminError
 
   const { searchParams } = new URL(request.url)

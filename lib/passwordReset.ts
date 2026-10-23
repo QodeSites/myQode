@@ -18,6 +18,25 @@ const SIGNATURE_IMAGES = {
   website: `${process.env.APP_URL}/signature/link.png`,
 }
 
+// Reset mails a person can ask for (web /api/auth/forgot and app /api/mobile/auth/forgot share the count):
+// at most one a minute and 5 an hour per email. Kept in memory: a restart only allows a few extra.
+const RESET_MAIL_GAP_MS = 60 * 1000
+const RESET_MAILS_PER_HOUR = 5
+const resetMailsSent = new Map<string, number[]>()
+/** True when a reset mail may be sent to this email now (and counts it). The caller's reply must not change either way. */
+export function allowResetMail(email: string): boolean {
+  const key = email.trim().toLowerCase(), now = Date.now(), hour = 60 * 60 * 1000
+  const recent = (resetMailsSent.get(key) || []).filter(t => now - t < hour)
+  if ((recent.length && now - recent[recent.length - 1] < RESET_MAIL_GAP_MS) || recent.length >= RESET_MAILS_PER_HOUR) {
+    resetMailsSent.set(key, recent)
+    return false
+  }
+  recent.push(now)
+  resetMailsSent.set(key, recent)
+  if (resetMailsSent.size > 10000) for (const [k, v] of resetMailsSent) if (!v.some(t => now - t < hour)) resetMailsSent.delete(k)
+  return true
+}
+
 /**
  * Invalidates earlier reset tokens for this email, stores a new one and emails the link. Mail failures are
  * logged, not thrown (returns false). Pass the email exactly as stored: /api/auth/reset matches it exactly.

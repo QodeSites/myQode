@@ -2,6 +2,7 @@
 // Sends a password-reset email to the given address.
 // Mirrors the web /api/auth/forgot route but lives under the mobile API namespace.
 import { NextRequest, NextResponse } from 'next/server'
+import { allowResetMail } from '@/lib/passwordReset'
 import { query } from '@/lib/db'
 import crypto from 'crypto'
 import { graphMailer, isGraphEmailConfigured } from '@/lib/graphEmail'
@@ -42,7 +43,9 @@ export async function POST(req: NextRequest) {
       [normalizedEmail]
     )
 
-    if (userRes.rows.length > 0) {
+    // Only a real account gets a mail, at most once a minute and 5 times an hour per email (shared with the web
+    // /api/auth/forgot). The reply is the same either way.
+    if (userRes.rows.length > 0 && allowResetMail(normalizedEmail)) {
       const plan = mailPlan(userRes.rows[0].email, body?.testRedirect)
       if (plan.refuse) return NextResponse.json({ error: plan.refuse, code: 'TEST_REDIRECT_MISSING' }, { status: 409 })
       const rawToken = crypto.randomBytes(32).toString('hex')
