@@ -365,9 +365,9 @@ export default function DistributorInvestorsPage() {
              or call{" "}
             <a
               className="font-bold text-primary underline underline-offset-4 dark:text-primary-foreground"
-              href="tel:+919326535470"
+              href="tel:+919930000193"
             >
-              +91 9326535470
+              +91 9930000193
             </a>
             .
           </p>
