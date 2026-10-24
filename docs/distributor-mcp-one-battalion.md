@@ -15,7 +15,7 @@ same scope (only accounts whose intermediary is One Battalion), read-only.
 
 | Tool | What it returns | Inputs |
 |---|---|---|
-| `list_investors` | Families → owners → accounts: code, name, email, strategy, start date, latest value, amount invested, totals | none |
+| `list_investors` | Families → owners → accounts: code, name, email, strategy, start date, latest value, amount invested, relationship manager (name, phone, email), totals | none |
 | `get_portfolio` | Latest value, invested amount, P&L, NAV, drawdown and returns per account | `account_codes` (optional) |
 | `get_transactions` | Contributions and withdrawals | `account_codes`, `from`, `to` (all optional) |
 | `get_portfolio_history` | Value, NAV, drawdown and returns over time | `account_codes` (1 to 5, required), `from`, `to`, `interval` = `daily` / `weekly` (default) / `monthly`; default range the last 90 days; at most 2,000 rows |

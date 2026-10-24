@@ -17,7 +17,7 @@ import { GET as documents } from '../documents/route'
 export const dynamic = 'force-dynamic'
 
 const VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05']
-const SERVER = { name: 'qode-one-battalion', title: 'Qode: One Battalion investors', version: '1.0.0' }
+const SERVER = { name: 'qode-one-battalion', title: 'Qode: One Battalion investors', version: '1.1.0' }
 const INSTRUCTIONS = `Read-only data for ${DISTRIBUTOR_NAME}'s investors with Qode Advisors (a SEBI-registered portfolio manager). ` +
   'Amounts are in Indian rupees. Dates are IST calendar dates (YYYY-MM-DD). Start with list_investors to get account codes ' +
   '(for example QAW00098: the first three letters are the strategy), then use the other tools with those codes. ' +
@@ -27,7 +27,7 @@ const CODES = { type: 'array', items: { type: 'string', pattern: '^[A-Za-z0-9]{3
 const DATE = (what: string) => ({ type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$', description: `${what} (YYYY-MM-DD, inclusive)` })
 const TOOLS = [
   { name: 'list_investors', title: 'List investors',
-    description: 'Every investor of One Battalion with Qode, as families → owners → accounts: account code, name, email, strategy, start date, latest value (AUM) and amount invested, with totals.',
+    description: 'Every investor of One Battalion with Qode, as families → owners → accounts: account code, name, email, strategy, start date, latest value (AUM) and amount invested, and the account\'s relationship manager as recorded with Qode (name, phone, email; phone is often empty), with totals.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false } },
   { name: 'get_portfolio', title: 'Portfolio value and returns',
     description: 'Latest portfolio value, amount invested, profit and loss, NAV, drawdown and returns for each account. Give account codes to narrow it.',

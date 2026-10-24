@@ -78,7 +78,8 @@ invested amount per account.
               "inception_date": "2025-12-03",
               "latest_aum": 15464913.75,
               "invested_amount": 14499665.33,
-              "as_of": "2026-06-02"
+              "as_of": "2026-06-02",
+              "relationship_manager": { "name": "Priya Shah", "phone": null, "email": "priya@thepersonalcfo.in" }
             }
           ]
         }
@@ -87,6 +88,13 @@ invested amount per account.
   ]
 }
 ```
+
+---
+
+`relationship_manager` is the account's relationship manager as recorded in Qode's CRM (RM 1 on the investor's record,
+else the record owner), the same person the investor sees on their own profile; for One Battalion's clients that is
+usually One Battalion's own RM. Any of its fields can be `null`, and the
+whole object is `null` if the CRM could not be read at that moment.
 
 ---
 

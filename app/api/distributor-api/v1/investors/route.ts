@@ -7,6 +7,7 @@ import {
   toISTDate,
   num,
 } from "@/lib/distributorApi";
+import { getInvestorRm, InvestorRm } from "@/lib/zohoInvestorDetails";
 
 export const dynamic = "force-dynamic";
 
@@ -15,8 +16,28 @@ export const dynamic = "force-dynamic";
  *
  * Returns the distributor's full investor book as a family -> owner -> account
  * tree (the same grouping shown on the myQode portfolio "snapshot" tab),
- * enriched with the latest portfolio value and total invested amount.
+ * enriched with the latest portfolio value and total invested amount, and each
+ * account's relationship manager (name, phone, email) from Zoho CRM: RM 1 on the
+ * investor's record, else its owner, as the investor sees it on their own profile.
+ * For One Battalion's clients RM 1 is One Battalion's own RM (@thepersonalcfo.in).
  */
+
+/** RM per lowercased email, five Zoho lookups at a time (getInvestorRm caches each for 5 min). A failed lookup is null. */
+async function rmsFor(emails: string[]): Promise<Map<string, InvestorRm | null>> {
+  const out = new Map<string, InvestorRm | null>();
+  const todo = [...new Set(emails.map((e) => e.trim().toLowerCase()).filter(Boolean))];
+  const next = async (): Promise<void> => {
+    const e = todo.shift();
+    if (!e) return;
+    try { out.set(e, await getInvestorRm(e)); } catch (err) {
+      console.error("[distributor-api/investors] RM lookup failed:", (err as Error).message);
+      out.set(e, null);
+    }
+    return next();
+  };
+  await Promise.all(Array.from({ length: 5 }, next));
+  return out;
+}
 export async function GET(request: NextRequest) {
   const authError = authenticateDistributor(request);
   if (authError) return authError;
@@ -52,6 +73,8 @@ export async function GET(request: NextRequest) {
         GROUP BY account_code`,
       [codes]
     );
+
+    const rms = await rmsFor(accounts.map((a) => a.email ?? ""));
 
     const aumMap = new Map<string, any>();
     latestAum.rows.forEach((r: any) => aumMap.set(r.account_code, r));
@@ -108,6 +131,7 @@ export async function GET(request: NextRequest) {
         latest_aum: latest,
         invested_amount: investedMap.get(a.clientcode) ?? 0,
         as_of: toISTDate(aumRow?.report_date),
+        relationship_manager: rms.get((a.email ?? "").trim().toLowerCase()) ?? null,
       });
     }
 
