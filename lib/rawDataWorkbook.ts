@@ -4,7 +4,8 @@
 //   Calculation        per owner (all their accounts together) and per account: every cash flow from the daily sheet
 //                      (investor's view: money in negative), the same flows bought/sold in Nifty 50, today's value, then
 //                      XIRR, Nifty XIRR, alpha, money in, values today and CAGR from NAV — all live Excel formulas
-//   <code> daily       pms_master_sheet: date, NAV, portfolio value, cash in/out (owner rows use the owner id as code)
+//   <code> daily       pms_master_sheet: date, NAV, portfolio value, cash in/out (owner rows use the owner id as code);
+//                      when the first NAV isn't 10, a NAV 10 row the day before inception leads, as on the dashboard
 //   Nifty 50           tblresearch_new closes from a little before the first daily row
 //   Custodian ledger   pms_transactions: deposits, withdrawals, switches, fees, TDS, interest, dividends
 //
@@ -19,6 +20,7 @@ const STRATEGY: Record<string, string> = { QAW: 'All Weather', QGF: 'Growth Fund
 const LEDGER_TYPES = ['CS+', 'CS-', 'PSI', 'PSO', 'SII', 'SOO', 'OPI', 'OPO', 'TDP', 'TDO', 'TDI', 'MGF', 'IN1', 'DIV']
 const ownerCode = (v: unknown) => String(v ?? '').trim().replace(/\.0+$/, '')
 const date = (s: string) => new Date(s + 'T00:00:00Z')
+const dayBefore = (s: string) => { const d = date(s); d.setUTCDate(d.getUTCDate() - 1); return d.toISOString().slice(0, 10) }
 
 export async function buildRawDataWorkbook(email: string): Promise<{ name: string; file: Buffer } | null> {
   const acc = (await query(
@@ -59,14 +61,21 @@ export async function buildRawDataWorkbook(email: string): Promise<{ name: strin
   const calc = wb.sheet('Calculation', [38, 22, 16, 18, 22, 12], false)
   const header = (ws: Sheet, cols: string[]) => cols.forEach((h, i) => ws.set(1, i + 1, h, 'header'))
 
-  const lastRow: Record<string, number> = {}
+  // The performance page's NAV chart starts at 10: when the first NAV isn't exactly 10 it prepends a NAV 10 row the
+  // day before inception (app/(protected)/portfolio/performance/page.tsx). Same here, with no value or cash flow.
+  const lastRow: Record<string, number> = {}, firstRow: Record<string, number> = {}, synthetic: Record<string, boolean> = {}
   for (const c of withData) {
     const ws = wb.sheet(`${c} daily`, [12, 10, 18, 16])
     header(ws, ['Date', 'NAV', 'Portfolio value (₹)', 'Cash in/out (₹)'])
-    daily.get(c)!.forEach((x, i) => {
-      ws.set(i + 2, 1, date(x.d), 'date'); ws.set(i + 2, 2, x.nav, 'nav'); ws.set(i + 2, 3, x.v, 'money'); ws.set(i + 2, 4, x.cf, 'signed')
+    const rows = daily.get(c)!
+    synthetic[c] = Number(rows[0].nav) !== 10
+    if (synthetic[c]) { ws.set(2, 1, date(dayBefore(rows[0].d)), 'date'); ws.set(2, 2, 10, 'nav') }
+    firstRow[c] = synthetic[c] ? 3 : 2
+    rows.forEach((x, i) => {
+      const r = firstRow[c] + i
+      ws.set(r, 1, date(x.d), 'date'); ws.set(r, 2, x.nav, 'nav'); ws.set(r, 3, x.v, 'money'); ws.set(r, 4, x.cf, 'signed')
     })
-    lastRow[c] = daily.get(c)!.length + 1
+    lastRow[c] = firstRow[c] + rows.length - 1
   }
   const nf = wb.sheet('Nifty 50', [12, 14])
   header(nf, ['Date', 'Nifty 50 close'])
@@ -88,7 +97,7 @@ export async function buildRawDataWorkbook(email: string): Promise<{ name: strin
   const nifAt = (r: number) => NL > 1 ? `=INDEX('Nifty 50'!$B$2:$B$${NL},MATCH(A${r},'Nifty 50'!$A$2:$A$${NL},1))` : null
   let r = 4
   for (const c of withData) {
-    const rows = daily.get(c)!.map((x, i) => ({ src: i + 2, cf: x.cf })).filter(x => x.cf !== 0)
+    const rows = daily.get(c)!.map((x, i) => ({ src: i + firstRow[c], cf: x.cf })).filter(x => x.cf !== 0)
     if (!rows.length) continue
     const sh = `'${c} daily'`, last = lastRow[c]
     calc.set(r++, 1, label(c), 'title')
@@ -121,7 +130,8 @@ export async function buildRawDataWorkbook(email: string): Promise<{ name: strin
       ['Value today (₹)', `=B${end}`, 'resultMoney'],
       ['Same money in Nifty today (₹)', `=E${end}`, 'resultMoney'],
       ['First NAV / last NAV', `=TEXT(${sh}!B2,"0.0000") & " → " & TEXT(${sh}!B${last},"0.0000")`, 'resultText'],
-      ['CAGR from NAV (Returns %)', `=(${sh}!B${last}/10)^(365.25/(${sh}!A${last}-(${sh}!A2-1)))-1`, 'resultPct'],
+      // Base date: the NAV 10 row when there is one, else the day before the first row (whose NAV is already 10).
+      ['CAGR from NAV (Returns %)', `=(${sh}!B${last}/10)^(365.25/(${sh}!A${last}-${synthetic[c] ? `${sh}!A2` : `(${sh}!A2-1)`}))-1`, 'resultPct'],
     ]
     for (const [lab, f, st] of results) { calc.set(r, 1, lab, 'bold'); calc.set(r, 2, f, st); r++ }
     calc.set(r, 1, "CAGR uses NAV 10 on the day before inception (the app's rule); XIRR uses Excel's 365-day year; the Nifty XIRR starts from a guess of −10% (Excel's default 10% can stall at 0%).", 'note')
